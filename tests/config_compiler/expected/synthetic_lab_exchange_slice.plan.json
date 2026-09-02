@@ -1,0 +1,144 @@
+{
+  "snapshot_status": "V0.1_DRAFT_SLICE_HUMAN_SEMANTIC_REFERENCE_PARTIALLY_VERIFIED",
+  "input": "examples/config/synthetic_lab_exchange_slice.pae.json",
+  "protocol_id": "synthetic_lab_exchange",
+  "protocol_version": "0.1-synthetic",
+  "resource_profile": "desktop",
+  "counts": {
+    "protocol_packages": 1,
+    "framing_profiles": 1,
+    "pipelines": 2,
+    "messages": 2,
+    "fields": 10,
+    "integrity_rules": 0
+  },
+  "framing_profiles": [
+    {
+      "id": "complete_record",
+      "input_kind": "complete_record"
+    }
+  ],
+  "pipelines": [
+    {
+      "id": "host_to_fixture",
+      "direction_id": "host_to_fixture",
+      "input_framing_profile_id": "complete_record",
+      "message_ids": ["lab_command"]
+    },
+    {
+      "id": "fixture_to_host",
+      "direction_id": "fixture_to_host",
+      "input_framing_profile_id": "complete_record",
+      "message_ids": ["lab_report"]
+    }
+  ],
+  "messages": [
+    {
+      "id": "lab_command",
+      "direction_id": "host_to_fixture",
+      "frame_length_bytes": 13,
+      "layout_authority": "SYNTHETIC_FROM_SCRATCH",
+      "matchers": [
+        {"kind": "frame_length_equals", "length_bytes": 13},
+        {"kind": "fixed_bytes", "byte_offset": 2, "bytes": "A7 31"}
+      ],
+      "fields": [
+        {
+          "id": "record_length",
+          "value_type": "UINT64",
+          "wire_interval": [0, 2],
+          "byte_order": "little_endian",
+          "encode_source": "input"
+        },
+        {
+          "id": "operation_code",
+          "value_type": "UINT64",
+          "wire_interval": [2, 4],
+          "byte_order": "little_endian",
+          "encode_source": "constant",
+          "constant_uint64": 12711
+        },
+        {
+          "id": "transaction_id",
+          "value_type": "UINT64",
+          "wire_interval": [4, 7],
+          "byte_order": "little_endian",
+          "encode_source": "input"
+        },
+        {
+          "id": "payload_tag",
+          "value_type": "BYTES",
+          "wire_interval": [7, 11],
+          "encode_source": "input"
+        },
+        {
+          "id": "operating_mode",
+          "value_type": "ENUM",
+          "wire_interval": [11, 13],
+          "byte_order": "little_endian",
+          "encode_source": "input",
+          "unknown_enum_policy": "reject",
+          "enum_raw_values": [1, 2, 3, 4]
+        }
+      ]
+    },
+    {
+      "id": "lab_report",
+      "direction_id": "fixture_to_host",
+      "frame_length_bytes": 11,
+      "layout_authority": "SYNTHETIC_FROM_SCRATCH",
+      "matchers": [
+        {"kind": "frame_length_equals", "length_bytes": 11},
+        {"kind": "fixed_bytes", "byte_offset": 2, "bytes": "5C E2"}
+      ],
+      "fields": [
+        {
+          "id": "record_length",
+          "value_type": "UINT64",
+          "wire_interval": [0, 2],
+          "byte_order": "little_endian",
+          "encode_source": "input"
+        },
+        {
+          "id": "operation_code",
+          "value_type": "UINT64",
+          "wire_interval": [2, 4],
+          "byte_order": "little_endian",
+          "encode_source": "constant",
+          "constant_uint64": 57948
+        },
+        {
+          "id": "transaction_id",
+          "value_type": "UINT64",
+          "wire_interval": [4, 7],
+          "byte_order": "little_endian",
+          "encode_source": "input"
+        },
+        {
+          "id": "status_code",
+          "value_type": "UINT64",
+          "wire_interval": [7, 9],
+          "byte_order": "little_endian",
+          "encode_source": "input"
+        },
+        {
+          "id": "sample_counter",
+          "value_type": "UINT64",
+          "wire_interval": [9, 11],
+          "byte_order": "little_endian",
+          "encode_source": "input"
+        }
+      ]
+    }
+  ],
+  "lifecycle_expectations": {
+    "parser_dom_retained": false,
+    "third_party_parser_types_retained": false,
+    "partial_plan_on_failure": false
+  },
+  "not_evidence_for": [
+    "production_protocol_correctness",
+    "hardware_or_field_validation",
+    "complete_pae_v0_1_schema"
+  ]
+}

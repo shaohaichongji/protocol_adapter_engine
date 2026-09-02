@@ -1,0 +1,11 @@
+case_id	schema_reference_result	pae_stage	error_code	reason	json_pointer	authority	notes
+minimal_complete_record	PASS	SUCCESS	NONE	NONE		DOCUMENTATION_MIRROR	生成完整PlanBundle；机器权威在C++测试
+structural_unknown_property	FAIL	STRUCTURAL	UNKNOWN_PROPERTY	NONE	/unexpected_property	DOCUMENTATION_MIRROR	Draft 2020-12与PAE均拒绝
+structural_integer_fraction	PASS	STRUCTURAL	INTEGER_NOT_EXACT	NONE	/messages/0/fields/0/wire/byte_offset	DOCUMENTATION_MIRROR	参考Validator按数学值接受2.0，PAE按Token拒绝
+structural_unsigned_negative_zero	PASS	STRUCTURAL	INTEGER_OUT_OF_RANGE	NEGATIVE_TOKEN_FOR_UNSIGNED	/messages/0/fields/0/wire/byte_offset	DOCUMENTATION_MIRROR	不得在测试前重序列化为0
+domain_constant_matcher_conflict	PASS	DOMAIN_VALIDATION	MATCHER_CONFLICT	NONE	/messages/0/fields/1/encode/value	DOCUMENTATION_MIRROR	由合法Fixture运行期变异生成
+domain_ambiguous_matcher	PASS	DOMAIN_VALIDATION	AMBIGUOUS_MATCHER	NONE	/pipelines/0/message_ids/1	DOCUMENTATION_MIRROR	由合法Fixture运行期变异生成
+domain_missing_framing_reference	PASS	DOMAIN_VALIDATION	UNKNOWN_REFERENCE	NONE	/pipelines/0/input_framing_profile_id	DOCUMENTATION_MIRROR	具体公共错误码数值尚未冻结
+domain_direction_mismatch	PASS	DOMAIN_VALIDATION	DIRECTION_MISMATCH	NONE	/pipelines/0/message_ids/0	DOCUMENTATION_MIRROR	Pipeline与Message方向必须一致
+domain_field_overlap	PASS	DOMAIN_VALIDATION	FIELD_OVERLAP	NONE	/messages/0/fields/1	DOCUMENTATION_MIRROR	区间[0,2)与[1,3)重叠
+domain_frame_not_fully_defined	PASS	DOMAIN_VALIDATION	FRAME_NOT_FULLY_DEFINED	NONE	/messages/0	DOCUMENTATION_MIRROR	Field与Fixed Matcher区间并集未覆盖完整帧

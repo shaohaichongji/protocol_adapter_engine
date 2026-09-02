@@ -1,0 +1,6 @@
+field_id	value_kind	logical_value	raw_value
+record_length	UINT64	13	13
+operation_code	UINT64	12711	12711
+transaction_id	UINT64	1193046	1193046
+payload_tag	BYTES	DE AD BE EF	DE AD BE EF
+operating_mode	ENUM	mode_active	2

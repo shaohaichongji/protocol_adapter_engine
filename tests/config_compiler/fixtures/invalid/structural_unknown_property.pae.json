@@ -1,0 +1,55 @@
+{
+  "schema_version": "0.1",
+  "protocol_id": "synthetic_unknown_property",
+  "protocol_version": "0.1-synthetic",
+  "display_name": "未知属性用例",
+  "source_ref": "SYNTHETIC:structural_unknown_property",
+  "resource_profile": "desktop",
+  "unexpected_property": true,
+  "framing_profiles": [
+    {
+      "id": "complete_record",
+      "display_name": "完整记录",
+      "description": "测试Framing。",
+      "source_ref": "SYNTHETIC:structural_unknown_property#framing",
+      "input_kind": "complete_record"
+    }
+  ],
+  "pipelines": [
+    {
+      "id": "source_to_sink",
+      "display_name": "源到目标",
+      "description": "测试Pipeline。",
+      "source_ref": "SYNTHETIC:structural_unknown_property#pipeline",
+      "direction_id": "source_to_sink",
+      "input_framing_profile_id": "complete_record",
+      "message_ids": ["minimal_message"]
+    }
+  ],
+  "messages": [
+    {
+      "id": "minimal_message",
+      "display_name": "最小消息",
+      "description": "未知属性之外均合法。",
+      "source_ref": "SYNTHETIC:structural_unknown_property#message",
+      "direction_id": "source_to_sink",
+      "frame_length_bytes": 2,
+      "matcher": {
+        "all": [
+          {"kind": "frame_length_equals", "length_bytes": 2}
+        ]
+      },
+      "fields": [
+        {
+          "id": "payload",
+          "display_name": "载荷",
+          "description": "单个字段。",
+          "source_ref": "SYNTHETIC:structural_unknown_property#payload",
+          "value_type": "UINT64",
+          "wire": {"codec": "unsigned_integer", "byte_offset": 0, "byte_width": 2, "byte_order": "big_endian"},
+          "encode": {"source": "input"}
+        }
+      ]
+    }
+  ]
+}

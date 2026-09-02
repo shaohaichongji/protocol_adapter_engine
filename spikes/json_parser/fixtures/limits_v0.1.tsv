@@ -1,0 +1,3 @@
+limits_id	max_input_bytes	max_depth	max_nodes	max_string_bytes	max_array_elements	max_parser_memory_bytes
+spike_default	262144	64	4096	4096	1024	4194304
+spike_field_dense	262144	64	20000	4096	4096	4194304

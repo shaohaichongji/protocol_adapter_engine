@@ -1,0 +1,74 @@
+{
+  "schema_version": "0.1",
+  "protocol_id": "synthetic_frame_coverage_gap",
+  "protocol_version": "0.1-synthetic",
+  "display_name": "帧覆盖缺口负例",
+  "description": "仅用于验证完整帧覆盖门禁。",
+  "source_ref": "SYNTHETIC:domain_frame_not_fully_defined",
+  "resource_profile": "desktop",
+  "framing_profiles": [
+    {
+      "id": "complete_record",
+      "display_name": "完整记录",
+      "description": "单次输入就是完整记录。",
+      "source_ref": "SYNTHETIC:domain_frame_not_fully_defined#framing",
+      "input_kind": "complete_record"
+    }
+  ],
+  "pipelines": [
+    {
+      "id": "source_to_sink",
+      "display_name": "源到目标",
+      "description": "单方向Pipeline。",
+      "source_ref": "SYNTHETIC:domain_frame_not_fully_defined#pipeline",
+      "direction_id": "source_to_sink",
+      "input_framing_profile_id": "complete_record",
+      "message_ids": ["coverage_gap_message"]
+    }
+  ],
+  "messages": [
+    {
+      "id": "coverage_gap_message",
+      "display_name": "覆盖缺口消息",
+      "description": "Byte 1未被Field或Fixed Matcher定义。",
+      "source_ref": "SYNTHETIC:domain_frame_not_fully_defined#message",
+      "direction_id": "source_to_sink",
+      "frame_length_bytes": 4,
+      "matcher": {
+        "all": [
+          {"kind": "frame_length_equals", "length_bytes": 4},
+          {"kind": "fixed_bytes", "byte_offset": 2, "bytes": "00 01"}
+        ]
+      },
+      "fields": [
+        {
+          "id": "payload_byte",
+          "display_name": "载荷字节",
+          "description": "只覆盖Byte 0，故意留下Byte 1。",
+          "source_ref": "SYNTHETIC:domain_frame_not_fully_defined#payload",
+          "value_type": "UINT64",
+          "wire": {
+            "codec": "unsigned_integer",
+            "byte_offset": 0,
+            "byte_width": 1
+          },
+          "encode": {"source": "input"}
+        },
+        {
+          "id": "message_type",
+          "display_name": "消息类型",
+          "description": "固定类型1。",
+          "source_ref": "SYNTHETIC:domain_frame_not_fully_defined#type",
+          "value_type": "UINT64",
+          "wire": {
+            "codec": "unsigned_integer",
+            "byte_offset": 2,
+            "byte_width": 2,
+            "byte_order": "big_endian"
+          },
+          "encode": {"source": "constant", "value": 1}
+        }
+      ]
+    }
+  ]
+}

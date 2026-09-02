@@ -1,0 +1,26 @@
+#pragma once
+
+#include <cstddef>
+
+namespace pae::json_spike::resource_profiles_generated {
+
+struct Record {
+  const char* profile_id;
+  const char* status;
+  std::size_t max_input_bytes;
+  std::size_t max_depth;
+  std::size_t max_nodes;
+  std::size_t max_object_members;
+  std::size_t max_string_bytes;
+  std::size_t max_array_elements;
+  std::size_t max_number_token_bytes;
+  std::size_t max_total_string_bytes;
+  std::size_t max_parser_memory_bytes;
+  std::size_t max_loader_compiler_peak_bytes;
+};
+
+// clang-format off
+inline constexpr Record kRecords[] = {@PAE_RESOURCE_PROFILE_RECORDS@};
+// clang-format on
+
+}  // namespace pae::json_spike::resource_profiles_generated

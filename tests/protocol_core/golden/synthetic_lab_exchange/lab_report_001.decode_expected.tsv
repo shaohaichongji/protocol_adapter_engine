@@ -1,0 +1,6 @@
+field_id	value_kind	logical_value	raw_value
+record_length	UINT64	11	11
+operation_code	UINT64	57948	57948
+transaction_id	UINT64	10597059	10597059
+status_code	UINT64	9320	9320
+sample_counter	UINT64	48879	48879

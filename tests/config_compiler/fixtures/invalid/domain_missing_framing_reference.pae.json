@@ -1,0 +1,50 @@
+{
+  "schema_version": "0.1",
+  "protocol_id": "synthetic_missing_framing_reference",
+  "protocol_version": "0.1-synthetic",
+  "display_name": "缺失Framing引用用例",
+  "source_ref": "SYNTHETIC:domain_missing_framing_reference",
+  "resource_profile": "desktop",
+  "framing_profiles": [
+    {
+      "id": "complete_record",
+      "display_name": "完整记录",
+      "description": "存在但未被正确引用。",
+      "source_ref": "SYNTHETIC:domain_missing_framing_reference#framing",
+      "input_kind": "complete_record"
+    }
+  ],
+  "pipelines": [
+    {
+      "id": "source_to_sink",
+      "display_name": "源到目标",
+      "description": "故意引用不存在的FramingProfile。",
+      "source_ref": "SYNTHETIC:domain_missing_framing_reference#pipeline",
+      "direction_id": "source_to_sink",
+      "input_framing_profile_id": "missing_framing",
+      "message_ids": ["minimal_message"]
+    }
+  ],
+  "messages": [
+    {
+      "id": "minimal_message",
+      "display_name": "最小消息",
+      "description": "结构合法。",
+      "source_ref": "SYNTHETIC:domain_missing_framing_reference#message",
+      "direction_id": "source_to_sink",
+      "frame_length_bytes": 2,
+      "matcher": {"all": [{"kind": "frame_length_equals", "length_bytes": 2}]},
+      "fields": [
+        {
+          "id": "payload",
+          "display_name": "载荷",
+          "description": "单个字段。",
+          "source_ref": "SYNTHETIC:domain_missing_framing_reference#payload",
+          "value_type": "UINT64",
+          "wire": {"codec": "unsigned_integer", "byte_offset": 0, "byte_width": 2, "byte_order": "big_endian"},
+          "encode": {"source": "input"}
+        }
+      ]
+    }
+  ]
+}

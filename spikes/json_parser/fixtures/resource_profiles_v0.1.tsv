@@ -1,0 +1,4 @@
+profile_id	status	max_input_bytes	max_depth	max_nodes	max_object_members	max_string_bytes	max_array_elements	max_number_token_bytes	max_total_string_bytes	max_parser_memory_bytes	max_loader_compiler_peak_bytes
+hard	CANDIDATE_UNVERIFIED	4194304	64	524288	4096	65536	16384	128	2097152	67108864	134217728
+desktop	CANDIDATE_UNVERIFIED	2097152	32	262144	2048	16384	8192	64	1048576	33554432	67108864
+constrained	CANDIDATE_UNVERIFIED	524288	16	32768	256	4096	1024	64	262144	8388608	16777216

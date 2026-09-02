@@ -1,0 +1,22 @@
+#pragma once
+
+namespace pae::json_spike::number_corpus_generated {
+
+struct Record {
+  const char* case_id;
+  const char* target_type;
+  const char* status;
+  const char* token_hex;
+  const char* expected_kind;
+  const char* expected_negative_zero;
+  const char* expected_status;
+  const char* expected_reason;
+  const char* expected_value;
+  const char* expected_bits_hex;
+};
+
+// clang-format off
+inline constexpr Record kRecords[] = {@PAE_NUMBER_TOKEN_RECORDS@};
+// clang-format on
+
+}  // namespace pae::json_spike::number_corpus_generated

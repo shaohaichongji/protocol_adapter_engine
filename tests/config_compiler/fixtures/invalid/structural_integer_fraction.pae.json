@@ -1,0 +1,54 @@
+{
+  "schema_version": "0.1",
+  "protocol_id": "synthetic_integer_fraction",
+  "protocol_version": "0.1-synthetic",
+  "display_name": "整数Token小数形式用例",
+  "source_ref": "SYNTHETIC:structural_integer_fraction",
+  "resource_profile": "desktop",
+  "framing_profiles": [
+    {
+      "id": "complete_record",
+      "display_name": "完整记录",
+      "description": "测试Framing。",
+      "source_ref": "SYNTHETIC:structural_integer_fraction#framing",
+      "input_kind": "complete_record"
+    }
+  ],
+  "pipelines": [
+    {
+      "id": "source_to_sink",
+      "display_name": "源到目标",
+      "description": "测试Pipeline。",
+      "source_ref": "SYNTHETIC:structural_integer_fraction#pipeline",
+      "direction_id": "source_to_sink",
+      "input_framing_profile_id": "complete_record",
+      "message_ids": ["minimal_message"]
+    }
+  ],
+  "messages": [
+    {
+      "id": "minimal_message",
+      "display_name": "最小消息",
+      "description": "byte_offset故意使用2.0。",
+      "source_ref": "SYNTHETIC:structural_integer_fraction#message",
+      "direction_id": "source_to_sink",
+      "frame_length_bytes": 4,
+      "matcher": {
+        "all": [
+          {"kind": "frame_length_equals", "length_bytes": 4}
+        ]
+      },
+      "fields": [
+        {
+          "id": "payload",
+          "display_name": "载荷",
+          "description": "整数语义属性使用REAL Token。",
+          "source_ref": "SYNTHETIC:structural_integer_fraction#payload",
+          "value_type": "UINT64",
+          "wire": {"codec": "unsigned_integer", "byte_offset": 2.0, "byte_width": 2, "byte_order": "big_endian"},
+          "encode": {"source": "input"}
+        }
+      ]
+    }
+  ]
+}

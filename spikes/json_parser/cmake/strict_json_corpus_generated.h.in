@@ -1,0 +1,49 @@
+#pragma once
+
+#include <cstddef>
+
+namespace pae::json_spike::corpus_generated {
+
+struct LimitRecord {
+  const char* id;
+  std::size_t max_input_bytes;
+  std::size_t max_depth;
+  std::size_t max_nodes;
+  std::size_t max_string_bytes;
+  std::size_t max_array_elements;
+  std::size_t max_parser_memory_bytes;
+};
+
+struct FixtureRecord {
+  const char* case_id;
+  const char* rule_id;
+  const char* suite;
+  const char* status;
+  const char* input_hex;
+  const char* limits_id;
+  const char* expected_code;
+  const char* target_code;
+  const char* target_lock_candidate;
+  const char* pointer_assertion;
+  const char* pointer_utf8_hex;
+  const char* offset_assertion;
+  const char* offset_kind;
+  const char* offset_value;
+  std::size_t expected_input_size;
+};
+
+struct InventoryRecord {
+  const char* case_id;
+  const char* source_state;
+};
+
+inline constexpr LimitRecord kLimits[] = {
+@PAE_STRICT_JSON_LIMIT_RECORDS@};
+
+inline constexpr FixtureRecord kFixtures[] = {
+@PAE_STRICT_JSON_FIXTURE_RECORDS@};
+
+inline constexpr InventoryRecord kInventory[] = {
+@PAE_STRICT_JSON_INVENTORY_RECORDS@};
+
+}  // namespace pae::json_spike::corpus_generated

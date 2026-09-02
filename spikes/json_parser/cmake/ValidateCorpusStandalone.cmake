@@ -1,0 +1,13 @@
+if(NOT DEFINED PAE_JSON_SPIKE_FIXTURE_DIR OR
+   NOT IS_DIRECTORY "${PAE_JSON_SPIKE_FIXTURE_DIR}")
+    message(FATAL_ERROR "PAE_JSON_SPIKE_FIXTURE_DIR must name an existing directory")
+endif()
+if(NOT DEFINED PAE_JSON_SPIKE_OUTPUT_DIR OR PAE_JSON_SPIKE_OUTPUT_DIR STREQUAL "")
+    message(FATAL_ERROR "PAE_JSON_SPIKE_OUTPUT_DIR is required")
+endif()
+
+include("${CMAKE_CURRENT_LIST_DIR}/GenerateCorpus.cmake")
+pae_generate_json_spike_corpora(
+    "${PAE_JSON_SPIKE_OUTPUT_DIR}"
+    "${PAE_JSON_SPIKE_FIXTURE_DIR}"
+)

@@ -1,0 +1,172 @@
+{
+  "version": 6,
+  "cmakeMinimumRequired": {
+    "major": 3,
+    "minor": 25,
+    "patch": 0
+  },
+  "configurePresets": [
+    {
+      "name": "windows-msvc-spike",
+      "displayName": "Windows MSVC JSON parser spike",
+      "generator": "Visual Studio 18 2026",
+      "architecture": "x64",
+      "binaryDir": "${sourceDir}/out/build/${presetName}",
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Windows"
+      },
+      "cacheVariables": {
+        "BUILD_TESTING": "ON",
+        "PAE_BUILD_TESTING": "ON",
+        "PAE_BUILD_JSON_PARSER_SPIKE": "ON",
+        "PAE_JSON_SPIKE_CANDIDATE": "all"
+      }
+    },
+    {
+      "name": "windows-msvc-loader-slice",
+      "displayName": "Windows MSVC Loader and SchemaIr slice",
+      "generator": "Visual Studio 18 2026",
+      "architecture": "x64",
+      "binaryDir": "${sourceDir}/out/build/${presetName}",
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Windows"
+      },
+      "cacheVariables": {
+        "BUILD_TESTING": "ON",
+        "PAE_BUILD_TESTING": "ON",
+        "PAE_BUILD_JSON_PARSER_SPIKE": "OFF",
+        "PAE_BUILD_LOADER_SCHEMA_IR_SLICE": "ON"
+      }
+    },
+    {
+      "name": "windows-msvc-codec-slice",
+      "displayName": "Windows MSVC COMPLETE_RECORD codec slice",
+      "generator": "Visual Studio 18 2026",
+      "architecture": "x64",
+      "binaryDir": "${sourceDir}/out/build/${presetName}",
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Windows"
+      },
+      "cacheVariables": {
+        "BUILD_TESTING": "ON",
+        "PAE_BUILD_TESTING": "ON",
+        "PAE_BUILD_JSON_PARSER_SPIKE": "OFF",
+        "PAE_BUILD_LOADER_SCHEMA_IR_SLICE": "OFF",
+        "PAE_BUILD_COMPLETE_RECORD_CODEC_SLICE": "ON"
+      }
+    },
+    {
+      "name": "linux-gcc-spike",
+      "displayName": "Linux GCC JSON parser spike",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/out/build/${presetName}",
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Linux"
+      },
+      "cacheVariables": {
+        "BUILD_TESTING": "ON",
+        "PAE_BUILD_TESTING": "ON",
+        "CMAKE_C_COMPILER": "gcc",
+        "CMAKE_CXX_COMPILER": "g++",
+        "CMAKE_BUILD_TYPE": "Release",
+        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON",
+        "PAE_BUILD_JSON_PARSER_SPIKE": "ON",
+        "PAE_JSON_SPIKE_CANDIDATE": "all"
+      }
+    },
+    {
+      "name": "linux-clang-spike",
+      "displayName": "Linux Clang JSON parser spike",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/out/build/${presetName}",
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Linux"
+      },
+      "cacheVariables": {
+        "BUILD_TESTING": "ON",
+        "PAE_BUILD_TESTING": "ON",
+        "CMAKE_C_COMPILER": "clang",
+        "CMAKE_CXX_COMPILER": "clang++",
+        "CMAKE_BUILD_TYPE": "Release",
+        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON",
+        "PAE_BUILD_JSON_PARSER_SPIKE": "ON",
+        "PAE_JSON_SPIKE_CANDIDATE": "all"
+      }
+    }
+  ],
+  "buildPresets": [
+    {
+      "name": "windows-msvc-spike-release",
+      "configurePreset": "windows-msvc-spike",
+      "configuration": "Release"
+    },
+    {
+      "name": "windows-msvc-loader-slice-release",
+      "configurePreset": "windows-msvc-loader-slice",
+      "configuration": "Release"
+    },
+    {
+      "name": "windows-msvc-codec-slice-release",
+      "configurePreset": "windows-msvc-codec-slice",
+      "configuration": "Release"
+    },
+    {
+      "name": "linux-gcc-spike-release",
+      "configurePreset": "linux-gcc-spike"
+    },
+    {
+      "name": "linux-clang-spike-release",
+      "configurePreset": "linux-clang-spike"
+    }
+  ],
+  "testPresets": [
+    {
+      "name": "windows-msvc-spike-release",
+      "configurePreset": "windows-msvc-spike",
+      "configuration": "Release",
+      "output": {
+        "outputOnFailure": true
+      }
+    },
+    {
+      "name": "windows-msvc-loader-slice-release",
+      "configurePreset": "windows-msvc-loader-slice",
+      "configuration": "Release",
+      "output": {
+        "outputOnFailure": true
+      }
+    },
+    {
+      "name": "windows-msvc-codec-slice-release",
+      "configurePreset": "windows-msvc-codec-slice",
+      "configuration": "Release",
+      "output": {
+        "outputOnFailure": true
+      }
+    },
+    {
+      "name": "linux-gcc-spike-release",
+      "configurePreset": "linux-gcc-spike",
+      "output": {
+        "outputOnFailure": true
+      }
+    },
+    {
+      "name": "linux-clang-spike-release",
+      "configurePreset": "linux-clang-spike",
+      "output": {
+        "outputOnFailure": true
+      }
+    }
+  ]
+}

@@ -1,0 +1,274 @@
+{
+  "schema_version": "0.1",
+  "protocol_id": "synthetic_lab_exchange",
+  "protocol_version": "0.1-synthetic",
+  "display_name": "人工实验台双向交换协议",
+  "description": "V0.1 DRAFT SLICE。全部标识、数值和字节布局均为从零设计的公开测试数据，不来自任何客户协议、生产实现或现场报文。",
+  "source_ref": "SYNTHETIC_FROM_SCRATCH:lab_exchange_slice",
+  "resource_profile": "desktop",
+  "framing_profiles": [
+    {
+      "id": "complete_record",
+      "display_name": "完整记录",
+      "description": "宿主每次提交一个完整人工记录。",
+      "source_ref": "SYNTHETIC_FROM_SCRATCH:lab_exchange_slice#framing",
+      "input_kind": "complete_record"
+    }
+  ],
+  "pipelines": [
+    {
+      "id": "host_to_fixture",
+      "display_name": "宿主到实验夹具",
+      "description": "人工命令方向的独立Pipeline。",
+      "source_ref": "SYNTHETIC_FROM_SCRATCH:lab_exchange_slice#command_pipeline",
+      "direction_id": "host_to_fixture",
+      "input_framing_profile_id": "complete_record",
+      "message_ids": [
+        "lab_command"
+      ]
+    },
+    {
+      "id": "fixture_to_host",
+      "display_name": "实验夹具到宿主",
+      "description": "人工报告方向的独立Pipeline。",
+      "source_ref": "SYNTHETIC_FROM_SCRATCH:lab_exchange_slice#report_pipeline",
+      "direction_id": "fixture_to_host",
+      "input_framing_profile_id": "complete_record",
+      "message_ids": [
+        "lab_report"
+      ]
+    }
+  ],
+  "messages": [
+    {
+      "id": "lab_command",
+      "display_name": "实验命令",
+      "description": "13字节人工命令；固定标识A7 31与所有字段均为从零设计。",
+      "source_ref": "SYNTHETIC_FROM_SCRATCH:lab_exchange_slice#lab_command",
+      "direction_id": "host_to_fixture",
+      "frame_length_bytes": 13,
+      "matcher": {
+        "all": [
+          {
+            "kind": "frame_length_equals",
+            "length_bytes": 13
+          },
+          {
+            "kind": "fixed_bytes",
+            "byte_offset": 2,
+            "bytes": "A7 31"
+          }
+        ]
+      },
+      "fields": [
+        {
+          "id": "record_length",
+          "display_name": "记录长度样例值",
+          "description": "仅用于动态UINT64输入和Little Endian编码测试，不声明自动长度回填语义。",
+          "source_ref": "SYNTHETIC_FROM_SCRATCH:lab_exchange_slice#command.record_length",
+          "value_type": "UINT64",
+          "wire": {
+            "codec": "unsigned_integer",
+            "byte_offset": 0,
+            "byte_width": 2,
+            "byte_order": "little_endian"
+          },
+          "encode": {
+            "source": "input"
+          }
+        },
+        {
+          "id": "operation_code",
+          "display_name": "人工操作码",
+          "description": "常量12711编码为Little Endian字节A7 31。",
+          "source_ref": "SYNTHETIC_FROM_SCRATCH:lab_exchange_slice#command.operation_code",
+          "value_type": "UINT64",
+          "wire": {
+            "codec": "unsigned_integer",
+            "byte_offset": 2,
+            "byte_width": 2,
+            "byte_order": "little_endian"
+          },
+          "encode": {
+            "source": "constant",
+            "value": 12711
+          }
+        },
+        {
+          "id": "transaction_id",
+          "display_name": "事务标识",
+          "description": "三字节Little Endian动态整数，仅用于非标准宽度编解码测试。",
+          "source_ref": "SYNTHETIC_FROM_SCRATCH:lab_exchange_slice#command.transaction_id",
+          "value_type": "UINT64",
+          "wire": {
+            "codec": "unsigned_integer",
+            "byte_offset": 4,
+            "byte_width": 3,
+            "byte_order": "little_endian"
+          },
+          "encode": {
+            "source": "input"
+          }
+        },
+        {
+          "id": "payload_tag",
+          "display_name": "人工负载标签",
+          "description": "四个不带业务含义的动态测试字节。",
+          "source_ref": "SYNTHETIC_FROM_SCRATCH:lab_exchange_slice#command.payload_tag",
+          "value_type": "BYTES",
+          "wire": {
+            "codec": "bytes",
+            "byte_offset": 7,
+            "byte_length": 4
+          },
+          "encode": {
+            "source": "input"
+          }
+        },
+        {
+          "id": "operating_mode",
+          "display_name": "人工运行模式",
+          "description": "从零设计的四项枚举，仅用于ENUM结构和未知值策略测试。",
+          "source_ref": "SYNTHETIC_FROM_SCRATCH:lab_exchange_slice#command.operating_mode",
+          "value_type": "ENUM",
+          "wire": {
+            "codec": "unsigned_integer",
+            "byte_offset": 11,
+            "byte_width": 2,
+            "byte_order": "little_endian"
+          },
+          "encode": {
+            "source": "input"
+          },
+          "unknown_enum_policy": "reject",
+          "enum_entries": [
+            {
+              "id": "mode_idle",
+              "display_name": "空闲模式",
+              "raw_value": 1
+            },
+            {
+              "id": "mode_active",
+              "display_name": "活动模式",
+              "raw_value": 2
+            },
+            {
+              "id": "mode_diagnostic",
+              "display_name": "诊断模式",
+              "raw_value": 3
+            },
+            {
+              "id": "mode_reserved",
+              "display_name": "人工保留模式",
+              "raw_value": 4
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "lab_report",
+      "display_name": "实验报告",
+      "description": "11字节人工报告；固定标识5C E2与所有字段均为从零设计。",
+      "source_ref": "SYNTHETIC_FROM_SCRATCH:lab_exchange_slice#lab_report",
+      "direction_id": "fixture_to_host",
+      "frame_length_bytes": 11,
+      "matcher": {
+        "all": [
+          {
+            "kind": "frame_length_equals",
+            "length_bytes": 11
+          },
+          {
+            "kind": "fixed_bytes",
+            "byte_offset": 2,
+            "bytes": "5C E2"
+          }
+        ]
+      },
+      "fields": [
+        {
+          "id": "record_length",
+          "display_name": "记录长度样例值",
+          "description": "仅用于动态UINT64输入和Little Endian编码测试，不声明自动长度回填语义。",
+          "source_ref": "SYNTHETIC_FROM_SCRATCH:lab_exchange_slice#report.record_length",
+          "value_type": "UINT64",
+          "wire": {
+            "codec": "unsigned_integer",
+            "byte_offset": 0,
+            "byte_width": 2,
+            "byte_order": "little_endian"
+          },
+          "encode": {
+            "source": "input"
+          }
+        },
+        {
+          "id": "operation_code",
+          "display_name": "人工操作码",
+          "description": "常量57948编码为Little Endian字节5C E2。",
+          "source_ref": "SYNTHETIC_FROM_SCRATCH:lab_exchange_slice#report.operation_code",
+          "value_type": "UINT64",
+          "wire": {
+            "codec": "unsigned_integer",
+            "byte_offset": 2,
+            "byte_width": 2,
+            "byte_order": "little_endian"
+          },
+          "encode": {
+            "source": "constant",
+            "value": 57948
+          }
+        },
+        {
+          "id": "transaction_id",
+          "display_name": "事务标识",
+          "description": "三字节Little Endian动态整数，仅用于非标准宽度编解码测试。",
+          "source_ref": "SYNTHETIC_FROM_SCRATCH:lab_exchange_slice#report.transaction_id",
+          "value_type": "UINT64",
+          "wire": {
+            "codec": "unsigned_integer",
+            "byte_offset": 4,
+            "byte_width": 3,
+            "byte_order": "little_endian"
+          },
+          "encode": {
+            "source": "input"
+          }
+        },
+        {
+          "id": "status_code",
+          "display_name": "人工状态值",
+          "description": "不带业务含义的双字节动态整数。",
+          "source_ref": "SYNTHETIC_FROM_SCRATCH:lab_exchange_slice#report.status_code",
+          "value_type": "UINT64",
+          "wire": {
+            "codec": "unsigned_integer",
+            "byte_offset": 7,
+            "byte_width": 2,
+            "byte_order": "little_endian"
+          },
+          "encode": {
+            "source": "input"
+          }
+        },
+        {
+          "id": "sample_counter",
+          "display_name": "人工样本计数",
+          "description": "不带业务含义的双字节动态整数。",
+          "source_ref": "SYNTHETIC_FROM_SCRATCH:lab_exchange_slice#report.sample_counter",
+          "value_type": "UINT64",
+          "wire": {
+            "codec": "unsigned_integer",
+            "byte_offset": 9,
+            "byte_width": 2,
+            "byte_order": "little_endian"
+          },
+          "encode": {
+            "source": "input"
+          }
+        }
+      ]
+    }
+  ]
+}

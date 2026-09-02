@@ -1,0 +1,543 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:pae:schema:protocol-package:0.1:draft-slice",
+  "title": "PAE ProtocolPackage V0.1 Draft Slice",
+  "description": "V0.1 DRAFT SLICE：当前只覆盖 COMPLETE_RECORD、固定长度/固定字节 Matcher，以及 UINT64、BYTES、ENUM 的从零人工协议切片；它不是完整 PAE V0.1 Schema。",
+  "x-pae-status": "V0.1 DRAFT SLICE / INCOMPLETE",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "protocol_id",
+    "protocol_version",
+    "display_name",
+    "source_ref",
+    "resource_profile",
+    "framing_profiles",
+    "pipelines",
+    "messages"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "0.1"
+    },
+    "protocol_id": {
+      "$ref": "#/$defs/stable_id"
+    },
+    "protocol_version": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 64
+    },
+    "display_name": {
+      "$ref": "#/$defs/display_name"
+    },
+    "description": {
+      "$ref": "#/$defs/description"
+    },
+    "source_ref": {
+      "$ref": "#/$defs/source_ref"
+    },
+    "resource_profile": {
+      "enum": [
+        "desktop",
+        "constrained"
+      ]
+    },
+    "framing_profiles": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/framing_profile"
+      }
+    },
+    "pipelines": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 128,
+      "items": {
+        "$ref": "#/$defs/pipeline"
+      }
+    },
+    "messages": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 256,
+      "items": {
+        "$ref": "#/$defs/message"
+      }
+    }
+  },
+  "$defs": {
+    "stable_id": {
+      "type": "string",
+      "maxLength": 128,
+      "pattern": "^[a-z][a-z0-9_]*$"
+    },
+    "display_name": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 256
+    },
+    "description": {
+      "type": "string",
+      "maxLength": 1024
+    },
+    "source_ref": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 512
+    },
+    "framing_profile": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "display_name",
+        "description",
+        "source_ref",
+        "input_kind"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/stable_id"
+        },
+        "display_name": {
+          "$ref": "#/$defs/display_name"
+        },
+        "description": {
+          "$ref": "#/$defs/description"
+        },
+        "source_ref": {
+          "$ref": "#/$defs/source_ref"
+        },
+        "input_kind": {
+          "const": "complete_record"
+        }
+      }
+    },
+    "pipeline": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "display_name",
+        "description",
+        "source_ref",
+        "direction_id",
+        "input_framing_profile_id",
+        "message_ids"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/stable_id"
+        },
+        "display_name": {
+          "$ref": "#/$defs/display_name"
+        },
+        "description": {
+          "$ref": "#/$defs/description"
+        },
+        "source_ref": {
+          "$ref": "#/$defs/source_ref"
+        },
+        "direction_id": {
+          "$ref": "#/$defs/stable_id"
+        },
+        "input_framing_profile_id": {
+          "$ref": "#/$defs/stable_id"
+        },
+        "message_ids": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 256,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/stable_id"
+          }
+        }
+      }
+    },
+    "message": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "display_name",
+        "description",
+        "source_ref",
+        "direction_id",
+        "frame_length_bytes",
+        "matcher",
+        "fields"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/stable_id"
+        },
+        "display_name": {
+          "$ref": "#/$defs/display_name"
+        },
+        "description": {
+          "$ref": "#/$defs/description"
+        },
+        "source_ref": {
+          "$ref": "#/$defs/source_ref"
+        },
+        "direction_id": {
+          "$ref": "#/$defs/stable_id"
+        },
+        "frame_length_bytes": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 1048576
+        },
+        "matcher": {
+          "$ref": "#/$defs/matcher"
+        },
+        "fields": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 4096,
+          "items": {
+            "$ref": "#/$defs/field"
+          }
+        }
+      }
+    },
+    "matcher": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "all"
+      ],
+      "properties": {
+        "all": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/matcher_clause"
+          }
+        }
+      }
+    },
+    "matcher_clause": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/frame_length_matcher"
+        },
+        {
+          "$ref": "#/$defs/fixed_bytes_matcher"
+        }
+      ]
+    },
+    "frame_length_matcher": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "length_bytes"
+      ],
+      "properties": {
+        "kind": {
+          "const": "frame_length_equals"
+        },
+        "length_bytes": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 1048576
+        }
+      }
+    },
+    "fixed_bytes_matcher": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "byte_offset",
+        "bytes"
+      ],
+      "properties": {
+        "kind": {
+          "const": "fixed_bytes"
+        },
+        "byte_offset": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 1048575
+        },
+        "bytes": {
+          "type": "string",
+          "pattern": "^(?:[0-9A-F]{2})(?: [0-9A-F]{2})*$"
+        }
+      }
+    },
+    "field": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/uint64_field"
+        },
+        {
+          "$ref": "#/$defs/bytes_field"
+        },
+        {
+          "$ref": "#/$defs/enum_field"
+        }
+      ]
+    },
+    "field_common": {
+      "type": "object",
+      "required": [
+        "id",
+        "display_name",
+        "description",
+        "source_ref"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/stable_id"
+        },
+        "display_name": {
+          "$ref": "#/$defs/display_name"
+        },
+        "description": {
+          "$ref": "#/$defs/description"
+        },
+        "source_ref": {
+          "$ref": "#/$defs/source_ref"
+        }
+      }
+    },
+    "uint64_field": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/field_common"
+        },
+        {
+          "type": "object",
+          "required": [
+            "value_type",
+            "wire",
+            "encode"
+          ],
+          "properties": {
+            "value_type": {
+              "const": "UINT64"
+            },
+            "wire": {
+              "$ref": "#/$defs/wire_unsigned_integer"
+            },
+            "encode": {
+              "$ref": "#/$defs/uint64_encode_source"
+            }
+          }
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    "bytes_field": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/field_common"
+        },
+        {
+          "type": "object",
+          "required": [
+            "value_type",
+            "wire",
+            "encode"
+          ],
+          "properties": {
+            "value_type": {
+              "const": "BYTES"
+            },
+            "wire": {
+              "$ref": "#/$defs/wire_bytes"
+            },
+            "encode": {
+              "$ref": "#/$defs/input_encode_source"
+            }
+          }
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    "enum_field": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/field_common"
+        },
+        {
+          "type": "object",
+          "required": [
+            "value_type",
+            "wire",
+            "encode",
+            "unknown_enum_policy",
+            "enum_entries"
+          ],
+          "properties": {
+            "value_type": {
+              "const": "ENUM"
+            },
+            "wire": {
+              "$ref": "#/$defs/wire_unsigned_integer"
+            },
+            "encode": {
+              "$ref": "#/$defs/input_encode_source"
+            },
+            "unknown_enum_policy": {
+              "enum": [
+                "reject",
+                "preserve"
+              ]
+            },
+            "enum_entries": {
+              "type": "array",
+              "minItems": 1,
+              "items": {
+                "$ref": "#/$defs/enum_entry"
+              }
+            }
+          }
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    "wire_unsigned_integer": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "codec",
+        "byte_offset",
+        "byte_width"
+      ],
+      "properties": {
+        "codec": {
+          "const": "unsigned_integer"
+        },
+        "byte_offset": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 1048575
+        },
+        "byte_width": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 8
+        },
+        "byte_order": {
+          "enum": [
+            "big_endian",
+            "little_endian"
+          ]
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "required": [
+              "byte_width"
+            ],
+            "properties": {
+              "byte_width": {
+                "minimum": 2
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "byte_order"
+            ]
+          }
+        }
+      ]
+    },
+    "wire_bytes": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "codec",
+        "byte_offset",
+        "byte_length"
+      ],
+      "properties": {
+        "codec": {
+          "const": "bytes"
+        },
+        "byte_offset": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 1048575
+        },
+        "byte_length": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 1048576
+        }
+      }
+    },
+    "input_encode_source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "source"
+      ],
+      "properties": {
+        "source": {
+          "const": "input"
+        }
+      }
+    },
+    "uint64_encode_source": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/input_encode_source"
+        },
+        {
+          "$ref": "#/$defs/uint64_constant_encode_source"
+        }
+      ]
+    },
+    "uint64_constant_encode_source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "source",
+        "value"
+      ],
+      "properties": {
+        "source": {
+          "const": "constant"
+        },
+        "value": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 18446744073709551615
+        }
+      }
+    },
+    "enum_entry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "display_name",
+        "raw_value"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/stable_id"
+        },
+        "display_name": {
+          "$ref": "#/$defs/display_name"
+        },
+        "raw_value": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 18446744073709551615
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,262 @@
+#include <algorithm>
+#include <array>
+#include <atomic>
+#include <cstddef>
+#include <cstdint>
+#include <cstdlib>
+#include <iostream>
+#include <limits>
+#include <memory>
+#include <new>
+#include <string_view>
+#include <utility>
+#include <vector>
+
+#include "complete_record_codec.h"
+#include "plan_builder.h"
+
+namespace {
+
+std::atomic<std::size_t> g_allocation_count = ATOMIC_VAR_INIT(0U);
+
+void* AllocateAligned(std::size_t size, std::size_t requested_alignment) {
+  const std::size_t alignment =
+      (std::max)(requested_alignment, static_cast<std::size_t>(alignof(void*)));
+  const std::size_t payload_size = size == 0U ? 1U : size;
+  if (alignment == 0U || (alignment & (alignment - 1U)) != 0U ||
+      payload_size > (std::numeric_limits<std::size_t>::max)() - sizeof(void*) - alignment + 1U) {
+    throw std::bad_alloc{};
+  }
+  const std::size_t allocation_size = payload_size + sizeof(void*) + alignment - 1U;
+  void* raw_memory = std::malloc(allocation_size);
+  if (raw_memory == nullptr) {
+    throw std::bad_alloc{};
+  }
+  void* aligned_memory = static_cast<unsigned char*>(raw_memory) + sizeof(void*);
+  std::size_t remaining_space = allocation_size - sizeof(void*);
+  if (std::align(alignment, payload_size, aligned_memory, remaining_space) == nullptr) {
+    std::free(raw_memory);
+    throw std::bad_alloc{};
+  }
+  reinterpret_cast<void**>(aligned_memory)[-1] = raw_memory;
+  return aligned_memory;
+}
+
+void FreeAligned(void* memory) noexcept {
+  if (memory != nullptr) {
+    std::free(reinterpret_cast<void**>(memory)[-1]);
+  }
+}
+
+}  // namespace
+
+void* operator new(std::size_t size) {
+  g_allocation_count.fetch_add(1U, std::memory_order_relaxed);
+  if (void* memory = std::malloc(size == 0U ? 1U : size)) {
+    return memory;
+  }
+  throw std::bad_alloc{};
+}
+
+void* operator new[](std::size_t size) { return ::operator new(size); }
+
+void* operator new(std::size_t size, const std::nothrow_t&) noexcept {
+  try {
+    return ::operator new(size);
+  } catch (...) {
+    return nullptr;
+  }
+}
+
+void* operator new[](std::size_t size, const std::nothrow_t&) noexcept {
+  return ::operator new(size, std::nothrow);
+}
+
+void* operator new(std::size_t size, std::align_val_t alignment) {
+  g_allocation_count.fetch_add(1U, std::memory_order_relaxed);
+  return AllocateAligned(size, static_cast<std::size_t>(alignment));
+}
+
+void* operator new[](std::size_t size, std::align_val_t alignment) {
+  return ::operator new(size, alignment);
+}
+
+void* operator new(std::size_t size, std::align_val_t alignment, const std::nothrow_t&) noexcept {
+  try {
+    return ::operator new(size, alignment);
+  } catch (...) {
+    return nullptr;
+  }
+}
+
+void* operator new[](std::size_t size, std::align_val_t alignment, const std::nothrow_t&) noexcept {
+  return ::operator new(size, alignment, std::nothrow);
+}
+
+void operator delete(void* memory) noexcept { std::free(memory); }
+void operator delete[](void* memory) noexcept { std::free(memory); }
+void operator delete(void* memory, std::size_t) noexcept { std::free(memory); }
+void operator delete[](void* memory, std::size_t) noexcept { std::free(memory); }
+void operator delete(void* memory, const std::nothrow_t&) noexcept { std::free(memory); }
+void operator delete[](void* memory, const std::nothrow_t&) noexcept { std::free(memory); }
+void operator delete(void* memory, std::align_val_t) noexcept { FreeAligned(memory); }
+void operator delete[](void* memory, std::align_val_t) noexcept { FreeAligned(memory); }
+void operator delete(void* memory, std::size_t, std::align_val_t) noexcept { FreeAligned(memory); }
+void operator delete[](void* memory, std::size_t, std::align_val_t) noexcept {
+  FreeAligned(memory);
+}
+void operator delete(void* memory, std::align_val_t, const std::nothrow_t&) noexcept {
+  FreeAligned(memory);
+}
+void operator delete[](void* memory, std::align_val_t, const std::nothrow_t&) noexcept {
+  FreeAligned(memory);
+}
+
+namespace {
+
+using pae::protocol_core::ByteView;
+using pae::protocol_core::CodecStatus;
+using pae::protocol_core::DecodeCompleteRecord;
+using pae::protocol_core::DecodedFieldSlot;
+using pae::protocol_core::EncodeCompleteRecord;
+using pae::protocol_core::EncodeFieldValue;
+using pae::protocol_core::ExecutionWorkspace;
+using pae::protocol_core::FieldRef;
+using pae::protocol_core::LogicalValueKind;
+using pae::protocol_core::MutableByteBuffer;
+using pae::protocol_plan::ByteOrder;
+using pae::protocol_plan::EncodeSource;
+using pae::protocol_plan::FieldPlan;
+using pae::protocol_plan::FramingPlan;
+using pae::protocol_plan::InputKind;
+using pae::protocol_plan::MatcherKind;
+using pae::protocol_plan::MatcherPlan;
+using pae::protocol_plan::MessagePlan;
+using pae::protocol_plan::PipelinePlan;
+using pae::protocol_plan::PlanBuilder;
+using pae::protocol_plan::PlanBuildResult;
+using pae::protocol_plan::PlanDraft;
+using pae::protocol_plan::ResourceProfile;
+using pae::protocol_plan::ResourceRequirements;
+using pae::protocol_plan::ValueType;
+using pae::protocol_plan::WireCodec;
+
+PlanBuildResult BuildPlan() {
+  MessagePlan message;
+  message.id = "first_call_message";
+  message.direction_id = "first_call_direction";
+  message.frame_length_bytes = 2U;
+
+  MatcherPlan length_matcher;
+  length_matcher.kind = MatcherKind::FRAME_LENGTH_EQUALS;
+  length_matcher.length_bytes = 2U;
+  message.matchers.push_back(length_matcher);
+  MatcherPlan fixed_matcher;
+  fixed_matcher.kind = MatcherKind::FIXED_BYTES;
+  fixed_matcher.byte_offset = 0U;
+  fixed_matcher.bytes.push_back(0xA5U);
+  message.matchers.push_back(std::move(fixed_matcher));
+
+  FieldPlan constant;
+  constant.id = "prefix";
+  constant.value_type = ValueType::UINT64;
+  constant.wire_codec = WireCodec::UNSIGNED_INTEGER;
+  constant.byte_offset = 0U;
+  constant.byte_width = 1U;
+  constant.byte_order = ByteOrder::NOT_APPLICABLE;
+  constant.encode_source = EncodeSource::CONSTANT;
+  constant.constant_value = 0xA5U;
+  message.fields.push_back(std::move(constant));
+
+  FieldPlan input;
+  input.id = "value";
+  input.value_type = ValueType::UINT64;
+  input.wire_codec = WireCodec::UNSIGNED_INTEGER;
+  input.byte_offset = 1U;
+  input.byte_width = 1U;
+  input.byte_order = ByteOrder::NOT_APPLICABLE;
+  input.encode_source = EncodeSource::INPUT;
+  message.fields.push_back(std::move(input));
+
+  PipelinePlan pipeline;
+  pipeline.id = "first_call_pipeline";
+  pipeline.direction_id = "first_call_direction";
+  pipeline.framing_profile_index = 0U;
+  pipeline.message_indices.push_back(0U);
+
+  PlanDraft draft;
+  draft.schema_version = "0.1";
+  draft.protocol_id = "first_call_protocol";
+  draft.protocol_version = "1";
+  draft.resource_profile = ResourceProfile::DESKTOP;
+  draft.framing_profiles.push_back(FramingPlan{"complete_record", InputKind::COMPLETE_RECORD});
+  draft.pipelines.push_back(std::move(pipeline));
+  draft.messages.push_back(std::move(message));
+  draft.resource_requirements = ResourceRequirements{2U, 1U, 1U, 1U, 2U, 2U, 0U};
+  return PlanBuilder::Freeze(std::move(draft));
+}
+
+bool CounterProbe() {
+  const std::size_t before = g_allocation_count.load(std::memory_order_relaxed);
+  void* memory = ::operator new(17U);
+  const std::size_t after = g_allocation_count.load(std::memory_order_relaxed);
+  ::operator delete(memory);
+  return after == before + 1U;
+}
+
+bool RunFirstDecode() {
+  PlanBuildResult frozen = BuildPlan();
+  if (!frozen.Succeeded()) {
+    return false;
+  }
+  ExecutionWorkspace workspace{*frozen.plan};
+  constexpr std::array<std::uint8_t, 2U> frame{0xA5U, 0x11U};
+  std::array<DecodedFieldSlot, 2U> slots{};
+  const std::size_t before = g_allocation_count.load(std::memory_order_relaxed);
+  const auto result =
+      DecodeCompleteRecord(*frozen.plan, workspace, 0U, ByteView{frame.data(), frame.size()},
+                           slots.data(), slots.size());
+  const std::size_t after = g_allocation_count.load(std::memory_order_relaxed);
+  return result.status == CodecStatus::OK && result.field_count == 2U &&
+         slots[0].uint64_value == 0xA5U && slots[1].uint64_value == 0x11U && before == after;
+}
+
+bool RunFirstEncode() {
+  PlanBuildResult frozen = BuildPlan();
+  if (!frozen.Succeeded()) {
+    return false;
+  }
+  ExecutionWorkspace workspace{*frozen.plan};
+  EncodeFieldValue input;
+  input.field = FieldRef{frozen.plan.get(), 0U, 1U};
+  input.value_kind = LogicalValueKind::UINT64;
+  input.uint64_value = 0x11U;
+  std::array<std::uint8_t, 2U> output{0xCCU, 0xCCU};
+  const std::size_t before = g_allocation_count.load(std::memory_order_relaxed);
+  const auto result = EncodeCompleteRecord(*frozen.plan, workspace, 0U, 0U, &input, 1U,
+                                           MutableByteBuffer{output.data(), output.size()});
+  const std::size_t after = g_allocation_count.load(std::memory_order_relaxed);
+  return result.status == CodecStatus::OK && result.bytes_written == output.size() &&
+         output == std::array<std::uint8_t, 2U>{0xA5U, 0x11U} && before == after;
+}
+
+}  // namespace
+
+int main(int argc, char** argv) {
+  if (argc != 2 || !CounterProbe()) {
+    std::cerr << "FIRST_CALL_ALLOCATION_TEST_SUMMARY passed=0 failed=1 expected=1 gate=FAIL\n";
+    return 1;
+  }
+  const std::string_view mode{argv[1]};
+  const bool passed = mode == "--first-decode"   ? RunFirstDecode()
+                      : mode == "--first-encode" ? RunFirstEncode()
+                                                 : false;
+  const std::string_view case_id = mode == "--first-decode"
+                                       ? "first_decode_zero_replaceable_new_allocation"
+                                       : "first_encode_zero_replaceable_new_allocation";
+  std::cout << (passed ? "PASS" : "FAIL") << " case=" << case_id << '\n';
+  std::cout << "FIRST_CALL_ALLOCATION_TEST_SUMMARY passed=" << (passed ? 1 : 0)
+            << " failed=" << (passed ? 0 : 1) << " expected=1 gate=" << (passed ? "PASS" : "FAIL")
+            << '\n';
+  return passed ? 0 : 1;
+}

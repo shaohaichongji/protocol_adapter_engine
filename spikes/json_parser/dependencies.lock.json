@@ -1,0 +1,85 @@
+{
+  "schema_version": 1,
+  "update_policy": "Review the upstream tag, commit, license and source scope; replace all hashes; then rerun the complete spike before selection.",
+  "candidates": [
+    {
+      "name": "yyjson",
+      "version": "0.12.0",
+      "tag_object": "7871d321ff4cd8068c1f777c97975dc2fb640ab3",
+      "commit": "8b4a38dc994a110abaec8a400615567bd996105f",
+      "upstream_repository": "https://github.com/ibireme/yyjson",
+      "archive_url": "https://codeload.github.com/ibireme/yyjson/tar.gz/7871d321ff4cd8068c1f777c97975dc2fb640ab3",
+      "archive_sha256": "a3bc9626ec0ba8bcc0644cc5355b3cf6eeda3188caf72bd7caa0c305acc78e79",
+      "license": "MIT",
+      "license_file": {
+        "path": "LICENSE",
+        "bytes": 1084,
+        "sha256": "45e384d3d52c73cba3a64d6e6c25d47cd738cd8a55c30629e3201046eda62947"
+      },
+      "candidate_source_scope": [
+        {
+          "path": "src/yyjson.h",
+          "bytes": 322407,
+          "sha256": "175867c5493a5df648cec566717fa1c29aa2f6096f5f0cf1efad0b65e1f6d7b3"
+        },
+        {
+          "path": "src/yyjson.c",
+          "bytes": 410813,
+          "sha256": "ac2e9bbb2e2d9149d90878d40506a1d624fa0b33c979a11b61075c54782c6d6a"
+        }
+      ],
+      "acquired_on": "2026-09-01",
+      "local_modifications": "none",
+      "selection_status": "candidate"
+    },
+    {
+      "name": "nlohmann/json",
+      "version": "3.12.0",
+      "tag_object": "65ee68451d8eb2b5f3a30b410476ab83deb3289b",
+      "commit": "55f93686c01528224f448c19128836e7df245f72",
+      "upstream_repository": "https://github.com/nlohmann/json",
+      "archive_url": "https://codeload.github.com/nlohmann/json/tar.gz/65ee68451d8eb2b5f3a30b410476ab83deb3289b",
+      "archive_sha256": "13ef31d691947940a08909f8e0772f1d7d68e5da1678ee812a49c4bb0c996b2f",
+      "license": "MIT",
+      "license_file": {
+        "path": "LICENSE.MIT",
+        "bytes": 1076,
+        "sha256": "46a65cffd1ea955132d95a8dd921640714a8d6b537d2e4e482d31145ae95b603"
+      },
+      "candidate_source_scope": [
+        {
+          "path": "single_include/nlohmann/json.hpp",
+          "bytes": 953436,
+          "sha256": "aaf127c04cb31c406e5b04a63f1ae89369fccde6d8fa7cdda1ed4f32dfc5de63"
+        }
+      ],
+      "acquired_on": "2026-09-01",
+      "local_modifications": "none",
+      "selection_status": "candidate"
+    },
+    {
+      "name": "RapidJSON",
+      "version": "1.1.0",
+      "commit": "f54b0e47a08782a6131cc3d60f94d038fa6e0a51",
+      "upstream_repository": "https://github.com/Tencent/rapidjson",
+      "archive_url": "https://codeload.github.com/Tencent/rapidjson/tar.gz/f54b0e47a08782a6131cc3d60f94d038fa6e0a51",
+      "archive_sha256": "4a76453d36770c9628d7d175a2e9baccbfbd2169ced44f0cb72e86c5f5f2f7cd",
+      "license": "MIT for the required include/rapidjson source scope; bundled third-party material requires separate review",
+      "license_file": {
+        "path": "license.txt",
+        "bytes": 5152,
+        "sha256": "a140e5d46fe734a1c78f1a3c3ef207871dd75648be71fdda8e309b23ab8b1f32"
+      },
+      "candidate_source_scope": {
+        "path": "include/rapidjson",
+        "files": 35,
+        "bytes": 590075,
+        "manifest_sha256": "954d0633c458579ad73c8daa55b2215f104b521b61b69ca84bad41e648ebd7ef",
+        "manifest_algorithm": "SHA-256 of sorted UTF-8 lines: relative_path TAB file_sha256 LF"
+      },
+      "acquired_on": "2026-09-01",
+      "local_modifications": "none",
+      "selection_status": "candidate"
+    }
+  ]
+}
