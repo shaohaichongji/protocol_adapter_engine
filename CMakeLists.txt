@@ -26,6 +26,11 @@ option(
     "Build the internal COMPLETE_RECORD Decode/Encode executable vertical slice"
     OFF
 )
+option(
+    PAE_BUILD_PROTOCOL_LAB
+    "Build the internal offline Protocol Lab command-line tool"
+    OFF
+)
 
 if(PROJECT_IS_TOP_LEVEL)
     include(CTest)
@@ -72,24 +77,37 @@ if(PAE_BUILD_JSON_PARSER_SPIKE)
     add_subdirectory(spikes/json_parser)
 endif()
 
-if(PAE_BUILD_LOADER_SCHEMA_IR_SLICE OR PAE_BUILD_COMPLETE_RECORD_CODEC_SLICE)
+if(PAE_BUILD_LOADER_SCHEMA_IR_SLICE OR
+   PAE_BUILD_COMPLETE_RECORD_CODEC_SLICE OR
+   PAE_BUILD_PROTOCOL_LAB)
     add_subdirectory(src/protocol_plan)
 endif()
 
 if(PAE_BUILD_LOADER_SCHEMA_IR_SLICE OR
-   (PAE_BUILD_COMPLETE_RECORD_CODEC_SLICE AND PAE_BUILD_TESTING))
+   (PAE_BUILD_COMPLETE_RECORD_CODEC_SLICE AND PAE_BUILD_TESTING) OR
+   PAE_BUILD_PROTOCOL_LAB)
     add_subdirectory(src/config_compiler)
 endif()
 
-if((PAE_BUILD_LOADER_SCHEMA_IR_SLICE OR PAE_BUILD_COMPLETE_RECORD_CODEC_SLICE) AND
+if((PAE_BUILD_LOADER_SCHEMA_IR_SLICE OR
+    PAE_BUILD_COMPLETE_RECORD_CODEC_SLICE OR
+    PAE_BUILD_PROTOCOL_LAB) AND
    PAE_BUILD_TESTING)
     add_subdirectory(tests/config_compiler)
 endif()
 
-if(PAE_BUILD_COMPLETE_RECORD_CODEC_SLICE)
+if(PAE_BUILD_COMPLETE_RECORD_CODEC_SLICE OR PAE_BUILD_PROTOCOL_LAB)
     add_subdirectory(src/protocol_core)
+endif()
+
+if(PAE_BUILD_COMPLETE_RECORD_CODEC_SLICE AND PAE_BUILD_TESTING)
+    add_subdirectory(tests/protocol_core)
+    add_subdirectory(tools/protocol_conformance_runner)
+endif()
+
+if(PAE_BUILD_PROTOCOL_LAB)
+    add_subdirectory(tools/protocol_lab)
     if(PAE_BUILD_TESTING)
-        add_subdirectory(tests/protocol_core)
-        add_subdirectory(tools/protocol_conformance_runner)
+        add_subdirectory(tests/protocol_lab)
     endif()
 endif()

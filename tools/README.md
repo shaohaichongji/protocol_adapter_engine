@@ -5,3 +5,6 @@ V0.1 Core不依赖CLI（Command-Line Interface，命令行接口）。本目录�
 
 - [`protocol_conformance_runner`](protocol_conformance_runner/README.md)：从外部配置和语料目录
   执行证据分级的Decode/Encode一致性验证，仅在`PAE_BUILD_TESTING=ON`时构建。
+- [`pae_protocol_lab`](protocol_lab/README.md)：已实现`inspect/encode/replay/compare`离线切片、
+  原始Frame记录和可校验Evidence Bundle（证据包）；UDP实验室收发仍未实现。其
+  [精确内部契约](../docs/protocol_lab_contract_v0.1.md)不改变Core的Transport无关边界。

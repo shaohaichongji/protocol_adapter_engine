@@ -1,0 +1,12 @@
+{
+  "format_version": "pae.lab.values/0.1",
+  "pipeline_id": "host_to_fixture",
+  "message_id": "lab_command",
+  "fields": [
+    {
+      "id": "operation_code",
+      "kind": "UINT64",
+      "uint64": "12711"
+    }
+  ]
+}

@@ -1,0 +1,27 @@
+{
+  "format_version": "pae.lab.values/0.1",
+  "pipeline_id": "host_to_fixture",
+  "message_id": "lab_command",
+  "fields": [
+    {
+      "id": "record_length",
+      "kind": "UINT64",
+      "uint64": "13"
+    },
+    {
+      "id": "transaction_id",
+      "kind": "UINT64",
+      "uint64": "1193046"
+    },
+    {
+      "id": "payload_tag",
+      "kind": "BYTES",
+      "hex": "DEADBEEF"
+    },
+    {
+      "id": "operating_mode",
+      "kind": "ENUM",
+      "entry_id": "mode_active"
+    }
+  ]
+}

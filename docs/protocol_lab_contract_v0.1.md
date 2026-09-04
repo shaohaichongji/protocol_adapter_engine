@@ -1,0 +1,509 @@
+# PAE Protocol Lab Contract V0.1 Draft
+
+## 1. 状态和目的
+
+本文定义`PAE Protocol Lab（PAE协议实验与复现工具）`首个实现切片的职责、数据记录、
+主动发送安全边界和验收门禁。
+
+当前状态：`CONFIRMED / PARTIALLY VERIFIED（已确认、部分验证）`。离线
+`inspect/encode/replay/compare`与Evidence Bundle（证据包）已经实现并取得Windows执行证据；
+UDP（User Datagram Protocol，用户数据报协议）Exchange仍未实现。
+
+Protocol Lab用于：
+
+- 离线检查一条完整报文；
+- 使用类型化业务值预览Encode结果；
+- 通过工具自有Transport Adapter执行有边界的实验室收发；
+- 在调用PAE前记录原始字节，并生成可校验的Evidence Bundle（证据包）；
+- 离线Replay（重放）历史记录并比较当前结果；
+- 为生产问题复现准备与Transport无关的记录格式。
+
+本文冻结`PAE-DEC-037`首个内部Contract Slice（契约切片），并按`PAE-DEC-038`完成离线实现
+加固，但不是稳定公共API或跨版本文件格式兼容承诺。离线实现尚未Commit或Push，UDP实现仍需
+另行授权。
+
+## 2. 永久边界
+
+Protocol Lab是独立工具目标，不改变PAE Core的被动模型：
+
+- Socket、串口或其他通讯资源只由工具层或宿主Adapter持有；
+- Core不打开、监听、轮询、关闭或重连任何通讯资源；
+- Core不创建线程、定时器或Worker Pool；
+- Lab不成为生产业务必须依赖的运行组件；
+- Lab不承担路由总线、设备生命周期、可靠投递或业务状态机职责；
+- Lab生成或解析自己的数据不能自动成为独立协议证据。
+
+首阶段与现有Conformance Runner的分工如下：
+
+| 组件 | 输入 | 主要输出 | Transport |
+| --- | --- | --- | --- |
+| PAE Core | Plan、字节、类型化Value | Decode/Encode结果 | 无 |
+| Protocol Conformance Runner | 配置和固定Corpus | 确定性一致性结论 | 无 |
+| Protocol Lab | 配置、单帧、记录或实验端点 | 人类可读诊断和Evidence Bundle | 工具层可选 |
+
+## 3. 架构关系
+
+```mermaid
+flowchart LR
+    PEER["外部设备或实验室模拟对端"]
+    ADAPTER["Protocol Lab Transport Adapter"]
+    RAW["Raw Recorder<br/>解析前原始记录"]
+    CORE["PAE Core<br/>Decode / Encode"]
+    VIEW["类型化结果与诊断"]
+    BUNDLE["Evidence Bundle"]
+    REPLAY["Offline Replay / Compare"]
+
+    PEER <--> ADAPTER
+    ADAPTER --> RAW
+    RAW --> CORE
+    CORE --> VIEW
+    RAW --> BUNDLE
+    VIEW --> BUNDLE
+    BUNDLE --> REPLAY
+    REPLAY --> CORE
+```
+
+该图只表达职责和数据顺序。当前仅完成文本结构检查，尚未执行Mermaid实际渲染。
+
+## 4. 工具和仓库形态
+
+首阶段可执行目标确认为`pae_protocol_lab`，代码位于：
+
+```text
+tools/protocol_lab/
+```
+
+公共API尚未稳定前，Protocol Lab与PAE同仓开发，以避免为了跨仓链接而提前冻结内部接口。
+稳定C++ API和C ABI（C应用程序二进制接口）形成后，再评估是否拆分独立仓库。
+
+已新增独立CMake开关：
+
+```cmake
+PAE_BUILD_PROTOCOL_LAB=OFF
+```
+
+该开关默认关闭。打开后构建Lab及其所需的内部ProtocolPlan、Config Compiler和Codec，但不
+静默修改其他CMake Cache开关；它不要求`PAE_BUILD_TESTING=ON`。只有Lab与Testing同时打开时，
+才注册Lab自动化测试。
+
+Protocol Lab不安装、不导出，也不进入默认Product-only构建；开关不得改变PAE Core静态库
+内容。未来若改变交付属性，必须另行拍板。
+
+## 5. 首个CLI模式
+
+首个实现范围包含以下CLI（Command-Line Interface，命令行接口）模式。名称属于V0.1内部契约，
+尚不是稳定公共命令行兼容保证。
+
+通用形式为：
+
+```text
+pae_protocol_lab <command> [options]
+```
+
+通用参数为：
+
+```text
+--config <protocol.pae.json>
+--output text|json
+--record-root <directory>
+--expect-status <status>
+--help
+--version
+```
+
+默认`--output text`供人工查看；`--output json`输出机器可读结果。正常结构化结果写入`stdout`，
+过程日志和非结构化诊断写入`stderr`。未知参数、重复单值参数、缺失参数和互斥参数同时出现均
+作为CLI错误拒绝，不能通过参数顺序改变含义。
+
+### 5.1 `inspect`
+
+读取严格JSON配置和一条Hex或Binary完整报文，调用形式为：
+
+```text
+pae_protocol_lab inspect --config <file> (--frame-bin <file> | --frame-hex <file>)
+```
+
+两种Frame参数必须且只能出现一个。Hex输入只允许十六进制字符和ASCII空白，不允许`0x`前缀、
+逗号、冒号或注释；非空白字符数必须为偶数。规范化输出统一为大写、无分隔符Hex。首版不接受
+把长Frame直接写入命令行参数。
+
+输出：
+
+- 配置编译状态；
+- Pipeline和Message匹配结果；
+- 类型化字段、Raw Value和Logical Value；
+- Decode状态、失败字段和诊断；
+- 可选Evidence Bundle。
+
+### 5.2 `encode`
+
+读取类型化Values文件，输出预览字节和字段写入结果：
+
+```text
+pae_protocol_lab encode --config <file> --values <values.pae-lab.json>
+```
+
+Values V0.1示例：
+
+```json
+{
+  "format_version": "pae.lab.values/0.1",
+  "pipeline_id": "lab_to_device",
+  "message_id": "lab_command",
+  "fields": [
+    {
+      "id": "sequence",
+      "kind": "UINT64",
+      "uint64": "42"
+    },
+    {
+      "id": "payload",
+      "kind": "BYTES",
+      "hex": "10203040"
+    },
+    {
+      "id": "mode",
+      "kind": "ENUM",
+      "entry_id": "active"
+    }
+  ]
+}
+```
+
+`UINT64`使用规范十进制字符串：不允许正号、空白、指数、小数或除零之外的前导零。`BYTES`
+使用大写、偶数长度、无分隔符Hex；`ENUM`使用稳定`entry_id`。Constant和Computed字段不得由
+Values覆盖。未知字段、重复字段、类型错误、越界和跨Message引用全部失败关闭。
+
+Values内的Pipeline和Message是权威绑定；CLI不得静默覆盖。默认不发送，只有显式进入受控
+Transport模式时才允许把字节交给Socket。
+
+### 5.3 `replay`
+
+读取一个既有Evidence Bundle，默认使用其中内嵌配置重新执行，并把当前结果与历史结果比较。
+允许显式指定新配置，但必须标记`cross_config_replay=true`，生成新的Run且不得覆盖旧Bundle。
+
+### 5.4 `compare`
+
+逐字节和逐字段比较两个Frame或两个Run，区分：
+
+- Wire字节差异；
+- Message匹配差异；
+- 类型和逻辑值差异；
+- 状态与诊断差异；
+- 只影响记录环境、不参与协议判定的元数据差异。
+
+确定性比较包括原始Frame、Message匹配、Codec状态、类型化字段、Raw/Logical Value、Encode输出
+和稳定诊断标识；时间、绝对路径、Run ID、进程ID及本地临时端口不参与相等性判定。
+
+离线切片的精确调用形式为：
+
+```text
+pae_protocol_lab compare \
+  (--left-run <run> --right-run <run> | \
+   (--left-frame-bin <file> | --left-frame-hex <file>) \
+   (--right-frame-bin <file> | --right-frame-hex <file>))
+```
+
+Run差异通过`comparison_categories`区分`OPERATION_KIND`、`CONFIG`、`WIRE_BYTES`、
+`MESSAGE_MATCH`、`STATUS`、`TYPED_FIELDS`、`STABLE_DIAGNOSTIC`和兜底的
+`DETERMINISTIC_FINGERPRINT`。Frame比较只比较规范化后的字节，可混合Binary和Hex输入。
+
+### 5.5 `udp-exchange`
+
+通过工具自有UDP Adapter执行一次有边界的请求/响应实验：
+
+```text
+pae_protocol_lab udp-exchange \
+  --config <file> \
+  --values <file> \
+  --local <ipv4:port> \
+  --remote <ipv4:port> \
+  --receive-pipeline <id> \
+  --timeout-ms <value> \
+  --record-root <directory> \
+  --send
+```
+
+- 显式配置本地和远端Endpoint；
+- 默认只预览请求，显式确认后才发送；
+- 默认单次发送，不自动重试；
+- 接收数量、报文长度和等待时间均有上限；
+- 在Socket发送前持久化最终TX字节；
+- 在Decode之前持久化收到的原始UDP Payload；
+- 无响应、截断、未知Message和解析失败均形成明确记录，不伪造成功。
+
+第一版只接受数字IPv4地址，不执行DNS。本地地址默认`127.0.0.1:0`，远端必须显式填写；没有
+`--send`时不得创建Socket，只执行配置、Encode和安全预览。非Loopback地址必须同时提供
+`--send --allow-non-loopback`。不允许广播、组播、自动扫描或后台持续接收。
+
+首阶段不实现TCP、串口、CAN、原始网卡监听、自动设备扫描、压力发生器或GUI。
+
+## 6. I/O和空闲行为
+
+UDP首切片采用工具层同步阻塞等待或等价事件等待，并配置有限超时；没有报文时不得以无休止
+忙轮询占用CPU。
+
+Windows Adapter可使用系统Winsock；未来Linux Adapter使用POSIX Socket。平台代码必须位于
+工具Adapter边界，不得进入ProtocolPlan、Codec或公共Core头文件。
+
+第一版不为了统一Socket API引入Qt、Boost或其他大型框架。若未来选择轻量第三方库，必须单独
+记录版本、License、源码范围和引入理由。
+
+## 7. Evidence Bundle V0.1草案
+
+每次Lab执行产生一个独立且不可原地覆盖的Run目录：
+
+```text
+run_<utc-time>_<run-id>/
+├── inputs/
+│   ├── protocol.pae.json
+│   └── values.pae-lab.json
+├── frames/
+│   ├── 000001_tx.bin
+│   ├── 000001_tx.hex
+│   ├── 000002_rx.bin
+│   └── 000002_rx.hex
+├── run_record_v0.1.json
+├── events_v0.1.jsonl
+├── result_summary_v0.1.json
+├── SHA256SUMS
+└── COMPLETE
+```
+
+在线证据型运行中，最终TX字节必须在Socket发送前成功写入Run记录，RX原始字节必须在
+PAE Decode前成功写入Run记录。若记录失败，对应Frame不得标记为可复现证据；是否继续进行
+非证据型诊断由显式运行参数决定。
+
+默认复制本次实际使用的配置和Values文件，保证离线Replay。Bundle按以下流程完成：
+
+1. 创建`run_<id>.inprogress/`；
+2. 单个文件先写临时文件，关闭后重新读取并核对长度与SHA-256，再重命名为正式文件；
+3. TX固定执行`Encode → 保存并复核TX → SEND_INTENT → Socket发送 → SEND_RESULT`；
+4. RX固定执行`Socket接收 → 保存并复核RX → PAE Decode → 记录结果`；
+5. 全部文件关闭并复核后生成`SHA256SUMS`和`COMPLETE`；
+6. 最后把`.inprogress`目录重命名为正式Run目录。
+
+失败或崩溃留下`.inprogress`目录，不自动删除；没有`COMPLETE`的目录只能用于人工恢复分析，
+不能作为完整Evidence Bundle。V0.1不承诺断电级持久化，也不要求每个文件调用系统级
+`fsync`或`FlushFileBuffers`。
+
+`SHA256SUMS`不包含自身，但包含空`COMPLETE`标记；它使用小写Hex、两个ASCII空格和以`/`
+表示的相对路径，条目按路径升序排列。Replay和Run Compare在读取结果前重新核对完整清单；
+Hash不符、路径逃逸、清单乱序、未列入清单的额外文件、符号链接或缺少必需文件均失败关闭。
+
+`run_record_v0.1.json`至少记录：
+
+- Record格式版本和Run ID；
+- Tool版本、PAE版本或源码Revision；
+- 配置文件SHA-256和可用时的Plan检查点；
+- 执行模式、启动时间和结束状态；
+- Transport类型及经保密处理的Endpoint元数据；
+- 最大Frame、接收数量、超时和主动发送参数；
+- 操作者声明的证据等级、Peer类型和敏感性；
+- 生成文件及其SHA-256。
+
+`events_v0.1.jsonl`每行记录一个有序事件，至少包含：
+
+- 单调递增Event ID；
+- `TX`、`RX`或`REPLAY`方向；
+- 原始Frame文件、长度和SHA-256；
+- Frame Origin（来源类型）和Peer Kind（对端类型）；
+- Pipeline、Message和Direction匹配结果；
+- Decode/Encode状态；
+- 类型化字段、Raw Value和Logical Value；
+- 诊断及其稳定标识；
+- 墙钟时间和单调时间，仅用于诊断，不进入Golden字节比较。
+
+三种JSON记录均使用UTF-8、无BOM和LF换行；JSON Document使用固定字段顺序，JSONL每行一个
+完整对象。当前内部Schema默认拒绝未知字段，未来格式变更必须升级`format_version`，不得静默
+改变既有V0.1语义。
+
+## 8. 机器输出和退出码
+
+机器输出格式标识为：
+
+```text
+pae.lab.result/0.1
+```
+
+结果至少包含`format_version`、Command、Operation Status、Exit Code、配置SHA-256、Protocol、
+Pipeline、Message、Direction、输入Frame长度与SHA-256、类型化字段、Encode输出、稳定诊断、
+Evidence Bundle路径、`send_attempted`、`send_succeeded`和三层Gate状态。
+
+进程退出码冻结为：
+
+| Exit Code | 含义 |
+| ---: | --- |
+| `0` | 操作成功，或实际状态与`--expect-status`一致 |
+| `2` | CLI用法或参数错误 |
+| `3` | 输入文件或路径错误 |
+| `4` | 配置编译失败 |
+| `5` | Decode/Encode等协议操作失败或与期望状态不一致 |
+| `6` | Compare发现差异 |
+| `7` | Evidence Bundle记录失败 |
+| `8` | Transport打开、绑定、发送或接收失败 |
+| `9` | 等待响应超时 |
+| `10` | 内部错误或未分类异常 |
+
+未提供`--expect-status`时，Codec非`OK`返回`5`；指定期望状态后，实际状态一致返回`0`，不一致
+返回`5`。Compare发现差异固定返回`6`。所有未处理C++异常必须在`main()`边界转换为`10`，不得
+越过进程入口。
+
+若Evidence Bundle记录失败，机器结果必须先把状态、稳定诊断、Evidence Bundle路径和退出码
+更新到失败终态，再重新计算确定性指纹并输出；不得保留记录失败前的成功状态指纹。
+
+## 9. 来源标签和证据语义
+
+Frame Origin与证据等级正交，不增加新的证据等级。
+
+首阶段Frame Origin候选：
+
+- `PAE_GENERATED`：由当前PAE Encode产生；
+- `REFERENCE_GENERATED`：由独立参考实现产生；
+- `OBSERVED_EXTERNAL`：从独立外部端点边界观察；
+- `MANUAL_SYNTHETIC`：人工输入或拼接；
+- `REPLAYED`：来自既有Run重放。
+
+首阶段Peer Kind候选：
+
+- `LAB_SIMULATED_PEER`：网络调试工具或人工模拟对端；
+- `EXTERNAL_DEVICE`：经人工确认的外部设备；
+- `PRODUCTION_ENDPOINT`：经人工确认的既有生产发送或接收端；
+- `OFFLINE_FILE`：无在线对端的文件输入。
+
+证据规则：
+
+- 网络调试工具发送的人工Frame属于`LAB_SIMULATED_PEER`，通常为`SYNTHETIC_REVIEWED`
+  或`DOCUMENT_DERIVED_REVIEWED`；
+- Frame经过真实UDP Socket传输不会自动变成`OBSERVED_CAPTURE`；
+- PAE生成并由PAE解析的Frame只能支持Engine PoC（引擎概念验证）；
+- PAE生成请求后由真实设备返回的响应可成为`OBSERVED_CAPTURE`候选，但仍需来源确认和独立复核；
+- 从既有生产发送边界独立捕获的请求可成为`OBSERVED_CAPTURE`候选；
+- Lab不得自动修改Corpus的`authority_level`或`review_status`。
+
+## 10. 三层验收门禁
+
+Protocol Lab引入后，三个门禁必须分别报告：
+
+| Gate | 含义 | Lab自身能否关闭 |
+| --- | --- | --- |
+| `ENGINE_POC_PASS` | 配置、Plan和Codec在当前语料上正确执行 | 可以 |
+| `LAB_EXCHANGE_PASS` | 与实验室模拟对端完成真实Socket收发、记录和重放 | 可以 |
+| `PROTOCOL_GOLDEN_PASS` | Frame具有协议契约或真实设备独立证据 | 不一定 |
+
+`LAB_EXCHANGE_PASS`至少要求：
+
+- Lab成功预览并显式发送一条请求；
+- 模拟对端收到的字节与预期逐字节一致；
+- 模拟对端发送一条响应；
+- Lab在Decode前保存完整原始字节；
+- Decode结果与人工期望一致；
+- Evidence Bundle的SHA-256清单完整；
+- 离线Replay结果与在线处理结果一致；
+- 超时和错误报文路径不产生虚假成功。
+
+`LAB_EXCHANGE_PASS`不得在报告、日志或文档中改写为设备互通、现场验证或Protocol Golden。
+
+## 11. 主动发送安全边界
+
+- 默认只预览，不发送；
+- 必须使用明确的主动发送确认参数；
+- 必须显式给出目标地址和端口；
+- 默认只允许一次发送；
+- 不自动重试、不自动广播、不扫描局域网；
+- 后续批量模式必须单独增加速率、数量和总字节预算；
+- 运行摘要必须记录是否实际调用发送；
+- 公共样例不得包含真实Endpoint、设备编号、抓包或现场信息；
+- 原始记录默认按敏感数据处理，不自动进入Git。
+
+## 12. 生产复现边界
+
+未来生产系统可通过可选Trace Adapter（追踪适配层）输出兼容Evidence Bundle的数据，再由Lab
+离线Replay。生产进程不运行完整Lab，也不让Lab进入实时业务必经路径。
+
+生产Trace至少需要容量限制、文件轮转、敏感信息策略、宿主控制的写入和磁盘失败隔离；这些
+能力依赖未来稳定Runtime和诊断接口，不属于Protocol Lab首切片。
+
+## 13. 资源上限
+
+以下数值是Protocol Lab内部V0.1限制，不升级为PAE公共Runtime合同：
+
+| 资源 | 默认值 | Hard Limit（硬上限） |
+| --- | ---: | ---: |
+| 请求发送次数 | `1` | `1` |
+| 最大接收Frame数 | `1` | `16` |
+| 响应超时 | `2000 ms` | `60000 ms` |
+| 单Run最大Event数 | `64` | `256` |
+| 单Run原始Frame总字节 | `1 MiB` | `16 MiB` |
+| 单Frame | 当前Plan Profile上限 | Plan与UDP Adapter两者较小上限 |
+
+所有上限必须在分配、创建目标文件或发送前检查；乘加采用受检运算。超限时不得发送，也不得
+生成`COMPLETE`。CLI不能关闭Hard Limit；未来压力测试工具不得复用本模式静默扩大资源。
+
+## 14. 分阶段实施
+
+1. `Contract Slice（契约切片）`：本文冻结CLI、记录Schema、来源标签、错误和安全边界；
+2. `Offline Replay Slice（离线重放切片）`：已实现CLI基础、`inspect/encode/replay/compare`、
+   Evidence Bundle、模块拆分和文件系统故障注入测试；
+3. 已完成Windows Debug/Release构建与测试；Lab专用均`3/3 PASS`、全切片共存均`29/29 PASS`；
+   审查、Commit和Push保持独立步骤；
+4. `UDP Exchange Slice（UDP实验切片）`：另行实现Windows单次收发和原始记录；
+5. 使用外部网络调试工具执行人工`LAB_EXCHANGE_PASS`；
+6. `Golden Candidate Export Slice（黄金候选导出切片）`：只生成待人工复核候选，不自动升级证据；
+7. TCP、串口、GUI、压力工具和生产Trace分别另行拍板。
+
+每个切片的源码修改、构建验证、Commit和Push均保持独立授权。
+
+## 15. 自动化和人工验收
+
+Offline Replay Slice的CTest至少覆盖：
+
+- `inspect`正常、未知Message、歧义和错误Frame；
+- `encode`逐字节结果及Values缺失、重复、类型错误和越界；
+- Replay使用内嵌配置并生成新Run；
+- Cross-config Replay显式标记且不修改旧Bundle；
+- Compare相同返回`0`、不同返回`6`；
+- 全部退出码和`--expect-status`语义；
+- Bundle文件Hash、排序清单、`COMPLETE`和故障后的`.inprogress`保留；
+- 记录失败不会交付虚假成功；
+- Product-only构建不生成Lab；
+- 现有CTest不回退。
+
+UDP Exchange Slice另行覆盖：默认无`--send`不创建Socket、Loopback单次收发、超时、非Loopback
+双确认、数量/Event/总字节超限和解析前原始记录。自动化测试可使用测试专用阻塞Peer，但不把
+它作为协议权威。
+
+人工门禁使用外部网络调试工具接收Lab请求、逐字节核对、发送人工响应，再关闭在线工具执行
+离线Replay。自动化和人工门禁均通过后才允许声明`LAB_EXCHANGE_PASS=PASS`；该结论仍不得升级
+`PROTOCOL_GOLDEN_PASS`。
+
+## 16. 首个源码切片排除项
+
+Offline Replay Slice明确不实现UDP、TCP、串口、CAN、GUI、生产Trace、Golden自动升级、Runtime、
+Session、C ABI、Linux、安装导出或正式性能Benchmark。任何扩张必须单独拍板。
+
+### 16.1 `PAE-DEC-038`离线加固边界
+
+离线实现已拆分为应用编排、CLI、协议操作、Evidence Bundle、结果格式、SHA-256和共享内部类型。
+它们组成不安装、不导出的`pae_protocol_lab_internal`静态目标，并最终只交付现有
+`pae_protocol_lab`可执行程序。拆分不改变命令、参数、Values格式、结果字段、退出码、差异类别
+或Evidence Bundle目录结构。
+
+Evidence Bundle写事务使用内部`RecordFileSystem`依赖注入接口。自动化通过显式测试对象覆盖
+Run目录创建确认、第N次写入、关闭、重读、长度/内容/Hash复核、`COMPLETE`、`SHA256SUMS`和
+最终目录重命名失败；不新增隐藏CLI或环境变量。全部注入场景由应用层返回`7`，不产生正式Run，
+并在目录已经创建的前提下保留`.inprogress`。若操作系统从一开始就禁止创建目录，则没有物理
+目录可保留，但仍必须失败关闭且不得伪造完整Run。
+
+## 17. 当前未验证范围
+
+- CLI名称和JSON字段已有内部实现，但尚未形成公共兼容性承诺；
+- 已执行Windows离线记录、Hash复核和Replay自动化测试，尚未执行Windows UDP、Loopback或
+  超时测试；
+- 退出码`8/9`属于未来Transport切片，当前离线切片没有对应运行路径；未分类异常的退出码
+  `10`已在`main()`边界实现，但没有故意制造未定义异常的自动化用例；
+- `.inprogress`保留和失败关闭语义已由8类文件系统故障注入覆盖；尚未覆盖断电、进程强杀、
+  文件系统缓存持久化或真实磁盘故障；
+- 未测量记录开销、磁盘失败、峰值内存或长时间稳定性；
+- 未执行Linux、真实设备、硬件或现场验证；
+- 当前没有任何真实协议因此文档取得Protocol Golden资格。

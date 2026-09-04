@@ -62,6 +62,26 @@
       }
     },
     {
+      "name": "windows-msvc-protocol-lab",
+      "displayName": "Windows MSVC Protocol Lab offline slice",
+      "generator": "Visual Studio 18 2026",
+      "architecture": "x64",
+      "binaryDir": "${sourceDir}/out/build/${presetName}",
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Windows"
+      },
+      "cacheVariables": {
+        "BUILD_TESTING": "ON",
+        "PAE_BUILD_TESTING": "ON",
+        "PAE_BUILD_JSON_PARSER_SPIKE": "OFF",
+        "PAE_BUILD_LOADER_SCHEMA_IR_SLICE": "OFF",
+        "PAE_BUILD_COMPLETE_RECORD_CODEC_SLICE": "OFF",
+        "PAE_BUILD_PROTOCOL_LAB": "ON"
+      }
+    },
+    {
       "name": "linux-gcc-spike",
       "displayName": "Linux GCC JSON parser spike",
       "generator": "Ninja",
@@ -121,6 +141,16 @@
       "configuration": "Release"
     },
     {
+      "name": "windows-msvc-protocol-lab-release",
+      "configurePreset": "windows-msvc-protocol-lab",
+      "configuration": "Release"
+    },
+    {
+      "name": "windows-msvc-protocol-lab-debug",
+      "configurePreset": "windows-msvc-protocol-lab",
+      "configuration": "Debug"
+    },
+    {
       "name": "linux-gcc-spike-release",
       "configurePreset": "linux-gcc-spike"
     },
@@ -150,6 +180,22 @@
       "name": "windows-msvc-codec-slice-release",
       "configurePreset": "windows-msvc-codec-slice",
       "configuration": "Release",
+      "output": {
+        "outputOnFailure": true
+      }
+    },
+    {
+      "name": "windows-msvc-protocol-lab-release",
+      "configurePreset": "windows-msvc-protocol-lab",
+      "configuration": "Release",
+      "output": {
+        "outputOnFailure": true
+      }
+    },
+    {
+      "name": "windows-msvc-protocol-lab-debug",
+      "configurePreset": "windows-msvc-protocol-lab",
+      "configuration": "Debug",
       "output": {
         "outputOnFailure": true
       }

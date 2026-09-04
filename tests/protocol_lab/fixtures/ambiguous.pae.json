@@ -1,0 +1,84 @@
+{
+  "schema_version": "0.1",
+  "protocol_id": "synthetic_ambiguous_lab",
+  "protocol_version": "0.1-synthetic",
+  "display_name": "人工歧义Pipeline协议",
+  "description": "仅用于Protocol Lab跨Pipeline歧义测试。",
+  "source_ref": "SYNTHETIC_FROM_SCRATCH:ambiguous_lab",
+  "resource_profile": "desktop",
+  "framing_profiles": [
+    {
+      "id": "complete_record",
+      "display_name": "完整记录",
+      "description": "单次输入一条四字节记录。",
+      "source_ref": "SYNTHETIC_FROM_SCRATCH:ambiguous_lab#framing",
+      "input_kind": "complete_record"
+    }
+  ],
+  "pipelines": [
+    {
+      "id": "path_a",
+      "display_name": "人工路径A",
+      "description": "与路径B故意引用相同消息。",
+      "source_ref": "SYNTHETIC_FROM_SCRATCH:ambiguous_lab#path_a",
+      "direction_id": "source_to_sink",
+      "input_framing_profile_id": "complete_record",
+      "message_ids": ["minimal_message"]
+    },
+    {
+      "id": "path_b",
+      "display_name": "人工路径B",
+      "description": "与路径A故意引用相同消息。",
+      "source_ref": "SYNTHETIC_FROM_SCRATCH:ambiguous_lab#path_b",
+      "direction_id": "source_to_sink",
+      "input_framing_profile_id": "complete_record",
+      "message_ids": ["minimal_message"]
+    }
+  ],
+  "messages": [
+    {
+      "id": "minimal_message",
+      "display_name": "人工最小消息",
+      "description": "四字节人工消息。",
+      "source_ref": "SYNTHETIC_FROM_SCRATCH:ambiguous_lab#message",
+      "direction_id": "source_to_sink",
+      "frame_length_bytes": 4,
+      "matcher": {
+        "all": [
+          {"kind": "frame_length_equals", "length_bytes": 4},
+          {"kind": "fixed_bytes", "byte_offset": 2, "bytes": "00 01"}
+        ]
+      },
+      "fields": [
+        {
+          "id": "payload_word",
+          "display_name": "人工载荷",
+          "description": "动态无符号整数。",
+          "source_ref": "SYNTHETIC_FROM_SCRATCH:ambiguous_lab#payload",
+          "value_type": "UINT64",
+          "wire": {
+            "codec": "unsigned_integer",
+            "byte_offset": 0,
+            "byte_width": 2,
+            "byte_order": "big_endian"
+          },
+          "encode": {"source": "input"}
+        },
+        {
+          "id": "message_type",
+          "display_name": "人工消息类型",
+          "description": "固定类型1。",
+          "source_ref": "SYNTHETIC_FROM_SCRATCH:ambiguous_lab#type",
+          "value_type": "UINT64",
+          "wire": {
+            "codec": "unsigned_integer",
+            "byte_offset": 2,
+            "byte_width": 2,
+            "byte_order": "big_endian"
+          },
+          "encode": {"source": "constant", "value": 1}
+        }
+      ]
+    }
+  ]
+}
