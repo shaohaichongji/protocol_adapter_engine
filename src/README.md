@@ -2,8 +2,8 @@
 
 当前源码包含三个相互分层的内部目标：
 
-- `pae_protocol_plan`保存PAE（Protocol Adapter Engine，协议适配引擎）自有的`PlanDraft（计划草案）`、`PlanBuilder（计划构建器）`、不可变`PlanBundle`及其类型化冷元数据和热执行描述符。`PlanBundle`只能由`PlanBuilder`冻结构造，不可复制或移动；该目标已经从`config_compiler`抽离，不依赖yyjson或其他JSON Parser（解析器）；
-- `pae_config_compiler`把严格JSON编译为`SchemaIr`，完成结构、领域和资源校验后生成完整`PlanBundle`；
+- `pae_protocol_plan`保存PAE（Protocol Adapter Engine，协议适配引擎）自有的内部草案载荷、`BudgetedPlanDraft（已预算计划草案）`、`PlanBuilder（计划构建器）`、不可变`PlanBundle`及其类型化冷元数据和热执行描述符。最终Plan的`FrozenString/FrozenArray`使用单一`PlanStorageBlock`，`PlanArena`精确分类计费，`PlanOwner`负责move-only（仅移动）所有权；`PlanBuilder`只接受不可伪造的`BudgetedPlanDraft`，`PlanBundle`不可复制或移动；该目标已经从`config_compiler`抽离，不依赖yyjson或其他JSON Parser（解析器）；
+- `pae_config_compiler`把严格JSON依次编译为`SchemaIr → ValidatedSchemaIr → BudgetedSchemaIr → BudgetedPlanDraft`，完成结构、领域和资源校验后生成完整`PlanBundle`；ResourceBudget阶段在产生Budgeted能力前完成精确单Plan内存准入并携带批准报告与Limit；三种能力对象只能移动，不能默认构造或复制，移动后的对象不能成功重复进入后续阶段；
 - `pae_protocol_core_slice`是首个`COMPLETE_RECORD（完整记录）`Codec（编解码器）内部切片，直接消费`PlanBundle`，不读取JSON，也不依赖`config_compiler`或yyjson。
 
 当前依赖方向为：

@@ -4,13 +4,18 @@
 #include <cstdint>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <vector>
 
+#include "frozen_storage.h"
+#include "plan_memory.h"
 #include "plan_types.h"
 
 namespace pae::protocol_plan {
 
 class PlanBuilder;
+
+// Mutable compiler/test transfer objects. Frozen PlanBundle storage uses the Frozen* types below.
 
 struct FramingPlan {
   std::string id;
@@ -57,6 +62,51 @@ struct PipelinePlan {
   std::vector<std::size_t> message_indices;
 };
 
+struct FrozenFramingPlan {
+  FrozenString id;
+  InputKind input_kind = InputKind::COMPLETE_RECORD;
+};
+
+struct FrozenMatcherPlan {
+  MatcherKind kind = MatcherKind::FRAME_LENGTH_EQUALS;
+  std::uint64_t length_bytes = 0U;
+  std::uint64_t byte_offset = 0U;
+  FrozenArray<std::uint8_t> bytes;
+};
+
+struct FrozenEnumEntryPlan {
+  FrozenString id;
+  std::uint64_t raw_value = 0U;
+};
+
+struct FrozenFieldPlan {
+  FrozenString id;
+  ValueType value_type = ValueType::UINT64;
+  WireCodec wire_codec = WireCodec::UNSIGNED_INTEGER;
+  std::uint64_t byte_offset = 0U;
+  std::uint64_t byte_width = 0U;
+  ByteOrder byte_order = ByteOrder::NOT_APPLICABLE;
+  EncodeSource encode_source = EncodeSource::INPUT;
+  std::optional<std::uint64_t> constant_value;
+  UnknownEnumPolicy unknown_enum_policy = UnknownEnumPolicy::REJECT;
+  FrozenArray<FrozenEnumEntryPlan> enum_entries;
+};
+
+struct FrozenMessagePlan {
+  FrozenString id;
+  FrozenString direction_id;
+  std::uint64_t frame_length_bytes = 0U;
+  FrozenArray<FrozenMatcherPlan> matchers;
+  FrozenArray<FrozenFieldPlan> fields;
+};
+
+struct FrozenPipelinePlan {
+  FrozenString id;
+  FrozenString direction_id;
+  std::size_t framing_profile_index = 0U;
+  FrozenArray<std::size_t> message_indices;
+};
+
 struct FixedByteExecutionPlan {
   std::size_t offset = 0U;
   std::uint8_t value = 0U;
@@ -86,21 +136,21 @@ struct FieldExecutionPlan {
 struct MessageExecutionPlan {
   std::size_t frame_size = 0U;
   std::size_t required_input_count = 0U;
-  std::vector<FixedByteExecutionPlan> fixed_bytes;
-  std::vector<FieldExecutionPlan> fields;
-  std::vector<std::uint64_t> enum_raw_values;
-  std::vector<EnumLookupExecutionPlan> enum_lookup_entries;
+  FrozenArray<FixedByteExecutionPlan> fixed_bytes;
+  FrozenArray<FieldExecutionPlan> fields;
+  FrozenArray<std::uint64_t> enum_raw_values;
+  FrozenArray<EnumLookupExecutionPlan> enum_lookup_entries;
 };
 
 struct CandidateGroupExecutionPlan {
   std::size_t frame_size = 0U;
-  std::vector<std::size_t> message_indices;
+  FrozenArray<std::size_t> message_indices;
 };
 
 struct PipelineExecutionPlan {
   std::size_t framing_profile_index = 0U;
-  std::vector<std::uint64_t> allowed_message_words;
-  std::vector<CandidateGroupExecutionPlan> candidate_groups;
+  FrozenArray<std::uint64_t> allowed_message_words;
+  FrozenArray<CandidateGroupExecutionPlan> candidate_groups;
 };
 
 struct ExecutionResourceLayout {
@@ -119,39 +169,44 @@ class PlanBundle final {
   PlanBundle& operator=(PlanBundle&&) noexcept = delete;
   ~PlanBundle() = default;
 
-  const std::string& SchemaVersion() const noexcept;
-  const std::string& ProtocolId() const noexcept;
-  const std::string& ProtocolVersion() const noexcept;
+  std::string_view SchemaVersion() const noexcept;
+  std::string_view ProtocolId() const noexcept;
+  std::string_view ProtocolVersion() const noexcept;
   ResourceProfile GetResourceProfile() const noexcept;
   const ResourceRequirements& GetResourceRequirements() const noexcept;
-  const std::vector<FramingPlan>& FramingProfiles() const noexcept;
-  const std::vector<PipelinePlan>& Pipelines() const noexcept;
-  const std::vector<MessagePlan>& Messages() const noexcept;
+  const FrozenArray<FrozenFramingPlan>& FramingProfiles() const noexcept;
+  const FrozenArray<FrozenPipelinePlan>& Pipelines() const noexcept;
+  const FrozenArray<FrozenMessagePlan>& Messages() const noexcept;
   const ExecutionResourceLayout& GetExecutionResourceLayout() const noexcept;
-  const std::vector<MessageExecutionPlan>& MessageExecutionPlans() const noexcept;
-  const std::vector<PipelineExecutionPlan>& PipelineExecutionPlans() const noexcept;
+  const FrozenArray<MessageExecutionPlan>& MessageExecutionPlans() const noexcept;
+  const FrozenArray<PipelineExecutionPlan>& PipelineExecutionPlans() const noexcept;
+  const PlanMemoryReport& GetPlanMemoryReport() const noexcept;
 
  private:
   friend class PlanBuilder;
+  friend class PlanOwner;
 
-  PlanBundle(std::string schema_version, std::string protocol_id, std::string protocol_version,
+  PlanBundle(FrozenString schema_version, FrozenString protocol_id, FrozenString protocol_version,
              ResourceProfile resource_profile, ResourceRequirements resource_requirements,
-             std::vector<FramingPlan> framing_profiles, std::vector<PipelinePlan> pipelines,
-             std::vector<MessagePlan> messages, ExecutionResourceLayout execution_resource_layout,
-             std::vector<MessageExecutionPlan> message_execution_plans,
-             std::vector<PipelineExecutionPlan> pipeline_execution_plans);
+             FrozenArray<FrozenFramingPlan> framing_profiles,
+             FrozenArray<FrozenPipelinePlan> pipelines, FrozenArray<FrozenMessagePlan> messages,
+             ExecutionResourceLayout execution_resource_layout,
+             FrozenArray<MessageExecutionPlan> message_execution_plans,
+             FrozenArray<PipelineExecutionPlan> pipeline_execution_plans,
+             PlanMemoryReport memory_report) noexcept;
 
-  std::string schema_version_;
-  std::string protocol_id_;
-  std::string protocol_version_;
+  FrozenString schema_version_;
+  FrozenString protocol_id_;
+  FrozenString protocol_version_;
   ResourceProfile resource_profile_ = ResourceProfile::DESKTOP;
   ResourceRequirements resource_requirements_;
-  std::vector<FramingPlan> framing_profiles_;
-  std::vector<PipelinePlan> pipelines_;
-  std::vector<MessagePlan> messages_;
+  FrozenArray<FrozenFramingPlan> framing_profiles_;
+  FrozenArray<FrozenPipelinePlan> pipelines_;
+  FrozenArray<FrozenMessagePlan> messages_;
   ExecutionResourceLayout execution_resource_layout_;
-  std::vector<MessageExecutionPlan> message_execution_plans_;
-  std::vector<PipelineExecutionPlan> pipeline_execution_plans_;
+  FrozenArray<MessageExecutionPlan> message_execution_plans_;
+  FrozenArray<PipelineExecutionPlan> pipeline_execution_plans_;
+  PlanMemoryReport memory_report_;
 };
 
 }  // namespace pae::protocol_plan

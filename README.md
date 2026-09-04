@@ -8,17 +8,18 @@ PAE 的目标是通过严格配置完成工业二进制协议的有方向 Decode
 
 - 已创建本地工程骨架；
 - 已完成 JSON Parser Spike（JSON 解析器技术探针）的 Windows/MSVC（Microsoft Visual C++，微软C/C++编译器）Strict JSON Profile（严格 JSON 子集规范）、Number Token（数字词法单元）、两批机器语料及三档Parser阶段资源门禁；28项文档清单、77项Token语料、10项yyjson数字诊断、48项资源边界、精确offset/Pointer、5项清单负向门禁，以及yyjson原始数字、解析期内存硬上限、故障注入和候选来源/License复核已有实测证据；
-- 已实现内部 `StrictJsonLoader → StructuralValidator / SchemaIrBuilder → DomainValidator → ResourceBudget → PlanBuilder` 最小纵向切片，可把受限 `*.pae.json` 编译为不可变 `PlanBundle`；该切片不安装、不导出，不属于稳定公共 API（应用程序编程接口）；
+- 已实现内部 `StrictJsonLoader → StructuralValidator / SchemaIrBuilder → DomainValidator → ResourceBudgetValidator → PlanDraftAssembler → PlanBuilder` 最小纵向切片，可把受限 `*.pae.json` 编译为不可变 `PlanBundle`；该切片不安装、不导出，不属于稳定公共 API（应用程序编程接口）；
 - 已形成草案 `pae.schema.json`、ProtocolPlan Execution Semantics（协议计划执行语义）、从零设计的人工实验台双向样例和稳定 ID Golden Snapshot（黄金快照）；
 - 已把 yyjson-free（不依赖yyjson）的`pae_protocol_plan`从配置编译器抽离，并实现首个内部`COMPLETE_RECORD（完整记录）`Codec（编解码器）切片：支持确定性Matcher（匹配器）、`UINT64`、固定`BYTES`、`ENUM`、1～8字节大小端、Plan作用域引用、调用方Buffer及失败关闭；
 - 已完成`PAE-DEC-031`首个Frozen Execution Plan（冻结执行计划）内部实现切片：`PlanBundle`只能由`PlanBuilder`冻结构造且不可复制/移动，Plan同时携带候选组、字段、固定字节、Enum辅助索引及Workspace资源布局；Decode/Encode显式接收与Plan绑定的`ExecutionWorkspace（执行工作区）`，正常逐帧路径不再执行静态Plan深度校验或重复字段线性查找；
-- 已确认`PAE-DEC-032/033`目标：以不可伪造的Validated/Budgeted Draft（已验证/已预算草案）能力状态建立Validator（校验器）单一规则权威，并补齐冷Plan实际占用与Runtime（运行时）全部活跃Plan/Session（计划/会话）总内存准入；当前源码和测试尚未实现或验证这两项目标；
+- 已完成`PAE-DEC-032`内部能力链：`ValidatedSchemaIr`、`BudgetedSchemaIr`和`BudgetedPlanDraft`均为私有载荷、move-only（仅移动）的不可默认构造能力类型，移动后重复消费会失败关闭；原始`PlanDraft`已退出生产Builder入口，作者错误只由Domain/Resource Validator（领域/资源校验器）报告，Builder异常统一映射为内部契约违规或分配失败；
+- 已完成`PAE-DEC-033A`内部切片：不可变Plan的`FrozenString/FrozenArray`全部存入单一`PlanStorageBlock`，`PlanArena`精确分类计费，`PlanOwner`负责move-only（仅移动）所有权；ResourceBudget（资源预算）在产生Budgeted能力前完成单Plan准入，Builder发布前复算并逐字段匹配批准报告；`PAE-DEC-033B` Runtime全部活跃Plan/Session聚合准入仍未实现；
 - 已建立两条`SYNTHETIC_REVIEWED / INDEPENDENT_ENGINEERING_REVIEWED（人工构造 / 独立工程复核）`Engine Vector（引擎向量），其Frame、Decode期望和Encode输入均为独立文件并受SHA-256门禁保护；它们不是正式协议Golden Vector（黄金测试向量）；
 - 尚未形成稳定公共 API、完整 ProtocolPlan、完整 Decode/Encode Runtime（运行时）或生产可用协议引擎；
 - Linux门禁按当前Windows-first（Windows优先）顺序暂缓；正式 Core 性能、协议Golden Vector、目标板、硬件或现场验证尚未完成；
 - 当前仓库不得直接替换任何生产协议代码。
 
-当前实现证据见[Frozen Execution Plan Windows内部切片验证报告](docs/windows-msvc-2026-frozen-execution-plan-slice.md)；此前的[COMPLETE_RECORD Codec历史基线报告](docs/windows-msvc-2026-complete-record-codec-slice.md)、[Loader/SchemaIr Windows可执行切片报告](docs/windows-msvc-2026-loader-schema-ir-slice.md)和[第十三轮数字与Parser资源门禁报告](spikes/json_parser/results/windows-msvc-2026-round13-number-resource-gate.md)继续保留。最新Windows x64、MSVC Release/Debug下，配置编译器Runner均`22/22`，Codec合同Runner均`60/60`，首次Decode/Encode分配门禁各`1/1`，操作计数门禁`4/4`，共享Plan并发门禁`2/2`；两种配置的Codec CTest均`6/6`，Parser、Loader和Codec共存的Release CTest为`26/26`。上述证据仍不等于完整V0.1、最终生产Parser、正式协议字节正确性、正式性能、Linux兼容、目标板、硬件或现场验证。
+当前实现证据见[PAE-DEC-033A Windows验证报告](docs/windows-msvc-2026-accounted-plan-memory-slice.md)、[Validated/Budgeted能力链Windows验证报告](docs/windows-msvc-2026-validated-budgeted-capability-chain.md)和[Frozen Execution Plan Windows内部切片验证报告](docs/windows-msvc-2026-frozen-execution-plan-slice.md)；此前的[COMPLETE_RECORD Codec历史基线报告](docs/windows-msvc-2026-complete-record-codec-slice.md)、[Loader/SchemaIr Windows可执行切片报告](docs/windows-msvc-2026-loader-schema-ir-slice.md)和[第十三轮数字与Parser资源门禁报告](spikes/json_parser/results/windows-msvc-2026-round13-number-resource-gate.md)继续保留。最新Windows x64、MSVC Release/Debug下，配置编译器Runner均`28/28`，Codec合同Runner均`60/60`，首次Decode/Encode分配门禁各`1/1`，操作计数门禁`4/4`，共享Plan并发门禁`2/2`；两种配置的Codec CTest均`6/6`，Parser、Loader、Plan和Codec共存CTest均`26/26`。上述证据仍不等于完整V0.1、Runtime总量准入、最终生产Parser、正式协议字节正确性、正式性能、Linux兼容、目标板、硬件或现场验证。
 
 ## 目录
 

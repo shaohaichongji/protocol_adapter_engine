@@ -72,9 +72,13 @@ enum class CompileError {
   MATCHER_CONFLICT,
   AMBIGUOUS_MATCHER,
   RESOURCE_LIMIT_EXCEEDED,
-  PLAN_BUILD_FAILED,
   COMPILER_ALLOCATION_FAILED,
   INTERNAL_CONTRACT_VIOLATION,
+};
+
+enum class ResourceKind {
+  NONE,
+  PLAN_ACCOUNTED_MEMORY,
 };
 
 struct CompileDiagnostic {
@@ -83,13 +87,46 @@ struct CompileDiagnostic {
   std::string json_pointer;
   std::optional<std::size_t> byte_offset;
   std::string detail;
+  ResourceKind resource_kind = ResourceKind::NONE;
+  std::size_t required_bytes = 0U;
+  std::size_t limit_bytes = 0U;
+  protocol_plan::ResourceProfile resource_profile = protocol_plan::ResourceProfile::DESKTOP;
 };
 
-struct CompileResult {
-  std::unique_ptr<const PlanBundle> plan;
-  std::optional<CompileDiagnostic> diagnostic;
+class CompileResult final {
+ public:
+  CompileResult() = delete;
+  CompileResult(const CompileResult&) = delete;
+  CompileResult& operator=(const CompileResult&) = delete;
+  CompileResult(CompileResult&&) noexcept = default;
+  CompileResult& operator=(CompileResult&&) noexcept = default;
+  ~CompileResult() = default;
 
-  bool Succeeded() const noexcept { return plan != nullptr && !diagnostic.has_value(); }
+  static CompileResult Success(protocol_plan::PlanOwner plan) {
+    if (!plan) {
+      return Failure(CompileDiagnostic{CompileStage::INTERNAL,
+                                       CompileError::INTERNAL_CONTRACT_VIOLATION, "", std::nullopt,
+                                       "compiler success result has no plan"});
+    }
+    return CompileResult{std::move(plan)};
+  }
+  static CompileResult Failure(CompileDiagnostic diagnostic) {
+    return CompileResult{std::move(diagnostic)};
+  }
+
+  bool Succeeded() const noexcept { return static_cast<bool>(plan_); }
+  const PlanBundle* Plan() const noexcept { return plan_.get(); }
+  const CompileDiagnostic* Diagnostic() const noexcept {
+    return diagnostic_.has_value() ? &*diagnostic_ : nullptr;
+  }
+  protocol_plan::PlanOwner TakePlan() && noexcept { return std::move(plan_); }
+
+ private:
+  explicit CompileResult(protocol_plan::PlanOwner plan) noexcept : plan_(std::move(plan)) {}
+  explicit CompileResult(CompileDiagnostic diagnostic) : diagnostic_(std::move(diagnostic)) {}
+
+  protocol_plan::PlanOwner plan_;
+  std::optional<CompileDiagnostic> diagnostic_;
 };
 
 // Internal V0.1 vertical slice. This is deliberately not installed or exported.

@@ -10,6 +10,22 @@
 #include "plan_bundle.h"
 
 namespace pae::protocol_plan {
+class BudgetedPlanDraft;
+
+namespace test_only {
+class PlanBuilderTestPeer;
+}
+}  // namespace pae::protocol_plan
+
+namespace pae::config_compiler {
+class PlanDraftAssembler;
+}
+
+namespace pae::protocol_plan {
+
+namespace detail {
+struct PlanDraftData;
+}
 
 inline constexpr std::size_t kInvalidPlanBuildIndex = (std::numeric_limits<std::size_t>::max)();
 
@@ -25,6 +41,8 @@ enum class PlanBuildError {
   INVALID_FIELD_PLAN,
   FRAME_NOT_FULLY_DEFINED,
   AMBIGUOUS_MATCHER,
+  PLAN_MEMORY_LIMIT_EXCEEDED,
+  PLAN_MEMORY_ESTIMATE_MISMATCH,
   ALLOCATION_FAILED,
   INTERNAL_ERROR,
 };
@@ -36,32 +54,72 @@ struct PlanBuildDiagnostic {
   std::size_t message_index = kInvalidPlanBuildIndex;
   std::size_t matcher_index = kInvalidPlanBuildIndex;
   std::size_t field_index = kInvalidPlanBuildIndex;
-};
-
-struct PlanDraft {
-  std::string schema_version;
-  std::string protocol_id;
-  std::string protocol_version;
+  std::size_t required_bytes = 0U;
+  std::size_t limit_bytes = 0U;
   ResourceProfile resource_profile = ResourceProfile::DESKTOP;
-  ResourceRequirements resource_requirements;
-  std::vector<FramingPlan> framing_profiles;
-  std::vector<PipelinePlan> pipelines;
-  std::vector<MessagePlan> messages;
 };
 
-struct PlanBuildResult {
-  std::unique_ptr<const PlanBundle> plan;
-  std::optional<PlanBuildDiagnostic> diagnostic;
+// A move-only capability minted only after domain validation and resource-budget validation.
+// The raw PlanDraft payload is intentionally hidden from the production PlanBuilder API.
+class BudgetedPlanDraft final {
+ public:
+  BudgetedPlanDraft() = delete;
+  BudgetedPlanDraft(const BudgetedPlanDraft&) = delete;
+  BudgetedPlanDraft& operator=(const BudgetedPlanDraft&) = delete;
+  BudgetedPlanDraft(BudgetedPlanDraft&& other) noexcept;
+  BudgetedPlanDraft& operator=(BudgetedPlanDraft&& other) noexcept;
+  ~BudgetedPlanDraft();
 
-  bool Succeeded() const noexcept { return plan != nullptr && !diagnostic.has_value(); }
+ private:
+  explicit BudgetedPlanDraft(std::unique_ptr<detail::PlanDraftData> draft) noexcept;
+
+  friend class pae::config_compiler::PlanDraftAssembler;
+  friend class PlanBuilder;
+  friend class test_only::PlanBuilderTestPeer;
+
+  std::unique_ptr<detail::PlanDraftData> draft_;
+};
+
+class PlanBuildResult final {
+ public:
+  PlanBuildResult() = delete;
+  PlanBuildResult(const PlanBuildResult&) = delete;
+  PlanBuildResult& operator=(const PlanBuildResult&) = delete;
+  PlanBuildResult(PlanBuildResult&&) noexcept = default;
+  PlanBuildResult& operator=(PlanBuildResult&&) noexcept = default;
+  ~PlanBuildResult() = default;
+
+  static PlanBuildResult Success(PlanOwner plan) noexcept {
+    if (!plan) {
+      return Failure(PlanBuildDiagnostic{PlanBuildError::INTERNAL_ERROR});
+    }
+    return PlanBuildResult{std::move(plan)};
+  }
+  static PlanBuildResult Failure(PlanBuildDiagnostic diagnostic) {
+    return PlanBuildResult{std::move(diagnostic)};
+  }
+
+  bool Succeeded() const noexcept { return static_cast<bool>(plan_); }
+  const PlanBundle* Plan() const noexcept { return plan_.get(); }
+  const PlanBuildDiagnostic* Diagnostic() const noexcept {
+    return diagnostic_.has_value() ? &*diagnostic_ : nullptr;
+  }
+  PlanOwner TakePlan() && noexcept { return std::move(plan_); }
+
+ private:
+  explicit PlanBuildResult(PlanOwner plan) noexcept : plan_(std::move(plan)) {}
+  explicit PlanBuildResult(PlanBuildDiagnostic diagnostic) : diagnostic_(std::move(diagnostic)) {}
+
+  PlanOwner plan_;
+  std::optional<PlanBuildDiagnostic> diagnostic_;
 };
 
 class PlanBuilder final {
  public:
-  [[nodiscard]] static PlanBuildResult Freeze(PlanDraft draft) noexcept;
+  [[nodiscard]] static PlanBuildResult Freeze(BudgetedPlanDraft draft) noexcept;
 
  private:
-  static PlanBuildResult FreezeImpl(PlanDraft draft);
+  static PlanBuildResult FreezeImpl(detail::PlanDraftData draft);
 };
 
 }  // namespace pae::protocol_plan

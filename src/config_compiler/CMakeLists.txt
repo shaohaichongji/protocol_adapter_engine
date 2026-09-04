@@ -9,6 +9,7 @@ add_library(
         config_compiler.h
         plan_snapshot.cpp
         schema_ir.h
+        validation_pipeline_internal.h
 )
 
 target_include_directories(

@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cstdint>
+#include <cstring>
 #include <limits>
 #include <map>
 #include <new>
@@ -9,6 +10,8 @@
 #include <unordered_set>
 #include <utility>
 #include <vector>
+
+#include "plan_draft_internal.h"
 
 namespace pae::protocol_plan {
 namespace {
@@ -27,10 +30,18 @@ PlanBuildResult Reject(PlanBuildError code, std::size_t framing_index = kInvalid
                        std::size_t message_index = kInvalidPlanBuildIndex,
                        std::size_t matcher_index = kInvalidPlanBuildIndex,
                        std::size_t field_index = kInvalidPlanBuildIndex) noexcept {
-  PlanBuildResult result;
-  result.diagnostic = PlanBuildDiagnostic{code,          framing_index, pipeline_index,
-                                          message_index, matcher_index, field_index};
-  return result;
+  return PlanBuildResult::Failure(PlanBuildDiagnostic{code, framing_index, pipeline_index,
+                                                      message_index, matcher_index, field_index});
+}
+
+PlanBuildResult RejectMemory(PlanBuildError code, std::size_t required_bytes,
+                             std::size_t limit_bytes, ResourceProfile profile) noexcept {
+  PlanBuildDiagnostic diagnostic;
+  diagnostic.code = code;
+  diagnostic.required_bytes = required_bytes;
+  diagnostic.limit_bytes = limit_bytes;
+  diagnostic.resource_profile = profile;
+  return PlanBuildResult::Failure(diagnostic);
 }
 
 bool AddSizeChecked(std::size_t value, std::size_t& total) noexcept {
@@ -133,8 +144,8 @@ bool CoversWholeFrame(std::vector<ByteInterval>& intervals, std::size_t frame_si
   return covered_end == frame_size;
 }
 
-bool FixedMatchersCanIntersect(const MessageExecutionPlan& left,
-                               const MessageExecutionPlan& right) noexcept {
+bool FixedMatchersCanIntersect(const detail::PreparedMessageExecutionPlan& left,
+                               const detail::PreparedMessageExecutionPlan& right) noexcept {
   if (left.frame_size != right.frame_size) {
     return false;
   }
@@ -158,9 +169,173 @@ bool FixedMatchersCanIntersect(const MessageExecutionPlan& left,
   return true;
 }
 
+bool AddStringLayout(PlanMemoryLayout& layout, std::string_view value) noexcept {
+  return value.empty() || layout.AddArray<char>(value.size(), PlanMemoryCategory::STRING, nullptr);
+}
+
+bool EstimatePreparedPlanMemory(
+    const detail::PlanDraftData& draft,
+    const std::vector<detail::PreparedMessageExecutionPlan>& message_execution_plans,
+    const std::vector<detail::PreparedPipelineExecutionPlan>& pipeline_execution_plans,
+    std::size_t limit_bytes, PlanMemoryReport& output) noexcept {
+  PlanMemoryLayout layout{limit_bytes};
+  if (!layout.AddArray<PlanBundle>(1U, PlanMemoryCategory::OBJECT) ||
+      !AddStringLayout(layout, draft.schema_version) ||
+      !AddStringLayout(layout, draft.protocol_id) ||
+      !AddStringLayout(layout, draft.protocol_version) ||
+      !layout.AddArray<FrozenFramingPlan>(draft.framing_profiles.size(),
+                                          PlanMemoryCategory::METADATA_CONTAINER)) {
+    return false;
+  }
+  for (const FramingPlan& framing : draft.framing_profiles) {
+    if (!AddStringLayout(layout, framing.id)) {
+      return false;
+    }
+  }
+  if (!layout.AddArray<FrozenPipelinePlan>(draft.pipelines.size(),
+                                           PlanMemoryCategory::METADATA_CONTAINER)) {
+    return false;
+  }
+  for (const PipelinePlan& pipeline : draft.pipelines) {
+    if (!AddStringLayout(layout, pipeline.id) || !AddStringLayout(layout, pipeline.direction_id) ||
+        !layout.AddArray<std::size_t>(pipeline.message_indices.size(),
+                                      PlanMemoryCategory::METADATA_CONTAINER)) {
+      return false;
+    }
+  }
+  if (!layout.AddArray<FrozenMessagePlan>(draft.messages.size(),
+                                          PlanMemoryCategory::METADATA_CONTAINER)) {
+    return false;
+  }
+  for (const MessagePlan& message : draft.messages) {
+    if (!AddStringLayout(layout, message.id) || !AddStringLayout(layout, message.direction_id) ||
+        !layout.AddArray<FrozenMatcherPlan>(message.matchers.size(),
+                                            PlanMemoryCategory::METADATA_CONTAINER)) {
+      return false;
+    }
+    for (const MatcherPlan& matcher : message.matchers) {
+      if (!layout.AddArray<std::uint8_t>(matcher.bytes.size(), PlanMemoryCategory::MATCHER)) {
+        return false;
+      }
+    }
+    if (!layout.AddArray<FrozenFieldPlan>(message.fields.size(),
+                                          PlanMemoryCategory::METADATA_CONTAINER)) {
+      return false;
+    }
+    for (const FieldPlan& field : message.fields) {
+      if (!AddStringLayout(layout, field.id) ||
+          !layout.AddArray<FrozenEnumEntryPlan>(field.enum_entries.size(),
+                                                PlanMemoryCategory::METADATA_CONTAINER)) {
+        return false;
+      }
+      for (const EnumEntryPlan& entry : field.enum_entries) {
+        if (!AddStringLayout(layout, entry.id)) {
+          return false;
+        }
+      }
+    }
+  }
+  if (!layout.AddArray<MessageExecutionPlan>(message_execution_plans.size(),
+                                             PlanMemoryCategory::EXECUTION_DESCRIPTOR)) {
+    return false;
+  }
+  for (const detail::PreparedMessageExecutionPlan& message : message_execution_plans) {
+    if (!layout.AddArray<FixedByteExecutionPlan>(message.fixed_bytes.size(),
+                                                 PlanMemoryCategory::MATCHER) ||
+        !layout.AddArray<FieldExecutionPlan>(message.fields.size(),
+                                             PlanMemoryCategory::EXECUTION_DESCRIPTOR) ||
+        !layout.AddArray<std::uint64_t>(message.enum_raw_values.size(),
+                                        PlanMemoryCategory::INDEX) ||
+        !layout.AddArray<EnumLookupExecutionPlan>(message.enum_lookup_entries.size(),
+                                                  PlanMemoryCategory::INDEX)) {
+      return false;
+    }
+  }
+  if (!layout.AddArray<PipelineExecutionPlan>(pipeline_execution_plans.size(),
+                                              PlanMemoryCategory::EXECUTION_DESCRIPTOR)) {
+    return false;
+  }
+  for (const detail::PreparedPipelineExecutionPlan& pipeline : pipeline_execution_plans) {
+    if (!layout.AddArray<std::uint64_t>(pipeline.allowed_message_words.size(),
+                                        PlanMemoryCategory::INDEX) ||
+        !layout.AddArray<CandidateGroupExecutionPlan>(pipeline.candidate_groups.size(),
+                                                      PlanMemoryCategory::EXECUTION_DESCRIPTOR)) {
+      return false;
+    }
+    for (const detail::PreparedCandidateGroupExecutionPlan& group : pipeline.candidate_groups) {
+      if (!layout.AddArray<std::size_t>(group.message_indices.size(), PlanMemoryCategory::INDEX)) {
+        return false;
+      }
+    }
+  }
+  output = layout.Report();
+  return true;
+}
+
+bool FreezeString(PlanArena& arena, std::string_view source, FrozenString& output) noexcept {
+  if (source.empty()) {
+    output = FrozenString{};
+    return true;
+  }
+  char* destination = arena.AllocateArray<char>(source.size(), PlanMemoryCategory::STRING);
+  if (destination == nullptr) {
+    return false;
+  }
+  std::memcpy(destination, source.data(), source.size());
+  output = FrozenString{destination, source.size()};
+  return true;
+}
+
+template <typename T, typename Factory>
+bool FreezeObjectArray(PlanArena& arena, std::size_t count, PlanMemoryCategory category,
+                       Factory&& factory, FrozenArray<T>& output) {
+  if (count == 0U) {
+    output = FrozenArray<T>{};
+    return true;
+  }
+  T* destination = arena.AllocateArray<T>(count, category);
+  if (destination == nullptr) {
+    return false;
+  }
+  std::size_t constructed = 0U;
+  for (; constructed < count; ++constructed) {
+    T value;
+    if (!factory(constructed, value)) {
+      for (std::size_t rollback = constructed; rollback != 0U; --rollback) {
+        destination[rollback - 1U].~T();
+      }
+      return false;
+    }
+    new (destination + constructed) T(std::move(value));
+  }
+  output = FrozenArray<T>::Adopt(destination, count);
+  return true;
+}
+
+template <typename T>
+bool FreezePodArray(PlanArena& arena, const std::vector<T>& source, PlanMemoryCategory category,
+                    FrozenArray<T>& output) {
+  return FreezeObjectArray<T>(
+      arena, source.size(), category,
+      [&source](std::size_t index, T& value) {
+        value = source[index];
+        return true;
+      },
+      output);
+}
+
 }  // namespace
 
-PlanBuildResult PlanBuilder::FreezeImpl(PlanDraft draft) {
+BudgetedPlanDraft::BudgetedPlanDraft(std::unique_ptr<detail::PlanDraftData> draft) noexcept
+    : draft_(std::move(draft)) {}
+
+BudgetedPlanDraft::BudgetedPlanDraft(BudgetedPlanDraft&& other) noexcept = default;
+
+BudgetedPlanDraft& BudgetedPlanDraft::operator=(BudgetedPlanDraft&& other) noexcept = default;
+
+BudgetedPlanDraft::~BudgetedPlanDraft() = default;
+
+PlanBuildResult PlanBuilder::FreezeImpl(detail::PlanDraftData draft) {
   const ResourceProfileLimits* limits = GetResourceProfileLimits(draft.resource_profile);
   if (draft.schema_version != "0.1" || !IsStableId(draft.protocol_id) ||
       draft.protocol_version.empty() || limits == nullptr || draft.framing_profiles.empty() ||
@@ -217,7 +392,7 @@ PlanBuildResult PlanBuilder::FreezeImpl(PlanDraft draft) {
   }
 
   ExecutionResourceLayout execution_resource_layout;
-  std::vector<MessageExecutionPlan> message_execution_plans;
+  std::vector<detail::PreparedMessageExecutionPlan> message_execution_plans;
   message_execution_plans.reserve(draft.messages.size());
   std::unordered_set<std::string> message_ids;
   message_ids.reserve(draft.messages.size());
@@ -235,7 +410,7 @@ PlanBuildResult PlanBuilder::FreezeImpl(PlanDraft draft) {
     execution_resource_layout.max_fields_per_message =
         (std::max)(execution_resource_layout.max_fields_per_message, message.fields.size());
 
-    MessageExecutionPlan execution;
+    detail::PreparedMessageExecutionPlan execution;
     execution.frame_size = frame_size;
     execution.fields.reserve(message.fields.size());
     std::unordered_set<std::string> field_ids;
@@ -427,7 +602,7 @@ PlanBuildResult PlanBuilder::FreezeImpl(PlanDraft draft) {
 
   std::unordered_set<std::string> pipeline_ids;
   pipeline_ids.reserve(draft.pipelines.size());
-  std::vector<PipelineExecutionPlan> pipeline_execution_plans;
+  std::vector<detail::PreparedPipelineExecutionPlan> pipeline_execution_plans;
   pipeline_execution_plans.reserve(draft.pipelines.size());
   const std::size_t allowed_word_count =
       draft.messages.size() / kBitsPerAllowedMessageWord +
@@ -441,7 +616,7 @@ PlanBuildResult PlanBuilder::FreezeImpl(PlanDraft draft) {
             InputKind::COMPLETE_RECORD) {
       return Reject(PlanBuildError::INVALID_PIPELINE_PLAN, kInvalidPlanBuildIndex, pipeline_index);
     }
-    PipelineExecutionPlan execution;
+    detail::PreparedPipelineExecutionPlan execution;
     execution.framing_profile_index = pipeline.framing_profile_index;
     execution.allowed_message_words.assign(allowed_word_count, 0U);
     std::map<std::size_t, std::vector<std::size_t>> candidate_groups;
@@ -474,24 +649,197 @@ PlanBuildResult PlanBuilder::FreezeImpl(PlanDraft draft) {
     execution.candidate_groups.reserve(candidate_groups.size());
     for (auto& [frame_size, message_indices] : candidate_groups) {
       execution.candidate_groups.push_back(
-          CandidateGroupExecutionPlan{frame_size, std::move(message_indices)});
+          detail::PreparedCandidateGroupExecutionPlan{frame_size, std::move(message_indices)});
     }
     pipeline_execution_plans.push_back(std::move(execution));
   }
 
-  PlanBuildResult result;
-  result.plan = std::unique_ptr<const PlanBundle>(
-      new PlanBundle(std::move(draft.schema_version), std::move(draft.protocol_id),
-                     std::move(draft.protocol_version), draft.resource_profile, actual_requirements,
-                     std::move(draft.framing_profiles), std::move(draft.pipelines),
-                     std::move(draft.messages), execution_resource_layout,
-                     std::move(message_execution_plans), std::move(pipeline_execution_plans)));
-  return result;
+  const std::size_t effective_plan_memory_limit =
+      draft.plan_memory_limit_bytes == 0U
+          ? (std::min)(limits->max_plan_memory_bytes, kV01MaxPlanMemoryHardLimit)
+          : (std::min)(draft.plan_memory_limit_bytes, kV01MaxPlanMemoryHardLimit);
+  PlanMemoryReport exact_estimate;
+  if (!EstimatePreparedPlanMemory(draft, message_execution_plans, pipeline_execution_plans,
+                                  (std::numeric_limits<std::size_t>::max)(), exact_estimate)) {
+    return RejectMemory(PlanBuildError::PLAN_MEMORY_LIMIT_EXCEEDED,
+                        (std::numeric_limits<std::size_t>::max)(), effective_plan_memory_limit,
+                        draft.resource_profile);
+  }
+  if (exact_estimate.accounted_total_bytes > effective_plan_memory_limit) {
+    return RejectMemory(PlanBuildError::PLAN_MEMORY_LIMIT_EXCEEDED,
+                        exact_estimate.accounted_total_bytes, effective_plan_memory_limit,
+                        draft.resource_profile);
+  }
+  if (!PlanMemoryReportsEqual(draft.approved_plan_memory, exact_estimate)) {
+    return RejectMemory(PlanBuildError::PLAN_MEMORY_ESTIMATE_MISMATCH,
+                        exact_estimate.accounted_total_bytes,
+                        draft.approved_plan_memory.accounted_total_bytes, draft.resource_profile);
+  }
+
+  PlanStorageBlock storage =
+      PlanStorageBlock::Allocate(exact_estimate.accounted_total_bytes,
+                                 draft.test_fail_at_allocation == 1U, draft.test_memory_probe);
+  if (!storage) {
+    return Reject(PlanBuildError::ALLOCATION_FAILED);
+  }
+  PlanArena arena{storage.Data(), storage.Size(), draft.test_fail_at_allocation};
+  PlanBundle* plan_storage = arena.AllocateArray<PlanBundle>(1U, PlanMemoryCategory::OBJECT);
+  if (plan_storage == nullptr) {
+    return Reject(PlanBuildError::ALLOCATION_FAILED);
+  }
+
+  FrozenString schema_version;
+  FrozenString protocol_id;
+  FrozenString protocol_version;
+  if (!FreezeString(arena, draft.schema_version, schema_version) ||
+      !FreezeString(arena, draft.protocol_id, protocol_id) ||
+      !FreezeString(arena, draft.protocol_version, protocol_version)) {
+    return Reject(PlanBuildError::ALLOCATION_FAILED);
+  }
+
+  FrozenArray<FrozenFramingPlan> frozen_framings;
+  if (!FreezeObjectArray<FrozenFramingPlan>(
+          arena, draft.framing_profiles.size(), PlanMemoryCategory::METADATA_CONTAINER,
+          [&arena, &draft](std::size_t index, FrozenFramingPlan& output) {
+            output.input_kind = draft.framing_profiles[index].input_kind;
+            return FreezeString(arena, draft.framing_profiles[index].id, output.id);
+          },
+          frozen_framings)) {
+    return Reject(PlanBuildError::ALLOCATION_FAILED);
+  }
+
+  FrozenArray<FrozenPipelinePlan> frozen_pipelines;
+  if (!FreezeObjectArray<FrozenPipelinePlan>(
+          arena, draft.pipelines.size(), PlanMemoryCategory::METADATA_CONTAINER,
+          [&arena, &draft](std::size_t index, FrozenPipelinePlan& output) {
+            const PipelinePlan& source = draft.pipelines[index];
+            output.framing_profile_index = source.framing_profile_index;
+            return FreezeString(arena, source.id, output.id) &&
+                   FreezeString(arena, source.direction_id, output.direction_id) &&
+                   FreezePodArray(arena, source.message_indices,
+                                  PlanMemoryCategory::METADATA_CONTAINER, output.message_indices);
+          },
+          frozen_pipelines)) {
+    return Reject(PlanBuildError::ALLOCATION_FAILED);
+  }
+
+  FrozenArray<FrozenMessagePlan> frozen_messages;
+  if (!FreezeObjectArray<FrozenMessagePlan>(
+          arena, draft.messages.size(), PlanMemoryCategory::METADATA_CONTAINER,
+          [&arena, &draft](std::size_t message_index, FrozenMessagePlan& output) {
+            const MessagePlan& source = draft.messages[message_index];
+            output.frame_length_bytes = source.frame_length_bytes;
+            if (!FreezeString(arena, source.id, output.id) ||
+                !FreezeString(arena, source.direction_id, output.direction_id) ||
+                !FreezeObjectArray<FrozenMatcherPlan>(
+                    arena, source.matchers.size(), PlanMemoryCategory::METADATA_CONTAINER,
+                    [&arena, &source](std::size_t matcher_index, FrozenMatcherPlan& matcher) {
+                      const MatcherPlan& matcher_source = source.matchers[matcher_index];
+                      matcher.kind = matcher_source.kind;
+                      matcher.length_bytes = matcher_source.length_bytes;
+                      matcher.byte_offset = matcher_source.byte_offset;
+                      return FreezePodArray(arena, matcher_source.bytes,
+                                            PlanMemoryCategory::MATCHER, matcher.bytes);
+                    },
+                    output.matchers)) {
+              return false;
+            }
+            return FreezeObjectArray<FrozenFieldPlan>(
+                arena, source.fields.size(), PlanMemoryCategory::METADATA_CONTAINER,
+                [&arena, &source](std::size_t field_index, FrozenFieldPlan& field) {
+                  const FieldPlan& field_source = source.fields[field_index];
+                  field.value_type = field_source.value_type;
+                  field.wire_codec = field_source.wire_codec;
+                  field.byte_offset = field_source.byte_offset;
+                  field.byte_width = field_source.byte_width;
+                  field.byte_order = field_source.byte_order;
+                  field.encode_source = field_source.encode_source;
+                  field.constant_value = field_source.constant_value;
+                  field.unknown_enum_policy = field_source.unknown_enum_policy;
+                  if (!FreezeString(arena, field_source.id, field.id)) {
+                    return false;
+                  }
+                  return FreezeObjectArray<FrozenEnumEntryPlan>(
+                      arena, field_source.enum_entries.size(),
+                      PlanMemoryCategory::METADATA_CONTAINER,
+                      [&arena, &field_source](std::size_t entry_index, FrozenEnumEntryPlan& entry) {
+                        entry.raw_value = field_source.enum_entries[entry_index].raw_value;
+                        return FreezeString(arena, field_source.enum_entries[entry_index].id,
+                                            entry.id);
+                      },
+                      field.enum_entries);
+                },
+                output.fields);
+          },
+          frozen_messages)) {
+    return Reject(PlanBuildError::ALLOCATION_FAILED);
+  }
+
+  FrozenArray<MessageExecutionPlan> frozen_message_execution;
+  if (!FreezeObjectArray<MessageExecutionPlan>(
+          arena, message_execution_plans.size(), PlanMemoryCategory::EXECUTION_DESCRIPTOR,
+          [&arena, &message_execution_plans](std::size_t index, MessageExecutionPlan& output) {
+            const detail::PreparedMessageExecutionPlan& source = message_execution_plans[index];
+            output.frame_size = source.frame_size;
+            output.required_input_count = source.required_input_count;
+            return FreezePodArray(arena, source.fixed_bytes, PlanMemoryCategory::MATCHER,
+                                  output.fixed_bytes) &&
+                   FreezePodArray(arena, source.fields, PlanMemoryCategory::EXECUTION_DESCRIPTOR,
+                                  output.fields) &&
+                   FreezePodArray(arena, source.enum_raw_values, PlanMemoryCategory::INDEX,
+                                  output.enum_raw_values) &&
+                   FreezePodArray(arena, source.enum_lookup_entries, PlanMemoryCategory::INDEX,
+                                  output.enum_lookup_entries);
+          },
+          frozen_message_execution)) {
+    return Reject(PlanBuildError::ALLOCATION_FAILED);
+  }
+
+  FrozenArray<PipelineExecutionPlan> frozen_pipeline_execution;
+  if (!FreezeObjectArray<PipelineExecutionPlan>(
+          arena, pipeline_execution_plans.size(), PlanMemoryCategory::EXECUTION_DESCRIPTOR,
+          [&arena, &pipeline_execution_plans](std::size_t index, PipelineExecutionPlan& output) {
+            const detail::PreparedPipelineExecutionPlan& source = pipeline_execution_plans[index];
+            output.framing_profile_index = source.framing_profile_index;
+            if (!FreezePodArray(arena, source.allowed_message_words, PlanMemoryCategory::INDEX,
+                                output.allowed_message_words)) {
+              return false;
+            }
+            return FreezeObjectArray<CandidateGroupExecutionPlan>(
+                arena, source.candidate_groups.size(), PlanMemoryCategory::EXECUTION_DESCRIPTOR,
+                [&arena, &source](std::size_t group_index, CandidateGroupExecutionPlan& group) {
+                  group.frame_size = source.candidate_groups[group_index].frame_size;
+                  return FreezePodArray(arena, source.candidate_groups[group_index].message_indices,
+                                        PlanMemoryCategory::INDEX, group.message_indices);
+                },
+                output.candidate_groups);
+          },
+          frozen_pipeline_execution)) {
+    return Reject(PlanBuildError::ALLOCATION_FAILED);
+  }
+
+  const PlanMemoryReport final_report = arena.Report();
+  if (!PlanMemoryReportsEqual(exact_estimate, final_report) ||
+      final_report.accounted_total_bytes != storage.Size()) {
+    return RejectMemory(PlanBuildError::PLAN_MEMORY_ESTIMATE_MISMATCH,
+                        final_report.accounted_total_bytes, exact_estimate.accounted_total_bytes,
+                        draft.resource_profile);
+  }
+  PlanBundle* plan = new (plan_storage) PlanBundle(
+      schema_version, protocol_id, protocol_version, draft.resource_profile, actual_requirements,
+      std::move(frozen_framings), std::move(frozen_pipelines), std::move(frozen_messages),
+      execution_resource_layout, std::move(frozen_message_execution),
+      std::move(frozen_pipeline_execution), final_report);
+  return PlanBuildResult::Success(PlanOwner{std::move(storage), plan});
 }
 
-PlanBuildResult PlanBuilder::Freeze(PlanDraft draft) noexcept {
+PlanBuildResult PlanBuilder::Freeze(BudgetedPlanDraft draft) noexcept {
   try {
-    return FreezeImpl(std::move(draft));
+    if (draft.draft_ == nullptr) {
+      return Reject(PlanBuildError::INTERNAL_ERROR);
+    }
+    std::unique_ptr<detail::PlanDraftData> raw_draft = std::move(draft.draft_);
+    return FreezeImpl(std::move(*raw_draft));
   } catch (const std::bad_alloc&) {
     return Reject(PlanBuildError::ALLOCATION_FAILED);
   } catch (...) {

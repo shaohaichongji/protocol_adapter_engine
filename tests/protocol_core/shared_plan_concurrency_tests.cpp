@@ -13,10 +13,11 @@
 #include <vector>
 
 #include "complete_record_codec.h"
-#include "plan_builder.h"
+#include "test_plan_factory.h"
 
 namespace {
 
+using pae::config_compiler::CompileResult;
 using pae::protocol_core::ByteView;
 using pae::protocol_core::CodecStatus;
 using pae::protocol_core::DecodeCompleteRecord;
@@ -36,13 +37,10 @@ using pae::protocol_plan::MatcherKind;
 using pae::protocol_plan::MatcherPlan;
 using pae::protocol_plan::MessagePlan;
 using pae::protocol_plan::PipelinePlan;
-using pae::protocol_plan::PlanBuilder;
-using pae::protocol_plan::PlanBuildResult;
-using pae::protocol_plan::PlanDraft;
 using pae::protocol_plan::ResourceProfile;
-using pae::protocol_plan::ResourceRequirements;
 using pae::protocol_plan::ValueType;
 using pae::protocol_plan::WireCodec;
+using pae::test_support::CompileTestPlan;
 
 constexpr std::size_t kThreadCount = 4U;
 constexpr std::size_t kIterationsPerThread = 4096U;
@@ -78,7 +76,7 @@ class CyclicBarrier final {
   std::size_t generation_ = 0U;
 };
 
-PlanBuildResult BuildPlan() {
+CompileResult BuildPlan() {
   MessagePlan message;
   message.id = "shared_message";
   message.direction_id = "shared_direction";
@@ -122,19 +120,12 @@ PlanBuildResult BuildPlan() {
   pipeline.framing_profile_index = 0U;
   pipeline.message_indices.push_back(0U);
 
-  PlanDraft draft;
-  draft.schema_version = "0.1";
-  draft.protocol_id = "shared_plan_protocol";
-  draft.protocol_version = "1";
-  draft.resource_profile = ResourceProfile::DESKTOP;
-  draft.resource_requirements = ResourceRequirements{2U, 1U, 1U, 1U, 2U, 2U, 0U};
-  draft.framing_profiles.push_back(FramingPlan{"complete_record", InputKind::COMPLETE_RECORD});
-  draft.pipelines.push_back(std::move(pipeline));
-  draft.messages.push_back(std::move(message));
-  return PlanBuilder::Freeze(std::move(draft));
+  return CompileTestPlan("shared_plan_protocol", ResourceProfile::DESKTOP,
+                         {FramingPlan{"complete_record", InputKind::COMPLETE_RECORD}},
+                         {std::move(pipeline)}, {std::move(message)});
 }
 
-PlanBuildResult BuildBusyPlan() {
+CompileResult BuildBusyPlan() {
   MessagePlan message;
   message.id = "busy_message";
   message.direction_id = "busy_direction";
@@ -164,17 +155,9 @@ PlanBuildResult BuildBusyPlan() {
   pipeline.framing_profile_index = 0U;
   pipeline.message_indices.push_back(0U);
 
-  PlanDraft draft;
-  draft.schema_version = "0.1";
-  draft.protocol_id = "shared_workspace_protocol";
-  draft.protocol_version = "1";
-  draft.resource_profile = ResourceProfile::DESKTOP;
-  draft.resource_requirements =
-      ResourceRequirements{kBusyFieldCount, 1U, 1U, 1U, kBusyFieldCount, 1U, 0U};
-  draft.framing_profiles.push_back(FramingPlan{"complete_record", InputKind::COMPLETE_RECORD});
-  draft.pipelines.push_back(std::move(pipeline));
-  draft.messages.push_back(std::move(message));
-  return PlanBuilder::Freeze(std::move(draft));
+  return CompileTestPlan("shared_workspace_protocol", ResourceProfile::DESKTOP,
+                         {FramingPlan{"complete_record", InputKind::COMPLETE_RECORD}},
+                         {std::move(pipeline)}, {std::move(message)});
 }
 
 bool RunWorker(const pae::protocol_plan::PlanBundle& plan, std::size_t thread_index,
@@ -236,7 +219,7 @@ bool RunWorker(const pae::protocol_plan::PlanBundle& plan, std::size_t thread_in
 }
 
 bool RunSharedPlanStress() {
-  PlanBuildResult frozen = BuildPlan();
+  CompileResult frozen = BuildPlan();
   if (!frozen.Succeeded()) {
     return false;
   }
@@ -251,7 +234,7 @@ bool RunSharedPlanStress() {
   workers.reserve(kThreadCount);
   for (std::size_t thread_index = 0U; thread_index < kThreadCount; ++thread_index) {
     workers.emplace_back([&, thread_index] {
-      worker_results[thread_index] = RunWorker(*frozen.plan, thread_index, start_mutex,
+      worker_results[thread_index] = RunWorker(*frozen.Plan(), thread_index, start_mutex,
                                                start_condition, ready_count, start, failed);
     });
   }
@@ -272,12 +255,12 @@ bool RunSharedPlanStress() {
 }
 
 bool RunSharedWorkspaceBusyStress() {
-  PlanBuildResult frozen = BuildBusyPlan();
+  CompileResult frozen = BuildBusyPlan();
   if (!frozen.Succeeded()) {
     return false;
   }
 
-  ExecutionWorkspace shared_workspace{*frozen.plan};
+  ExecutionWorkspace shared_workspace{*frozen.Plan()};
   CyclicBarrier barrier{kThreadCount};
   std::atomic<std::size_t> busy_count{0U};
   std::atomic<std::size_t> success_count{0U};
@@ -291,7 +274,7 @@ bool RunSharedWorkspaceBusyStress() {
       std::vector<std::uint8_t> output(kBusyFieldCount, 0xCCU);
       for (std::size_t field_index = 0U; field_index < kBusyFieldCount; ++field_index) {
         const auto value = static_cast<std::uint8_t>((thread_index + field_index) & 0xFFU);
-        values[field_index].field = FieldRef{frozen.plan.get(), 0U, field_index};
+        values[field_index].field = FieldRef{frozen.Plan(), 0U, field_index};
         values[field_index].value_kind = LogicalValueKind::UINT64;
         values[field_index].uint64_value = value;
         expected[field_index] = value;
@@ -301,7 +284,7 @@ bool RunSharedWorkspaceBusyStress() {
         std::fill(output.begin(), output.end(), std::uint8_t{0xCCU});
         barrier.Wait();
         const auto result =
-            EncodeCompleteRecord(*frozen.plan, shared_workspace, 0U, 0U, values.data(),
+            EncodeCompleteRecord(*frozen.Plan(), shared_workspace, 0U, 0U, values.data(),
                                  values.size(), MutableByteBuffer{output.data(), output.size()});
         if (result.status == CodecStatus::WORKSPACE_BUSY) {
           busy_count.fetch_add(1U, std::memory_order_relaxed);

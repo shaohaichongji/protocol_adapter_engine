@@ -8,6 +8,7 @@
 #include <cstdint>
 #include <initializer_list>
 #include <limits>
+#include <map>
 #include <memory>
 #include <new>
 #include <optional>
@@ -20,9 +21,13 @@
 
 #include "../protocol_plan/plan_builder.h"
 #include "../protocol_plan/plan_bundle.h"
+#include "../protocol_plan/plan_draft_internal.h"
+#include "../protocol_plan/plan_memory.h"
 #include "schema_ir.h"
+#include "validation_pipeline_internal.h"
 
 namespace pae::config_compiler {
+
 namespace {
 
 constexpr yyjson_read_flag kReadFlags = YYJSON_READ_NUMBER_AS_RAW;
@@ -53,10 +58,8 @@ using DocumentPtr = std::unique_ptr<yyjson_doc, DocumentDeleter>;
 
 CompileResult Reject(CompileStage stage, CompileError code, std::string json_pointer,
                      std::string detail, std::optional<std::size_t> byte_offset = std::nullopt) {
-  CompileResult result;
-  result.diagnostic =
-      CompileDiagnostic{stage, code, std::move(json_pointer), byte_offset, std::move(detail)};
-  return result;
+  return CompileResult::Failure(
+      CompileDiagnostic{stage, code, std::move(json_pointer), byte_offset, std::move(detail)});
 }
 
 bool SetDiagnostic(CompileDiagnostic& diagnostic, CompileStage stage, CompileError code,
@@ -1375,7 +1378,10 @@ bool ValidateMessageDomain(MessageIr& message, ResourceRequirements& requirement
   return true;
 }
 
-bool ValidateDomain(SchemaIr schema, ValidatedSchemaIr& output, CompileDiagnostic& diagnostic) {
+}  // namespace
+
+DomainValidationResult DomainValidator::Validate(SchemaIr schema) {
+  CompileDiagnostic diagnostic;
   std::unordered_map<std::string, std::size_t> framing_index;
   std::unordered_map<std::string, std::size_t> pipeline_index;
   std::unordered_map<std::string, std::size_t> message_index;
@@ -1393,7 +1399,7 @@ bool ValidateDomain(SchemaIr schema, ValidatedSchemaIr& output, CompileDiagnosti
           schema.messages, message_index,
           [](const MessageIr& item) -> const std::string& { return item.origin.json_pointer; },
           diagnostic)) {
-    return false;
+    return DomainValidationResult::Failure(std::move(diagnostic));
   }
 
   ResourceRequirements requirements;
@@ -1402,7 +1408,7 @@ bool ValidateDomain(SchemaIr schema, ValidatedSchemaIr& output, CompileDiagnosti
   requirements.message_count = schema.messages.size();
   for (MessageIr& message : schema.messages) {
     if (!ValidateMessageDomain(message, requirements, diagnostic)) {
-      return false;
+      return DomainValidationResult::Failure(std::move(diagnostic));
     }
   }
 
@@ -1411,10 +1417,10 @@ bool ValidateDomain(SchemaIr schema, ValidatedSchemaIr& output, CompileDiagnosti
   for (const PipelineIr& pipeline : schema.pipelines) {
     const auto framing = framing_index.find(pipeline.input_framing_profile_id);
     if (framing == framing_index.end()) {
-      return SetDiagnostic(diagnostic, CompileStage::DOMAIN_VALIDATION,
-                           CompileError::UNKNOWN_REFERENCE,
-                           ChildPointer(pipeline.origin.json_pointer, "input_framing_profile_id"),
-                           "pipeline references an unknown framing profile");
+      SetDiagnostic(diagnostic, CompileStage::DOMAIN_VALIDATION, CompileError::UNKNOWN_REFERENCE,
+                    ChildPointer(pipeline.origin.json_pointer, "input_framing_profile_id"),
+                    "pipeline references an unknown framing profile");
+      return DomainValidationResult::Failure(std::move(diagnostic));
     }
     ResolvedPipelineIr resolved;
     resolved.framing_profile_index = framing->second;
@@ -1424,36 +1430,38 @@ bool ValidateDomain(SchemaIr schema, ValidatedSchemaIr& output, CompileDiagnosti
          ++reference_index) {
       const std::string& message_id = pipeline.message_ids[reference_index];
       if (!seen_message_ids.emplace(message_id).second) {
-        return SetDiagnostic(diagnostic, CompileStage::DOMAIN_VALIDATION,
-                             CompileError::DUPLICATE_REFERENCE,
-                             IndexPointer(ChildPointer(pipeline.origin.json_pointer, "message_ids"),
-                                          reference_index),
-                             "pipeline message reference is duplicated");
+        SetDiagnostic(diagnostic, CompileStage::DOMAIN_VALIDATION,
+                      CompileError::DUPLICATE_REFERENCE,
+                      IndexPointer(ChildPointer(pipeline.origin.json_pointer, "message_ids"),
+                                   reference_index),
+                      "pipeline message reference is duplicated");
+        return DomainValidationResult::Failure(std::move(diagnostic));
       }
       const auto message = message_index.find(message_id);
       if (message == message_index.end()) {
-        return SetDiagnostic(diagnostic, CompileStage::DOMAIN_VALIDATION,
-                             CompileError::UNKNOWN_REFERENCE,
-                             IndexPointer(ChildPointer(pipeline.origin.json_pointer, "message_ids"),
-                                          reference_index),
-                             "pipeline references an unknown message");
+        SetDiagnostic(diagnostic, CompileStage::DOMAIN_VALIDATION, CompileError::UNKNOWN_REFERENCE,
+                      IndexPointer(ChildPointer(pipeline.origin.json_pointer, "message_ids"),
+                                   reference_index),
+                      "pipeline references an unknown message");
+        return DomainValidationResult::Failure(std::move(diagnostic));
       }
       if (schema.messages[message->second].direction_id != pipeline.direction_id) {
-        return SetDiagnostic(diagnostic, CompileStage::DOMAIN_VALIDATION,
-                             CompileError::DIRECTION_MISMATCH,
-                             IndexPointer(ChildPointer(pipeline.origin.json_pointer, "message_ids"),
-                                          reference_index),
-                             "pipeline and referenced message direction_id values differ");
+        SetDiagnostic(diagnostic, CompileStage::DOMAIN_VALIDATION, CompileError::DIRECTION_MISMATCH,
+                      IndexPointer(ChildPointer(pipeline.origin.json_pointer, "message_ids"),
+                                   reference_index),
+                      "pipeline and referenced message direction_id values differ");
+        return DomainValidationResult::Failure(std::move(diagnostic));
       }
       for (const std::size_t earlier_message_index : resolved.message_indices) {
         if (FixedMatchersCanIntersect(schema.messages[earlier_message_index],
                                       schema.messages[message->second])) {
-          return SetDiagnostic(
-              diagnostic, CompileStage::DOMAIN_VALIDATION, CompileError::AMBIGUOUS_MATCHER,
-              IndexPointer(ChildPointer(pipeline.origin.json_pointer, "message_ids"),
-                           reference_index),
-              "referenced message matcher intersects an earlier message matcher in this "
-              "pipeline");
+          SetDiagnostic(diagnostic, CompileStage::DOMAIN_VALIDATION,
+                        CompileError::AMBIGUOUS_MATCHER,
+                        IndexPointer(ChildPointer(pipeline.origin.json_pointer, "message_ids"),
+                                     reference_index),
+                        "referenced message matcher intersects an earlier message matcher in this "
+                        "pipeline");
+          return DomainValidationResult::Failure(std::move(diagnostic));
         }
       }
       resolved.message_indices.push_back(message->second);
@@ -1461,11 +1469,11 @@ bool ValidateDomain(SchemaIr schema, ValidatedSchemaIr& output, CompileDiagnosti
     resolved_pipelines.push_back(std::move(resolved));
   }
 
-  output.schema = std::move(schema);
-  output.resolved_pipelines = std::move(resolved_pipelines);
-  output.requirements = requirements;
-  return true;
+  return DomainValidationResult::Success(
+      ValidatedSchemaIr{std::move(schema), std::move(resolved_pipelines), requirements});
 }
+
+namespace {
 
 bool CheckResourceCount(std::size_t value, std::size_t limit, std::string pointer,
                         std::string detail, CompileDiagnostic& diagnostic) {
@@ -1477,20 +1485,171 @@ bool CheckResourceCount(std::size_t value, std::size_t limit, std::string pointe
                        std::move(detail));
 }
 
-bool ValidateResourceBudget(ValidatedSchemaIr validated, BudgetedSchemaIr& output,
-                            CompileDiagnostic& diagnostic) {
-  const protocol_plan::ResourceProfileLimits* budget =
-      protocol_plan::GetResourceProfileLimits(validated.schema.resource_profile);
-  if (budget == nullptr) {
-    return SetDiagnostic(diagnostic, CompileStage::INTERNAL,
-                         CompileError::INTERNAL_CONTRACT_VIOLATION, "/resource_profile",
-                         "validated resource profile has no frozen limits");
+bool AddStringLayout(protocol_plan::PlanMemoryLayout& layout, std::string_view value) noexcept {
+  return value.empty() ||
+         layout.AddArray<char>(value.size(), protocol_plan::PlanMemoryCategory::STRING);
+}
+
+bool EstimateSchemaPlanMemory(const SchemaIr& schema,
+                              const std::vector<ResolvedPipelineIr>& resolved_pipelines,
+                              std::size_t limit_bytes, protocol_plan::PlanMemoryReport& output) {
+  using namespace protocol_plan;
+  PlanMemoryLayout layout{limit_bytes};
+  if (!layout.AddArray<PlanBundle>(1U, PlanMemoryCategory::OBJECT) ||
+      !AddStringLayout(layout, schema.schema_version) ||
+      !AddStringLayout(layout, schema.protocol_id) ||
+      !AddStringLayout(layout, schema.protocol_version) ||
+      !layout.AddArray<FrozenFramingPlan>(schema.framing_profiles.size(),
+                                          PlanMemoryCategory::METADATA_CONTAINER)) {
+    return false;
   }
-  const ResourceRequirements& requirements = validated.requirements;
+  for (const FramingProfileIr& framing : schema.framing_profiles) {
+    if (!AddStringLayout(layout, framing.id)) {
+      return false;
+    }
+  }
+  if (!layout.AddArray<FrozenPipelinePlan>(schema.pipelines.size(),
+                                           PlanMemoryCategory::METADATA_CONTAINER)) {
+    return false;
+  }
+  for (std::size_t index = 0U; index < schema.pipelines.size(); ++index) {
+    const PipelineIr& pipeline = schema.pipelines[index];
+    if (!AddStringLayout(layout, pipeline.id) || !AddStringLayout(layout, pipeline.direction_id) ||
+        !layout.AddArray<std::size_t>(resolved_pipelines[index].message_indices.size(),
+                                      PlanMemoryCategory::METADATA_CONTAINER)) {
+      return false;
+    }
+  }
+  if (!layout.AddArray<FrozenMessagePlan>(schema.messages.size(),
+                                          PlanMemoryCategory::METADATA_CONTAINER)) {
+    return false;
+  }
+  for (const MessageIr& message : schema.messages) {
+    if (!AddStringLayout(layout, message.id) || !AddStringLayout(layout, message.direction_id) ||
+        !layout.AddArray<FrozenMatcherPlan>(message.matcher_clauses.size(),
+                                            PlanMemoryCategory::METADATA_CONTAINER)) {
+      return false;
+    }
+    for (const MatcherClauseIr& matcher : message.matcher_clauses) {
+      if (!layout.AddArray<std::uint8_t>(matcher.bytes.size(), PlanMemoryCategory::MATCHER)) {
+        return false;
+      }
+    }
+    if (!layout.AddArray<FrozenFieldPlan>(message.fields.size(),
+                                          PlanMemoryCategory::METADATA_CONTAINER)) {
+      return false;
+    }
+    for (const FieldIr& field : message.fields) {
+      if (!AddStringLayout(layout, field.id) ||
+          !layout.AddArray<FrozenEnumEntryPlan>(field.enum_entries.size(),
+                                                PlanMemoryCategory::METADATA_CONTAINER)) {
+        return false;
+      }
+      for (const EnumEntryIr& entry : field.enum_entries) {
+        if (!AddStringLayout(layout, entry.id)) {
+          return false;
+        }
+      }
+    }
+  }
+
+  if (!layout.AddArray<MessageExecutionPlan>(schema.messages.size(),
+                                             PlanMemoryCategory::EXECUTION_DESCRIPTOR)) {
+    return false;
+  }
+  for (const MessageIr& message : schema.messages) {
+    std::unordered_set<std::size_t> fixed_byte_offsets;
+    for (const MatcherClauseIr& matcher : message.matcher_clauses) {
+      if (matcher.kind != MatcherKind::FIXED_BYTES) {
+        continue;
+      }
+      const std::size_t offset = static_cast<std::size_t>(matcher.byte_offset);
+      for (std::size_t byte_index = 0U; byte_index < matcher.bytes.size(); ++byte_index) {
+        fixed_byte_offsets.emplace(offset + byte_index);
+      }
+    }
+    std::size_t enum_entry_count = 0U;
+    for (const FieldIr& field : message.fields) {
+      enum_entry_count += field.enum_entries.size();
+    }
+    if (!layout.AddArray<FixedByteExecutionPlan>(fixed_byte_offsets.size(),
+                                                 PlanMemoryCategory::MATCHER) ||
+        !layout.AddArray<FieldExecutionPlan>(message.fields.size(),
+                                             PlanMemoryCategory::EXECUTION_DESCRIPTOR) ||
+        !layout.AddArray<std::uint64_t>(enum_entry_count, PlanMemoryCategory::INDEX) ||
+        !layout.AddArray<EnumLookupExecutionPlan>(enum_entry_count, PlanMemoryCategory::INDEX)) {
+      return false;
+    }
+  }
+
+  if (!layout.AddArray<PipelineExecutionPlan>(schema.pipelines.size(),
+                                              PlanMemoryCategory::EXECUTION_DESCRIPTOR)) {
+    return false;
+  }
+  const std::size_t allowed_word_count =
+      schema.messages.size() / 64U + (schema.messages.size() % 64U == 0U ? 0U : 1U);
+  for (const ResolvedPipelineIr& pipeline : resolved_pipelines) {
+    std::map<std::uint64_t, std::size_t> candidate_groups;
+    for (const std::size_t message_index : pipeline.message_indices) {
+      ++candidate_groups[schema.messages[message_index].frame_length_bytes];
+    }
+    if (!layout.AddArray<std::uint64_t>(allowed_word_count, PlanMemoryCategory::INDEX) ||
+        !layout.AddArray<CandidateGroupExecutionPlan>(candidate_groups.size(),
+                                                      PlanMemoryCategory::EXECUTION_DESCRIPTOR)) {
+      return false;
+    }
+    for (const auto& [frame_length, message_count] : candidate_groups) {
+      static_cast<void>(frame_length);
+      if (!layout.AddArray<std::size_t>(message_count, PlanMemoryCategory::INDEX)) {
+        return false;
+      }
+    }
+  }
+  output = layout.Report();
+  return true;
+}
+
+void SetPlanMemoryDiagnostic(CompileDiagnostic& diagnostic, std::size_t required_bytes,
+                             std::size_t limit_bytes, ResourceProfile profile) {
+  SetDiagnostic(diagnostic, CompileStage::RESOURCE_BUDGET, CompileError::RESOURCE_LIMIT_EXCEEDED,
+                "", "accounted immutable plan memory exceeds the selected resource profile");
+  diagnostic.resource_kind = ResourceKind::PLAN_ACCOUNTED_MEMORY;
+  diagnostic.required_bytes = required_bytes;
+  diagnostic.limit_bytes = limit_bytes;
+  diagnostic.resource_profile = profile;
+}
+
+}  // namespace
+
+ResourceBudgetResult ResourceBudgetValidator::Validate(ValidatedSchemaIr validated) {
+  return ValidateImpl(std::move(validated), std::nullopt);
+}
+
+ResourceBudgetResult ResourceBudgetValidator::ValidateForTest(ValidatedSchemaIr validated,
+                                                              std::size_t plan_memory_limit_bytes) {
+  return ValidateImpl(std::move(validated), plan_memory_limit_bytes);
+}
+
+ResourceBudgetResult ResourceBudgetValidator::ValidateImpl(
+    ValidatedSchemaIr validated, std::optional<std::size_t> test_plan_memory_limit_bytes) {
+  CompileDiagnostic diagnostic;
+  if (validated.payload_ == nullptr) {
+    SetDiagnostic(diagnostic, CompileStage::INTERNAL, CompileError::INTERNAL_CONTRACT_VIOLATION, "",
+                  "moved-from validated schema capability was reused");
+    return ResourceBudgetResult::Failure(std::move(diagnostic));
+  }
+  const protocol_plan::ResourceProfileLimits* budget =
+      protocol_plan::GetResourceProfileLimits(validated.payload_->schema.resource_profile);
+  if (budget == nullptr) {
+    SetDiagnostic(diagnostic, CompileStage::INTERNAL, CompileError::INTERNAL_CONTRACT_VIOLATION,
+                  "/resource_profile", "validated resource profile has no frozen limits");
+    return ResourceBudgetResult::Failure(std::move(diagnostic));
+  }
+  const ResourceRequirements& requirements = validated.payload_->requirements;
   if (requirements.max_frame_bytes > budget->max_frame_bytes) {
-    return SetDiagnostic(diagnostic, CompileStage::RESOURCE_BUDGET,
-                         CompileError::RESOURCE_LIMIT_EXCEEDED, "/messages",
-                         "maximum frame length exceeds the selected resource profile");
+    SetDiagnostic(diagnostic, CompileStage::RESOURCE_BUDGET, CompileError::RESOURCE_LIMIT_EXCEEDED,
+                  "/messages", "maximum frame length exceeds the selected resource profile");
+    return ResourceBudgetResult::Failure(std::move(diagnostic));
   }
   if (!CheckResourceCount(
           requirements.framing_profile_count, budget->max_framing_profiles, "/framing_profiles",
@@ -1506,32 +1665,52 @@ bool ValidateResourceBudget(ValidatedSchemaIr validated, BudgetedSchemaIr& outpu
       !CheckResourceCount(requirements.total_enum_entry_count, budget->max_total_enum_entries,
                           "/messages", "enum entry count exceeds the selected resource profile",
                           diagnostic)) {
-    return false;
+    return ResourceBudgetResult::Failure(std::move(diagnostic));
   }
-  for (const MessageIr& message : validated.schema.messages) {
+  for (const MessageIr& message : validated.payload_->schema.messages) {
     if (!CheckResourceCount(message.fields.size(), budget->max_fields_per_message,
                             ChildPointer(message.origin.json_pointer, "fields"),
                             "field count exceeds the selected resource profile", diagnostic) ||
         !CheckResourceCount(message.matcher_clauses.size(), budget->max_matchers_per_message,
                             ChildPointer(message.origin.json_pointer, "matcher"),
                             "matcher count exceeds the selected resource profile", diagnostic)) {
-      return false;
+      return ResourceBudgetResult::Failure(std::move(diagnostic));
     }
     for (const FieldIr& field : message.fields) {
       if (!CheckResourceCount(field.enum_entries.size(), budget->max_enum_entries_per_field,
                               ChildPointer(field.origin.json_pointer, "enum_entries"),
                               "enum entry count exceeds the selected resource profile",
                               diagnostic)) {
-        return false;
+        return ResourceBudgetResult::Failure(std::move(diagnostic));
       }
     }
   }
-  output.validated = std::move(validated);
-  return true;
+  const std::size_t plan_memory_limit =
+      (std::min)(test_plan_memory_limit_bytes.value_or(budget->max_plan_memory_bytes),
+                 protocol_plan::kV01MaxPlanMemoryHardLimit);
+  protocol_plan::PlanMemoryReport plan_memory;
+  if (!EstimateSchemaPlanMemory(validated.payload_->schema, validated.payload_->resolved_pipelines,
+                                (std::numeric_limits<std::size_t>::max)(), plan_memory)) {
+    SetPlanMemoryDiagnostic(diagnostic, (std::numeric_limits<std::size_t>::max)(),
+                            plan_memory_limit, validated.payload_->schema.resource_profile);
+    return ResourceBudgetResult::Failure(std::move(diagnostic));
+  }
+  if (plan_memory.accounted_total_bytes > plan_memory_limit) {
+    SetPlanMemoryDiagnostic(diagnostic, plan_memory.accounted_total_bytes, plan_memory_limit,
+                            validated.payload_->schema.resource_profile);
+    return ResourceBudgetResult::Failure(std::move(diagnostic));
+  }
+  return ResourceBudgetResult::Success(
+      BudgetedSchemaIr{std::move(validated), plan_memory, plan_memory_limit});
 }
 
-protocol_plan::PlanBuildResult BuildPlan(BudgetedSchemaIr budgeted) {
-  SchemaIr& schema = budgeted.validated.schema;
+PlanDraftAssemblyResult PlanDraftAssembler::Assemble(BudgetedSchemaIr budgeted) {
+  if (budgeted.validated_ == nullptr || budgeted.validated_->payload_ == nullptr) {
+    return PlanDraftAssemblyResult::Failure(
+        CompileDiagnostic{CompileStage::INTERNAL, CompileError::INTERNAL_CONTRACT_VIOLATION, "",
+                          std::nullopt, "moved-from budgeted schema capability was reused"});
+  }
+  SchemaIr& schema = budgeted.validated_->payload_->schema;
   std::vector<FramingPlan> framing_plans;
   framing_plans.reserve(schema.framing_profiles.size());
   for (const FramingProfileIr& framing : schema.framing_profiles) {
@@ -1542,7 +1721,7 @@ protocol_plan::PlanBuildResult BuildPlan(BudgetedSchemaIr budgeted) {
   pipeline_plans.reserve(schema.pipelines.size());
   for (std::size_t index = 0U; index < schema.pipelines.size(); ++index) {
     const PipelineIr& pipeline = schema.pipelines[index];
-    ResolvedPipelineIr& resolved = budgeted.validated.resolved_pipelines[index];
+    ResolvedPipelineIr& resolved = budgeted.validated_->payload_->resolved_pipelines[index];
     pipeline_plans.push_back(PipelinePlan{pipeline.id, pipeline.direction_id,
                                           resolved.framing_profile_index,
                                           std::move(resolved.message_indices)});
@@ -1581,28 +1760,56 @@ protocol_plan::PlanBuildResult BuildPlan(BudgetedSchemaIr budgeted) {
     message_plans.push_back(std::move(message_plan));
   }
 
-  protocol_plan::PlanDraft draft;
-  draft.schema_version = std::move(schema.schema_version);
-  draft.protocol_id = std::move(schema.protocol_id);
-  draft.protocol_version = std::move(schema.protocol_version);
-  draft.resource_profile = schema.resource_profile;
-  draft.resource_requirements = budgeted.validated.requirements;
-  draft.framing_profiles = std::move(framing_plans);
-  draft.pipelines = std::move(pipeline_plans);
-  draft.messages = std::move(message_plans);
-  return protocol_plan::PlanBuilder::Freeze(std::move(draft));
+  auto draft = std::make_unique<protocol_plan::detail::PlanDraftData>();
+  draft->schema_version = std::move(schema.schema_version);
+  draft->protocol_id = std::move(schema.protocol_id);
+  draft->protocol_version = std::move(schema.protocol_version);
+  draft->resource_profile = schema.resource_profile;
+  draft->resource_requirements = budgeted.validated_->payload_->requirements;
+  draft->framing_profiles = std::move(framing_plans);
+  draft->pipelines = std::move(pipeline_plans);
+  draft->messages = std::move(message_plans);
+  draft->approved_plan_memory = budgeted.plan_memory_;
+  draft->plan_memory_limit_bytes = budgeted.plan_memory_limit_bytes_;
+  return PlanDraftAssemblyResult::Success(protocol_plan::BudgetedPlanDraft{std::move(draft)});
 }
 
-}  // namespace
+CompileResult FreezeBudgetedPlanDraft(protocol_plan::BudgetedPlanDraft draft) {
+  protocol_plan::PlanBuildResult frozen = protocol_plan::PlanBuilder::Freeze(std::move(draft));
+  if (frozen.Succeeded()) {
+    return CompileResult::Success(std::move(frozen).TakePlan());
+  }
+  if (frozen.Diagnostic() != nullptr &&
+      frozen.Diagnostic()->code == protocol_plan::PlanBuildError::ALLOCATION_FAILED) {
+    return CompileResult::Failure(
+        CompileDiagnostic{CompileStage::INTERNAL, CompileError::COMPILER_ALLOCATION_FAILED, "",
+                          std::nullopt, "memory allocation failed while freezing the plan"});
+  }
+  if (frozen.Diagnostic() != nullptr &&
+      frozen.Diagnostic()->code == protocol_plan::PlanBuildError::PLAN_MEMORY_LIMIT_EXCEEDED) {
+    CompileDiagnostic diagnostic;
+    SetPlanMemoryDiagnostic(diagnostic, frozen.Diagnostic()->required_bytes,
+                            frozen.Diagnostic()->limit_bytes,
+                            frozen.Diagnostic()->resource_profile);
+    return CompileResult::Failure(std::move(diagnostic));
+  }
+  if (frozen.Diagnostic() != nullptr &&
+      frozen.Diagnostic()->code == protocol_plan::PlanBuildError::PLAN_MEMORY_ESTIMATE_MISMATCH) {
+    return CompileResult::Failure(
+        CompileDiagnostic{CompileStage::PLAN_BUILD, CompileError::INTERNAL_CONTRACT_VIOLATION, "",
+                          std::nullopt, "approved and constructed plan memory reports differ"});
+  }
+  return CompileResult::Failure(CompileDiagnostic{
+      CompileStage::PLAN_BUILD, CompileError::INTERNAL_CONTRACT_VIOLATION, "", std::nullopt,
+      "validated configuration violated the frozen plan construction contract"});
+}
 
 CompileResult CompileJsonToPlan(std::string_view json_bytes) {
   try {
     const JsonAuditLimits limits;
     CompileDiagnostic diagnostic;
     if (!RunStrictPrecheck(json_bytes, limits, diagnostic)) {
-      CompileResult result;
-      result.diagnostic = std::move(diagnostic);
-      return result;
+      return CompileResult::Failure(std::move(diagnostic));
     }
 
     SchemaIr schema;
@@ -1648,43 +1855,27 @@ CompileResult CompileJsonToPlan(std::string_view json_bytes) {
       std::string pointer;
       if (!AuditJsonValue(root, 1U, pointer, limits, stats, diagnostic) ||
           !BuildSchemaIr(root, schema, diagnostic)) {
-        CompileResult result;
-        result.diagnostic = std::move(diagnostic);
-        return result;
+        return CompileResult::Failure(std::move(diagnostic));
       }
     }
 
-    ValidatedSchemaIr validated;
-    if (!ValidateDomain(std::move(schema), validated, diagnostic)) {
-      CompileResult result;
-      result.diagnostic = std::move(diagnostic);
-      return result;
+    DomainValidationResult validated = DomainValidator::Validate(std::move(schema));
+    if (!validated.Succeeded()) {
+      return CompileResult::Failure(std::move(validated).TakeDiagnostic());
     }
 
-    BudgetedSchemaIr budgeted;
-    if (!ValidateResourceBudget(std::move(validated), budgeted, diagnostic)) {
-      CompileResult result;
-      result.diagnostic = std::move(diagnostic);
-      return result;
+    ResourceBudgetResult budgeted =
+        ResourceBudgetValidator::Validate(std::move(validated).TakeCapability());
+    if (!budgeted.Succeeded()) {
+      return CompileResult::Failure(std::move(budgeted).TakeDiagnostic());
     }
 
-    protocol_plan::PlanBuildResult frozen = BuildPlan(std::move(budgeted));
-    CompileResult result;
-    if (frozen.Succeeded()) {
-      result.plan = std::move(frozen.plan);
-      return result;
+    PlanDraftAssemblyResult assembled =
+        PlanDraftAssembler::Assemble(std::move(budgeted).TakeCapability());
+    if (!assembled.Succeeded()) {
+      return CompileResult::Failure(std::move(assembled).TakeDiagnostic());
     }
-    if (frozen.diagnostic.has_value() &&
-        frozen.diagnostic->code == protocol_plan::PlanBuildError::ALLOCATION_FAILED) {
-      result.diagnostic =
-          CompileDiagnostic{CompileStage::INTERNAL, CompileError::COMPILER_ALLOCATION_FAILED, "",
-                            std::nullopt, "memory allocation failed while freezing the plan"};
-    } else {
-      result.diagnostic = CompileDiagnostic{
-          CompileStage::PLAN_BUILD, CompileError::INTERNAL_CONTRACT_VIOLATION, "", std::nullopt,
-          "validated configuration violated the frozen plan construction contract"};
-    }
-    return result;
+    return FreezeBudgetedPlanDraft(std::move(assembled).TakeCapability());
   } catch (const std::bad_alloc&) {
     return Reject(CompileStage::INTERNAL, CompileError::COMPILER_ALLOCATION_FAILED, "",
                   "memory allocation failed during configuration compilation");

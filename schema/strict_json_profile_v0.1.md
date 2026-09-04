@@ -4,7 +4,7 @@
 
 | 项目 | 内容 |
 | --- | --- |
-| 文档版本 | 0.1.7 |
+| 文档版本 | 0.1.9 |
 | 当前状态 | `CONFIRMED BASELINE + WORKING PROFILE + WINDOWS SPIKE AND LOADER SLICE PARTIALLY VERIFIED（已确认基线 + 工作规范 + Windows 技术探针及Loader切片部分验证）` |
 | 适用范围 | `*.pae.json`的字节输入、JSON Token（词法单元）和 Parser（解析器）边界 |
 | 不覆盖 | PAE 对象结构、协议字段语义、跨引用、五项容量候选的最终实测数值和 ProtocolPlan 执行语义 |
@@ -37,7 +37,7 @@ Strict JSON Profile 只决定“输入是否是 PAE 接受的严格 JSON 文档�
 - StructuralValidator（结构校验器）：根对象、属性名称、必填项、JSON 类型、局部枚举和局部范围；
 - DomainValidator（领域校验器）：引用、方向、字段布局、Matcher（消息匹配器）歧义、computed（计算字段）依赖和 Integrity（完整性校验）范围；
 - ResourceBudgetValidator（资源预算校验器）：Profile（资源档位）容量和编译后资源准入；
-- PlanBuilder（执行计划构建器）：正式Config Compiler入口的目标职责是消费已经验证的类型化中间表示并构建不可变Plan，不重新解释原始JSON；当前内部`PlanDraft`能力边界尚不可伪造，Builder仍保留Domain安全规则的防御复核，不能把目标类型状态误写成已经完全落盘。
+- PlanBuilder（执行计划构建器）：当前内部Config Compiler入口已经通过不可伪造、move-only（仅移动）的Validated/Budgeted能力链消费已验证类型化中间表示并构建不可变Plan，不重新解释原始JSON；作者配置错误由Domain/Resource Validator单一报告，Builder尾部审计只映射内部契约违规。该内部类型和名称不构成稳定公共API。
 
 ## 3. 输入字节和编码
 
@@ -273,7 +273,7 @@ Structural 和 Domain 数字错误必须携带准确 RFC 6901 JSON Pointer；没
 - yyjson 固定内存池和解析期 5 个分配点逐点故障注入继续由独立 CTest 覆盖；端到端 Raw Number（原始数字）结构诊断自测覆盖 unsigned `-0`、signed `-0`、REAL64正零、溢出、下溢、最小subnormal、整数精度和Number Token边界共10项，摘要为`failures=0 / gate=PASS`；
 - Hard/Desktop/Constrained 三档各执行 depth、Object成员、Array元素、单字符串、Number Token、逻辑节点、全部解码字符串和输入字节 8 个维度的 exact/+1，共48个确定生成输入；三档均为`structural_profile_gate=PASS / candidate_capacity_probe=PASS / failures=0`，并通过 Parser arena容量充分、硬边界和耗尽清理检查；
 - yyjson候选的Archive URL/Hash、MIT License、`yyjson.h`和`yyjson.c`范围由锁文件驱动并在Configure阶段复核；Windows Release CTest当前为20/20通过。
-- 独立的内部Loader/SchemaIr切片在Windows x64、MSVC下完成Release和Debug构建/CTest；当前Config Compiler合同Runner的22项内部用例通过，包含原始Number Token拒绝`2.0`和unsigned `-0`、稳定ID Golden Snapshot、完整Frame覆盖负例及失败时无部分Plan。
+- 独立的内部Loader/SchemaIr切片在Windows x64、MSVC下完成Release和Debug构建/CTest；当前Config Compiler合同Runner的28项内部用例通过，包含原始Number Token拒绝`2.0`和unsigned `-0`、稳定ID Golden Snapshot、完整Frame覆盖负例、PAE-DEC-033A单Plan计费内存准入及失败时无部分Plan。
 
 三个表征用例记录`UINT64_MAX + 1`、`INT64_MIN - 1`和 unsigned `-0`的候选旧行为及目标行为。yyjson当前结果为`ready_to_promote=3 / open_contract_gaps=0 / target_lock_failures=0`，已经满足并锁定三个目标，任一回退会使其 CTest 失败；nlohmann/json和RapidJSON当前均为`ready_to_promote=0 / open_contract_gaps=3`。因此绿色CTest只表示 Regression Gate（回归门禁）通过，不能隐藏另外两个 DOM Adapter（文档对象模型适配器）的原始数字保真缺口。
 
@@ -308,6 +308,8 @@ Linux GCC 和 Clang 同语料测试暂不阻塞 Windows 阶段的设计与实现
 
 | 文档版本 | 日期 | 说明 |
 | --- | --- | --- |
+| 0.1.9 | 2026-09-02 | 同步Config Compiler 28项合同及PAE-DEC-033A单Plan计费内存准入Windows阶段证据 |
+| 0.1.8 | 2026-09-02 | 同步PAE-DEC-032内部能力链已实现事实；不改变Strict JSON规则、Parser候选状态或五项容量候选 |
 | 0.1.7 | 2026-09-02 | 更新Config Compiler当前22项合同证据，并明确PlanBuilder目标类型状态与当前防御复核之间的边界 |
 | 0.1.6 | 2026-09-01 | 记录最小Schema、SchemaIr和PlanBundle切片及21项内部用例；保持完整V0.1 Schema、峰值和生产容量冻结为OPEN |
 | 0.1.5 | 2026-09-01 | 记录77项数字语料、10项yyjson数字诊断、三档48项Parser阶段资源边界和20/20 CTest；保持生产Parser、容量Hash与Loader/Compiler峰值为OPEN |

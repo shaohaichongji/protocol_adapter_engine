@@ -5,6 +5,10 @@ add_library(
         plan_bundle.h
         plan_builder.cpp
         plan_builder.h
+        plan_draft_internal.h
+        plan_memory.cpp
+        plan_memory.h
+        frozen_storage.h
         plan_types.h
 )
 add_library(pae::protocol_plan ALIAS pae_protocol_plan)

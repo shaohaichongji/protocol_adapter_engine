@@ -20,7 +20,7 @@
 #include "complete_record_codec.h"
 #include "config_compiler.h"
 #include "fixture_reader.h"
-#include "plan_builder.h"
+#include "test_plan_factory.h"
 
 namespace {
 
@@ -152,8 +152,10 @@ void operator delete[](void* memory, std::align_val_t, const std::nothrow_t&) no
 
 namespace {
 
+using pae::config_compiler::CompileError;
 using pae::config_compiler::CompileJsonToPlan;
 using pae::config_compiler::CompileResult;
+using pae::config_compiler::CompileStage;
 using pae::protocol_core::ByteView;
 using pae::protocol_core::CodecStatus;
 using pae::protocol_core::DecodeCompleteRecord;
@@ -186,16 +188,13 @@ using pae::protocol_plan::MatcherKind;
 using pae::protocol_plan::MatcherPlan;
 using pae::protocol_plan::MessagePlan;
 using pae::protocol_plan::PipelinePlan;
-using pae::protocol_plan::PlanBuilder;
-using pae::protocol_plan::PlanBuildError;
-using pae::protocol_plan::PlanBuildResult;
 using pae::protocol_plan::PlanBundle;
-using pae::protocol_plan::PlanDraft;
 using pae::protocol_plan::ResourceProfile;
-using pae::protocol_plan::ResourceRequirements;
 using pae::protocol_plan::UnknownEnumPolicy;
 using pae::protocol_plan::ValueType;
 using pae::protocol_plan::WireCodec;
+using pae::test_support::CloneTestPlan;
+using pae::test_support::CompileTestPlan;
 
 static_assert(!std::is_default_constructible_v<PlanBundle>,
               "a frozen PlanBundle must not be publicly constructible");
@@ -363,7 +362,7 @@ struct OwnedEncodeValues {
   std::vector<EncodeFieldValue> values;
 };
 
-bool TextEquals(const std::string& actual, std::string_view expected) noexcept {
+bool TextEquals(std::string_view actual, std::string_view expected) noexcept {
   return actual.size() == expected.size() &&
          std::equal(actual.begin(), actual.end(), expected.begin(), expected.end());
 }
@@ -426,7 +425,8 @@ std::size_t FindMessageIndex(const PlanBundle& plan, std::string_view id) noexce
   return kInvalidIndex;
 }
 
-std::size_t FindFieldIndex(const MessagePlan& message, std::string_view id) noexcept {
+std::size_t FindFieldIndex(const pae::protocol_plan::FrozenMessagePlan& message,
+                           std::string_view id) noexcept {
   for (std::size_t index = 0U; index < message.fields.size(); ++index) {
     if (TextEquals(message.fields[index].id, id)) {
       return index;
@@ -435,7 +435,8 @@ std::size_t FindFieldIndex(const MessagePlan& message, std::string_view id) noex
   return kInvalidIndex;
 }
 
-std::size_t FindEnumIndex(const FieldPlan& field, std::string_view id) noexcept {
+std::size_t FindEnumIndex(const pae::protocol_plan::FrozenFieldPlan& field,
+                          std::string_view id) noexcept {
   for (std::size_t index = 0U; index < field.enum_entries.size(); ++index) {
     if (TextEquals(field.enum_entries[index].id, id)) {
       return index;
@@ -495,7 +496,7 @@ bool BuildEncodeValues(const PlanBundle& plan, std::size_t message_index,
     error = "message index is outside PlanBundle";
     return false;
   }
-  const MessagePlan& message = plan.Messages()[message_index];
+  const pae::protocol_plan::FrozenMessagePlan& message = plan.Messages()[message_index];
   output.byte_storage.clear();
   output.values.clear();
   output.byte_storage.reserve(rows.size());
@@ -507,7 +508,7 @@ bool BuildEncodeValues(const PlanBundle& plan, std::size_t message_index,
       error = "encode fixture references unknown field '" + row.field_id + "'";
       return false;
     }
-    const FieldPlan& field = message.fields[field_index];
+    const pae::protocol_plan::FrozenFieldPlan& field = message.fields[field_index];
     if (field.encode_source != EncodeSource::INPUT) {
       error = "encode fixture attempts to supply constant field '" + row.field_id + "'";
       return false;
@@ -585,8 +586,8 @@ bool CheckManifestContract(const LoadedFixtures& fixtures, const PlanBundle& pla
       return false;
     }
 
-    const PipelinePlan& pipeline = plan.Pipelines()[pipeline_index];
-    const MessagePlan& message = plan.Messages()[message_index];
+    const pae::protocol_plan::FrozenPipelinePlan& pipeline = plan.Pipelines()[pipeline_index];
+    const pae::protocol_plan::FrozenMessagePlan& message = plan.Messages()[message_index];
     return TextEquals(pipeline.direction_id, direction_id) &&
            TextEquals(message.direction_id, direction_id) &&
            std::find(pipeline.message_indices.begin(), pipeline.message_indices.end(),
@@ -622,7 +623,7 @@ bool CheckSyntheticDecode(const PlanBundle& plan, const LoadedVector& fixture, s
     error = "synthetic vector stable ID cannot be resolved";
     return false;
   }
-  const MessagePlan& message = plan.Messages()[message_index];
+  const pae::protocol_plan::FrozenMessagePlan& message = plan.Messages()[message_index];
   std::vector<DecodedFieldSlot> slots(message.fields.size());
   ExecutionWorkspace workspace{plan};
   const auto result = DecodeCompleteRecord(plan, workspace, pipeline_index,
@@ -644,7 +645,7 @@ bool CheckSyntheticDecode(const PlanBundle& plan, const LoadedVector& fixture, s
       return false;
     }
     seen[field_index] = true;
-    const FieldPlan& field = message.fields[field_index];
+    const pae::protocol_plan::FrozenFieldPlan& field = message.fields[field_index];
     const DecodedFieldSlot& slot = slots[field_index];
     if (slot.field.plan_scope != &plan || slot.field.message_index != message_index ||
         slot.field.field_index != field_index) {
@@ -746,52 +747,6 @@ bool ExpectEncodeFailure(const PlanBundle& plan, std::size_t pipeline_index,
   return true;
 }
 
-ResourceRequirements MakeRequirements(const std::vector<FramingPlan>& framing_profiles,
-                                      const std::vector<PipelinePlan>& pipelines,
-                                      const std::vector<MessagePlan>& messages) {
-  ResourceRequirements requirements;
-  requirements.framing_profile_count = framing_profiles.size();
-  requirements.pipeline_count = pipelines.size();
-  requirements.message_count = messages.size();
-  for (const MessagePlan& message : messages) {
-    requirements.max_frame_bytes =
-        (std::max)(requirements.max_frame_bytes, message.frame_length_bytes);
-    requirements.total_field_count += message.fields.size();
-    requirements.total_matcher_count += message.matchers.size();
-    for (const FieldPlan& field : message.fields) {
-      requirements.total_enum_entry_count += field.enum_entries.size();
-    }
-  }
-  return requirements;
-}
-
-PlanDraft MakeDraft(std::vector<FramingPlan> framing_profiles, std::vector<PipelinePlan> pipelines,
-                    std::vector<MessagePlan> messages) {
-  const ResourceRequirements requirements = MakeRequirements(framing_profiles, pipelines, messages);
-  PlanDraft draft;
-  draft.schema_version = "0.1";
-  draft.protocol_id = "synthetic_codec_unit";
-  draft.protocol_version = "1";
-  draft.resource_profile = ResourceProfile::DESKTOP;
-  draft.resource_requirements = requirements;
-  draft.framing_profiles = std::move(framing_profiles);
-  draft.pipelines = std::move(pipelines);
-  draft.messages = std::move(messages);
-  return draft;
-}
-
-PlanDraft CloneDraft(const PlanBundle& source, std::vector<PipelinePlan> pipelines,
-                     std::vector<MessagePlan> messages) {
-  PlanDraft draft = MakeDraft(source.FramingProfiles(), std::move(pipelines), std::move(messages));
-  draft.schema_version = source.SchemaVersion();
-  draft.protocol_id = source.ProtocolId();
-  draft.protocol_version = source.ProtocolVersion();
-  draft.resource_profile = source.GetResourceProfile();
-  return draft;
-}
-
-PlanBuildResult FreezeDraft(PlanDraft draft) { return PlanBuilder::Freeze(std::move(draft)); }
-
 FieldPlan MakeUnsignedField(std::string id, std::uint64_t offset, std::uint64_t width,
                             ByteOrder byte_order, EncodeSource source,
                             std::uint64_t constant = 0U) {
@@ -809,7 +764,7 @@ FieldPlan MakeUnsignedField(std::string id, std::uint64_t offset, std::uint64_t 
   return field;
 }
 
-PlanBuildResult MakeWidthPlan(std::size_t width, ByteOrder byte_order) {
+CompileResult MakeWidthPlan(std::size_t width, ByteOrder byte_order) {
   MessagePlan message;
   message.id = "width_message";
   message.direction_id = "unit_direction";
@@ -828,8 +783,9 @@ PlanBuildResult MakeWidthPlan(std::size_t width, ByteOrder byte_order) {
   pipeline.direction_id = "unit_direction";
   pipeline.framing_profile_index = 0U;
   pipeline.message_indices.push_back(0U);
-  return FreezeDraft(MakeDraft({FramingPlan{"complete_record", InputKind::COMPLETE_RECORD}},
-                               {std::move(pipeline)}, {std::move(message)}));
+  return CompileTestPlan("synthetic_codec_unit", ResourceProfile::DESKTOP,
+                         {FramingPlan{"complete_record", InputKind::COMPLETE_RECORD}},
+                         {std::move(pipeline)}, {std::move(message)});
 }
 
 std::uint64_t PatternValue(std::size_t width) noexcept {
@@ -889,12 +845,12 @@ bool CheckWidthValue(const PlanBundle& plan, std::uint64_t value,
 }
 
 bool CheckWidthCase(std::size_t width, ByteOrder byte_order, std::string& error) {
-  PlanBuildResult frozen = MakeWidthPlan(width, byte_order);
+  CompileResult frozen = MakeWidthPlan(width, byte_order);
   if (!frozen.Succeeded()) {
-    error = "valid width PlanDraft failed to freeze";
+    error = "valid width configuration failed to compile through the capability chain";
     return false;
   }
-  const PlanBundle& plan = *frozen.plan;
+  const PlanBundle& plan = *frozen.Plan();
   const std::uint64_t pattern_value = PatternValue(width);
   const std::vector<std::uint8_t> pattern_frame = PatternFrame(width, byte_order);
   std::vector<std::uint8_t> zero_frame(width + 1U, 0U);
@@ -939,7 +895,7 @@ bool CheckReplaceableNewCounterProbes(std::string& error) {
   return true;
 }
 
-PlanBuildResult MakeIncompleteCoveragePlan() {
+CompileResult MakeIncompleteCoveragePlan() {
   MessagePlan message;
   message.id = "incomplete_message";
   message.direction_id = "unit_direction";
@@ -954,11 +910,12 @@ PlanBuildResult MakeIncompleteCoveragePlan() {
   pipeline.id = "incomplete_pipeline";
   pipeline.direction_id = "unit_direction";
   pipeline.message_indices.push_back(0U);
-  return FreezeDraft(MakeDraft({FramingPlan{"complete_record", InputKind::COMPLETE_RECORD}},
-                               {std::move(pipeline)}, {std::move(message)}));
+  return CompileTestPlan("synthetic_incomplete_coverage", ResourceProfile::DESKTOP,
+                         {FramingPlan{"complete_record", InputKind::COMPLETE_RECORD}},
+                         {std::move(pipeline)}, {std::move(message)});
 }
 
-PlanDraft MakeOverConstrainedProfileDraft() {
+CompileResult MakeOverConstrainedProfilePlan() {
   constexpr std::uint64_t kFrameSize =
       pae::protocol_plan::kConstrainedResourceProfileLimits.max_frame_bytes + 1U;
   MessagePlan message;
@@ -987,13 +944,12 @@ PlanDraft MakeOverConstrainedProfileDraft() {
   pipeline.framing_profile_index = 0U;
   pipeline.message_indices.push_back(0U);
 
-  PlanDraft draft = MakeDraft({FramingPlan{"complete_record", InputKind::COMPLETE_RECORD}},
-                              {std::move(pipeline)}, {std::move(message)});
-  draft.resource_profile = ResourceProfile::CONSTRAINED;
-  return draft;
+  return CompileTestPlan("synthetic_over_profile", ResourceProfile::CONSTRAINED,
+                         {FramingPlan{"complete_record", InputKind::COMPLETE_RECORD}},
+                         {std::move(pipeline)}, {std::move(message)});
 }
 
-PlanBuildResult MakeFinalReviewFailurePlan() {
+CompileResult MakeFinalReviewFailurePlan() {
   MessagePlan message;
   message.id = "final_review_failure_message";
   message.direction_id = "unit_direction";
@@ -1018,8 +974,9 @@ PlanBuildResult MakeFinalReviewFailurePlan() {
   pipeline.id = "final_review_failure_pipeline";
   pipeline.direction_id = "unit_direction";
   pipeline.message_indices.push_back(0U);
-  return FreezeDraft(MakeDraft({FramingPlan{"complete_record", InputKind::COMPLETE_RECORD}},
-                               {std::move(pipeline)}, {std::move(message)}));
+  return CompileTestPlan("synthetic_final_review_failure", ResourceProfile::DESKTOP,
+                         {FramingPlan{"complete_record", InputKind::COMPLETE_RECORD}},
+                         {std::move(pipeline)}, {std::move(message)});
 }
 
 bool CheckRepeatedEncode(const PlanBundle& plan, const LoadedVector& fixture, std::string& error) {
@@ -1093,7 +1050,7 @@ int main(int argc, char** argv) {
       runner.Record("plan_compilation", false, "synthetic lab exchange Plan did not compile");
       return runner.Finish();
     }
-    const PlanBundle& plan = *compiled.plan;
+    const PlanBundle& plan = *compiled.Plan();
     const LoadedVector* request = FindLoadedVector(fixtures, kRequestVectorId);
     const LoadedVector* response = FindLoadedVector(fixtures, kResponseVectorId);
     if (request == nullptr || response == nullptr) {
@@ -1130,13 +1087,13 @@ int main(int argc, char** argv) {
                               4U * sizeof(std::size_t) + sizeof(std::uint64_t);
     for (std::size_t message_index = 0U; descriptors_ok && message_index < plan.Messages().size();
          ++message_index) {
-      const MessagePlan& metadata = plan.Messages()[message_index];
+      const pae::protocol_plan::FrozenMessagePlan& metadata = plan.Messages()[message_index];
       const auto& execution = message_execution_plans[message_index];
       descriptors_ok = execution.frame_size == metadata.frame_length_bytes &&
                        execution.fields.size() == metadata.fields.size();
       for (std::size_t field_index = 0U; descriptors_ok && field_index < metadata.fields.size();
            ++field_index) {
-        const FieldPlan& field = metadata.fields[field_index];
+        const pae::protocol_plan::FrozenFieldPlan& field = metadata.fields[field_index];
         const auto& field_execution = execution.fields[field_index];
         descriptors_ok = field_execution.offset == field.byte_offset &&
                          field_execution.width == field.byte_width &&
@@ -1159,7 +1116,8 @@ int main(int argc, char** argv) {
     runner.Record("candidate_group_behavior", candidate_groups_ok,
                   "request Pipeline was not compiled into its exact frame-length candidate group");
 
-    const MessagePlan& descriptor_request_message = plan.Messages()[request_message];
+    const pae::protocol_plan::FrozenMessagePlan& descriptor_request_message =
+        plan.Messages()[request_message];
     const std::size_t descriptor_enum_field =
         FindFieldIndex(descriptor_request_message, "operating_mode");
     bool enum_lookup_ok = descriptor_enum_field != kInvalidIndex;
@@ -1225,7 +1183,8 @@ int main(int argc, char** argv) {
       return runner.Finish();
     }
 
-    const MessagePlan& request_message_plan = plan.Messages()[request_message];
+    const pae::protocol_plan::FrozenMessagePlan& request_message_plan =
+        plan.Messages()[request_message];
     const std::size_t operating_mode_index = FindFieldIndex(request_message_plan, "operating_mode");
     const std::size_t length_field = FindFieldIndex(request_message_plan, "record_length");
     const std::size_t bytes_field = FindFieldIndex(request_message_plan, "payload_tag");
@@ -1256,18 +1215,18 @@ int main(int argc, char** argv) {
                             CodecStatus::UNKNOWN_ENUM_VALUE, error),
         error);
 
-    std::vector<MessagePlan> preserve_messages = plan.Messages();
+    std::vector<MessagePlan> preserve_messages = pae::test_support::CloneMutableMessages(plan);
     preserve_messages[request_message].fields[operating_mode_index].unknown_enum_policy =
         UnknownEnumPolicy::PRESERVE;
-    PlanBuildResult preserve_frozen =
-        FreezeDraft(CloneDraft(plan, plan.Pipelines(), std::move(preserve_messages)));
+    CompileResult preserve_frozen = CloneTestPlan(
+        plan, pae::test_support::CloneMutablePipelines(plan), std::move(preserve_messages));
     std::array<DecodedFieldSlot, 5U> preserve_slots{};
     bool preserve_ok = preserve_frozen.Succeeded();
     DecodeResult preserve_result;
     if (preserve_ok) {
-      ExecutionWorkspace preserve_workspace{*preserve_frozen.plan};
+      ExecutionWorkspace preserve_workspace{*preserve_frozen.Plan()};
       preserve_result =
-          DecodeCompleteRecord(*preserve_frozen.plan, preserve_workspace, request_pipeline,
+          DecodeCompleteRecord(*preserve_frozen.Plan(), preserve_workspace, request_pipeline,
                                ByteView{unknown_enum_frame.data(), unknown_enum_frame.size()},
                                preserve_slots.data(), preserve_slots.size());
     }
@@ -1289,19 +1248,20 @@ int main(int argc, char** argv) {
                             5U, CodecStatus::UNKNOWN_MESSAGE, error),
         error);
 
-    std::vector<MessagePlan> ambiguous_messages = plan.Messages();
+    std::vector<MessagePlan> ambiguous_messages = pae::test_support::CloneMutableMessages(plan);
     MessagePlan duplicate_message = ambiguous_messages[request_message];
     duplicate_message.id = "lab_command_duplicate";
     ambiguous_messages.push_back(std::move(duplicate_message));
-    std::vector<PipelinePlan> ambiguous_pipelines = plan.Pipelines();
+    std::vector<PipelinePlan> ambiguous_pipelines = pae::test_support::CloneMutablePipelines(plan);
     ambiguous_pipelines[request_pipeline].message_indices.push_back(ambiguous_messages.size() - 1U);
-    PlanBuildResult ambiguous_frozen = FreezeDraft(
-        CloneDraft(plan, std::move(ambiguous_pipelines), std::move(ambiguous_messages)));
+    CompileResult ambiguous_frozen =
+        CloneTestPlan(plan, std::move(ambiguous_pipelines), std::move(ambiguous_messages));
     runner.Record("freeze_rejects_ambiguous_matcher",
-                  !ambiguous_frozen.Succeeded() && ambiguous_frozen.plan == nullptr &&
-                      ambiguous_frozen.diagnostic.has_value() &&
-                      ambiguous_frozen.diagnostic->code == PlanBuildError::AMBIGUOUS_MATCHER,
-                  "ambiguous PlanDraft was not rejected without a frozen Plan");
+                  !ambiguous_frozen.Succeeded() && ambiguous_frozen.Plan() == nullptr &&
+                      ambiguous_frozen.Diagnostic() != nullptr &&
+                      ambiguous_frozen.Diagnostic()->stage == CompileStage::DOMAIN_VALIDATION &&
+                      ambiguous_frozen.Diagnostic()->code == CompileError::AMBIGUOUS_MATCHER,
+                  "ambiguous configuration bypassed the DomainValidator authority");
 
     error.clear();
     runner.Record("decode_truncated_complete_record",
@@ -1324,16 +1284,17 @@ int main(int argc, char** argv) {
                                       CodecStatus::OUTPUT_SLOTS_TOO_SMALL, error),
                   error);
 
-    std::vector<PipelinePlan> invalid_pipelines = plan.Pipelines();
+    std::vector<PipelinePlan> invalid_pipelines = pae::test_support::CloneMutablePipelines(plan);
     invalid_pipelines[request_pipeline].framing_profile_index = plan.FramingProfiles().size();
-    PlanBuildResult invalid_framing_frozen =
-        FreezeDraft(CloneDraft(plan, std::move(invalid_pipelines), plan.Messages()));
+    CompileResult invalid_framing_frozen = CloneTestPlan(
+        plan, std::move(invalid_pipelines), pae::test_support::CloneMutableMessages(plan));
     runner.Record(
         "freeze_rejects_invalid_framing",
-        !invalid_framing_frozen.Succeeded() && invalid_framing_frozen.plan == nullptr &&
-            invalid_framing_frozen.diagnostic.has_value() &&
-            invalid_framing_frozen.diagnostic->code == PlanBuildError::INVALID_PIPELINE_PLAN,
-        "invalid framing reference was not rejected without a frozen Plan");
+        !invalid_framing_frozen.Succeeded() && invalid_framing_frozen.Plan() == nullptr &&
+            invalid_framing_frozen.Diagnostic() != nullptr &&
+            invalid_framing_frozen.Diagnostic()->stage == CompileStage::DOMAIN_VALIDATION &&
+            invalid_framing_frozen.Diagnostic()->code == CompileError::UNKNOWN_REFERENCE,
+        "invalid framing reference bypassed the DomainValidator authority");
 
     std::vector<EncodeFieldValue> missing_values = request_values.values;
     missing_values.pop_back();
@@ -1357,7 +1318,7 @@ int main(int argc, char** argv) {
                     "second independent synthetic lab Plan did not compile");
       return runner.Finish();
     }
-    const PlanBundle& same_shape_plan = *same_shape_compiled.plan;
+    const PlanBundle& same_shape_plan = *same_shape_compiled.Plan();
     std::vector<EncodeFieldValue> cross_plan_values = request_values.values;
     cross_plan_values.front().field.plan_scope = &same_shape_plan;
     error.clear();
@@ -1576,13 +1537,13 @@ int main(int argc, char** argv) {
                       overlap_result.bytes_written == 0U,
                   "overlapping BYTES input was not rejected without committed bytes");
 
-    PlanBuildResult decode_alias_frozen = MakeWidthPlan(1U, ByteOrder::BIG);
+    CompileResult decode_alias_frozen = MakeWidthPlan(1U, ByteOrder::BIG);
     std::array<DecodedFieldSlot, 2U> decode_alias_slots{};
     DecodeResult decode_alias_result;
     if (decode_alias_frozen.Succeeded()) {
-      ExecutionWorkspace decode_alias_workspace{*decode_alias_frozen.plan};
+      ExecutionWorkspace decode_alias_workspace{*decode_alias_frozen.Plan()};
       decode_alias_result = DecodeCompleteRecord(
-          *decode_alias_frozen.plan, decode_alias_workspace, 0U,
+          *decode_alias_frozen.Plan(), decode_alias_workspace, 0U,
           ByteView{reinterpret_cast<const std::uint8_t*>(decode_alias_slots.data()), 2U},
           decode_alias_slots.data(), decode_alias_slots.size());
     }
@@ -1593,35 +1554,37 @@ int main(int argc, char** argv) {
                       SlotsUntouched(decode_alias_slots.data(), decode_alias_slots.size()),
                   "overlapping Decode input and slots were not rejected atomically");
 
-    PlanBuildResult over_profile_frozen = PlanBuilder::Freeze(MakeOverConstrainedProfileDraft());
+    CompileResult over_profile_frozen = MakeOverConstrainedProfilePlan();
     runner.Record(
         "freeze_rejects_resource_limit_exceeded",
-        !over_profile_frozen.Succeeded() && over_profile_frozen.plan == nullptr &&
-            over_profile_frozen.diagnostic.has_value() &&
-            over_profile_frozen.diagnostic->code == PlanBuildError::RESOURCE_LIMIT_EXCEEDED,
-        "over-profile PlanDraft was not rejected without a frozen Plan");
+        !over_profile_frozen.Succeeded() && over_profile_frozen.Plan() == nullptr &&
+            over_profile_frozen.Diagnostic() != nullptr &&
+            over_profile_frozen.Diagnostic()->stage == CompileStage::RESOURCE_BUDGET &&
+            over_profile_frozen.Diagnostic()->code == CompileError::RESOURCE_LIMIT_EXCEEDED,
+        "over-profile configuration bypassed ResourceBudgetValidator");
 
-    PlanBuildResult incomplete_frozen = MakeIncompleteCoveragePlan();
+    CompileResult incomplete_frozen = MakeIncompleteCoveragePlan();
     runner.Record("freeze_rejects_incomplete_coverage",
-                  !incomplete_frozen.Succeeded() && incomplete_frozen.plan == nullptr &&
-                      incomplete_frozen.diagnostic.has_value() &&
-                      incomplete_frozen.diagnostic->code == PlanBuildError::FRAME_NOT_FULLY_DEFINED,
-                  "incomplete frame coverage was not rejected without a frozen Plan");
+                  !incomplete_frozen.Succeeded() && incomplete_frozen.Plan() == nullptr &&
+                      incomplete_frozen.Diagnostic() != nullptr &&
+                      incomplete_frozen.Diagnostic()->stage == CompileStage::DOMAIN_VALIDATION &&
+                      incomplete_frozen.Diagnostic()->code == CompileError::FRAME_NOT_FULLY_DEFINED,
+                  "incomplete frame coverage bypassed DomainValidator");
 
-    PlanBuildResult final_review_frozen = MakeFinalReviewFailurePlan();
+    CompileResult final_review_frozen = MakeFinalReviewFailurePlan();
     std::vector<EncodeFieldValue> final_review_values(2U);
     if (final_review_frozen.Succeeded()) {
-      final_review_values[0].field = FieldRef{final_review_frozen.plan.get(), 0U, 0U};
+      final_review_values[0].field = FieldRef{final_review_frozen.Plan(), 0U, 0U};
       final_review_values[0].value_kind = LogicalValueKind::UINT64;
       final_review_values[0].uint64_value = 0x5AU;
-      final_review_values[1].field = FieldRef{final_review_frozen.plan.get(), 0U, 1U};
+      final_review_values[1].field = FieldRef{final_review_frozen.Plan(), 0U, 1U};
       final_review_values[1].value_kind = LogicalValueKind::UINT64;
       final_review_values[1].uint64_value = 0x11U;
     }
     error.clear();
     runner.Record("encode_final_review_failed",
                   final_review_frozen.Succeeded() &&
-                      ExpectEncodeFailure(*final_review_frozen.plan, 0U, 0U, final_review_values,
+                      ExpectEncodeFailure(*final_review_frozen.Plan(), 0U, 0U, final_review_values,
                                           2U, CodecStatus::FINAL_REVIEW_FAILED, error),
                   error);
 

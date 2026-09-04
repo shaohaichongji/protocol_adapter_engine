@@ -5,7 +5,7 @@
 | 项目 | 内容 |
 | --- | --- |
 | 文档名称 | PAE V0.1 Loader 与 Compiler 架构边界 |
-| 文档版本 | 0.1.9 |
+| 文档版本 | 0.1.12 |
 | 文档日期 | 2026-09-02 |
 | 适用范围 | `ProtocolAdapterEngine` V0.1 配置加载和内存执行计划编译链 |
 | 文档属性 | 仓库内架构边界文档，不是公共接口参考 |
@@ -18,10 +18,12 @@
 | --- | --- | --- |
 | `CONFIRMED PRINCIPLE（已确认原则）` | 已由上层《PAE V0.1 技术细节拍板方案》确认，当前实现必须遵守 | 严格 JSON、执行链顺序、第三方类型隔离、不可变 Plan、失败关闭和资源有界原则 |
 | `ARCHITECTURE DRAFT（本轮架构草案）` | 本轮对组件职责、IR、生命周期和失败边界形成的设计草案 | 各组件的输入输出、类型状态、诊断阶段和最小垂直切片 |
-| `CONFIRMED TARGET / UNVERIFIED（已确认目标 / 未验证）` | 上层Decision已经确认职责与不变量，但源码和测试尚未闭合 | 不可伪造的Validated/Budgeted Draft（已验证/已预算草案）能力边界、Validator（校验器）单一规则权威、冷Plan实际占用和Runtime（运行时）活跃内存准入 |
+| `CONFIRMED / VERIFIED（已确认 / 已验证）` | 上层Decision已经确认，且当前内部切片取得本地执行证据 | 不可伪造的Validated/Budgeted Draft（已验证/已预算草案）能力边界、Validator（校验器）单一作者错误权威和Windows门禁 |
+| `PARTIALLY VERIFIED（部分已验证）` | 当前内部切片已实现并取得有边界的Windows证据 | 冷Plan精确计量和单Plan准入（PAE-DEC-033A） |
+| `CONFIRMED TARGET / UNVERIFIED（已确认目标 / 未验证）` | 上层Decision已经确认职责与不变量，但源码和测试尚未闭合 | Runtime（运行时）全部活跃Plan/Session聚合内存准入（PAE-DEC-033B） |
 | `INTERFACE OPEN（未冻结接口）` | 尚未进入 API Specification（应用程序接口规范），名称、字段和数值仍可调整 | 本文全部 C++ 概念接口、具体错误码数值、结构体布局、五项Loader容量候选的最终数值和最终 Parser 类型 |
 
-截至2026-09-02，本文描述的编译链已经落地内部、不可安装、不可导出的最小可执行切片；`ProtocolPlan`类型也已从`config_compiler`抽离为不依赖yyjson的`pae_protocol_plan`内部目标，并完成首个Frozen Execution Plan（冻结执行计划）与`COMPLETE_RECORD（完整记录）`Codec（编解码器）衔接。第十五轮`PAE-DEC-032/033`进一步确认类型能力边界、单一规则权威和完整内存准入目标，但没有把当前实现升级为已验证状态，也没有冻结概念接口中的具体C++名称或布局。
+截至2026-09-02，本文描述的编译链已经落地内部、不可安装、不可导出的最小可执行切片；`ProtocolPlan`类型也已从`config_compiler`抽离为不依赖yyjson的`pae_protocol_plan`内部目标，并完成首个Frozen Execution Plan（冻结执行计划）与`COMPLETE_RECORD（完整记录）`Codec（编解码器）衔接。`PAE-DEC-032`类型能力边界和单一作者错误权威已验证；`PAE-DEC-033A`冷Plan精确计量与单Plan准入已实现并获得Windows阶段证据，`PAE-DEC-033B`Runtime活跃内存聚合准入仍未实现。当前内部C++名称和布局不构成稳定公共API或ABI承诺。
 
 本文没有把架构草案升级为新的用户拍板，也没有修改上层已确认决策。若本文与后续用户确认或专项规范冲突，以后者为准。
 
@@ -312,7 +314,18 @@ SchemaIr所有权
 
 `PlanBuilder`不能通过“尝试分配直到失败”代替ResourceBudget校验。
 
-`PAE-DEC-033`进一步确认：冷Plan预算至少覆盖最终拥有的Matcher字节、字符串、容器、执行描述符和索引；Runtime注册Plan和创建Session前必须对全部活跃Plan/Session执行checked aggregate admission（受检总量准入），失败时无部分注册、无overcommit、无lazy allocation。同一Runtime内共享Plan只计一次，各Session按实际预留分别计入并在销毁后归还。精确计费单位、Allocator开销、容器布局和资源报告公共字段仍是实现规格待定项。
+第十七轮将`PAE-DEC-033`拆分为两个可独立落地和验证的阶段：
+
+- `PAE-DEC-033A`：冷Plan内存计量、单Plan预算准入和冻结事务；
+- `PAE-DEC-033B`：Runtime全部活跃Plan/Session的聚合准入、并发预留和销毁退款。
+
+二者统一采用`PAE Accounted Memory（PAE计入内存）`口径：统计PAE长期存活Allocator（分配器）实际请求或预留的字节，并另行记录`allocation_count（分配次数）`；不把平台Allocator私有元数据、进程RSS（Resident Set Size，常驻内存集）或尚未实际预留的外部内存估算为已计入字节。
+
+冷Plan计入最终拥有的Plan对象、字符串、Matcher字节、容器capacity（容量）、冷热执行描述符、索引、扩展实例及必要对齐；不计入输入JSON字节、Parser DOM/arena（解析器文档对象模型/内存区）、Schema IR（中间表示）、Compiler临时工作区、调用方Buffer和Session工作区。所有长期Plan内存通过内部纯C++17 `Accounting Allocator（计量分配器）`进入计量；公共API不暴露`std::pmr`、STL容器或具体Allocator类型。
+
+Plan冻结采用`estimate（估算） → reserve（预留） → build（构建） → final audit（最终复核） → publish（发布）`事务：全部加法和乘法必须执行checked arithmetic（受检算术），任何超限、溢出、分配失败或估算与最终计量不一致均失败关闭并完整回滚，不得发布部分Plan。Profile（资源配置档）候选字段为`max_plan_memory_bytes`、`max_session_memory_bytes`、`max_runtime_memory_bytes`、`max_active_plans`和`max_active_sessions`，具体数值等待规模测试后冻结。
+
+`PAE-DEC-033A`已实现`PlanMemoryReport（Plan内存报告）`、单Storage Block受控Arena、单Plan exact/limit−1准入、重复编译报告确定性和全逻辑分配点故障注入零残留。Runtime中同一Plan实例只计一次、并发原子预留和销毁退款仍属于`PAE-DEC-033B`未实现范围。
 
 ### 4.5 PlanBuilder
 
@@ -347,9 +360,9 @@ SchemaIr所有权
 
 如果`PlanBuilder`在合法`BudgetedSchemaIr`中发现字段重叠、引用不存在或Matcher冲突，应返回`INTERNAL_CONTRACT_VIOLATION`或等价内部错误，表示Validator存在缺口，而不是重新归类为普通用户配置错误。
 
-当前实现尚未把`SchemaIr → ValidatedSchemaIr → BudgetedSchemaIr`落实为不可伪造的不同C++类型。Config Compiler先执行Domain/Resource检查，再把`PlanDraft`交给`PlanBuilder::Freeze`；Builder会重新计算资源需求，并防御性重查当前COMPLETE_RECORD子集的字段布局、Matcher、引用、覆盖和歧义。该做法能保证任何内部调用者都不能绕过安全门禁，但与“已验证IR只做描述符生成和尾部不变量审计”的最终职责仍有重复。
+当前实现已经把`SchemaIr → ValidatedSchemaIr → BudgetedSchemaIr → BudgetedPlanDraft`落实为不可伪造的不同C++能力类型。三种类型均禁止默认构造和复制，只能沿`DomainValidator → ResourceBudgetValidator → PlanDraftAssembler → PlanBuilder`单向移动；前两级使用独占私有载荷，Builder草案使用私有PIMPL（Pointer to Implementation，指向实现的指针），因此移动后的对象再次进入后续阶段会失败关闭。
 
-`PAE-DEC-032`已经确认只有Validator能够构造`Validated/Budgeted Draft（已验证/已预算草案）`能力状态，并要求规则只有一个语义权威来源；当前源码仍未实现该目标，因此不应直接删除Builder检查。落地时必须同时满足：作者友好诊断仍由Config Compiler产生，直接内部草案入口不能伪造已验证状态，冻结尾部错误只表示资源闭合或内部契约缺陷。
+`PAE-DEC-032`要求的作者错误单一权威已经落地：重复ID、引用、方向、字段、Matcher、Enum和Profile资源问题由Domain/Resource Validator报告稳定阶段与JSON Pointer；Builder保留的同类检查只作为内部不变量审计，命中后统一映射为`INTERNAL_CONTRACT_VIOLATION（内部契约违规）`，不会重新包装为普通配置错误。原始草案载荷位于内部头文件，`PlanBuilder::Freeze`生产入口只接受`BudgetedPlanDraft`。Windows专项证据见`docs/windows-msvc-2026-validated-budgeted-capability-chain.md`。
 
 ## 5. IR设计决策
 
@@ -719,13 +732,13 @@ PlanBuilder错误：
 
 截至2026-09-02，Windows x64、MSVC Release/Debug已实际验证：
 
-- Config Compiler合同Runner各`22/22`；Codec主合同Runner各`60/60`；
+- Config Compiler合同Runner各`28/28`；Codec主合同Runner各`60/60`；
 - 首次Decode/Encode replaceable `new/new[]`门禁各`1/1`，操作计数门禁`4/4`，共享Plan并发门禁`2/2`；
-- Codec配置CTest各`6/6`，Parser、Loader和Codec共存Release CTest `26/26`；
+- Codec配置CTest各`6/6`，Parser、Loader、Plan和Codec共存Release/Debug CTest各`26/26`；
 - 产品Only和宿主`add_subdirectory`边界均未生成Config Compiler、yyjson、instrumented Core或PAE测试Runner；宿主仍可拥有自身的通用CTest辅助目标；
-- 详细环境、命令和证据限制见`docs/windows-msvc-2026-frozen-execution-plan-slice.md`。
+- 详细环境、命令和证据限制见`docs/windows-msvc-2026-accounted-plan-memory-slice.md`和`docs/windows-msvc-2026-frozen-execution-plan-slice.md`。
 
-这些结果证明当前内部切片的构造闭环、执行描述符和Windows门禁，不代表完整Loader/Compiler类型状态、完整Plan/Runtime资源准入、生产性能或跨平台验证已经闭合。
+这些结果证明当前内部切片的构造闭环、能力类型状态、单Plan计费内存准入、执行描述符和Windows门禁，不代表Runtime聚合资源准入、生产性能或跨平台验证已经闭合。
 
 ## 12. 当前未冻结事项
 
@@ -743,8 +756,8 @@ PlanBuilder错误：
 - 完整字段级JSON属性布局；
 - DECIMAL64、typed constant/default、自定义Checksum参数等尚未冻结的作者格式；unsigned `-0`已经进入最小Loader切片负例，REAL64和超大REAL仍只在Windows Spike复验，尚未进入当前SchemaIr切片；
 - 当前已存在最小Plan内部结构，但其稳定布局、Handle数值和Allocator策略仍未冻结；
-- `PAE-DEC-032`已经确认不可伪造的`Validated/Budgeted Draft`能力边界和单一规则权威目标；当前Config Compiler与PlanBuilder仍重复检查多项Domain安全规则，源码与测试尚未闭合；
-- `PAE-DEC-033`已经确认冷Plan实际占用及Runtime全部活跃Plan/Session总内存准入目标；当前仍只计算计数需求和Workspace数组估算，完整实现与验证尚未闭合；
+- `PAE-DEC-032`不可伪造的`Validated/Budgeted Draft`能力边界、单一作者规则权威和Windows门禁已经闭合；当前内部类型与名称仍不构成稳定公共API或ABI承诺；
+- `PAE-DEC-033A`已实现并获得Windows部分验证；候选单Plan上限、正式最大规模配置和跨平台证据仍未冻结；`PAE-DEC-033B` Runtime聚合语义与并发准入/退款源码和测试尚未实现；
 - 首个内部Codec的公共状态表示、长期兼容入口、C ABI和Session衔接；
 - Runtime注册事务接口；
 - 任何生产Core性能和目标平台资源结论。
@@ -755,6 +768,9 @@ PlanBuilder错误：
 
 | 文档版本 | 日期 | 说明 |
 | --- | --- | --- |
+| 0.1.12 | 2026-09-02 | 同步PAE-DEC-033A单Storage Block、Frozen Storage、PlanOwner、精确单Plan准入、报告复核与Windows部分验证；保持033B为UNVERIFIED |
+| 0.1.11 | 2026-09-02 | 同步第十七轮PAE-DEC-033拍板：拆分冷Plan与Runtime阶段，冻结PAE Accounted Memory口径、长期Allocator计量、Plan准入事务、Runtime并发聚合、Profile候选字段、内部报告分类和验证门禁；保持源码与测试为UNVERIFIED |
+| 0.1.10 | 2026-09-02 | 同步PAE-DEC-032实现：记录move-only不可伪造能力链、移动后重复消费拒绝、原始PlanDraft退出生产入口、Validator单一作者错误权威、Builder内部故障映射和Windows Release/Debug证据 |
 | 0.1.9 | 2026-09-02 | 将首个公开切片替换为完全独立的SYNTHETIC_FROM_SCRATCH人工协议；删除实现证据衍生的具体协议标识和布局，不改变Loader/Compiler职责或测试门禁 |
 | 0.1.8 | 2026-09-02 | 同步PAE-DEC-032/033：确认不可伪造的类型能力状态、Validator单一规则权威、冷Plan实际占用和Runtime活跃内存准入目标；保持具体C++形态、精确计费口径及当前实现为UNVERIFIED |
 | 0.1.7 | 2026-09-02 | 记录Frozen Execution Plan、显式ExecutionWorkspace和Windows门禁；明确当前Domain/Builder双检及冷Plan/Runtime完整内存准入仍为OPEN |

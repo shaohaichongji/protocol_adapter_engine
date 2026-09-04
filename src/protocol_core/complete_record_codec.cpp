@@ -165,7 +165,7 @@ bool MessageMatches(const MessageExecutionPlan& message,
 }
 
 MatchOutcome FindPipelineMatch(const PipelineExecutionPlan& pipeline,
-                               const std::vector<MessageExecutionPlan>& messages,
+                               const protocol_plan::FrozenArray<MessageExecutionPlan>& messages,
                                ByteView input PAE_OPERATION_COUNTS_PARAMETER) noexcept {
   MatchOutcome outcome;
   const CandidateGroupExecutionPlan* group =

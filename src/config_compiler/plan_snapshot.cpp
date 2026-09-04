@@ -152,7 +152,8 @@ void AppendIntegerProperty(std::string_view name, Integer value, std::string& ou
   AppendInteger(value, output);
 }
 
-void AppendHexBytes(const std::vector<std::uint8_t>& bytes, std::string& output) {
+template <typename ByteSequence>
+void AppendHexBytes(const ByteSequence& bytes, std::string& output) {
   constexpr char kHex[] = "0123456789ABCDEF";
   output.push_back('"');
   for (std::size_t index = 0U; index < bytes.size(); ++index) {
@@ -205,7 +206,7 @@ std::string MakeDeterministicPlanSnapshot(const PlanBundle& plan) {
     if (framing_index != 0U) {
       output.push_back(',');
     }
-    const FramingPlan& framing = framing_profiles[framing_index];
+    const protocol_plan::FrozenFramingPlan& framing = framing_profiles[framing_index];
     output.push_back('{');
     AppendStringProperty("id", framing.id, output);
     output.push_back(',');
@@ -221,7 +222,7 @@ std::string MakeDeterministicPlanSnapshot(const PlanBundle& plan) {
     if (pipeline_index != 0U) {
       output.push_back(',');
     }
-    const PipelinePlan& pipeline = pipelines[pipeline_index];
+    const protocol_plan::FrozenPipelinePlan& pipeline = pipelines[pipeline_index];
     output.push_back('{');
     AppendStringProperty("id", pipeline.id, output);
     output.push_back(',');
@@ -245,7 +246,7 @@ std::string MakeDeterministicPlanSnapshot(const PlanBundle& plan) {
     if (message_index != 0U) {
       output.push_back(',');
     }
-    const MessagePlan& message = messages[message_index];
+    const protocol_plan::FrozenMessagePlan& message = messages[message_index];
     output.push_back('{');
     AppendStringProperty("id", message.id, output);
     output.push_back(',');
@@ -258,7 +259,7 @@ std::string MakeDeterministicPlanSnapshot(const PlanBundle& plan) {
       if (matcher_index != 0U) {
         output.push_back(',');
       }
-      const MatcherPlan& matcher = message.matchers[matcher_index];
+      const protocol_plan::FrozenMatcherPlan& matcher = message.matchers[matcher_index];
       output.push_back('{');
       AppendStringProperty("kind", ToString(matcher.kind), output);
       if (matcher.kind == MatcherKind::FRAME_LENGTH_EQUALS) {
@@ -279,7 +280,7 @@ std::string MakeDeterministicPlanSnapshot(const PlanBundle& plan) {
       if (field_index != 0U) {
         output.push_back(',');
       }
-      const FieldPlan& field = message.fields[field_index];
+      const protocol_plan::FrozenFieldPlan& field = message.fields[field_index];
       output.push_back('{');
       AppendStringProperty("id", field.id, output);
       output.push_back(',');
@@ -306,7 +307,7 @@ std::string MakeDeterministicPlanSnapshot(const PlanBundle& plan) {
           if (enum_index != 0U) {
             output.push_back(',');
           }
-          const EnumEntryPlan& entry = field.enum_entries[enum_index];
+          const protocol_plan::FrozenEnumEntryPlan& entry = field.enum_entries[enum_index];
           output.push_back('{');
           AppendStringProperty("id", entry.id, output);
           output.push_back(',');

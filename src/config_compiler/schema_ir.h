@@ -2,8 +2,10 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <memory>
 #include <optional>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "../protocol_plan/plan_types.h"
@@ -116,14 +118,69 @@ struct ResolvedPipelineIr {
   std::vector<std::size_t> message_indices;
 };
 
-struct ValidatedSchemaIr {
-  SchemaIr schema;
-  std::vector<ResolvedPipelineIr> resolved_pipelines;
-  ResourceRequirements requirements;
+class DomainValidator;
+class ResourceBudgetValidator;
+class PlanDraftAssembler;
+
+// Internal capability state: only DomainValidator can create it. This type is deliberately
+// move-only so validation authority cannot be copied or synthesized by setting a public flag.
+class ValidatedSchemaIr final {
+ public:
+  ValidatedSchemaIr() = delete;
+  ValidatedSchemaIr(const ValidatedSchemaIr&) = delete;
+  ValidatedSchemaIr& operator=(const ValidatedSchemaIr&) = delete;
+  ValidatedSchemaIr(ValidatedSchemaIr&&) noexcept = default;
+  ValidatedSchemaIr& operator=(ValidatedSchemaIr&&) noexcept = default;
+  ~ValidatedSchemaIr() = default;
+
+ private:
+  struct Payload final {
+    Payload(SchemaIr schema, std::vector<ResolvedPipelineIr> resolved_pipelines,
+            ResourceRequirements requirements)
+        : schema(std::move(schema)),
+          resolved_pipelines(std::move(resolved_pipelines)),
+          requirements(requirements) {}
+
+    SchemaIr schema;
+    std::vector<ResolvedPipelineIr> resolved_pipelines;
+    ResourceRequirements requirements;
+  };
+
+  ValidatedSchemaIr(SchemaIr schema, std::vector<ResolvedPipelineIr> resolved_pipelines,
+                    ResourceRequirements requirements)
+      : payload_(std::make_unique<Payload>(std::move(schema), std::move(resolved_pipelines),
+                                           requirements)) {}
+
+  friend class DomainValidator;
+  friend class ResourceBudgetValidator;
+  friend class PlanDraftAssembler;
+
+  std::unique_ptr<Payload> payload_;
 };
 
-struct BudgetedSchemaIr {
-  ValidatedSchemaIr validated;
+// Internal capability state: only ResourceBudgetValidator can promote a validated SchemaIr.
+class BudgetedSchemaIr final {
+ public:
+  BudgetedSchemaIr() = delete;
+  BudgetedSchemaIr(const BudgetedSchemaIr&) = delete;
+  BudgetedSchemaIr& operator=(const BudgetedSchemaIr&) = delete;
+  BudgetedSchemaIr(BudgetedSchemaIr&&) noexcept = default;
+  BudgetedSchemaIr& operator=(BudgetedSchemaIr&&) noexcept = default;
+  ~BudgetedSchemaIr() = default;
+
+ private:
+  BudgetedSchemaIr(ValidatedSchemaIr validated, protocol_plan::PlanMemoryReport plan_memory,
+                   std::size_t plan_memory_limit_bytes)
+      : validated_(std::make_unique<ValidatedSchemaIr>(std::move(validated))),
+        plan_memory_(plan_memory),
+        plan_memory_limit_bytes_(plan_memory_limit_bytes) {}
+
+  friend class ResourceBudgetValidator;
+  friend class PlanDraftAssembler;
+
+  std::unique_ptr<ValidatedSchemaIr> validated_;
+  protocol_plan::PlanMemoryReport plan_memory_;
+  std::size_t plan_memory_limit_bytes_ = 0U;
 };
 
 }  // namespace pae::config_compiler

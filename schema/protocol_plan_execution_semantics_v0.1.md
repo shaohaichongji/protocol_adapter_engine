@@ -52,7 +52,7 @@ Strict JSON bytes
 - 任一阶段失败时不得执行后续阶段；
 - 第三方 Parser 类型不得进入 SchemaIr、诊断跨层接口或 Plan；
 - Parser DOM 必须在 SchemaIr 拥有全部所需数据后释放；
-- `PAE-DEC-032`确认正式Config Compiler入口必须先完成Structural、Domain和ResourceBudget校验，并通过不可伪造的Validated/Budgeted（已验证/已预算）能力状态后才能进入PlanBuilder；当前内部`PlanDraft`尚未落实该类型状态，Builder仍保留防御复核，差距见11.2节；
+- `PAE-DEC-032`要求的不可伪造Validated/Budgeted（已验证/已预算）能力状态已经在当前内部切片落地；原始`PlanDraft`已退出生产Builder入口，具体边界见11.2节；
 - `pae_protocol_plan`是从`config_compiler`抽离出的内部、不可安装、不可导出目标；它不得依赖yyjson或其他JSON Parser；
 - `pae_config_compiler`和`pae_protocol_core_slice`都依赖`pae_protocol_plan`，Codec不得反向依赖配置编译器；
 - 同一输入、同一 Profile 和同一 Extension Registry 快照必须产生等价 Plan 语义。
@@ -301,7 +301,7 @@ PlanBuilder不得读取原始JSON、保留Parser DOM或修改Runtime。失败时
 
 ### 11.2 当前冻结执行描述符
 
-当前实现由`PlanBuilder::Freeze`消费内部`PlanDraft`并一次性交付`std::unique_ptr<const PlanBundle>`：
+当前实现由`PlanBuilder::Freeze`消费不可伪造、move-only（仅移动）的内部`BudgetedPlanDraft`并一次性交付`PlanOwner`所有的`const PlanBundle`：
 
 - `PlanBundle`构造器私有化，并删除复制和移动；
 - 冻结前重新计算`ResourceRequirements（资源需求）`并与草案声明比较，再按Desktop/Constrained Profile检查当前帧、Message、Field、Matcher、Enum和Workspace上限；
@@ -311,9 +311,9 @@ PlanBuilder不得读取原始JSON、保留Parser DOM或修改Runtime。失败时
 - Codec只消费上述描述符，不再调用`ValidatePipeline`、`ValidateMessageLayout`、`MessageDefinesWholeFrame`或`FindEncodeValue`等旧逐帧静态检查/重复线性查找路径；
 - Encode最终Matcher和字段复核、调用方输入、引用归属、Buffer容量、alias、Matcher唯一性及Workspace独占检查继续在每次调用中执行。
 
-当前Config Compiler已经先执行Domain和Resource检查，`PlanBuilder::Freeze`又防御性重查字段布局、Matcher、引用、覆盖和歧义等安全规则。这样不会把无效Plan交给Codec，但仍是过渡性“双检”。`PAE-DEC-032`已经确认：只有正式Validator可以产生不可伪造的Validated/Budgeted能力状态，作者错误与稳定诊断以Validator为单一语义权威，Builder只机械生成描述符并保留受检运算、Allocator失败、最终资源闭合和内部自洽审计。当前源码尚未实现该边界，在实现和负向绕过测试完成前不能直接删除Builder检查。
+当前Config Compiler已经形成`SchemaIr → ValidatedSchemaIr → BudgetedSchemaIr → BudgetedPlanDraft → PlanBundle`单向能力链。作者配置错误与稳定JSON Pointer由Domain/Resource Validator（领域/资源校验器）作为单一语义权威报告；ResourceBudget在产生Budgeted能力前完成精确单Plan内存准入；Builder只接受Budgeted能力，并把尾部防御审计命中统一映射为内部契约违规。能力类型禁止默认构造和复制，移动后重复消费失败关闭；原始Draft不再是生产入口。Windows专项证据见`docs/windows-msvc-2026-validated-budgeted-capability-chain.md`和`docs/windows-msvc-2026-accounted-plan-memory-slice.md`。
 
-当前资源闭合也只覆盖计数与Workspace数组估算。`PAE-DEC-033`已经确认冷Plan最终持有的Matcher字节、字符串、容器、执行描述符和索引必须纳入实际占用，并要求Runtime在注册Plan和创建Session前原子完成全部活跃Plan/Session总内存准入；共享Plan只计一次，Session按实际预留分别计入并在销毁后归还。该目标仍为`UNVERIFIED（未验证）`；精确计费单位、Allocator开销、最终容器布局和资源报告公共字段尚未冻结。
+当前`PAE-DEC-033A`已实现：冷/热Plan长期对象使用单一Storage Block的`FrozenString/FrozenArray`，ResourceBudget完成单Plan精确准入，Builder复算与最终Arena报告必须匹配批准报告。`PlanMemoryReport`分类覆盖对象、字符串、Matcher、元数据容器、执行描述符、索引、扩展和对齐；当前候选单Plan上限Hard/Desktop/Constrained为`256/128/8 MiB`，仍是`CANDIDATE / UNVERIFIED`。`PAE-DEC-033B` Runtime活跃Plan/Session聚合准入仍未实现。实施与Windows证据分别见`docs/pae-dec-033a-accounted-plan-memory-implementation-slice.md`和`docs/windows-msvc-2026-accounted-plan-memory-slice.md`。
 
 ## 12. 当前不覆盖的完整 V0.1 能力
 
@@ -334,11 +334,11 @@ PlanBuilder不得读取原始JSON、保留Parser DOM或修改Runtime。失败时
 截至2026-09-02，Loader/Compiler与Frozen Execution Plan内部切片已有以下执行证据：
 
 - PowerShell 7 `Test-Json`对8项结构参考用例的结果符合预期；尚未执行官方Draft 2020-12 Meta-Schema（元Schema）自验证；
-- Windows x64、MSVC（Microsoft Visual C++，微软C++编译器）Release/Debug下的Config Compiler合同Runner各22项内部用例通过；
+- Windows x64、MSVC（Microsoft Visual C++，微软C++编译器）Release/Debug下的Config Compiler合同Runner各28项内部用例通过；
 - 合法人工实验样例生成的Canonical Plan（规范化计划）与稳定ID Golden Snapshot逐字节一致；
 - 代表性Structural/Domain负例均验证失败时不交付部分`PlanBundle`。
 
-仓库当前另保存了内部Codec源码和两条预先写定的Synthetic Engine Vector。Frozen Execution Plan重构后的Windows MSVC Release/Debug证据为：Codec CTest各`6/6`，主合同Runner各`60/60`，首次Decode/Encode分配各`1/1`，操作计数`4/4`，共享Plan并发`2/2`；Parser、Loader和Codec共存Release CTest为`26/26`。详细命令和边界记录在`docs/windows-msvc-2026-frozen-execution-plan-slice.md`；此前`52/52`报告只作为历史基线保留。
+仓库当前另保存了内部Codec源码和两条预先写定的Synthetic Engine Vector。最新Windows MSVC Release/Debug证据为：Config Compiler各`28/28`，Codec CTest各`6/6`，主合同Runner各`60/60`，首次Decode/Encode分配各`1/1`，操作计数`4/4`，共享Plan并发`2/2`；Parser、Loader、Plan和Codec共存CTest各`26/26`。详细命令和边界记录在`docs/windows-msvc-2026-accounted-plan-memory-slice.md`、`docs/windows-msvc-2026-validated-budgeted-capability-chain.md`与`docs/windows-msvc-2026-frozen-execution-plan-slice.md`；此前`52/52`报告只作为历史基线保留。
 
 上述Loader/Compiler执行证据及Synthetic资产仍不证明：
 
@@ -351,6 +351,8 @@ PlanBuilder不得读取原始JSON、保留Parser DOM或修改Runtime。失败时
 
 | 文档版本 | 日期 | 说明 |
 | --- | --- | --- |
+| 0.1.5 | 2026-09-02 | 同步PAE-DEC-033A单Storage Block、Frozen Storage、PlanOwner、精确ResourceBudget准入、报告复核和Windows部分验证；033B仍未实现 |
+| 0.1.4 | 2026-09-02 | 同步PAE-DEC-032已实现能力链、第十七轮PAE-DEC-033A/033B计量合同和033A推荐实施方案；保持033A/033B源码与测试为UNVERIFIED |
 | 0.1.3 | 2026-09-02 | 用完全独立的SYNTHETIC_FROM_SCRATCH实验台双向样例替换实现证据衍生布局；保留相同引擎能力与验证边界，不新增生产协议结论 |
 | 0.1.2 | 2026-09-02 | 同步PAE-DEC-032/033，确认不可伪造的Validated/Budgeted能力状态、Validator单一规则权威及完整Plan/Runtime内存准入目标；当前实现继续标记UNVERIFIED |
 | 0.1.1 | 2026-09-02 | 记录Frozen Execution Plan、显式ExecutionWorkspace、Windows操作计数/并发/首次调用门禁，以及Validated Draft类型状态和完整Plan/Runtime内存准入仍未闭合的边界 |

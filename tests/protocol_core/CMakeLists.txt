@@ -149,6 +149,30 @@ configure_file(
     COPYONLY
 )
 
+add_library(
+    pae_protocol_core_test_plan_factory
+    STATIC
+        test_plan_factory.cpp
+        test_plan_factory.h
+)
+
+target_include_directories(
+    pae_protocol_core_test_plan_factory
+    PUBLIC
+        "${CMAKE_CURRENT_SOURCE_DIR}"
+        "${PROJECT_SOURCE_DIR}/src/config_compiler"
+        "${PROJECT_SOURCE_DIR}/src/protocol_plan"
+)
+
+target_link_libraries(
+    pae_protocol_core_test_plan_factory
+    PUBLIC
+        pae_config_compiler
+        pae::protocol_plan
+    PRIVATE
+        pae::project_options
+)
+
 add_executable(
     pae_complete_record_codec_contract_tests
     complete_record_codec_contract_tests.cpp
@@ -167,6 +191,7 @@ target_link_libraries(
     pae_complete_record_codec_contract_tests
     PRIVATE
         pae_config_compiler
+        pae_protocol_core_test_plan_factory
         pae_protocol_core_slice
         pae::protocol_plan
         pae::project_options
@@ -197,6 +222,7 @@ add_executable(
 target_link_libraries(
     pae_complete_record_first_call_allocation_tests
     PRIVATE
+        pae_protocol_core_test_plan_factory
         pae_protocol_core_slice
         pae::protocol_plan
         pae::project_options
@@ -228,6 +254,7 @@ add_executable(
 target_link_libraries(
     pae_complete_record_operation_count_tests
     PRIVATE
+        pae_protocol_core_test_plan_factory
         pae_protocol_core_slice_instrumented
         pae::protocol_plan
         pae::project_options
@@ -256,6 +283,7 @@ add_executable(
 target_link_libraries(
     pae_complete_record_shared_plan_concurrency_tests
     PRIVATE
+        pae_protocol_core_test_plan_factory
         pae_protocol_core_slice
         pae::protocol_plan
         pae::project_options

@@ -11,10 +11,11 @@
 #include <vector>
 
 #include "complete_record_codec.h"
-#include "plan_builder.h"
+#include "test_plan_factory.h"
 
 namespace {
 
+using pae::config_compiler::CompileResult;
 using pae::protocol_core::ByteView;
 using pae::protocol_core::CodecOperationCounts;
 using pae::protocol_core::CodecStatus;
@@ -36,14 +37,11 @@ using pae::protocol_plan::MatcherKind;
 using pae::protocol_plan::MatcherPlan;
 using pae::protocol_plan::MessagePlan;
 using pae::protocol_plan::PipelinePlan;
-using pae::protocol_plan::PlanBuilder;
-using pae::protocol_plan::PlanBuildResult;
-using pae::protocol_plan::PlanDraft;
 using pae::protocol_plan::ResourceProfile;
-using pae::protocol_plan::ResourceRequirements;
 using pae::protocol_plan::UnknownEnumPolicy;
 using pae::protocol_plan::ValueType;
 using pae::protocol_plan::WireCodec;
+using pae::test_support::CompileTestPlan;
 
 constexpr std::array<std::string_view, 4U> kExpectedCaseIds{
     "linear_field_operation_counts",
@@ -99,37 +97,17 @@ FieldPlan MakeByteField(std::string id, std::size_t offset, ValueType type = Val
   return field;
 }
 
-PlanDraft MakeDraft(std::vector<MessagePlan> messages, std::vector<std::size_t> message_indices) {
+CompileResult CompileOperationPlan(std::vector<MessagePlan> messages,
+                                   std::vector<std::size_t> message_indices) {
   PipelinePlan pipeline;
   pipeline.id = "operation_pipeline";
   pipeline.direction_id = "operation_direction";
   pipeline.framing_profile_index = 0U;
   pipeline.message_indices = std::move(message_indices);
 
-  ResourceRequirements requirements;
-  requirements.framing_profile_count = 1U;
-  requirements.pipeline_count = 1U;
-  requirements.message_count = messages.size();
-  for (const MessagePlan& message : messages) {
-    requirements.max_frame_bytes =
-        (std::max)(requirements.max_frame_bytes, message.frame_length_bytes);
-    requirements.total_field_count += message.fields.size();
-    requirements.total_matcher_count += message.matchers.size();
-    for (const FieldPlan& field : message.fields) {
-      requirements.total_enum_entry_count += field.enum_entries.size();
-    }
-  }
-
-  PlanDraft draft;
-  draft.schema_version = "0.1";
-  draft.protocol_id = "operation_count_protocol";
-  draft.protocol_version = "1";
-  draft.resource_profile = ResourceProfile::DESKTOP;
-  draft.resource_requirements = requirements;
-  draft.framing_profiles.push_back(FramingPlan{"complete_record", InputKind::COMPLETE_RECORD});
-  draft.pipelines.push_back(std::move(pipeline));
-  draft.messages = std::move(messages);
-  return draft;
+  return CompileTestPlan("operation_count_protocol", ResourceProfile::DESKTOP,
+                         {FramingPlan{"complete_record", InputKind::COMPLETE_RECORD}},
+                         {std::move(pipeline)}, std::move(messages));
 }
 
 MatcherPlan LengthMatcher(std::size_t frame_size) {
@@ -149,20 +127,20 @@ bool CheckLinearFieldCount(std::size_t field_count) {
     message.fields.push_back(MakeByteField("field_" + std::to_string(index), index));
   }
 
-  PlanBuildResult frozen = PlanBuilder::Freeze(MakeDraft({std::move(message)}, {0U}));
+  CompileResult frozen = CompileOperationPlan({std::move(message)}, {0U});
   if (!frozen.Succeeded()) {
     return false;
   }
-  ExecutionWorkspace workspace{*frozen.plan};
+  ExecutionWorkspace workspace{*frozen.Plan()};
   std::vector<EncodeFieldValue> values(field_count);
   std::vector<std::uint8_t> output(field_count, 0xCCU);
   for (std::size_t index = 0U; index < field_count; ++index) {
-    values[index].field = FieldRef{frozen.plan.get(), 0U, index};
+    values[index].field = FieldRef{frozen.Plan(), 0U, index};
     values[index].value_kind = LogicalValueKind::UINT64;
     values[index].uint64_value = static_cast<std::uint64_t>(index & 0xFFU);
   }
   const auto encoded =
-      EncodeCompleteRecord(*frozen.plan, workspace, 0U, 0U, values.data(), values.size(),
+      EncodeCompleteRecord(*frozen.Plan(), workspace, 0U, 0U, values.data(), values.size(),
                            MutableByteBuffer{output.data(), output.size()});
   const CodecOperationCounts encode_counts = workspace.LastOperationCounts();
   const std::size_t expected_presence_words =
@@ -185,7 +163,7 @@ bool CheckLinearFieldCount(std::size_t field_count) {
 
   std::vector<DecodedFieldSlot> slots(field_count);
   const auto decoded =
-      DecodeCompleteRecord(*frozen.plan, workspace, 0U, ByteView{output.data(), output.size()},
+      DecodeCompleteRecord(*frozen.Plan(), workspace, 0U, ByteView{output.data(), output.size()},
                            slots.data(), slots.size());
   const CodecOperationCounts decode_counts = workspace.LastOperationCounts();
   return decoded.status == CodecStatus::OK && decoded.field_count == field_count &&
@@ -231,15 +209,15 @@ bool CheckCandidateGroupCount(std::size_t message_count, std::size_t selected_le
     messages.push_back(std::move(message));
     indices.push_back(index);
   }
-  PlanBuildResult frozen = PlanBuilder::Freeze(MakeDraft(std::move(messages), std::move(indices)));
+  CompileResult frozen = CompileOperationPlan(std::move(messages), std::move(indices));
   if (!frozen.Succeeded()) {
     return false;
   }
-  ExecutionWorkspace workspace{*frozen.plan};
+  ExecutionWorkspace workspace{*frozen.Plan()};
   std::vector<std::uint8_t> frame(selected_length);
   std::array<DecodedFieldSlot, 1U> slots{};
   const auto decoded =
-      DecodeCompleteRecord(*frozen.plan, workspace, 0U, ByteView{frame.data(), frame.size()},
+      DecodeCompleteRecord(*frozen.Plan(), workspace, 0U, ByteView{frame.data(), frame.size()},
                            slots.data(), slots.size());
   const CodecOperationCounts counts = workspace.LastOperationCounts();
   const std::size_t maximum_search_steps = CeilLog2(message_count) + 1U;
@@ -274,21 +252,21 @@ bool CheckFixedAndBytesCount(std::size_t payload_size) {
   payload.encode_source = EncodeSource::INPUT;
   message.fields.push_back(std::move(payload));
 
-  PlanBuildResult frozen = PlanBuilder::Freeze(MakeDraft({std::move(message)}, {0U}));
+  CompileResult frozen = CompileOperationPlan({std::move(message)}, {0U});
   if (!frozen.Succeeded()) {
     return false;
   }
-  ExecutionWorkspace workspace{*frozen.plan};
+  ExecutionWorkspace workspace{*frozen.Plan()};
   std::vector<std::uint8_t> payload_bytes(payload_size);
   for (std::size_t index = 0U; index < payload_size; ++index) {
     payload_bytes[index] = static_cast<std::uint8_t>(index & 0xFFU);
   }
   EncodeFieldValue value;
-  value.field = FieldRef{frozen.plan.get(), 0U, 0U};
+  value.field = FieldRef{frozen.Plan(), 0U, 0U};
   value.value_kind = LogicalValueKind::BYTES;
   value.bytes_value = ByteView{payload_bytes.data(), payload_bytes.size()};
   std::vector<std::uint8_t> output(frame_size, 0xCCU);
-  const auto encoded = EncodeCompleteRecord(*frozen.plan, workspace, 0U, 0U, &value, 1U,
+  const auto encoded = EncodeCompleteRecord(*frozen.Plan(), workspace, 0U, 0U, &value, 1U,
                                             MutableByteBuffer{output.data(), output.size()});
   const CodecOperationCounts counts = workspace.LastOperationCounts();
   return encoded.status == CodecStatus::OK && encoded.bytes_written == frame_size &&
@@ -319,15 +297,15 @@ bool CheckEnumLookup() {
   }
   message.fields.push_back(std::move(field));
 
-  PlanBuildResult frozen = PlanBuilder::Freeze(MakeDraft({std::move(message)}, {0U}));
+  CompileResult frozen = CompileOperationPlan({std::move(message)}, {0U});
   if (!frozen.Succeeded()) {
     return false;
   }
-  ExecutionWorkspace workspace{*frozen.plan};
+  ExecutionWorkspace workspace{*frozen.Plan()};
   constexpr std::array<std::uint8_t, 1U> frame{0xFFU};
   std::array<DecodedFieldSlot, 1U> slots{};
   const auto decoded =
-      DecodeCompleteRecord(*frozen.plan, workspace, 0U, ByteView{frame.data(), frame.size()},
+      DecodeCompleteRecord(*frozen.Plan(), workspace, 0U, ByteView{frame.data(), frame.size()},
                            slots.data(), slots.size());
   const CodecOperationCounts counts = workspace.LastOperationCounts();
   const std::size_t maximum_two_search_steps = 2U * (CeilLog2(kEntryCount) + 1U);

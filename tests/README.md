@@ -2,6 +2,8 @@
 
 `tests/config_compiler`覆盖首个Loader/SchemaIr（加载器/类型化中间表示）草案切片，包括合法Plan、稳定ID Golden Snapshot（黄金快照）、严格JSON代表边界、Structural/Domain Validation（结构/领域校验）诊断和失败时无部分`PlanBundle`。
 
+`tests/config_compiler` 还覆盖`PAE-DEC-033A` Plan计费内存合同：分类和总量守恒、重复编译报告确定性、测试Limit的exact/limit−1、批准估算不一致拒绝，以及Storage Block与全部Arena逻辑分配点的逐序号故障注入和零残留。
+
 `tests/protocol_core`保存PAE（Protocol Adapter Engine，协议适配引擎）首个`COMPLETE_RECORD（完整记录）`Codec（编解码器）内部切片的契约用例和Synthetic Engine Vector（合成引擎向量）。每条向量由人工写定的完整报文字节、独立Decode（解码）期望和动态Encode（编码）输入组成；测试侧只读取这些源文件，不能用PAE Encoder（编码器）生成或覆盖期望字节。`manifest_v0.1.tsv`记录向量身份、证据等级和文件关系；CMake在Configure（配置）阶段及CTest执行前校验六份向量文件的SHA-256（Secure Hash Algorithm 256-bit，256位安全散列算法）。
 
 当前两条向量的证据边界如下：

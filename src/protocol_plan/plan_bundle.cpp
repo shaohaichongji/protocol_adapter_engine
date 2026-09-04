@@ -4,14 +4,16 @@
 
 namespace pae::protocol_plan {
 
-PlanBundle::PlanBundle(std::string schema_version, std::string protocol_id,
-                       std::string protocol_version, ResourceProfile resource_profile,
+PlanBundle::PlanBundle(FrozenString schema_version, FrozenString protocol_id,
+                       FrozenString protocol_version, ResourceProfile resource_profile,
                        ResourceRequirements resource_requirements,
-                       std::vector<FramingPlan> framing_profiles,
-                       std::vector<PipelinePlan> pipelines, std::vector<MessagePlan> messages,
+                       FrozenArray<FrozenFramingPlan> framing_profiles,
+                       FrozenArray<FrozenPipelinePlan> pipelines,
+                       FrozenArray<FrozenMessagePlan> messages,
                        ExecutionResourceLayout execution_resource_layout,
-                       std::vector<MessageExecutionPlan> message_execution_plans,
-                       std::vector<PipelineExecutionPlan> pipeline_execution_plans)
+                       FrozenArray<MessageExecutionPlan> message_execution_plans,
+                       FrozenArray<PipelineExecutionPlan> pipeline_execution_plans,
+                       PlanMemoryReport memory_report) noexcept
     : schema_version_(std::move(schema_version)),
       protocol_id_(std::move(protocol_id)),
       protocol_version_(std::move(protocol_version)),
@@ -22,13 +24,14 @@ PlanBundle::PlanBundle(std::string schema_version, std::string protocol_id,
       messages_(std::move(messages)),
       execution_resource_layout_(execution_resource_layout),
       message_execution_plans_(std::move(message_execution_plans)),
-      pipeline_execution_plans_(std::move(pipeline_execution_plans)) {}
+      pipeline_execution_plans_(std::move(pipeline_execution_plans)),
+      memory_report_(memory_report) {}
 
-const std::string& PlanBundle::SchemaVersion() const noexcept { return schema_version_; }
+std::string_view PlanBundle::SchemaVersion() const noexcept { return schema_version_.View(); }
 
-const std::string& PlanBundle::ProtocolId() const noexcept { return protocol_id_; }
+std::string_view PlanBundle::ProtocolId() const noexcept { return protocol_id_.View(); }
 
-const std::string& PlanBundle::ProtocolVersion() const noexcept { return protocol_version_; }
+std::string_view PlanBundle::ProtocolVersion() const noexcept { return protocol_version_.View(); }
 
 ResourceProfile PlanBundle::GetResourceProfile() const noexcept { return resource_profile_; }
 
@@ -36,24 +39,26 @@ const ResourceRequirements& PlanBundle::GetResourceRequirements() const noexcept
   return resource_requirements_;
 }
 
-const std::vector<FramingPlan>& PlanBundle::FramingProfiles() const noexcept {
+const FrozenArray<FrozenFramingPlan>& PlanBundle::FramingProfiles() const noexcept {
   return framing_profiles_;
 }
 
-const std::vector<PipelinePlan>& PlanBundle::Pipelines() const noexcept { return pipelines_; }
+const FrozenArray<FrozenPipelinePlan>& PlanBundle::Pipelines() const noexcept { return pipelines_; }
 
-const std::vector<MessagePlan>& PlanBundle::Messages() const noexcept { return messages_; }
+const FrozenArray<FrozenMessagePlan>& PlanBundle::Messages() const noexcept { return messages_; }
 
 const ExecutionResourceLayout& PlanBundle::GetExecutionResourceLayout() const noexcept {
   return execution_resource_layout_;
 }
 
-const std::vector<MessageExecutionPlan>& PlanBundle::MessageExecutionPlans() const noexcept {
+const FrozenArray<MessageExecutionPlan>& PlanBundle::MessageExecutionPlans() const noexcept {
   return message_execution_plans_;
 }
 
-const std::vector<PipelineExecutionPlan>& PlanBundle::PipelineExecutionPlans() const noexcept {
+const FrozenArray<PipelineExecutionPlan>& PlanBundle::PipelineExecutionPlans() const noexcept {
   return pipeline_execution_plans_;
 }
+
+const PlanMemoryReport& PlanBundle::GetPlanMemoryReport() const noexcept { return memory_report_; }
 
 }  // namespace pae::protocol_plan

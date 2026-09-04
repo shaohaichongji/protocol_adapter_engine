@@ -4,6 +4,7 @@
 #include <fstream>
 #include <iostream>
 #include <limits>
+#include <memory>
 #include <optional>
 #include <sstream>
 #include <string>
@@ -12,24 +13,74 @@
 #include <utility>
 #include <vector>
 
+#include "../../src/config_compiler/validation_pipeline_internal.h"
+#include "../../src/protocol_plan/plan_builder.h"
 #include "config_compiler.h"
+#include "plan_builder_test_peer.h"
 
 namespace {
 
+using pae::config_compiler::BudgetedSchemaIr;
 using pae::config_compiler::CompileDiagnostic;
 using pae::config_compiler::CompileError;
 using pae::config_compiler::CompileJsonToPlan;
 using pae::config_compiler::CompileResult;
 using pae::config_compiler::CompileStage;
+using pae::config_compiler::DomainValidationResult;
+using pae::config_compiler::DomainValidator;
+using pae::config_compiler::EncodeIr;
+using pae::config_compiler::FieldIr;
+using pae::config_compiler::FramingProfileIr;
+using pae::config_compiler::FreezeBudgetedPlanDraft;
 using pae::config_compiler::MakeDeterministicPlanSnapshot;
+using pae::config_compiler::MatcherClauseIr;
 using pae::config_compiler::MatcherKind;
+using pae::config_compiler::MessageIr;
+using pae::config_compiler::PipelineIr;
+using pae::config_compiler::PlanDraftAssembler;
+using pae::config_compiler::PlanDraftAssemblyResult;
+using pae::config_compiler::ResourceBudgetResult;
+using pae::config_compiler::ResourceBudgetValidator;
+using pae::config_compiler::ResourceKind;
+using pae::config_compiler::SchemaIr;
+using pae::config_compiler::ValidatedSchemaIr;
 using pae::config_compiler::ValueType;
+using pae::config_compiler::WireIr;
+using pae::protocol_plan::BudgetedPlanDraft;
+using pae::protocol_plan::ByteOrder;
+using pae::protocol_plan::EncodeSource;
+using pae::protocol_plan::InputKind;
+using pae::protocol_plan::PlanBuilder;
+using pae::protocol_plan::PlanBuildError;
+using pae::protocol_plan::PlanBuildResult;
 using pae::protocol_plan::PlanBundle;
+using pae::protocol_plan::PlanMemoryReport;
+using pae::protocol_plan::ResourceProfile;
+using pae::protocol_plan::WireCodec;
 
 static_assert(!std::is_copy_constructible_v<PlanBundle>);
 static_assert(!std::is_copy_assignable_v<PlanBundle>);
 static_assert(!std::is_move_constructible_v<PlanBundle>);
 static_assert(!std::is_move_assignable_v<PlanBundle>);
+static_assert(!std::is_default_constructible_v<ValidatedSchemaIr>);
+static_assert(!std::is_copy_constructible_v<ValidatedSchemaIr>);
+static_assert(std::is_move_constructible_v<ValidatedSchemaIr>);
+static_assert(!std::is_default_constructible_v<BudgetedSchemaIr>);
+static_assert(!std::is_copy_constructible_v<BudgetedSchemaIr>);
+static_assert(std::is_move_constructible_v<BudgetedSchemaIr>);
+static_assert(!std::is_default_constructible_v<BudgetedPlanDraft>);
+static_assert(!std::is_copy_constructible_v<BudgetedPlanDraft>);
+static_assert(std::is_move_constructible_v<BudgetedPlanDraft>);
+static_assert(!std::is_default_constructible_v<DomainValidationResult>);
+static_assert(!std::is_copy_constructible_v<DomainValidationResult>);
+static_assert(!std::is_default_constructible_v<ResourceBudgetResult>);
+static_assert(!std::is_copy_constructible_v<ResourceBudgetResult>);
+static_assert(!std::is_default_constructible_v<PlanDraftAssemblyResult>);
+static_assert(!std::is_copy_constructible_v<PlanDraftAssemblyResult>);
+static_assert(!std::is_default_constructible_v<PlanBuildResult>);
+static_assert(!std::is_copy_constructible_v<PlanBuildResult>);
+static_assert(!std::is_default_constructible_v<CompileResult>);
+static_assert(!std::is_copy_constructible_v<CompileResult>);
 
 std::string_view ToString(CompileStage value) noexcept {
   switch (value) {
@@ -137,8 +188,6 @@ std::string_view ToString(CompileError value) noexcept {
       return "AMBIGUOUS_MATCHER";
     case CompileError::RESOURCE_LIMIT_EXCEEDED:
       return "RESOURCE_LIMIT_EXCEEDED";
-    case CompileError::PLAN_BUILD_FAILED:
-      return "PLAN_BUILD_FAILED";
     case CompileError::COMPILER_ALLOCATION_FAILED:
       return "COMPILER_ALLOCATION_FAILED";
     case CompileError::INTERNAL_CONTRACT_VIOLATION:
@@ -149,7 +198,7 @@ std::string_view ToString(CompileError value) noexcept {
 
 class TestRunner final {
  public:
-  static constexpr std::size_t kExpectedCaseCount = 22U;
+  static constexpr std::size_t kExpectedCaseCount = 28U;
 
   void Pass(std::string_view case_id) {
     ++passed_;
@@ -173,6 +222,288 @@ class TestRunner final {
   std::size_t passed_ = 0U;
   std::size_t failed_ = 0U;
 };
+
+SchemaIr MakeCapabilityContractSchema() {
+  SchemaIr schema;
+  schema.schema_version = "0.1";
+  schema.protocol_id = "capability_contract";
+  schema.protocol_version = "1";
+  schema.display_name = "Capability contract";
+  schema.source_ref = "SYNTHETIC_FROM_SCRATCH:capability_contract";
+  schema.resource_profile = ResourceProfile::DESKTOP;
+
+  FramingProfileIr framing;
+  framing.id = "complete_record";
+  framing.display_name = "Complete record";
+  framing.source_ref = "SYNTHETIC_FROM_SCRATCH:capability_contract#framing";
+  framing.input_kind = InputKind::COMPLETE_RECORD;
+  framing.origin.json_pointer = "/framing_profiles/0";
+  schema.framing_profiles.push_back(std::move(framing));
+
+  PipelineIr pipeline;
+  pipeline.id = "capability_pipeline";
+  pipeline.display_name = "Capability pipeline";
+  pipeline.source_ref = "SYNTHETIC_FROM_SCRATCH:capability_contract#pipeline";
+  pipeline.direction_id = "capability_direction";
+  pipeline.input_framing_profile_id = "complete_record";
+  pipeline.message_ids.push_back("capability_message");
+  pipeline.origin.json_pointer = "/pipelines/0";
+  schema.pipelines.push_back(std::move(pipeline));
+
+  MessageIr message;
+  message.id = "capability_message";
+  message.display_name = "Capability message";
+  message.source_ref = "SYNTHETIC_FROM_SCRATCH:capability_contract#message";
+  message.direction_id = "capability_direction";
+  message.frame_length_bytes = 2U;
+  message.origin.json_pointer = "/messages/0";
+
+  MatcherClauseIr length_matcher;
+  length_matcher.kind = MatcherKind::FRAME_LENGTH_EQUALS;
+  length_matcher.length_bytes = 2U;
+  length_matcher.origin.json_pointer = "/messages/0/matcher/all/0";
+  message.matcher_clauses.push_back(std::move(length_matcher));
+
+  MatcherClauseIr fixed_matcher;
+  fixed_matcher.kind = MatcherKind::FIXED_BYTES;
+  fixed_matcher.byte_offset = 0U;
+  fixed_matcher.bytes.push_back(0xA5U);
+  fixed_matcher.origin.json_pointer = "/messages/0/matcher/all/1";
+  message.matcher_clauses.push_back(std::move(fixed_matcher));
+
+  FieldIr prefix;
+  prefix.id = "prefix";
+  prefix.display_name = "Prefix";
+  prefix.source_ref = "SYNTHETIC_FROM_SCRATCH:capability_contract#prefix";
+  prefix.value_type = ValueType::UINT64;
+  prefix.wire = WireIr{WireCodec::UNSIGNED_INTEGER,
+                       0U,
+                       1U,
+                       ByteOrder::NOT_APPLICABLE,
+                       {"/messages/0/fields/0/wire"}};
+  prefix.encode = EncodeIr{EncodeSource::CONSTANT, 0xA5U, {"/messages/0/fields/0/encode"}};
+  prefix.origin.json_pointer = "/messages/0/fields/0";
+  message.fields.push_back(std::move(prefix));
+
+  FieldIr value;
+  value.id = "value";
+  value.display_name = "Value";
+  value.source_ref = "SYNTHETIC_FROM_SCRATCH:capability_contract#value";
+  value.value_type = ValueType::UINT64;
+  value.wire = WireIr{WireCodec::UNSIGNED_INTEGER,
+                      1U,
+                      1U,
+                      ByteOrder::NOT_APPLICABLE,
+                      {"/messages/0/fields/1/wire"}};
+  value.encode = EncodeIr{EncodeSource::INPUT, std::nullopt, {"/messages/0/fields/1/encode"}};
+  value.origin.json_pointer = "/messages/0/fields/1";
+  message.fields.push_back(std::move(value));
+
+  schema.messages.push_back(std::move(message));
+  return schema;
+}
+
+std::unique_ptr<BudgetedPlanDraft> AssembleCapabilityDraft(
+    std::optional<std::size_t> plan_memory_limit, CompileDiagnostic& diagnostic) {
+  auto validated = DomainValidator::Validate(MakeCapabilityContractSchema());
+  if (!validated.Succeeded()) {
+    diagnostic = *validated.Diagnostic();
+    return nullptr;
+  }
+  auto budgeted = plan_memory_limit.has_value()
+                      ? ResourceBudgetValidator::ValidateForTest(
+                            std::move(validated).TakeCapability(), *plan_memory_limit)
+                      : ResourceBudgetValidator::Validate(std::move(validated).TakeCapability());
+  if (!budgeted.Succeeded()) {
+    diagnostic = *budgeted.Diagnostic();
+    return nullptr;
+  }
+  auto assembled = PlanDraftAssembler::Assemble(std::move(budgeted).TakeCapability());
+  if (!assembled.Succeeded()) {
+    diagnostic = *assembled.Diagnostic();
+    return nullptr;
+  }
+  return std::make_unique<BudgetedPlanDraft>(std::move(assembled).TakeCapability());
+}
+
+bool MemoryReportIsAccounted(const PlanMemoryReport& report) noexcept {
+  const std::size_t categorized = report.object_bytes + report.string_bytes + report.matcher_bytes +
+                                  report.metadata_container_bytes +
+                                  report.execution_descriptor_bytes + report.index_bytes +
+                                  report.extension_bytes + report.alignment_bytes;
+  return report.accounted_total_bytes != 0U && report.accounted_total_bytes == categorized &&
+         report.allocation_count != 0U && report.upstream_allocation_count == 1U;
+}
+
+void RunPlanMemoryContractCases(TestRunner& runner) {
+  CompileDiagnostic diagnostic;
+  auto first_draft = AssembleCapabilityDraft(std::nullopt, diagnostic);
+  auto second_draft = AssembleCapabilityDraft(std::nullopt, diagnostic);
+  if (first_draft == nullptr || second_draft == nullptr) {
+    runner.Fail("plan_memory_report_accounting", "could not assemble a validated budgeted draft");
+    runner.Fail("plan_memory_budget_exact_boundary", "could not determine exact plan memory");
+    runner.Fail("plan_memory_failure_injection_no_leak", "could not determine allocation points");
+    runner.Fail("plan_memory_estimate_mismatch", "could not assemble mismatch test draft");
+    return;
+  }
+  PlanBuildResult first = PlanBuilder::Freeze(std::move(*first_draft));
+  PlanBuildResult second = PlanBuilder::Freeze(std::move(*second_draft));
+  if (!first.Succeeded() || !second.Succeeded()) {
+    runner.Fail("plan_memory_report_accounting", "valid budgeted plans did not freeze");
+    runner.Fail("plan_memory_budget_exact_boundary", "could not determine exact plan memory");
+    runner.Fail("plan_memory_failure_injection_no_leak", "could not determine allocation points");
+    runner.Fail("plan_memory_estimate_mismatch", "could not assemble mismatch test draft");
+    return;
+  }
+  const PlanMemoryReport first_report = first.Plan()->GetPlanMemoryReport();
+  const PlanMemoryReport second_report = second.Plan()->GetPlanMemoryReport();
+  if (MemoryReportIsAccounted(first_report) &&
+      pae::protocol_plan::PlanMemoryReportsEqual(first_report, second_report)) {
+    runner.Pass("plan_memory_report_accounting");
+  } else {
+    runner.Fail("plan_memory_report_accounting",
+                "category sum, allocation count, or deterministic report contract failed");
+  }
+
+  auto exact_validated = DomainValidator::Validate(MakeCapabilityContractSchema());
+  auto exact_budgeted = ResourceBudgetValidator::ValidateForTest(
+      std::move(exact_validated).TakeCapability(), first_report.accounted_total_bytes);
+  auto rejected_validated = DomainValidator::Validate(MakeCapabilityContractSchema());
+  auto rejected_budgeted = ResourceBudgetValidator::ValidateForTest(
+      std::move(rejected_validated).TakeCapability(), first_report.accounted_total_bytes - 1U);
+  const CompileDiagnostic* rejected = rejected_budgeted.Diagnostic();
+  if (exact_budgeted.Succeeded() && !rejected_budgeted.Succeeded() && rejected != nullptr &&
+      rejected->stage == CompileStage::RESOURCE_BUDGET &&
+      rejected->code == CompileError::RESOURCE_LIMIT_EXCEEDED &&
+      rejected->resource_kind == ResourceKind::PLAN_ACCOUNTED_MEMORY &&
+      rejected->required_bytes == first_report.accounted_total_bytes &&
+      rejected->limit_bytes == first_report.accounted_total_bytes - 1U &&
+      rejected->resource_profile == ResourceProfile::DESKTOP) {
+    runner.Pass("plan_memory_budget_exact_boundary");
+  } else {
+    runner.Fail("plan_memory_budget_exact_boundary",
+                "exact limit was rejected or limit-1 lacked a typed memory diagnostic");
+  }
+
+  bool failures_clean = true;
+  for (std::size_t ordinal = 1U; ordinal <= first_report.allocation_count + 1U; ++ordinal) {
+    CompileDiagnostic loop_diagnostic;
+    auto draft = AssembleCapabilityDraft(std::nullopt, loop_diagnostic);
+    pae::protocol_plan::test_only::PlanMemoryTestProbe probe;
+    if (draft == nullptr) {
+      failures_clean = false;
+      break;
+    }
+    PlanBuildResult injected = PlanBuilder::Freeze(
+        pae::test_support::ConfigurePlanMemoryFailure(std::move(*draft), ordinal, &probe));
+    if (injected.Succeeded() || injected.Diagnostic() == nullptr ||
+        injected.Diagnostic()->code != PlanBuildError::ALLOCATION_FAILED ||
+        probe.LiveUpstreamBytes() != 0U || probe.LiveUpstreamAllocations() != 0U) {
+      failures_clean = false;
+      break;
+    }
+  }
+  pae::protocol_plan::test_only::PlanMemoryTestProbe success_probe;
+  bool success_lifetime = false;
+  {
+    CompileDiagnostic success_diagnostic;
+    auto draft = AssembleCapabilityDraft(std::nullopt, success_diagnostic);
+    if (draft != nullptr) {
+      PlanBuildResult succeeded = PlanBuilder::Freeze(
+          pae::test_support::ConfigurePlanMemoryFailure(std::move(*draft), 0U, &success_probe));
+      success_lifetime = succeeded.Succeeded() &&
+                         success_probe.LiveUpstreamBytes() == first_report.accounted_total_bytes &&
+                         success_probe.LiveUpstreamAllocations() == 1U;
+    }
+  }
+  success_lifetime = success_lifetime && success_probe.LiveUpstreamBytes() == 0U &&
+                     success_probe.LiveUpstreamAllocations() == 0U;
+  if (failures_clean && success_lifetime) {
+    runner.Pass("plan_memory_failure_injection_no_leak");
+  } else {
+    runner.Fail("plan_memory_failure_injection_no_leak",
+                "an injected allocation point leaked or the success owner lifetime was incorrect");
+  }
+
+  CompileDiagnostic mismatch_diagnostic;
+  auto mismatch_draft = AssembleCapabilityDraft(std::nullopt, mismatch_diagnostic);
+  if (mismatch_draft != nullptr) {
+    PlanBuildResult mismatch = PlanBuilder::Freeze(
+        pae::test_support::CorruptApprovedPlanMemory(std::move(*mismatch_draft)));
+    if (!mismatch.Succeeded() && mismatch.Diagnostic() != nullptr &&
+        mismatch.Diagnostic()->code == PlanBuildError::PLAN_MEMORY_ESTIMATE_MISMATCH) {
+      runner.Pass("plan_memory_estimate_mismatch");
+      return;
+    }
+  }
+  runner.Fail("plan_memory_estimate_mismatch",
+              "PlanBuilder accepted a report that differed from the approved budget report");
+}
+
+void RunCapabilityStateCase(TestRunner& runner) {
+  constexpr std::string_view kCaseId = "capability_single_consumption_internal_violation";
+  auto validated = DomainValidator::Validate(MakeCapabilityContractSchema());
+  if (!validated.Succeeded()) {
+    runner.Fail(kCaseId, "DomainValidator rejected the synthetic capability contract schema");
+    return;
+  }
+  ValidatedSchemaIr validated_capability = std::move(validated).TakeCapability();
+  auto budgeted = ResourceBudgetValidator::Validate(std::move(validated_capability));
+  auto reused_validated = ResourceBudgetValidator::Validate(std::move(validated_capability));
+  if (!budgeted.Succeeded()) {
+    runner.Fail(kCaseId, "ResourceBudgetValidator rejected a validated synthetic schema");
+    return;
+  }
+  if (reused_validated.Succeeded() || reused_validated.Diagnostic() == nullptr ||
+      reused_validated.Diagnostic()->code != CompileError::INTERNAL_CONTRACT_VIOLATION) {
+    runner.Fail(kCaseId, "moved-from validated capability was accepted twice");
+    return;
+  }
+
+  BudgetedSchemaIr budgeted_capability = std::move(budgeted).TakeCapability();
+  auto assembled = PlanDraftAssembler::Assemble(std::move(budgeted_capability));
+  auto reused_budgeted = PlanDraftAssembler::Assemble(std::move(budgeted_capability));
+  if (!assembled.Succeeded()) {
+    runner.Fail(kCaseId, "PlanDraftAssembler rejected a budgeted synthetic schema");
+    return;
+  }
+  if (reused_budgeted.Succeeded() || reused_budgeted.Diagnostic() == nullptr ||
+      reused_budgeted.Diagnostic()->code != CompileError::INTERNAL_CONTRACT_VIOLATION) {
+    runner.Fail(kCaseId, "moved-from budgeted capability was accepted twice");
+    return;
+  }
+
+  BudgetedPlanDraft original = std::move(assembled).TakeCapability();
+  BudgetedPlanDraft consumable = std::move(original);
+  const auto moved_from_result = PlanBuilder::Freeze(std::move(original));
+  const auto valid_result = PlanBuilder::Freeze(std::move(consumable));
+  const bool passed = !moved_from_result.Succeeded() && moved_from_result.Plan() == nullptr &&
+                      moved_from_result.Diagnostic() != nullptr &&
+                      moved_from_result.Diagnostic()->code == PlanBuildError::INTERNAL_ERROR &&
+                      valid_result.Succeeded();
+  if (!passed) {
+    runner.Fail(kCaseId,
+                "moved-from capability was not rejected as an internal contract violation or "
+                "the single consumable capability failed");
+    return;
+  }
+  runner.Pass(kCaseId);
+}
+
+void RunCorruptedBudgetedDraftCase(TestRunner& runner) {
+  constexpr std::string_view kCaseId = "corrupted_budgeted_draft_internal_violation";
+  CompileResult result =
+      FreezeBudgetedPlanDraft(pae::test_support::MakeCorruptedBudgetedPlanDraft());
+  const bool passed = !result.Succeeded() && result.Plan() == nullptr &&
+                      result.Diagnostic() != nullptr &&
+                      result.Diagnostic()->stage == CompileStage::PLAN_BUILD &&
+                      result.Diagnostic()->code == CompileError::INTERNAL_CONTRACT_VIOLATION;
+  if (!passed) {
+    runner.Fail(kCaseId, "test-only corrupted capability escaped the internal error boundary");
+    return;
+  }
+  runner.Pass(kCaseId);
+}
 
 bool ReadBinaryFile(const std::filesystem::path& path, std::string& output, std::string& error) {
   std::ifstream stream{path, std::ios::binary};
@@ -278,12 +609,12 @@ struct ExpectedFailure {
 void RunFailureCase(TestRunner& runner, std::string_view case_id, std::string_view input,
                     const ExpectedFailure& expected) {
   const CompileResult result = CompileJsonToPlan(input);
-  if (result.Succeeded() || result.plan != nullptr || !result.diagnostic.has_value()) {
+  if (result.Succeeded() || result.Plan() != nullptr || result.Diagnostic() == nullptr) {
     runner.Fail(case_id, "expected fail-closed diagnostic with no partial PlanBundle");
     return;
   }
 
-  const CompileDiagnostic& actual = *result.diagnostic;
+  const CompileDiagnostic& actual = *result.Diagnostic();
   std::ostringstream mismatch;
   bool matched = true;
   if (actual.stage != expected.stage) {
@@ -339,24 +670,24 @@ void RunSyntheticLabPlanCase(TestRunner& runner, const std::filesystem::path& in
   if (!first.Succeeded() || !second.Succeeded()) {
     std::ostringstream error;
     error << "legal sample did not compile";
-    if (first.diagnostic.has_value()) {
-      error << " first_stage=" << ToString(first.diagnostic->stage)
-            << " first_code=" << ToString(first.diagnostic->code)
-            << " first_pointer=" << first.diagnostic->json_pointer;
+    if (first.Diagnostic() != nullptr) {
+      error << " first_stage=" << ToString(first.Diagnostic()->stage)
+            << " first_code=" << ToString(first.Diagnostic()->code)
+            << " first_pointer=" << first.Diagnostic()->json_pointer;
     }
-    if (second.diagnostic.has_value()) {
-      error << " second_stage=" << ToString(second.diagnostic->stage)
-            << " second_code=" << ToString(second.diagnostic->code)
-            << " second_pointer=" << second.diagnostic->json_pointer;
+    if (second.Diagnostic() != nullptr) {
+      error << " second_stage=" << ToString(second.Diagnostic()->stage)
+            << " second_code=" << ToString(second.Diagnostic()->code)
+            << " second_pointer=" << second.Diagnostic()->json_pointer;
     }
     runner.Fail(kCaseId, error.str());
     return;
   }
 
-  const auto& first_plan = *first.plan;
+  const auto& first_plan = *first.Plan();
   const auto& requirements = first_plan.GetResourceRequirements();
   const std::string first_snapshot = MakeDeterministicPlanSnapshot(first_plan);
-  const std::string second_snapshot = MakeDeterministicPlanSnapshot(*second.plan);
+  const std::string second_snapshot = MakeDeterministicPlanSnapshot(*second.Plan());
   std::string expected_snapshot;
   if (!ReadBinaryFile(expected_snapshot_path, expected_snapshot, file_error)) {
     runner.Fail(kCaseId, file_error);
@@ -538,16 +869,16 @@ void RunMinimalFixtureCase(TestRunner& runner, const std::filesystem::path& fixt
   if (!result.Succeeded()) {
     std::ostringstream error;
     error << "minimal fixture did not compile";
-    if (result.diagnostic.has_value()) {
-      error << " stage=" << ToString(result.diagnostic->stage)
-            << " code=" << ToString(result.diagnostic->code)
-            << " pointer=" << result.diagnostic->json_pointer;
+    if (result.Diagnostic() != nullptr) {
+      error << " stage=" << ToString(result.Diagnostic()->stage)
+            << " code=" << ToString(result.Diagnostic()->code)
+            << " pointer=" << result.Diagnostic()->json_pointer;
     }
     runner.Fail(kCaseId, error.str());
     return;
   }
-  const auto& requirements = result.plan->GetResourceRequirements();
-  if (result.plan->Messages().size() != 1U || requirements.total_field_count != 2U ||
+  const auto& requirements = result.Plan()->GetResourceRequirements();
+  if (result.Plan()->Messages().size() != 1U || requirements.total_field_count != 2U ||
       requirements.total_matcher_count != 2U) {
     runner.Fail(kCaseId, "unexpected minimal PlanBundle resource counts");
     return;
@@ -573,6 +904,10 @@ int main(int argc, char** argv) {
     runner.Fail("runner_arguments", "expected one relative test-data directory");
     return runner.Finish();
   }
+
+  RunCapabilityStateCase(runner);
+  RunCorruptedBudgetedDraftCase(runner);
+  RunPlanMemoryContractCases(runner);
 
   const std::filesystem::path data_root{argv[1]};
   const std::filesystem::path fixture_root = data_root / "fixtures";

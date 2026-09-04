@@ -8,7 +8,7 @@
 
 ## 2. 实现范围
 
-- `PlanBundle`构造器私有化，并明确删除复制和移动；只有`PlanBuilder::Freeze`可以从`PlanDraft`生成`std::unique_ptr<const PlanBundle>`；
+- `PlanBundle`构造器私有化，并明确删除复制和移动；第十六轮后`PlanBuilder::Freeze`只消费不可伪造的`BudgetedPlanDraft（已预算计划草案）`，原始草案载荷不再属于生产入口；
 - 冻结前重新计算`ResourceRequirements（资源需求）`，不信任草案汇总值，并按Desktop/Constrained Profile（桌面/受限资源档）检查帧、Message、Field、Matcher、Enum和当前Workspace估算；失败不交付部分Plan；
 - 生成按Message组织的Field/固定字节/Enum辅助索引、按Pipeline组织的允许Message位图与Frame Length候选组，以及`ExecutionResourceLayout（执行资源布局）`；
 - `ExecutionWorkspace`永久绑定并借用一个Plan，初始化时分配Encode稠密值索引与存在位图；Plan必须比Workspace存活更久；
@@ -48,7 +48,7 @@ $ctestExe = 'ctest'
 | 门禁 | Release | Debug |
 | --- | --- | --- |
 | Codec配置构建与CTest | 构建成功，`6/6` | 构建成功，`6/6` |
-| Config Compiler合同Runner | `22/22` | `22/22` |
+| Config Compiler合同Runner | `28/28` | `28/28` |
 | COMPLETE_RECORD主合同Runner | `60/60` | `60/60` |
 | 首次Decode分配门禁 | `1/1` | `1/1` |
 | 首次Encode分配门禁 | `1/1` | `1/1` |
@@ -65,7 +65,7 @@ $ctestExe = 'ctest'
 & $ctestExe --test-dir out/build/windows-msvc-all-slices-frozen -C Release --output-on-failure
 ```
 
-结果为配置和构建成功，CTest `26/26`通过；公开人工向量替换后在`out/build/windows-msvc-all-slices`再次干净构建并复验，仍为`26/26`。
+结果为配置和构建成功，CTest `26/26`通过；公开人工向量替换后在`out/build/windows-msvc-all-slices`再次干净构建并复验，仍为`26/26`。第十六轮能力链实现后在`out/build/windows-msvc-all-slices-dec032`执行Release和Debug共存回归，两种配置均为`26/26`；DEC-033A落地及第十八轮提交前复核后，Config Compiler增至`28/28`，全切片Release/Debug CTest仍分别为`26/26`。最新内存准入证据见`docs/windows-msvc-2026-accounted-plan-memory-slice.md`。
 
 ## 5. 专项门禁
 
@@ -106,8 +106,8 @@ Windows压力用例以4个线程、每线程4096次Decode/Encode共享同一`con
 
 当前实现是`PARTIALLY VERIFIED（部分已验证）`，不能写成DEC-031全部完成：
 
-1. Config Compiler的Domain校验与`PlanBuilder::Freeze`仍串联执行多项同类安全规则。该实现安全，但尚未形成不可伪造的`Validated/Budgeted Draft（已验证/已预算草案）`类型能力边界，因此未完全达到“作者校验一次、冻结尾部只做不变量审计”的目标；不能直接删除Builder防御校验，需后续单独设计并拍板。
-2. 当前资源门禁覆盖计数上限和Workspace数组估算，但没有完整计算冷Plan中Matcher字节、字符串和容器占用，也没有Runtime全部活跃Plan/Session的总内存准入。4 MiB JSON入口限制了当前Loader路径，却不能替代内部`PlanDraft`和未来Runtime的完整内存预算。
+1. `PAE-DEC-032`不可伪造的`Validated/Budgeted Draft（已验证/已预算草案）`能力边界已经实现并通过Windows门禁；Builder保留的重复检查现在只作为内部不变量审计，任何命中均映射为`INTERNAL_CONTRACT_VIOLATION（内部契约违规）`，不再形成第二套作者错误入口。专项证据见`docs/windows-msvc-2026-validated-budgeted-capability-chain.md`。
+2. `PAE-DEC-033A`已经实现冷Plan中对象、字符串、Matcher、元数据容器、执行描述符、索引和对齐的精确计费与单Plan准入；`PAE-DEC-033B`仍未闭合，尚没有Runtime全部活跃Plan/Session的聚合准入、并发预留和销毁退款。4 MiB JSON入口限制仍不能替代未来Runtime总内存预算。
 3. 稳定Runtime `slot + generation（槽位+代次）`Handle、ExtensionCatalog身份、Allocator注入、完整Session所有权和公共状态/API仍未实现。
 
 ## 7. 验证边界

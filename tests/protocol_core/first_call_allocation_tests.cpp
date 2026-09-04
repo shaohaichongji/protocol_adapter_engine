@@ -13,7 +13,7 @@
 #include <vector>
 
 #include "complete_record_codec.h"
-#include "plan_builder.h"
+#include "test_plan_factory.h"
 
 namespace {
 
@@ -114,6 +114,7 @@ void operator delete[](void* memory, std::align_val_t, const std::nothrow_t&) no
 
 namespace {
 
+using pae::config_compiler::CompileResult;
 using pae::protocol_core::ByteView;
 using pae::protocol_core::CodecStatus;
 using pae::protocol_core::DecodeCompleteRecord;
@@ -133,15 +134,12 @@ using pae::protocol_plan::MatcherKind;
 using pae::protocol_plan::MatcherPlan;
 using pae::protocol_plan::MessagePlan;
 using pae::protocol_plan::PipelinePlan;
-using pae::protocol_plan::PlanBuilder;
-using pae::protocol_plan::PlanBuildResult;
-using pae::protocol_plan::PlanDraft;
 using pae::protocol_plan::ResourceProfile;
-using pae::protocol_plan::ResourceRequirements;
 using pae::protocol_plan::ValueType;
 using pae::protocol_plan::WireCodec;
+using pae::test_support::CompileTestPlan;
 
-PlanBuildResult BuildPlan() {
+CompileResult BuildPlan() {
   MessagePlan message;
   message.id = "first_call_message";
   message.direction_id = "first_call_direction";
@@ -184,16 +182,9 @@ PlanBuildResult BuildPlan() {
   pipeline.framing_profile_index = 0U;
   pipeline.message_indices.push_back(0U);
 
-  PlanDraft draft;
-  draft.schema_version = "0.1";
-  draft.protocol_id = "first_call_protocol";
-  draft.protocol_version = "1";
-  draft.resource_profile = ResourceProfile::DESKTOP;
-  draft.framing_profiles.push_back(FramingPlan{"complete_record", InputKind::COMPLETE_RECORD});
-  draft.pipelines.push_back(std::move(pipeline));
-  draft.messages.push_back(std::move(message));
-  draft.resource_requirements = ResourceRequirements{2U, 1U, 1U, 1U, 2U, 2U, 0U};
-  return PlanBuilder::Freeze(std::move(draft));
+  return CompileTestPlan("first_call_protocol", ResourceProfile::DESKTOP,
+                         {FramingPlan{"complete_record", InputKind::COMPLETE_RECORD}},
+                         {std::move(pipeline)}, {std::move(message)});
 }
 
 bool CounterProbe() {
@@ -205,16 +196,16 @@ bool CounterProbe() {
 }
 
 bool RunFirstDecode() {
-  PlanBuildResult frozen = BuildPlan();
+  CompileResult frozen = BuildPlan();
   if (!frozen.Succeeded()) {
     return false;
   }
-  ExecutionWorkspace workspace{*frozen.plan};
+  ExecutionWorkspace workspace{*frozen.Plan()};
   constexpr std::array<std::uint8_t, 2U> frame{0xA5U, 0x11U};
   std::array<DecodedFieldSlot, 2U> slots{};
   const std::size_t before = g_allocation_count.load(std::memory_order_relaxed);
   const auto result =
-      DecodeCompleteRecord(*frozen.plan, workspace, 0U, ByteView{frame.data(), frame.size()},
+      DecodeCompleteRecord(*frozen.Plan(), workspace, 0U, ByteView{frame.data(), frame.size()},
                            slots.data(), slots.size());
   const std::size_t after = g_allocation_count.load(std::memory_order_relaxed);
   return result.status == CodecStatus::OK && result.field_count == 2U &&
@@ -222,18 +213,18 @@ bool RunFirstDecode() {
 }
 
 bool RunFirstEncode() {
-  PlanBuildResult frozen = BuildPlan();
+  CompileResult frozen = BuildPlan();
   if (!frozen.Succeeded()) {
     return false;
   }
-  ExecutionWorkspace workspace{*frozen.plan};
+  ExecutionWorkspace workspace{*frozen.Plan()};
   EncodeFieldValue input;
-  input.field = FieldRef{frozen.plan.get(), 0U, 1U};
+  input.field = FieldRef{frozen.Plan(), 0U, 1U};
   input.value_kind = LogicalValueKind::UINT64;
   input.uint64_value = 0x11U;
   std::array<std::uint8_t, 2U> output{0xCCU, 0xCCU};
   const std::size_t before = g_allocation_count.load(std::memory_order_relaxed);
-  const auto result = EncodeCompleteRecord(*frozen.plan, workspace, 0U, 0U, &input, 1U,
+  const auto result = EncodeCompleteRecord(*frozen.Plan(), workspace, 0U, 0U, &input, 1U,
                                            MutableByteBuffer{output.data(), output.size()});
   const std::size_t after = g_allocation_count.load(std::memory_order_relaxed);
   return result.status == CodecStatus::OK && result.bytes_written == output.size() &&
