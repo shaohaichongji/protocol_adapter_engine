@@ -10,3 +10,4 @@
 - [COMPLETE_RECORD Codec Windows 内部切片验证报告](windows-msvc-2026-complete-record-codec-slice.md)
 - [Frozen Execution Plan Windows 内部切片验证报告](windows-msvc-2026-frozen-execution-plan-slice.md)
 - [Validated/Budgeted能力链 Windows验证报告](windows-msvc-2026-validated-budgeted-capability-chain.md)
+- [Protocol Conformance Runner Windows验证报告](windows-msvc-2026-protocol-conformance-runner.md)
