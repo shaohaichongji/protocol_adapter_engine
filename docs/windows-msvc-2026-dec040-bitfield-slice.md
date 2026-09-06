@@ -2,6 +2,10 @@
 
 ## 1. 结论与证据边界
 
+提交后补记（2026-09-06）：本切片已提交为`3b23db9`并Push；人工验收文档独立提交为
+`263f514`并Push。总控已关闭本轮已发现的P2及Builder防御审查项。下文“本轮未Stage/Commit/Push”
+为对应实现轮的历史状态，不代表当前Git状态。本次仅文档收口，没有重新构建或升级验证结论。
+
 2026-09-06在`a418ac99b94a1e29b3f3476712ea7d55fd815404`基线上完成
 PAE-DEC-040授权范围内的实现和Windows x64 MSVC验证。Schema/Loader/Validator、Frozen Plan、
 精确Plan与Workspace计费、COMPLETE_RECORD Codec及Protocol Lab多版本路径已形成可执行闭环。
