@@ -10,3 +10,8 @@
 
 该变换不增加V0.1字段，不改变旧Record、Result或Event的结构形状。夹具仅包含从零设计的公开
 Synthetic数据，不包含客户协议、生产Endpoint、用户身份或机器绝对路径；原始历史产物不修改。
+
+JSONL使用`.gitattributes`强制LF换行。测试在刷新任何Payload Hash之前，通过完整Bundle读取
+核对静态Record中的长度和SHA-256；CRLF转换与等长Event内容篡改均必须被拒绝，不能通过
+重新计算Hash掩盖夹具漂移。测试程序支持`--legacy-offline-only`，仅执行旧版兼容性及夹具
+负向测试，不创建Socket；运行工作目录为构建树的`tests/protocol_lab`。

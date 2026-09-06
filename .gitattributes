@@ -8,6 +8,7 @@
 *.cmake text eol=lf
 CMakeLists.txt text eol=lf
 *.json text eol=lf
+*.jsonl text eol=lf
 *.hex text eol=lf
 *.md text eol=lf
 *.tsv text eol=lf

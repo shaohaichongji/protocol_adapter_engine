@@ -245,6 +245,37 @@ Debug/Release分别`30/30 PASS`（`14.11 s`、`3.12 s`）。日志：
 因测试夹具复制修改了测试CMake，另行复核Lab-on/Testing-off和Product-only Release构建，均成功且
 CTest为`0`项；未修改Adapter接口或目标依赖。
 
+## 6.4 2026-09-06 JSONL检出一致性修复
+
+基线`a2344db`在独立本地Clone、`core.autocrlf=true`下，旧版Event由978字节LF变成979字节
+CRLF，SHA-256由`3e8097698e579119fc83578c610d008858501e5f281b07392ab72c2b71f1fb99`
+变成`deb3f9cf8b6aee89d0b12eb7d421cfc6fa22ab434d345cf75a0edda42cd5f850`。
+保留静态Record时Compare退出3并报告Payload不匹配；按旧测试逻辑重算Hash后回放仍通过。
+因此这是静态夹具字节漂移被测试物化流程掩盖，不是已证实的生产Codec回归。
+
+本次最小修复：
+
+- `.gitattributes`增加`*.jsonl text eol=lf`；
+- 夹具物化后、任何Payload Hash刷新前，通过`LoadStoredRun`核对完整历史Record；
+- 增加CRLF转换和等长Event内容篡改负向测试；
+- 测试程序增加`--legacy-offline-only`入口，可不执行UDP收发而检查旧版兼容性。
+
+实际验证：主工作区Debug/Release测试目标构建成功，两个配置的
+`pae_protocol_lab_udp_exchange_tests.exe --legacy-offline-only`均退出0；该命令从各构建树的
+`tests/protocol_lab`工作目录执行，覆盖加载、Compare、Replay及新增负向用例。
+`ctest --preset windows-msvc-protocol-lab-debug -E udp_exchange --output-on-failure`
+和对应Release命令均为`3/3 PASS`。`clang-format --dry-run --Werror`及`git diff --check`通过。
+
+独立目录以`a2344db`本地Clone为基线，仅覆盖未提交的属性规则及测试源码；保留原CRLF文件
+于`out/checkout-validation`，然后在`core.autocrlf=true`下通过`git checkout-index --force`
+重新写出Event。实测为`i/lf w/lf attr/text eol=lf`，978字节且恢复原SHA-256。
+重新配置、构建独立Release测试目标，并执行`--legacy-offline-only`，退出0。
+这验证的是未提交候选补丁，不是新提交或GitHub下载验收；未暂存、提交或推送。
+独立目录位于系统临时目录，MSBuild报告MSB8029增量构建注意警告，但构建成功。
+
+本次未修改生产源码、CMake、机器格式或静态协议数据；未执行任何UDP收发、全切片回归、
+人工Lab门禁或Linux验证，既有Golden与Lab门禁结论不升级。
+
 ## 7. 当前未验证与保留边界
 
 - 未使用外部网络调试工具执行人工Loopback收发、人工逐字节核对和Replay门禁；

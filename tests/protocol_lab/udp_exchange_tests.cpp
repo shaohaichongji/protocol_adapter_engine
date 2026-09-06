@@ -626,14 +626,14 @@ bool ReplaceInFile(const std::filesystem::path& path, std::string_view from, std
   return WriteTextFile(path, text);
 }
 
-bool MaterializeLegacyOfflineV1(const std::filesystem::path& bundle) {
+bool MaterializeLegacyOfflineV1(const std::filesystem::path& bundle,
+                                const std::filesystem::path& fixture = "data/legacy_offline_v0_1") {
   std::error_code error;
   std::filesystem::create_directories(bundle / "inputs", error);
   std::filesystem::create_directories(bundle / "frames", error);
   if (error) {
     return false;
   }
-  const std::filesystem::path fixture{"data/legacy_offline_v0_1"};
   for (const std::string_view name :
        {"result_summary_v0.1.json", "run_record_v0.1.json", "events_v0.1.jsonl"}) {
     std::filesystem::copy_file(fixture / name, bundle / name,
@@ -651,6 +651,13 @@ bool MaterializeLegacyOfflineV1(const std::filesystem::path& bundle) {
   if (error || !LoadHexFile(fixture / "000001_frame.hex", frame) ||
       !WriteBinaryFile(bundle / "frames/000001_frame.bin", frame) ||
       !WriteTextFile(bundle / "COMPLETE", {})) {
+    return false;
+  }
+  // Validate the historical payload sizes and hashes before refreshing any of them.
+  pae::protocol_lab::StoredRun stored;
+  std::string validation_error;
+  if (!RebuildManifest(bundle) ||
+      !pae::protocol_lab::LoadStoredRun(bundle, stored, validation_error)) {
     return false;
   }
   for (const std::string_view path :
@@ -742,6 +749,35 @@ bool LegacyV1NegativeCases(const std::filesystem::path& source, const std::files
 bool TestLegacyOfflineV1Compatibility(const std::filesystem::path& root) {
   if (!LegacyV1LoadCompareReplay(root)) {
     return false;
+  }
+  for (const std::string_view mutation : {"crlf", "same-size"}) {
+    const auto fixture = root / mutation / "fixture";
+    std::error_code error;
+    std::filesystem::create_directories(fixture.parent_path(), error);
+    if (error || !CopyRun("data/legacy_offline_v0_1", fixture)) {
+      return false;
+    }
+    std::string events;
+    if (!LoadTextFile(fixture / "events_v0.1.jsonl", events)) {
+      return false;
+    }
+    if (mutation == "crlf") {
+      const auto newline = events.find('\n');
+      if (newline == std::string::npos) {
+        return false;
+      }
+      events.insert(newline, 1U, '\r');
+    } else {
+      const auto character = events.find("20260904");
+      if (character == std::string::npos) {
+        return false;
+      }
+      events[character] = '3';
+    }
+    if (!WriteTextFile(fixture / "events_v0.1.jsonl", events) ||
+        MaterializeLegacyOfflineV1(root / mutation / "bundle", fixture)) {
+      return false;
+    }
   }
   return LegacyV1NegativeCases(root / "normalized-real-v0.1", root / "negative");
 }
@@ -1524,7 +1560,16 @@ bool TestZeroLengthResponse(const std::filesystem::path& root) {
 
 }  // namespace
 
-int main() {
+int main(int argc, char* argv[]) {
+  if (argc == 2 && std::string_view{argv[1]} == "--legacy-offline-only") {
+    const std::filesystem::path root{"legacy-offline-only-runs"};
+    std::error_code error;
+    std::filesystem::remove_all(root, error);
+    return !error && TestLegacyOfflineV1Compatibility(root) ? 0 : 1;
+  }
+  if (argc != 1) {
+    return 1;
+  }
   std::error_code error;
   const std::filesystem::path root{"udp-exchange-runs"};
   std::filesystem::remove_all(root, error);
