@@ -187,6 +187,9 @@ Transport模式时才允许把字节交给Socket。
 保留源UDP历史TX检查点。Cross-config产生不同字节是合法的`DIFFERENT`，不得按证据损坏拒绝。
 再次Replay该差异Bundle时，当前执行与上一份Replay的确定性指纹比较，而历史TX检查点继续保持
 不变。Encode失败允许本次`frame_*`为空，但必须保留真实失败状态、诊断和历史TX，不能伪造成功。
+Inspect Replay在调用Codec前必须按本次成功编译的Plan重新执行Frame资源门禁：同配置应重新产生
+相同超限失败，替换配置则采用替换后Plan的上限。资源失败时不调用Codec；即使确定性比较为
+`EQUAL`，当前执行仍是失败，Replay退出码仍按当前执行状态决定。
 
 ### 5.4 `compare`
 
@@ -262,7 +265,7 @@ Windows实现通过内部、不可安装且不可导出的`IUdpExchangeAdapter`�
 第一版不为了统一Socket API引入Qt、Boost或其他大型框架。若未来选择轻量第三方库，必须单独
 记录版本、License、源码范围和引入理由。
 
-## 7. Evidence Bundle V0.1/V0.2
+## 7. Evidence Bundle V0.1/V0.2/V0.3
 
 每次Lab执行产生一个独立且不可原地覆盖的Run目录：
 
@@ -346,6 +349,29 @@ Bundle读取必须同时执行三层一致性校验：
 `SHA256SUMS`不包含自身，但包含空`COMPLETE`标记；它使用小写Hex、两个ASCII空格和以`/`
 表示的相对路径，条目按路径升序排列。Replay和Run Compare在读取结果前重新核对完整清单；
 Hash不符、路径逃逸、清单乱序、未列入清单的额外文件、符号链接或缺少必需文件均失败关闭。
+
+### 7.1 Schema 0.2与Lab 0.3
+
+`PAE-DEC-040`增加下列明确版本组合，不改变历史文件：
+
+| 执行配置 | Values | Result / Record / Event | RX Metadata |
+| --- | --- | --- | --- |
+| Schema 0.1 | Values 0.1，或只含旧类型的0.2 | 原离线0.1／UDP0.2 | UDP时0.2 |
+| Schema 0.2 | Values 0.1（无BOOL输入时）或0.2 | 统一0.3 | UDP时仍为0.2 |
+
+Values 0.2使用原生JSON布尔`{"id":"enabled","kind":"BOOL","bool":true}`，拒绝数字和
+字符串替代。0.3 BOOL结果固定为`kind=BOOL`、`raw_value="0"/"1"`、
+`logical_value="false"/"true"`和`enum_known=false`，读取端严格校验配对。
+Evidence Bundle读取端同时按格式契约严格校验所有类型化字段：只接受`UINT64`、`BYTES`、
+`ENUM`及0.3中的`BOOL`；UINT64须为规范十进制且Raw/Logical相等，BYTES须为规范大写偶数Hex，
+ENUM须满足known/unknown对应关系。字段类型、Raw/Logical或`enum_known`内部矛盾时，即使文件长度、
+Run Record与清单Hash均已同步也拒绝读取。Replay的`comparison_equal=true`必须同时满足确定性指纹
+相等且没有确定性差异分类，不能与`TYPED_FIELDS`等类别并存。
+
+0.3指纹带独立版本域；0.1/0.2旧指纹算法和固定历史样本不重算。首批明确拒绝Schema 0.1与0.2
+双向替换配置Replay，以及旧格式Run与0.3 Run直接Compare；原始Frame比较仍按实际字节允许。
+同代Replay保留三种模式、历史Transport隔离、跨配置差异和链式再次Replay。未知版本、Result/
+Record/Event混合代际或内部关联不一致，即使Hash清单自洽也必须失败关闭。
 
 `run_record_v0.1.json`至少记录：
 

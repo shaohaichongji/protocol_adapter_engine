@@ -17,6 +17,7 @@ using protocol_plan::PipelineExecutionPlan;
 using protocol_plan::PlanBundle;
 using protocol_plan::UnknownEnumPolicy;
 using protocol_plan::ValueType;
+using protocol_plan::WireCodec;
 
 struct AddressRange {
   std::uintptr_t begin = 0U;
@@ -85,6 +86,15 @@ bool FitsUnsignedWidth(std::uint64_t value, std::size_t byte_width) noexcept {
   }
   const auto bit_count = static_cast<unsigned>(byte_width * 8U);
   return value < (std::uint64_t{1U} << bit_count);
+}
+
+bool FitsUnsignedBits(std::uint64_t value, std::size_t bit_width) noexcept {
+  return bit_width == 64U || (bit_width != 0U && bit_width < 64U &&
+                              value < (std::uint64_t{1U} << static_cast<unsigned>(bit_width)));
+}
+
+std::uint64_t ExtractBitfield(std::uint64_t container, const FieldExecutionPlan& field) noexcept {
+  return (container & field.bit_mask) >> field.bit_shift;
 }
 
 bool IsIntegerByteOrderValid(ByteOrder order, std::size_t byte_width) noexcept {
@@ -221,6 +231,8 @@ LogicalValueKind GetLogicalValueKind(ValueType value_type) noexcept {
       return LogicalValueKind::BYTES;
     case ValueType::ENUM:
       return LogicalValueKind::ENUM;
+    case ValueType::BOOL:
+      return LogicalValueKind::BOOL;
   }
   return LogicalValueKind::UINT64;
 }
@@ -282,7 +294,9 @@ CodecStatus PrepareEncodeInputs(const PlanBundle& plan, const MessageExecutionPl
     }
 
     if (field.value_type == ValueType::UINT64) {
-      if (!FitsUnsignedWidth(value.uint64_value, field.width)) {
+      if (!(field.bit_container_index != kInvalidIndex
+                ? FitsUnsignedBits(value.uint64_value, field.bit_width)
+                : FitsUnsignedWidth(value.uint64_value, field.width))) {
         return CodecStatus::VALUE_NOT_REPRESENTABLE;
       }
     } else if (field.value_type == ValueType::BYTES) {
@@ -293,6 +307,8 @@ CodecStatus PrepareEncodeInputs(const PlanBundle& plan, const MessageExecutionPl
       if (!GetAddressRange(value.bytes_value.data, value.bytes_value.size, unused)) {
         return CodecStatus::INVALID_ARGUMENT;
       }
+    } else if (field.value_type == ValueType::BOOL) {
+      // Native bool has no alternate numeric or string representation in the Core API.
     } else if (value.enum_value.plan_scope != &plan ||
                value.enum_value.message_index != message_index ||
                value.enum_value.field_index != value.field.field_index ||
@@ -328,6 +344,9 @@ std::uint64_t GetEncodeRawValue(const MessageExecutionPlan& message,
   if (field.value_type == ValueType::ENUM) {
     return message.enum_raw_values[field.enum_values_begin + value.enum_value.entry_index];
   }
+  if (field.value_type == ValueType::BOOL) {
+    return value.bool_value ? 1U : 0U;
+  }
   return value.uint64_value;
 }
 
@@ -341,7 +360,14 @@ void WriteFixedBytes(const MessageExecutionPlan& message,
 
 bool WriteFields(const MessageExecutionPlan& message, const EncodeFieldValue* values,
                  const std::vector<std::size_t>& value_indices,
+                 std::vector<std::uint64_t>& container_values,
                  std::uint8_t* output PAE_OPERATION_COUNTS_PARAMETER) noexcept {
+  if (message.bit_containers.size() > container_values.size()) {
+    return false;
+  }
+  for (std::size_t index = 0U; index < message.bit_containers.size(); ++index) {
+    container_values[index] = message.bit_containers[index].base_value;
+  }
   for (const FieldExecutionPlan& field : message.fields) {
     PAE_INCREMENT_OPERATION_COUNT(field_write_visits);
     if (field.value_type == ValueType::BYTES) {
@@ -353,7 +379,19 @@ bool WriteFields(const MessageExecutionPlan& message, const EncodeFieldValue* va
       continue;
     }
     const std::uint64_t raw_value = GetEncodeRawValue(message, field, values, value_indices);
+    if (field.bit_container_index != kInvalidIndex) {
+      std::uint64_t& container = container_values[field.bit_container_index];
+      container = (container & ~field.bit_mask) | ((raw_value << field.bit_shift) & field.bit_mask);
+      continue;
+    }
     if (!StoreUnsigned(raw_value, output + field.offset, field.width, field.byte_order)) {
+      return false;
+    }
+  }
+  for (std::size_t index = 0U; index < message.bit_containers.size(); ++index) {
+    const auto& container = message.bit_containers[index];
+    if (!StoreUnsigned(container_values[index], output + container.offset, container.width,
+                       container.byte_order)) {
       return false;
     }
   }
@@ -379,8 +417,20 @@ bool VerifyFields(const MessageExecutionPlan& message, const EncodeFieldValue* v
     }
     std::uint64_t actual = 0U;
     const std::uint64_t expected = GetEncodeRawValue(message, field, values, value_indices);
-    if (!LoadUnsigned(output + field.offset, field.width, field.byte_order, actual) ||
-        actual != expected) {
+    if (field.bit_container_index != kInvalidIndex) {
+      const auto& container = message.bit_containers[field.bit_container_index];
+      std::uint64_t container_value = 0U;
+      if (!LoadUnsigned(output + container.offset, container.width, container.byte_order,
+                        container_value)) {
+        failed_field_index = field_index;
+        return false;
+      }
+      actual = ExtractBitfield(container_value, field);
+    } else if (!LoadUnsigned(output + field.offset, field.width, field.byte_order, actual)) {
+      failed_field_index = field_index;
+      return false;
+    }
+    if (actual != expected) {
       failed_field_index = field_index;
       return false;
     }
@@ -418,6 +468,8 @@ ExecutionWorkspace::ExecutionWorkspace(const PlanBundle& plan)
       encode_value_indices_(plan.GetExecutionResourceLayout().encode_value_index_count,
                             kInvalidIndex),
       encode_present_words_(plan.GetExecutionResourceLayout().encode_presence_word_count,
+                            std::uint64_t{0U}),
+      bit_container_values_(plan.GetExecutionResourceLayout().bit_container_value_count,
                             std::uint64_t{0U}) {}
 
 CodecOperationCounts ExecutionWorkspace::LastOperationCounts() const noexcept {
@@ -489,6 +541,19 @@ DecodeResult DecodeCompleteRecord(const PlanBundle& plan, ExecutionWorkspace& wo
     return result;
   }
 
+  if (message.bit_containers.size() > workspace.bit_container_values_.size()) {
+    result.status = CodecStatus::INVALID_PLAN;
+    return result;
+  }
+  for (std::size_t index = 0U; index < message.bit_containers.size(); ++index) {
+    const auto& container = message.bit_containers[index];
+    if (!LoadUnsigned(input.data + container.offset, container.width, container.byte_order,
+                      workspace.bit_container_values_[index])) {
+      result.status = CodecStatus::INVALID_PLAN;
+      return result;
+    }
+  }
+
   bool tainted = false;
   for (std::size_t field_index = 0U; field_index < message.fields.size(); ++field_index) {
     PAE_INCREMENT_OPERATION_COUNT(field_validation_visits);
@@ -497,7 +562,10 @@ DecodeResult DecodeCompleteRecord(const PlanBundle& plan, ExecutionWorkspace& wo
       continue;
     }
     std::uint64_t raw_value = 0U;
-    if (!LoadUnsigned(input.data + field.offset, field.width, field.byte_order, raw_value)) {
+    if (field.bit_container_index != kInvalidIndex) {
+      raw_value =
+          ExtractBitfield(workspace.bit_container_values_[field.bit_container_index], field);
+    } else if (!LoadUnsigned(input.data + field.offset, field.width, field.byte_order, raw_value)) {
       result.status = CodecStatus::INVALID_PLAN;
       result.failed_field_index = field_index;
       return result;
@@ -522,13 +590,19 @@ DecodeResult DecodeCompleteRecord(const PlanBundle& plan, ExecutionWorkspace& wo
       slot.bytes_value = ByteView{input.data + field.offset, field.width};
     } else {
       std::uint64_t raw_value = 0U;
-      if (!LoadUnsigned(input.data + field.offset, field.width, field.byte_order, raw_value)) {
+      if (field.bit_container_index != kInvalidIndex) {
+        raw_value =
+            ExtractBitfield(workspace.bit_container_values_[field.bit_container_index], field);
+      } else if (!LoadUnsigned(input.data + field.offset, field.width, field.byte_order,
+                               raw_value)) {
         result.status = CodecStatus::INVALID_PLAN;
         result.failed_field_index = field_index;
         return result;
       }
       if (field.value_type == ValueType::UINT64) {
         slot.uint64_value = raw_value;
+      } else if (field.value_type == ValueType::BOOL) {
+        slot.bool_value = raw_value != 0U;
       } else {
         const std::size_t entry_index =
             FindEnumEntry(message, field, raw_value PAE_OPERATION_COUNTS_ARGUMENT);
@@ -643,7 +717,7 @@ EncodeResult EncodeCompleteRecord(const PlanBundle& plan, ExecutionWorkspace& wo
 
   WriteFixedBytes(message, output.data PAE_OPERATION_COUNTS_ARGUMENT);
   if (!WriteFields(message, values, workspace.encode_value_indices_,
-                   output.data PAE_OPERATION_COUNTS_ARGUMENT)) {
+                   workspace.bit_container_values_, output.data PAE_OPERATION_COUNTS_ARGUMENT)) {
     result.status = CodecStatus::FINAL_REVIEW_FAILED;
     return result;
   }

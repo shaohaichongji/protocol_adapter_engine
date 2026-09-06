@@ -40,6 +40,7 @@ enum class LogicalValueKind {
   UINT64,
   BYTES,
   ENUM,
+  BOOL,
 };
 
 struct ByteView {
@@ -75,6 +76,7 @@ struct DecodedFieldSlot {
   FieldRef field;
   LogicalValueKind value_kind = LogicalValueKind::UINT64;
   std::uint64_t uint64_value = 0U;
+  bool bool_value = false;
   ByteView bytes_value;
   DecodedEnumValue enum_value;
 };
@@ -83,6 +85,7 @@ struct EncodeFieldValue {
   FieldRef field;
   LogicalValueKind value_kind = LogicalValueKind::UINT64;
   std::uint64_t uint64_value = 0U;
+  bool bool_value = false;
   ByteView bytes_value;
   EnumValueRef enum_value;
 };
@@ -157,6 +160,7 @@ class ExecutionWorkspace final {
   std::size_t max_values_per_call_ = 0U;
   std::vector<std::size_t> encode_value_indices_;
   std::vector<std::uint64_t> encode_present_words_;
+  std::vector<std::uint64_t> bit_container_values_;
   std::atomic_flag in_use_ = ATOMIC_FLAG_INIT;
 #if defined(PAE_ENABLE_OPERATION_COUNTERS)
   CodecOperationCounts operation_counts_;

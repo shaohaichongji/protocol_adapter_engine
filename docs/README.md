@@ -7,6 +7,7 @@
 - [PAE-DEC-033A Plan计费内存实施切片方案](pae-dec-033a-accounted-plan-memory-implementation-slice.md)
 - [PAE-DEC-038 Protocol Lab离线加固方案](pae-dec-038-protocol-lab-offline-hardening.md)
 - [PAE-DEC-039 Protocol Lab Windows UDP Exchange方案](pae-dec-039-protocol-lab-windows-udp-exchange.md)
+- [PAE-DEC-040 位字段最小切片确认契约与实施清单](pae-dec-040-bitfield-contract-draft.md)
 - [PAE-DEC-033A Accounted Plan Memory Windows验证报告](windows-msvc-2026-accounted-plan-memory-slice.md)
 - [Loader/SchemaIr Windows 可执行切片验证报告](windows-msvc-2026-loader-schema-ir-slice.md)
 - [COMPLETE_RECORD Codec Windows 内部切片验证报告](windows-msvc-2026-complete-record-codec-slice.md)
@@ -17,3 +18,4 @@
 - [Protocol Lab Offline Slice Windows验证报告](windows-msvc-2026-protocol-lab-offline-slice.md)
 - [Protocol Lab Windows UDP Exchange验证报告](windows-msvc-2026-protocol-lab-udp-exchange-slice.md)
 - [Protocol Lab 人工Loopback验收报告（2026-09-06）](windows-protocol-lab-manual-loopback-acceptance-20260906.md)
+- [PAE-DEC-040 位字段最小切片Windows验证报告](windows-msvc-2026-dec040-bitfield-slice.md)

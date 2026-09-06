@@ -198,7 +198,7 @@ std::string_view ToString(CompileError value) noexcept {
 
 class TestRunner final {
  public:
-  static constexpr std::size_t kExpectedCaseCount = 28U;
+  static constexpr std::size_t kExpectedCaseCount = 33U;
 
   void Pass(std::string_view case_id) {
     ++passed_;
@@ -503,6 +503,46 @@ void RunCorruptedBudgetedDraftCase(TestRunner& runner) {
     return;
   }
   runner.Pass(kCaseId);
+}
+
+void RunPlanBuilderBitfieldDefenseCases(TestRunner& runner) {
+  const auto reject_invalid_field = [&runner](std::string_view case_id, BudgetedPlanDraft draft) {
+    const auto result = PlanBuilder::Freeze(std::move(draft));
+    if (result.Succeeded() || result.Diagnostic() == nullptr ||
+        result.Diagnostic()->code != PlanBuildError::INVALID_FIELD_PLAN ||
+        result.Diagnostic()->message_index != 0U) {
+      runner.Fail(case_id, "PlanBuilder accepted a corrupted bit-container invariant");
+      return;
+    }
+    runner.Pass(case_id);
+  };
+  reject_invalid_field("bitfield_builder_single_byte_order_defense",
+                       pae::test_support::MakeBitfieldDraftWithInvalidByteOrder());
+  reject_invalid_field("bitfield_builder_numbering_enum_defense",
+                       pae::test_support::MakeBitfieldDraftWithInvalidBitNumbering());
+  const auto matcher_result =
+      PlanBuilder::Freeze(pae::test_support::MakeBitfieldDraftWithMatcherConflict());
+  if (matcher_result.Succeeded() || matcher_result.Diagnostic() == nullptr ||
+      matcher_result.Diagnostic()->code != PlanBuildError::INVALID_MATCHER_PLAN ||
+      matcher_result.Diagnostic()->message_index != 0U) {
+    runner.Fail("bitfield_builder_matcher_conflict_defense",
+                "PlanBuilder accepted determined bit container bytes that conflict with Matcher");
+  } else {
+    runner.Pass("bitfield_builder_matcher_conflict_defense");
+  }
+  const auto reject_resource_limit = [&runner](std::string_view case_id, BudgetedPlanDraft draft) {
+    const auto result = PlanBuilder::Freeze(std::move(draft));
+    if (result.Succeeded() || result.Diagnostic() == nullptr ||
+        result.Diagnostic()->code != PlanBuildError::RESOURCE_LIMIT_EXCEEDED) {
+      runner.Fail(case_id, "PlanBuilder accepted a corrupted bit-container resource count");
+      return;
+    }
+    runner.Pass(case_id);
+  };
+  reject_resource_limit("bitfield_builder_message_container_limit_defense",
+                        pae::test_support::MakeBitfieldDraftWithTooManyMessageContainers());
+  reject_resource_limit("bitfield_builder_total_container_limit_defense",
+                        pae::test_support::MakeBitfieldDraftWithTooManyTotalContainers());
 }
 
 bool ReadBinaryFile(const std::filesystem::path& path, std::string& output, std::string& error) {
@@ -907,6 +947,7 @@ int main(int argc, char** argv) {
 
   RunCapabilityStateCase(runner);
   RunCorruptedBudgetedDraftCase(runner);
+  RunPlanBuilderBitfieldDefenseCases(runner);
   RunPlanMemoryContractCases(runner);
 
   const std::filesystem::path data_root{argv[1]};

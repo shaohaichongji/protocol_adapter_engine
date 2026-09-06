@@ -29,6 +29,7 @@ struct PreparedMessageExecutionPlan {
   std::size_t frame_size = 0U;
   std::size_t required_input_count = 0U;
   std::vector<FixedByteExecutionPlan> fixed_bytes;
+  std::vector<BitContainerExecutionPlan> bit_containers;
   std::vector<FieldExecutionPlan> fields;
   std::vector<std::uint64_t> enum_raw_values;
   std::vector<EnumLookupExecutionPlan> enum_lookup_entries;

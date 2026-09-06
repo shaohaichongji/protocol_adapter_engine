@@ -8,8 +8,8 @@
 
 - `inspect`：从Binary或严格Hex文件读取一条完整Frame，跨配置内Pipeline执行唯一Message匹配
   和类型化Decode；
-- `encode`：从严格`pae.lab.values/0.1`文件读取类型化业务值，执行fail-closed（失败关闭）
-  Encode并输出规范Hex；
+- `encode`：从严格`pae.lab.values/0.1`或`0.2`文件读取类型化业务值；0.2增加原生JSON
+  `BOOL`，执行fail-closed（失败关闭）Encode并输出规范Hex；
 - `replay`：校验既有Evidence Bundle的`COMPLETE`和`SHA256SUMS`后，使用内嵌配置或显式新
   配置重新执行，并生成一个不可覆盖的新Run；
 - `compare`：比较两个Frame或两个Run；Run比较排除时间、绝对路径和Run ID，并报告
@@ -81,9 +81,11 @@ pae_protocol_lab udp-exchange \
 
 `inspect`和`encode`只有提供`--record-root`时才写Evidence Bundle；`replay`总会创建新Run，
 未指定`--record-root`时写到源Run的父目录；`udp-exchange`强制要求`--record-root`，没有
-非证据型发送旁路。离线命令的`--output json`保持`pae.lab.result/0.1`；UDP Exchange及其Replay
-输出`pae.lab.result/0.2`，并显式标记`ENCODE_TX`、`DECODE_RX`或`NO_CODEC_REEXECUTION`。旧离线
-V0.1继续兼容，旧UDP草案和未知版本失败关闭。默认文本输出便于人工查看。`--expect-status <status>`可把预期的Codec失败
+非证据型发送旁路。Schema 0.1执行保持原离线Result/Record 0.1和UDP Result/Record/Event 0.2；
+Schema 0.2执行统一使用Result/Record/Event 0.3，RX Metadata仍为0.2。Replay显式标记
+`ENCODE_TX`、`DECODE_RX`或`NO_CODEC_REEXECUTION`。旧离线V0.1继续兼容，旧UDP草案、未知版本、
+跨Schema替换配置Replay和旧格式Run与0.3 Run直接Compare均失败关闭；原始Frame比较不受格式代际限制。
+默认文本输出便于人工查看。`--expect-status <status>`可把预期的Codec失败
 作为成功用例返回`0`，但Compare发现差异始终返回`6`。
 
 UDP V0.2事件在真实TX持久化、发送和RX持久化阶段采集，使用同一Run单调时钟原点。RX在Peer

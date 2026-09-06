@@ -93,6 +93,8 @@ std::string_view ToString(ValueType value) noexcept {
       return "BYTES";
     case ValueType::ENUM:
       return "ENUM";
+    case ValueType::BOOL:
+      return "BOOL";
   }
   return "invalid";
 }
@@ -103,8 +105,14 @@ std::string_view ToString(WireCodec value) noexcept {
       return "unsigned_integer";
     case WireCodec::BYTES:
       return "bytes";
+    case WireCodec::BITFIELD:
+      return "bitfield";
   }
   return "invalid";
+}
+
+std::string_view ToString(BitNumbering value) noexcept {
+  return value == BitNumbering::LSB0 ? "lsb0" : "msb0";
 }
 
 std::string_view ToString(ByteOrder value) noexcept {
@@ -173,7 +181,10 @@ std::string MakeDeterministicPlanSnapshot(const PlanBundle& plan) {
   std::string output;
   output.reserve(1024U);
   output.push_back('{');
-  AppendStringProperty("snapshot_format", "pae_plan_bundle_v0.1_draft_slice", output);
+  const bool v02 = plan.SchemaVersion() == "0.2";
+  AppendStringProperty(
+      "snapshot_format",
+      v02 ? "pae_plan_bundle_v0.2_bitfield_slice" : "pae_plan_bundle_v0.1_draft_slice", output);
   output.push_back(',');
   AppendStringProperty("schema_version", plan.SchemaVersion(), output);
   output.push_back(',');
@@ -198,6 +209,11 @@ std::string MakeDeterministicPlanSnapshot(const PlanBundle& plan) {
   AppendIntegerProperty("total_matcher_count", requirements.total_matcher_count, output);
   output.push_back(',');
   AppendIntegerProperty("total_enum_entry_count", requirements.total_enum_entry_count, output);
+  if (v02) {
+    output.push_back(',');
+    AppendIntegerProperty("total_bit_container_count", requirements.total_bit_container_count,
+                          output);
+  }
   output.push_back('}');
 
   output.append(",\"framing_profiles\":[");
@@ -275,6 +291,28 @@ std::string MakeDeterministicPlanSnapshot(const PlanBundle& plan) {
     }
     output.push_back(']');
 
+    if (v02) {
+      output.append(",\"bit_containers\":[");
+      for (std::size_t index = 0U; index < message.bit_containers.size(); ++index) {
+        if (index != 0U) output.push_back(',');
+        const auto& container = message.bit_containers[index];
+        output.push_back('{');
+        AppendStringProperty("id", container.id, output);
+        output.push_back(',');
+        AppendIntegerProperty("byte_offset", container.byte_offset, output);
+        output.push_back(',');
+        AppendIntegerProperty("byte_width", container.byte_width, output);
+        output.push_back(',');
+        AppendStringProperty("byte_order", ToString(container.byte_order), output);
+        output.push_back(',');
+        AppendStringProperty("bit_numbering", ToString(container.bit_numbering), output);
+        output.push_back(',');
+        AppendIntegerProperty("base_value", container.base_value, output);
+        output.push_back('}');
+      }
+      output.push_back(']');
+    }
+
     output.append(",\"fields\":[");
     for (std::size_t field_index = 0U; field_index < message.fields.size(); ++field_index) {
       if (field_index != 0U) {
@@ -288,11 +326,19 @@ std::string MakeDeterministicPlanSnapshot(const PlanBundle& plan) {
       output.push_back(',');
       AppendStringProperty("wire_codec", ToString(field.wire_codec), output);
       output.push_back(',');
-      AppendIntegerProperty("byte_offset", field.byte_offset, output);
-      output.push_back(',');
-      AppendIntegerProperty("byte_width", field.byte_width, output);
-      output.push_back(',');
-      AppendStringProperty("byte_order", ToString(field.byte_order), output);
+      if (field.wire_codec == WireCodec::BITFIELD) {
+        AppendIntegerProperty("bit_container_index", field.bit_container_index, output);
+        output.push_back(',');
+        AppendIntegerProperty("bit_offset", field.bit_offset, output);
+        output.push_back(',');
+        AppendIntegerProperty("bit_width", field.bit_width, output);
+      } else {
+        AppendIntegerProperty("byte_offset", field.byte_offset, output);
+        output.push_back(',');
+        AppendIntegerProperty("byte_width", field.byte_width, output);
+        output.push_back(',');
+        AppendStringProperty("byte_order", ToString(field.byte_order), output);
+      }
       output.push_back(',');
       AppendStringProperty("encode_source", ToString(field.encode_source), output);
       if (field.constant_value.has_value()) {

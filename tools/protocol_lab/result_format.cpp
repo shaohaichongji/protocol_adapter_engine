@@ -114,6 +114,9 @@ namespace {
 
 std::string DeterministicPayload(const OperationResult& result) {
   std::ostringstream output;
+  if (result.schema_version == "0.2") {
+    output << "fingerprint_domain=pae.lab.fingerprint/0.3\n";
+  }
   output << "operation=" << result.operation_kind << '\n';
   if (result.operation_kind == "udp-exchange") {
     output << "replay_mode=" << result.replay_mode << '\n';
@@ -205,7 +208,9 @@ std::string SerializeFieldsCompact(const std::vector<FieldResult>& fields) {
 
 std::string SerializeResult(const OperationResult& result) {
   const std::string_view result_format =
-      result.operation_kind == "udp-exchange" ? kResultFormat : kResultFormatV1;
+      result.schema_version == "0.2"
+          ? kResultFormatV3
+          : (result.operation_kind == "udp-exchange" ? kResultFormat : kResultFormatV1);
   const std::string frame_hex = HexUpper(result.frame);
   const std::string frame_file =
       result.frame_file.empty() ? "frames/000001_frame.bin" : result.frame_file;
@@ -274,7 +279,7 @@ std::string SerializeResult(const OperationResult& result) {
          << "  \"send_succeeded\":" << (result.send_succeeded ? "true" : "false") << ",\n"
          << "  \"response_received\":" << (result.response_received ? "true" : "false") << ",\n"
          << "  \"response_decoded\":" << (result.response_decoded ? "true" : "false");
-  if (result_format == kResultFormat) {
+  if (result_format == kResultFormat || result_format == kResultFormatV3) {
     output << ",\n"
            << "  \"receive_pipeline_id\":" << Quoted(result.receive_pipeline_id) << ",\n"
            << "  \"replay_mode\":" << Quoted(result.replay_mode) << ",\n"
@@ -335,9 +340,10 @@ std::string FieldsCanonical(const OperationResult& result) {
 
 std::vector<std::string> CompareStoredRuns(const StoredRun& left, const StoredRun& right) {
   std::vector<std::string> categories;
-  const bool udp_v2 = left.operation_kind == "udp-exchange" &&
-                      right.operation_kind == "udp-exchange" &&
-                      left.format_version == kResultFormat && right.format_version == kResultFormat;
+  const bool modern =
+      (left.format_version == kResultFormatV3 && right.format_version == kResultFormatV3) ||
+      (left.operation_kind == "udp-exchange" && right.operation_kind == "udp-exchange" &&
+       left.format_version == kResultFormat && right.format_version == kResultFormat);
   if (left.operation_kind != right.operation_kind) {
     categories.emplace_back("OPERATION_KIND");
   }
@@ -356,14 +362,14 @@ std::vector<std::string> CompareStoredRuns(const StoredRun& left, const StoredRu
       left.direction_id != right.direction_id) {
     categories.emplace_back("MESSAGE_MATCH");
   }
-  if ((udp_v2 ? left.current_execution_status != right.current_execution_status
+  if ((modern ? left.current_execution_status != right.current_execution_status
               : left.operation_status != right.operation_status)) {
     categories.emplace_back("STATUS");
   }
   if (left.fields_canonical != right.fields_canonical) {
     categories.emplace_back("TYPED_FIELDS");
   }
-  if ((udp_v2 ? left.current_execution_diagnostic_id != right.current_execution_diagnostic_id
+  if ((modern ? left.current_execution_diagnostic_id != right.current_execution_diagnostic_id
               : left.diagnostic_id != right.diagnostic_id)) {
     categories.emplace_back("STABLE_DIAGNOSTIC");
   }
@@ -375,8 +381,10 @@ std::vector<std::string> CompareStoredRuns(const StoredRun& left, const StoredRu
 
 StoredRun ToStoredRun(const OperationResult& result) {
   StoredRun stored;
-  stored.format_version = result.operation_kind == "udp-exchange" ? std::string{kResultFormat}
-                                                                  : std::string{kResultFormatV1};
+  stored.format_version = result.schema_version == "0.2" ? std::string{kResultFormatV3}
+                                                         : (result.operation_kind == "udp-exchange"
+                                                                ? std::string{kResultFormat}
+                                                                : std::string{kResultFormatV1});
   stored.command = result.command;
   stored.operation_kind = result.operation_kind;
   stored.operation_status = result.status;

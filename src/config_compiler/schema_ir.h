@@ -12,6 +12,7 @@
 
 namespace pae::config_compiler {
 
+using protocol_plan::BitNumbering;
 using protocol_plan::ByteOrder;
 using protocol_plan::EncodeSource;
 using protocol_plan::InputKind;
@@ -59,6 +60,20 @@ struct WireIr {
   std::uint64_t byte_offset = 0U;
   std::uint64_t byte_width = 0U;
   ByteOrder byte_order = ByteOrder::NOT_APPLICABLE;
+  std::string container_id;
+  std::uint64_t bit_offset = 0U;
+  std::uint64_t bit_width = 0U;
+  std::size_t bit_container_index = static_cast<std::size_t>(-1);
+  ConfigOrigin origin;
+};
+
+struct BitContainerIr {
+  std::string id;
+  std::uint64_t byte_offset = 0U;
+  std::uint64_t byte_width = 0U;
+  ByteOrder byte_order = ByteOrder::NOT_APPLICABLE;
+  BitNumbering bit_numbering = BitNumbering::LSB0;
+  std::uint64_t base_value = 0U;
   ConfigOrigin origin;
 };
 
@@ -96,6 +111,7 @@ struct MessageIr {
   std::string direction_id;
   std::uint64_t frame_length_bytes = 0U;
   std::vector<MatcherClauseIr> matcher_clauses;
+  std::vector<BitContainerIr> bit_containers;
   std::vector<FieldIr> fields;
   ConfigOrigin origin;
 };

@@ -6,7 +6,7 @@
 | --- | --- |
 | 当前状态 | `V0.1 DRAFT SLICE / INCOMPLETE（V0.1 草案切片 / 不完整）` |
 | 对应 Schema | [`pae.schema.json`](pae.schema.json) |
-| 当前切片 | 严格配置编译、yyjson-free（不依赖yyjson）的Frozen Execution Plan（冻结执行计划）、显式ExecutionWorkspace、COMPLETE_RECORD内部Decode/Encode、固定长度/固定字节Matcher、UINT64/BYTES/ENUM、`input`与UINT64 `constant` Encode Source |
+| 当前切片 | 严格配置编译、yyjson-free（不依赖yyjson）的Frozen Execution Plan（冻结执行计划）、显式ExecutionWorkspace、COMPLETE_RECORD内部Decode/Encode、固定长度/固定字节Matcher、UINT64/BYTES/ENUM，以及Schema 0.2中的BOOL与位容器；`input`与UINT64 `constant` Encode Source |
 | 不覆盖 | STREAM_CHUNK流式Framing、Integrity、Receive Gate、Mapping、Session、Runtime注册、公共API及完整V0.1字段类型 |
 
 本文描述PAE（Protocol Adapter Engine，协议适配引擎）首个Loader/Compiler（加载器/编译器）垂直切片及其后的`COMPLETE_RECORD（完整记录）`Codec（编解码器）内部切片。它没有完成《PAE V0.1 技术细节拍板方案》中`PAE-DEC-027`要求的完整Schema V0.1语义覆盖，也没有冻结公共API（Application Programming Interface，应用程序接口），不能作为完整V0.1配置语言或生产协议正确性声明。
@@ -87,7 +87,8 @@ PlanBundle + bound ExecutionWorkspace + pipeline_index + message_index + typed i
 
 `DRAFT SLICE RULE`：
 
-- `schema_version`固定为字符串`"0.1"`；
+- `schema_version`接受字符串`"0.1"`或`"0.2"`；0.1保持原属性与类型集合，0.2才允许
+  `bit_containers`、`bitfield` Wire和BOOL；
 - stable ID匹配`^[a-z][a-z0-9_]*$`，本草案切片最多128个字符；
 - `resource_profile`只接受`desktop`和`constrained`；
 - 根对象及所有子对象的未知属性必须拒绝。
@@ -150,7 +151,10 @@ DomainValidator必须拒绝：
 
 - Matcher范围超出`frame_length_bytes`；
 - 同一 Pipeline候选 Message之间静态可发现的重叠；
-- Matcher与相同 Wire区间的常量字段在字节层面冲突。
+- Matcher与相同 Wire区间的常量字段在字节层面冲突；
+- Matcher与位容器的确定值冲突。确定值包括常量成员写入位，以及未被任何成员覆盖、由
+  `base_value`确定的位；动态成员覆盖位不得仅按`base_value`判为冲突。判断须先按容器
+  `byte_order`映射字节，再按`bit_numbering`和成员offset/width映射位。
 
 Matcher数组顺序不构成优先级。运行期只接受唯一匹配：零匹配返回内部`UNKNOWN_MESSAGE`状态，多匹配返回内部`AMBIGUOUS_MESSAGE`状态，二者都不交付Decoded Field（已解码字段）。这些状态名尚未冻结为公共错误码。
 
@@ -315,13 +319,29 @@ PlanBuilder不得读取原始JSON、保留Parser DOM或修改Runtime。失败时
 
 当前`PAE-DEC-033A`已实现：冷/热Plan长期对象使用单一Storage Block的`FrozenString/FrozenArray`，ResourceBudget完成单Plan精确准入，Builder复算与最终Arena报告必须匹配批准报告。`PlanMemoryReport`分类覆盖对象、字符串、Matcher、元数据容器、执行描述符、索引、扩展和对齐；当前候选单Plan上限Hard/Desktop/Constrained为`256/128/8 MiB`，仍是`CANDIDATE / UNVERIFIED`。`PAE-DEC-033B` Runtime活跃Plan/Session聚合准入仍未实现。实施与Windows证据分别见`docs/pae-dec-033a-accounted-plan-memory-implementation-slice.md`和`docs/windows-msvc-2026-accounted-plan-memory-slice.md`。
 
+### 11.3 Schema 0.2位容器执行规则
+
+`PAE-DEC-040`只扩展`COMPLETE_RECORD`。Message可声明`bit_containers`，容器以
+`container_offset/container_width`定位1/2/4/8字节区域，多字节必须显式声明`byte_order`，
+并统一声明`lsb0`或`msb0`。成员仍在`fields`中，通过`container_id`引用；BOOL严格1 bit，
+UINT64和无符号原始值ENUM可占1～64 bit，允许容器内跨字节和64位满宽，不允许跨容器。
+
+Structural/Domain Validator拒绝空容器、未知引用、非法宽度或类型、成员重叠、容器重叠、普通
+字段与容器重叠及越界。Builder预计算容器索引、shift和mask并纳入Frozen Plan精确计费；
+Workspace按单Message最大容器数预留`uint64_t`槽。Encode从`base_value`初始化每个容器，清除成员
+位后写入，未覆盖位保留基础值且不读取输出Buffer旧内容；Decode不把`base_value`当作接收约束。
+
+Core内部BOOL使用独立`LogicalValueKind::BOOL`和真正的`bool`值。位字段没有扩展Matcher、普通字段
+接收规则、Runtime/Session、公共API或C ABI。公开独立向量及Windows证据见
+[`windows-msvc-2026-dec040-bitfield-slice.md`](../docs/windows-msvc-2026-dec040-bitfield-slice.md)。
+
 ## 12. 当前不覆盖的完整 V0.1 能力
 
 完成本切片不能宣称完成完整Schema V0.1。至少仍缺少：
 
 - STREAM_CHUNK及`fixed_length`、`sync_fixed_length`、`sync_length_field`；
-- BOOL、INT64、REAL64、DECIMAL64、STRING/ASCII和Packed BCD；
-- bitfield容器、scale/bias、raw/value constraints；
+- INT64、REAL64、DECIMAL64、STRING/ASCII和Packed BCD；BOOL当前仅存在于Schema 0.2位成员；
+- 位字段之外的scale/bias、raw/value constraints；
 - `default`和`computed`正式作者格式；
 - 长度字段正式语义；
 - SUM、XOR、LRC、Parameterized CRC和自定义Checksum；
@@ -351,6 +371,7 @@ PlanBuilder不得读取原始JSON、保留Parser DOM或修改Runtime。失败时
 
 | 文档版本 | 日期 | 说明 |
 | --- | --- | --- |
+| 0.1.6 | 2026-09-06 | 同步PAE-DEC-040 Schema 0.2位容器、BOOL、冻结布局、Workspace计费及Windows验证边界；Schema 0.1保持原能力 |
 | 0.1.5 | 2026-09-02 | 同步PAE-DEC-033A单Storage Block、Frozen Storage、PlanOwner、精确ResourceBudget准入、报告复核和Windows部分验证；033B仍未实现 |
 | 0.1.4 | 2026-09-02 | 同步PAE-DEC-032已实现能力链、第十七轮PAE-DEC-033A/033B计量合同和033A推荐实施方案；保持033A/033B源码与测试为UNVERIFIED |
 | 0.1.3 | 2026-09-02 | 用完全独立的SYNTHETIC_FROM_SCRATCH实验台双向样例替换实现证据衍生布局；保留相同引擎能力与验证边界，不新增生产协议结论 |

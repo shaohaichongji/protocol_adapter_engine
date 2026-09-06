@@ -8,6 +8,7 @@
 #include <ctime>
 #include <fstream>
 #include <iomanip>
+#include <limits>
 #include <random>
 #include <set>
 #include <sstream>
@@ -97,9 +98,13 @@ bool WriteVerified(RecordFileSystem& file_system, const std::filesystem::path& r
 std::string SerializeRunRecord(const OperationResult& result, std::string_view run_id,
                                std::string_view timestamp, const std::vector<RecordedFile>& files) {
   const std::string_view record_format =
-      result.operation_kind == "udp-exchange" ? kRecordFormat : kRecordFormatV1;
+      result.schema_version == "0.2"
+          ? kRecordFormatV3
+          : (result.operation_kind == "udp-exchange" ? kRecordFormat : kRecordFormatV1);
   const std::string_view tool_version =
-      record_format == kRecordFormatV1 ? "0.1.0-udp-exchange-slice" : kToolVersion;
+      record_format == kRecordFormatV1
+          ? "0.1.0-udp-exchange-slice"
+          : (record_format == kRecordFormatV3 ? kToolVersionV3 : kToolVersion);
   std::ostringstream output;
   output << "{\n"
          << "  \"format_version\":" << Quoted(record_format) << ",\n"
@@ -131,7 +136,7 @@ std::string SerializeRunRecord(const OperationResult& result, std::string_view r
          << "  \"send_succeeded\":" << (result.send_succeeded ? "true" : "false") << ",\n"
          << "  \"response_received\":" << (result.response_received ? "true" : "false") << ",\n"
          << "  \"response_decoded\":" << (result.response_decoded ? "true" : "false");
-  if (record_format == kRecordFormat) {
+  if (record_format == kRecordFormat || record_format == kRecordFormatV3) {
     output << ",\n"
            << "  \"receive_pipeline_id\":" << Quoted(result.receive_pipeline_id) << ",\n"
            << "  \"replay_mode\":" << Quoted(result.replay_mode) << ",\n"
@@ -159,9 +164,9 @@ std::string SerializeRunRecord(const OperationResult& result, std::string_view r
   return output.str();
 }
 
-std::string SerializeEvent(const LabEvent& event) {
+std::string SerializeEvent(const LabEvent& event, std::string_view format) {
   std::ostringstream output;
-  output << "{\"format_version\":" << Quoted(kEventFormat) << ",\"event_id\":" << event.event_id
+  output << "{\"format_version\":" << Quoted(format) << ",\"event_id\":" << event.event_id
          << ",\"event_kind\":" << Quoted(event.event_kind)
          << ",\"direction\":" << Quoted(event.direction)
          << ",\"frame_file\":" << Quoted(event.frame_file)
@@ -179,7 +184,7 @@ std::string SerializeEvent(const LabEvent& event) {
 }
 
 std::string SerializeEvents(const OperationResult& result) {
-  if (result.operation_kind != "udp-exchange") {
+  if (result.operation_kind != "udp-exchange" && result.schema_version != "0.2") {
     const std::string direction =
         result.command == "encode" ? "TX" : (result.command == "replay" ? "REPLAY" : "RX");
     const std::string origin = result.command == "encode"
@@ -203,7 +208,7 @@ std::string SerializeEvents(const OperationResult& result) {
   }
   std::ostringstream output;
   for (const LabEvent& event : result.events) {
-    output << SerializeEvent(event);
+    output << SerializeEvent(event, result.schema_version == "0.2" ? kEventFormatV3 : kEventFormat);
   }
   return output.str();
 }
@@ -250,7 +255,7 @@ bool ReadJsonNonnegativeInt(yyjson_val* object, const char* name, int& output, s
   return true;
 }
 
-bool VerifyRxMetadata(const std::filesystem::path& bundle, const StoredRun& run,
+bool VerifyRxMetadata(const std::filesystem::path& bundle, const StoredRun& run, bool v3,
                       std::string& error) {
   const std::filesystem::path metadata_path = bundle / "frames/000002_rx.meta.json";
   if (!std::filesystem::is_regular_file(metadata_path)) {
@@ -300,7 +305,7 @@ bool VerifyRxMetadata(const std::filesystem::path& bundle, const StoredRun& run,
   }
 
   std::string events_text;
-  if (!ReadText(bundle / "events_v0.2.jsonl", events_text, error)) {
+  if (!ReadText(bundle / (v3 ? "events_v0.3.jsonl" : "events_v0.2.jsonl"), events_text, error)) {
     return false;
   }
   std::istringstream event_lines{events_text};
@@ -344,7 +349,7 @@ bool VerifyRxMetadata(const std::filesystem::path& bundle, const StoredRun& run,
   return matched;
 }
 
-bool ReadEventV2(yyjson_val* event, LabEvent& output, std::string& error) {
+bool ReadEventV2(yyjson_val* event, LabEvent& output, bool v3, std::string& error) {
   const std::set<std::string_view> keys{
       "format_version", "event_id",     "event_kind",    "direction",      "frame_file",
       "frame_length",   "frame_sha256", "frame_origin",  "peer_kind",      "remote_endpoint",
@@ -354,7 +359,8 @@ bool ReadEventV2(yyjson_val* event, LabEvent& output, std::string& error) {
   }
   std::string format;
   std::size_t offset = 0U;
-  if (!ReadJsonString(event, "format_version", format, error) || format != kEventFormat ||
+  if (!ReadJsonString(event, "format_version", format, error) ||
+      format != (v3 ? kEventFormatV3 : kEventFormat) ||
       !ReadJsonSize(event, "event_id", output.event_id, error) ||
       !ReadJsonString(event, "event_kind", output.event_kind, error) ||
       !ReadJsonString(event, "direction", output.direction, error) ||
@@ -380,11 +386,15 @@ bool ReadEventV2(yyjson_val* event, LabEvent& output, std::string& error) {
                            output.frame_sha256.empty() && output.frame_origin.empty() &&
                            output.peer_kind.empty() && output.received_from.empty();
   if (output.event_kind == "FRAME") {
+    const bool offline_rx = output.direction == "RX" && output.peer_kind == "OFFLINE_FILE";
+    const bool received_from_valid =
+        output.direction == "RX"
+            ? (offline_rx ? output.received_from.empty() : !output.received_from.empty())
+            : output.received_from.empty();
     if ((output.direction != "TX" && output.direction != "RX" && output.direction != "REPLAY") ||
         !IsSafeRelativePath(output.frame_file) || output.frame_sha256.size() != 64U ||
         output.frame_origin.empty() || output.peer_kind.empty() || !output.succeeded ||
-        (output.direction != "REPLAY" && !output.diagnostic_id.empty()) ||
-        (output.direction == "RX") != !output.received_from.empty() ||
+        (output.direction != "REPLAY" && !output.diagnostic_id.empty()) || !received_from_valid ||
         !output.remote_endpoint.empty()) {
       error = "V0.2 FRAME event fields are inconsistent";
       return false;
@@ -438,10 +448,10 @@ bool EventBindsFrame(const std::filesystem::path& bundle, const LabEvent& event,
   return true;
 }
 
-bool VerifyEventLogV2(const std::filesystem::path& bundle, const StoredRun& run,
+bool VerifyEventLogV2(const std::filesystem::path& bundle, const StoredRun& run, bool v3,
                       std::string& error) {
   std::string events_text;
-  if (!ReadText(bundle / "events_v0.2.jsonl", events_text, error)) {
+  if (!ReadText(bundle / (v3 ? "events_v0.3.jsonl" : "events_v0.2.jsonl"), events_text, error)) {
     return false;
   }
   std::istringstream lines{events_text};
@@ -460,7 +470,7 @@ bool VerifyEventLogV2(const std::filesystem::path& bundle, const StoredRun& run,
     }
     yyjson_val* event = yyjson_doc_get_root(document.get());
     LabEvent parsed;
-    if (!ReadEventV2(event, parsed, error) || parsed.event_id != expected_id ||
+    if (!ReadEventV2(event, parsed, v3, error) || parsed.event_id != expected_id ||
         (expected_id > 1U && parsed.monotonic_offset_ns < previous_offset)) {
       if (error.empty()) {
         error = "V0.2 event ids, version, or monotonic offsets are invalid";
@@ -510,12 +520,16 @@ bool VerifyEventLogV2(const std::filesystem::path& bundle, const StoredRun& run,
       send_result_succeeded = event.succeeded;
     } else if (event.direction == "TX") {
       ++tx_frames;
-      if (!EventBindsFrame(bundle, event, run.tx_frame_file, tx, error)) {
+      if (!EventBindsFrame(bundle, event,
+                           run.command == "udp-exchange" ? run.tx_frame_file : run.frame_file,
+                           run.command == "udp-exchange" ? tx : frame, error)) {
         return false;
       }
     } else if (event.direction == "RX") {
       ++rx_frames;
-      if (!EventBindsFrame(bundle, event, run.rx_frame_file, rx, error)) {
+      if (!EventBindsFrame(bundle, event,
+                           run.command == "udp-exchange" ? run.rx_frame_file : run.frame_file,
+                           run.command == "udp-exchange" ? rx : frame, error)) {
         return false;
       }
     } else {
@@ -549,11 +563,25 @@ bool VerifyEventLogV2(const std::filesystem::path& bundle, const StoredRun& run,
         send_results != 0U || run.send_attempted || run.send_succeeded || run.response_received ||
         !run.tx_frame_file.empty() || !run.rx_frame_file.empty() ||
         (run.replay_mode == "ENCODE_TX" ? run.replay_subject != "TX" : !rx_subject) ||
-        (run.replay_mode != "ENCODE_TX" && frame != rx) ||
+        (run.operation_kind == "udp-exchange" && run.replay_mode != "ENCODE_TX" && frame != rx) ||
         !EventBindsFrame(bundle, events.front(), run.frame_file, frame, error)) {
       if (error.empty()) {
         error = "V0.2 Replay event sequence conflicts with the result summary";
       }
+      return false;
+    }
+  } else if (v3 && run.command == "encode") {
+    if (tx_frames != 1U || rx_frames != 0U || replay_frames != 0U || intents != 0U ||
+        send_results != 0U ||
+        !EventBindsFrame(bundle, events.front(), run.frame_file, frame, error)) {
+      if (error.empty()) error = "V0.3 Encode event does not bind its result frame";
+      return false;
+    }
+  } else if (v3 && run.command == "inspect") {
+    if (rx_frames != 1U || tx_frames != 0U || replay_frames != 0U || intents != 0U ||
+        send_results != 0U ||
+        !EventBindsFrame(bundle, events.front(), run.frame_file, frame, error)) {
+      if (error.empty()) error = "V0.3 Inspect event does not bind its input frame";
       return false;
     }
   } else {
@@ -563,10 +591,13 @@ bool VerifyEventLogV2(const std::filesystem::path& bundle, const StoredRun& run,
   return true;
 }
 
-bool VerifyRunRecord(const std::filesystem::path& bundle, const StoredRun& run, bool v2,
+bool VerifyRunRecord(const std::filesystem::path& bundle, const StoredRun& run, int generation,
                      std::string& error) {
+  const bool modern = generation >= 2;
   const std::filesystem::path record_path =
-      bundle / (v2 ? "run_record_v0.2.json" : "run_record_v0.1.json");
+      bundle / (generation == 3
+                    ? "run_record_v0.3.json"
+                    : (generation == 2 ? "run_record_v0.2.json" : "run_record_v0.1.json"));
   std::string text;
   if (!ReadText(record_path, text, error)) {
     return false;
@@ -602,7 +633,7 @@ bool VerifyRunRecord(const std::filesystem::path& bundle, const StoredRun& run, 
                                              "hash_manifest_excludes_self",
                                              "recorded_payload_files"};
   std::set<std::string_view> allowed = base_keys;
-  if (v2) {
+  if (modern) {
     allowed.insert("receive_pipeline_id");
     allowed.insert("replay_mode");
     allowed.insert("replay_subject");
@@ -627,7 +658,7 @@ bool VerifyRunRecord(const std::filesystem::path& bundle, const StoredRun& run, 
                                                "hash_manifest",
                                                "hash_manifest_excludes_self",
                                                "recorded_payload_files"};
-  if (!ValidateObject(record, allowed, v2 ? allowed : required_v1, "Run Record", error)) {
+  if (!ValidateObject(record, allowed, modern ? allowed : required_v1, "Run Record", error)) {
     return false;
   }
 
@@ -686,8 +717,9 @@ bool VerifyRunRecord(const std::filesystem::path& bundle, const StoredRun& run, 
       !read_optional_bool("response_decoded", response_decoded, has_response_decoded)) {
     return false;
   }
-  const std::string expected_format =
-      v2 ? std::string{kRecordFormat} : std::string{kRecordFormatV1};
+  const std::string expected_format = generation == 3   ? std::string{kRecordFormatV3}
+                                      : generation == 2 ? std::string{kRecordFormat}
+                                                        : std::string{kRecordFormatV1};
   if (format != expected_format || hash_manifest != "SHA256SUMS" || !manifest_excludes_self) {
     error = "Run Record version or manifest contract is unsupported";
     return false;
@@ -698,15 +730,15 @@ bool VerifyRunRecord(const std::filesystem::path& bundle, const StoredRun& run, 
   std::string replay_subject;
   std::string current_status;
   std::string comparison_status;
-  if (v2 && (!ReadJsonString(record, "receive_pipeline_id", receive_pipeline, error) ||
-             !ReadJsonString(record, "replay_mode", replay_mode, error) ||
-             !ReadJsonString(record, "replay_subject", replay_subject, error) ||
-             !ReadJsonString(record, "current_execution_status", current_status, error) ||
-             !ReadJsonString(record, "comparison_status", comparison_status, error))) {
+  if (modern && (!ReadJsonString(record, "receive_pipeline_id", receive_pipeline, error) ||
+                 !ReadJsonString(record, "replay_mode", replay_mode, error) ||
+                 !ReadJsonString(record, "replay_subject", replay_subject, error) ||
+                 !ReadJsonString(record, "current_execution_status", current_status, error) ||
+                 !ReadJsonString(record, "comparison_status", comparison_status, error))) {
     return false;
   }
   if (command != run.command || end_status != run.operation_status ||
-      ((v2 || !run.transport.empty()) && transport != run.transport) ||
+      ((modern || !run.transport.empty()) && transport != run.transport) ||
       send_attempted != run.send_attempted ||
       (has_local_endpoint && local_endpoint != run.local_endpoint) ||
       (has_remote_endpoint && remote_endpoint != run.remote_endpoint) ||
@@ -714,7 +746,7 @@ bool VerifyRunRecord(const std::filesystem::path& bundle, const StoredRun& run, 
       (has_send_succeeded && send_succeeded != run.send_succeeded) ||
       (has_response_received && response_received != run.response_received) ||
       (has_response_decoded && response_decoded != run.response_decoded) ||
-      (v2 &&
+      (modern &&
        (receive_pipeline != run.receive_pipeline_id || replay_mode != run.replay_mode ||
         replay_subject != run.replay_subject || current_status != run.current_execution_status ||
         comparison_status != run.comparison_status))) {
@@ -778,8 +810,12 @@ bool VerifyRunRecord(const std::filesystem::path& bundle, const StoredRun& run, 
       return false;
     }
   }
-  const std::string result_name = v2 ? "result_summary_v0.2.json" : "result_summary_v0.1.json";
-  const std::string events_name = v2 ? "events_v0.2.jsonl" : "events_v0.1.jsonl";
+  const std::string result_name = generation == 3   ? "result_summary_v0.3.json"
+                                  : generation == 2 ? "result_summary_v0.2.json"
+                                                    : "result_summary_v0.1.json";
+  const std::string events_name = generation == 3   ? "events_v0.3.jsonl"
+                                  : generation == 2 ? "events_v0.2.jsonl"
+                                                    : "events_v0.1.jsonl";
   auto requires_payload = [&](const std::string& path) {
     return path.empty() || payload_paths.find(path) != payload_paths.end();
   };
@@ -834,10 +870,13 @@ bool VerifyBundleHashes(const std::filesystem::path& bundle, std::string& error)
   bool saw_complete = false;
   bool saw_result_v1 = false;
   bool saw_result_v2 = false;
+  bool saw_result_v3 = false;
   bool saw_record_v1 = false;
   bool saw_record_v2 = false;
+  bool saw_record_v3 = false;
   bool saw_events_v1 = false;
   bool saw_events_v2 = false;
+  bool saw_events_v3 = false;
   bool saw_config = false;
   bool saw_frame = false;
   std::size_t entry_count = 0U;
@@ -884,21 +923,29 @@ bool VerifyBundleHashes(const std::filesystem::path& bundle, std::string& error)
     saw_complete = saw_complete || relative_text == "COMPLETE";
     saw_result_v1 = saw_result_v1 || relative_text == "result_summary_v0.1.json";
     saw_result_v2 = saw_result_v2 || relative_text == "result_summary_v0.2.json";
+    saw_result_v3 = saw_result_v3 || relative_text == "result_summary_v0.3.json";
     saw_record_v1 = saw_record_v1 || relative_text == "run_record_v0.1.json";
     saw_record_v2 = saw_record_v2 || relative_text == "run_record_v0.2.json";
+    saw_record_v3 = saw_record_v3 || relative_text == "run_record_v0.3.json";
     saw_events_v1 = saw_events_v1 || relative_text == "events_v0.1.jsonl";
     saw_events_v2 = saw_events_v2 || relative_text == "events_v0.2.jsonl";
+    saw_events_v3 = saw_events_v3 || relative_text == "events_v0.3.jsonl";
     saw_config = saw_config || relative_text == "inputs/protocol.pae.json";
     saw_frame = saw_frame || relative_text == "frames/000001_frame.bin" ||
                 relative_text == "frames/000001_tx.bin" || relative_text == "frames/000002_rx.bin";
     ++entry_count;
   }
   const bool complete_v1 = saw_result_v1 && saw_record_v1 && saw_events_v1 && !saw_result_v2 &&
-                           !saw_record_v2 && !saw_events_v2;
+                           !saw_record_v2 && !saw_events_v2 && !saw_result_v3 && !saw_record_v3 &&
+                           !saw_events_v3;
   const bool complete_v2 = saw_result_v2 && saw_record_v2 && saw_events_v2 && !saw_result_v1 &&
-                           !saw_record_v1 && !saw_events_v1;
+                           !saw_record_v1 && !saw_events_v1 && !saw_result_v3 && !saw_record_v3 &&
+                           !saw_events_v3;
+  const bool complete_v3 = saw_result_v3 && saw_record_v3 && saw_events_v3 && !saw_result_v1 &&
+                           !saw_record_v1 && !saw_events_v1 && !saw_result_v2 && !saw_record_v2 &&
+                           !saw_events_v2;
   if (entry_count == 0U || !saw_complete || !saw_config || !saw_frame ||
-      (!complete_v1 && !complete_v2)) {
+      (!complete_v1 && !complete_v2 && !complete_v3)) {
     error = "SHA256SUMS omits a required Evidence Bundle file";
     return false;
   }
@@ -1125,7 +1172,9 @@ void EvidenceBundleTransaction::CaptureOfflineFrame(const OperationResult& resul
                            : (result.command == "replay" ? "REPLAYED" : "MANUAL_SYNTHETIC");
   event.peer_kind = "OFFLINE_FILE";
   event.succeeded = true;
-  event.diagnostic_id = result.diagnostic_id;
+  if (result.command == "replay") {
+    event.diagnostic_id = result.diagnostic_id;
+  }
   events_.push_back(std::move(event));
 }
 
@@ -1189,12 +1238,15 @@ bool EvidenceBundleTransaction::Complete(OperationResult& result, std::string& e
   }
   result.events = events_;
   const std::string result_json = SerializeResult(result);
-  const bool udp_v2 = result.operation_kind == "udp-exchange";
+  const bool v3 = result.schema_version == "0.2";
+  const bool udp_v2 = !v3 && result.operation_kind == "udp-exchange";
   const std::filesystem::path result_name =
-      udp_v2 ? "result_summary_v0.2.json" : "result_summary_v0.1.json";
-  const std::filesystem::path events_name = udp_v2 ? "events_v0.2.jsonl" : "events_v0.1.jsonl";
+      v3 ? "result_summary_v0.3.json"
+         : (udp_v2 ? "result_summary_v0.2.json" : "result_summary_v0.1.json");
+  const std::filesystem::path events_name =
+      v3 ? "events_v0.3.jsonl" : (udp_v2 ? "events_v0.2.jsonl" : "events_v0.1.jsonl");
   const std::filesystem::path record_name =
-      udp_v2 ? "run_record_v0.2.json" : "run_record_v0.1.json";
+      v3 ? "run_record_v0.3.json" : (udp_v2 ? "run_record_v0.2.json" : "run_record_v0.1.json");
   if (!WriteVerified(file_system_, in_progress_, result_name, result_json, files_, error) ||
       !WriteVerified(file_system_, in_progress_, events_name, SerializeEvents(result), files_,
                      error)) {
@@ -1245,12 +1297,17 @@ bool LoadStoredRun(const std::filesystem::path& bundle, StoredRun& output, std::
   }
   const bool has_v2 = std::filesystem::is_regular_file(bundle / "result_summary_v0.2.json");
   const bool has_v1 = std::filesystem::is_regular_file(bundle / "result_summary_v0.1.json");
-  if (has_v1 == has_v2) {
+  const bool has_v3 = std::filesystem::is_regular_file(bundle / "result_summary_v0.3.json");
+  if (static_cast<unsigned>(has_v1) + static_cast<unsigned>(has_v2) +
+          static_cast<unsigned>(has_v3) !=
+      1U) {
     error = "Run must contain exactly one supported result summary";
     return false;
   }
   const std::filesystem::path result_path =
-      bundle / (has_v2 ? "result_summary_v0.2.json" : "result_summary_v0.1.json");
+      bundle / (has_v3 ? "result_summary_v0.3.json"
+                       : (has_v2 ? "result_summary_v0.2.json" : "result_summary_v0.1.json"));
+  const bool modern = has_v2 || has_v3;
   std::string text;
   if (!ReadText(result_path, text, error)) {
     return false;
@@ -1262,13 +1319,13 @@ bool LoadStoredRun(const std::filesystem::path& bundle, StoredRun& output, std::
   yyjson_val* root = yyjson_doc_get_root(document.get());
   std::string format;
   if (!ReadJsonString(root, "format_version", format, error) ||
-      (format != kResultFormatV1 && format != kResultFormat)) {
+      (format != kResultFormatV1 && format != kResultFormat && format != kResultFormatV3)) {
     if (error.empty()) {
       error = "unsupported result format_version";
     }
     return false;
   }
-  if ((format == kResultFormat) != has_v2) {
+  if ((format == kResultFormat) != has_v2 || (format == kResultFormatV3) != has_v3) {
     error = "result filename and format_version do not agree";
     return false;
   }
@@ -1315,7 +1372,7 @@ bool LoadStoredRun(const std::filesystem::path& bundle, StoredRun& output, std::
                                               "response_decoded",
                                               "gates"};
   std::set<std::string_view> allowed = allowed_v1;
-  if (has_v2) {
+  if (modern) {
     allowed.insert("replay_mode");
     allowed.insert("replay_subject");
     allowed.insert("current_execution_status");
@@ -1350,7 +1407,7 @@ bool LoadStoredRun(const std::filesystem::path& bundle, StoredRun& output, std::
                                       "send_attempted",
                                       "send_succeeded",
                                       "gates"};
-  if (has_v2) {
+  if (modern) {
     required.insert("tx_frame_length");
     required.insert("tx_frame_sha256");
     required.insert("tx_frame_hex");
@@ -1411,7 +1468,7 @@ bool LoadStoredRun(const std::filesystem::path& bundle, StoredRun& output, std::
     }
     output.tx_frame_hex.assign(yyjson_get_str(tx_frame_hex), yyjson_get_len(tx_frame_hex));
   }
-  if (has_v2 && (!ReadJsonSize(root, "tx_frame_length", output.tx_frame_length, error) ||
+  if (modern && (!ReadJsonSize(root, "tx_frame_length", output.tx_frame_length, error) ||
                  !ReadJsonString(root, "tx_frame_sha256", output.tx_frame_sha256, error) ||
                  !read_nullable_string("tx_frame_file", output.tx_frame_file))) {
     return false;
@@ -1424,7 +1481,7 @@ bool LoadStoredRun(const std::filesystem::path& bundle, StoredRun& output, std::
     }
     output.rx_frame_hex.assign(yyjson_get_str(rx_frame_hex), yyjson_get_len(rx_frame_hex));
   }
-  if (has_v2 && (!ReadJsonSize(root, "rx_frame_length", output.rx_frame_length, error) ||
+  if (modern && (!ReadJsonSize(root, "rx_frame_length", output.rx_frame_length, error) ||
                  !ReadJsonString(root, "rx_frame_sha256", output.rx_frame_sha256, error) ||
                  !read_nullable_string("rx_frame_file", output.rx_frame_file))) {
     return false;
@@ -1434,6 +1491,7 @@ bool LoadStoredRun(const std::filesystem::path& bundle, StoredRun& output, std::
     error = "fields must be an array";
     return false;
   }
+  std::set<std::string> field_ids;
   yyjson_arr_iter field_iterator;
   yyjson_arr_iter_init(fields, &field_iterator);
   while (yyjson_val* field = yyjson_arr_iter_next(&field_iterator)) {
@@ -1451,9 +1509,77 @@ bool LoadStoredRun(const std::filesystem::path& bundle, StoredRun& output, std::
         !ReadJsonString(field, "logical_value", logical, error)) {
       return false;
     }
+    const bool stable_id = !id.empty() && id.size() <= 128U && id.front() >= 'a' &&
+                           id.front() <= 'z' &&
+                           std::all_of(id.begin(), id.end(), [](char character) {
+                             return (character >= 'a' && character <= 'z') ||
+                                    (character >= '0' && character <= '9') || character == '_';
+                           });
+    if (!stable_id || !field_ids.emplace(id).second) {
+      error = "stored field id is invalid or duplicated";
+      return false;
+    }
     yyjson_val* known = yyjson_obj_get(field, "enum_known");
     if (!yyjson_is_bool(known)) {
       error = "stored field enum_known must be boolean";
+      return false;
+    }
+    const bool enum_known = yyjson_get_bool(known);
+    auto is_canonical_uint64 = [](std::string_view value) {
+      if (value.empty() || (value.size() > 1U && value.front() == '0')) {
+        return false;
+      }
+      std::uint64_t parsed = 0U;
+      for (const char character : value) {
+        if (character < '0' || character > '9') {
+          return false;
+        }
+        const std::uint64_t digit = static_cast<std::uint64_t>(character - '0');
+        if (parsed > ((std::numeric_limits<std::uint64_t>::max)() - digit) / 10U) {
+          return false;
+        }
+        parsed = parsed * 10U + digit;
+      }
+      return true;
+    };
+    auto is_upper_hex = [](std::string_view value) {
+      return !value.empty() && value.size() % 2U == 0U &&
+             std::all_of(value.begin(), value.end(), [](char character) {
+               return (character >= '0' && character <= '9') ||
+                      (character >= 'A' && character <= 'F');
+             });
+    };
+    if (kind != "UINT64" && kind != "BYTES" && kind != "ENUM" && kind != "BOOL") {
+      error = "stored field kind is unsupported";
+      return false;
+    }
+    if (kind == "BOOL" && !has_v3) {
+      error = "BOOL fields require result format 0.3";
+      return false;
+    }
+    if (kind == "BOOL" &&
+        ((raw != "0" && raw != "1") || (logical != "false" && logical != "true") ||
+         ((raw == "1") != (logical == "true")) || enum_known)) {
+      error = "stored BOOL field has an invalid raw/logical/enum_known tuple";
+      return false;
+    }
+    if (kind == "UINT64" && (!is_canonical_uint64(raw) || logical != raw || enum_known)) {
+      error = "stored UINT64 field has an invalid raw/logical/enum_known tuple";
+      return false;
+    }
+    if (kind == "BYTES" && (!is_upper_hex(raw) || logical != raw || enum_known)) {
+      error = "stored BYTES field has an invalid raw/logical/enum_known tuple";
+      return false;
+    }
+    if (kind == "ENUM" &&
+        (!is_canonical_uint64(raw) || (!enum_known && logical != raw) ||
+         (enum_known && (logical.empty() || logical.size() > 128U || logical.front() < 'a' ||
+                         logical.front() > 'z' ||
+                         !std::all_of(logical.begin(), logical.end(), [](char character) {
+                           return (character >= 'a' && character <= 'z') ||
+                                  (character >= '0' && character <= '9') || character == '_';
+                         }))))) {
+      error = "stored ENUM field has an invalid raw/logical/enum_known tuple";
       return false;
     }
     output.fields_canonical += id + "|" + kind + "|" + raw + "|" + logical + "|" +
@@ -1517,7 +1643,7 @@ bool LoadStoredRun(const std::filesystem::path& bundle, StoredRun& output, std::
       !read_optional_bool("response_decoded", output.response_decoded)) {
     return false;
   }
-  if (has_v2 &&
+  if (modern &&
       (!ReadJsonString(root, "replay_mode", output.replay_mode, error) ||
        !ReadJsonString(root, "replay_subject", output.replay_subject, error) ||
        !ReadJsonString(root, "current_execution_status", output.current_execution_status, error) ||
@@ -1536,7 +1662,7 @@ bool LoadStoredRun(const std::filesystem::path& bundle, StoredRun& output, std::
   }
 
   yyjson_val* historical = yyjson_obj_get(root, "historical_transport");
-  if (has_v2 && yyjson_is_obj(historical)) {
+  if (modern && yyjson_is_obj(historical)) {
     const std::set<std::string_view> historical_keys{
         "transport",      "timeout_ms",        "status",          "diagnostic_id",
         "local_endpoint", "remote_endpoint",   "received_from",   "send_attempted",
@@ -1570,11 +1696,11 @@ bool LoadStoredRun(const std::filesystem::path& bundle, StoredRun& output, std::
       return false;
     }
     output.historical_transport.timeout_ms = static_cast<std::uint32_t>(historical_timeout_ms);
-  } else if (has_v2 && !yyjson_is_null(historical)) {
+  } else if (modern && !yyjson_is_null(historical)) {
     error = "historical_transport must be an object or null";
     return false;
   }
-  if (has_v2 && output.operation_kind == "udp-exchange") {
+  if (modern && output.operation_kind == "udp-exchange") {
     if (!output.historical_transport.present ||
         (output.historical_transport.send_succeeded &&
          !output.historical_transport.send_attempted) ||
@@ -1608,26 +1734,26 @@ bool LoadStoredRun(const std::filesystem::path& bundle, StoredRun& output, std::
     error = "stored Run contains an unsafe relative path";
     return false;
   }
-  if (has_v2 && output.command == "udp-exchange" && output.response_received &&
+  if (modern && output.command == "udp-exchange" && output.response_received &&
       !std::filesystem::is_regular_file(bundle / "frames/000002_rx.meta.json")) {
     error = "V0.2 UDP Run with a received response has no RX metadata";
     return false;
   }
-  if (!VerifyRunRecord(bundle, output, has_v2, error)) {
+  const int generation = has_v3 ? 3 : (has_v2 ? 2 : 1);
+  if (!VerifyRunRecord(bundle, output, generation, error)) {
     return false;
   }
-  if (has_v2 && output.command == "udp-exchange") {
+  if (modern && output.command == "udp-exchange") {
     if (output.replay_mode != "ENCODE_TX" && output.replay_mode != "DECODE_RX" &&
         output.replay_mode != "NO_CODEC_REEXECUTION") {
       error = "V0.2 UDP Run has an invalid replay_mode";
       return false;
     }
-    if (!VerifyEventLogV2(bundle, output, error) ||
-        (output.response_received && !VerifyRxMetadata(bundle, output, error))) {
+    if (!VerifyEventLogV2(bundle, output, has_v3, error) ||
+        (output.response_received && !VerifyRxMetadata(bundle, output, has_v3, error))) {
       return false;
     }
-  } else if (has_v2 && output.operation_kind == "udp-exchange" &&
-             !VerifyEventLogV2(bundle, output, error)) {
+  } else if (modern && !VerifyEventLogV2(bundle, output, has_v3, error)) {
     return false;
   }
   return true;

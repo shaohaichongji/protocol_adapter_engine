@@ -97,12 +97,31 @@ bool FitsUnsignedWidth(std::uint64_t value, std::size_t width) noexcept {
   return value < (std::uint64_t{1U} << static_cast<unsigned>(width * 8U));
 }
 
+bool FitsUnsignedBits(std::uint64_t value, std::size_t width) noexcept {
+  return width == 64U || (width != 0U && width < 64U &&
+                          value < (std::uint64_t{1U} << static_cast<unsigned>(width)));
+}
+
 bool IsIntegerByteOrderValid(ByteOrder byte_order, std::size_t width) noexcept {
   if (width == 1U) {
     return byte_order == ByteOrder::NOT_APPLICABLE || byte_order == ByteOrder::BIG ||
            byte_order == ByteOrder::LITTLE;
   }
   return byte_order == ByteOrder::BIG || byte_order == ByteOrder::LITTLE;
+}
+
+bool IsBitContainerByteOrderValid(ByteOrder byte_order, std::size_t width) noexcept {
+  return width == 1U ? byte_order == ByteOrder::NOT_APPLICABLE
+                     : byte_order == ByteOrder::BIG || byte_order == ByteOrder::LITTLE;
+}
+
+bool IsBitNumberingValid(BitNumbering bit_numbering) noexcept {
+  return bit_numbering == BitNumbering::LSB0 || bit_numbering == BitNumbering::MSB0;
+}
+
+std::uint64_t WidthMask(std::size_t width) noexcept {
+  return width == 8U ? (std::numeric_limits<std::uint64_t>::max)()
+                     : (std::uint64_t{1U} << static_cast<unsigned>(width * 8U)) - 1U;
 }
 
 std::uint8_t EncodeUnsignedByte(std::uint64_t value, std::size_t width, ByteOrder byte_order,
@@ -120,7 +139,8 @@ bool RequirementsEqual(const ResourceRequirements& left,
          left.pipeline_count == right.pipeline_count && left.message_count == right.message_count &&
          left.total_field_count == right.total_field_count &&
          left.total_matcher_count == right.total_matcher_count &&
-         left.total_enum_entry_count == right.total_enum_entry_count;
+         left.total_enum_entry_count == right.total_enum_entry_count &&
+         left.total_bit_container_count == right.total_bit_container_count;
 }
 
 bool CoversWholeFrame(std::vector<ByteInterval>& intervals, std::size_t frame_size) {
@@ -218,6 +238,15 @@ bool EstimatePreparedPlanMemory(
         return false;
       }
     }
+    if (!layout.AddArray<FrozenBitContainerPlan>(message.bit_containers.size(),
+                                                 PlanMemoryCategory::METADATA_CONTAINER)) {
+      return false;
+    }
+    for (const BitContainerPlan& container : message.bit_containers) {
+      if (!AddStringLayout(layout, container.id)) {
+        return false;
+      }
+    }
     if (!layout.AddArray<FrozenFieldPlan>(message.fields.size(),
                                           PlanMemoryCategory::METADATA_CONTAINER)) {
       return false;
@@ -242,6 +271,8 @@ bool EstimatePreparedPlanMemory(
   for (const detail::PreparedMessageExecutionPlan& message : message_execution_plans) {
     if (!layout.AddArray<FixedByteExecutionPlan>(message.fixed_bytes.size(),
                                                  PlanMemoryCategory::MATCHER) ||
+        !layout.AddArray<BitContainerExecutionPlan>(message.bit_containers.size(),
+                                                    PlanMemoryCategory::EXECUTION_DESCRIPTOR) ||
         !layout.AddArray<FieldExecutionPlan>(message.fields.size(),
                                              PlanMemoryCategory::EXECUTION_DESCRIPTOR) ||
         !layout.AddArray<std::uint64_t>(message.enum_raw_values.size(),
@@ -337,9 +368,9 @@ BudgetedPlanDraft::~BudgetedPlanDraft() = default;
 
 PlanBuildResult PlanBuilder::FreezeImpl(detail::PlanDraftData draft) {
   const ResourceProfileLimits* limits = GetResourceProfileLimits(draft.resource_profile);
-  if (draft.schema_version != "0.1" || !IsStableId(draft.protocol_id) ||
-      draft.protocol_version.empty() || limits == nullptr || draft.framing_profiles.empty() ||
-      draft.pipelines.empty() || draft.messages.empty()) {
+  if ((draft.schema_version != "0.1" && draft.schema_version != "0.2") ||
+      !IsStableId(draft.protocol_id) || draft.protocol_version.empty() || limits == nullptr ||
+      draft.framing_profiles.empty() || draft.pipelines.empty() || draft.messages.empty()) {
     return Reject(PlanBuildError::INVALID_METADATA);
   }
 
@@ -356,10 +387,14 @@ PlanBuildResult PlanBuilder::FreezeImpl(detail::PlanDraftData draft) {
     const MessagePlan& message = draft.messages[message_index];
     if (message.frame_length_bytes > limits->max_frame_bytes ||
         message.fields.size() > limits->max_fields_per_message ||
+        message.bit_containers.size() > limits->max_fields_per_message ||
         message.matchers.size() > limits->max_matchers_per_message ||
         !AddSizeChecked(message.fields.size(), actual_requirements.total_field_count) ||
         !AddSizeChecked(message.matchers.size(), actual_requirements.total_matcher_count) ||
+        !AddSizeChecked(message.bit_containers.size(),
+                        actual_requirements.total_bit_container_count) ||
         actual_requirements.total_field_count > limits->max_total_fields ||
+        actual_requirements.total_bit_container_count > limits->max_total_fields ||
         actual_requirements.total_matcher_count > limits->max_total_matchers) {
       return Reject(PlanBuildError::RESOURCE_LIMIT_EXCEEDED, kInvalidPlanBuildIndex,
                     kInvalidPlanBuildIndex, message_index);
@@ -416,20 +451,55 @@ PlanBuildResult PlanBuilder::FreezeImpl(detail::PlanDraftData draft) {
     std::unordered_set<std::string> field_ids;
     field_ids.reserve(message.fields.size());
     std::vector<ByteInterval> field_intervals;
-    field_intervals.reserve(message.fields.size());
+    field_intervals.reserve(message.fields.size() + message.bit_containers.size());
+    execution.bit_containers.reserve(message.bit_containers.size());
+    std::unordered_set<std::string> container_ids;
+    std::vector<std::uint64_t> member_masks(message.bit_containers.size(), 0U);
+    std::vector<std::uint64_t> determined_masks(message.bit_containers.size(), 0U);
+    std::vector<std::uint64_t> determined_values(message.bit_containers.size(), 0U);
+    std::vector<std::size_t> member_counts(message.bit_containers.size(), 0U);
+    for (std::size_t container_index = 0U; container_index < message.bit_containers.size();
+         ++container_index) {
+      const BitContainerPlan& container = message.bit_containers[container_index];
+      std::size_t offset = 0U;
+      std::size_t width = 0U;
+      if (!IsStableId(container.id) || !container_ids.emplace(container.id).second ||
+          !ToSize(container.byte_offset, offset) || !ToSize(container.byte_width, width) ||
+          (width != 1U && width != 2U && width != 4U && width != 8U) ||
+          !IsRangeWithin(offset, width, frame_size) ||
+          !IsBitContainerByteOrderValid(container.byte_order, width) ||
+          !IsBitNumberingValid(container.bit_numbering) ||
+          !FitsUnsignedWidth(container.base_value, width)) {
+        return Reject(PlanBuildError::INVALID_FIELD_PLAN, kInvalidPlanBuildIndex,
+                      kInvalidPlanBuildIndex, message_index);
+      }
+      field_intervals.push_back(ByteInterval{offset, offset + width, container_index});
+      execution.bit_containers.push_back(
+          BitContainerExecutionPlan{offset, width, container.byte_order, container.base_value});
+      determined_masks[container_index] = WidthMask(width);
+      determined_values[container_index] = container.base_value;
+    }
     std::size_t input_ordinal = 0U;
 
     for (std::size_t field_index = 0U; field_index < message.fields.size(); ++field_index) {
       const FieldPlan& field = message.fields[field_index];
       std::size_t offset = 0U;
       std::size_t width = 0U;
+      const bool bitfield = field.wire_codec == WireCodec::BITFIELD;
       if (!IsStableId(field.id) || !field_ids.emplace(field.id).second ||
-          !ToSize(field.byte_offset, offset) || !ToSize(field.byte_width, width) ||
-          !IsRangeWithin(offset, width, frame_size)) {
+          (!bitfield && (!ToSize(field.byte_offset, offset) || !ToSize(field.byte_width, width) ||
+                         !IsRangeWithin(offset, width, frame_size))) ||
+          (bitfield && field.bit_container_index >= message.bit_containers.size())) {
         return Reject(PlanBuildError::INVALID_FIELD_PLAN, kInvalidPlanBuildIndex,
                       kInvalidPlanBuildIndex, message_index, kInvalidPlanBuildIndex, field_index);
       }
-      field_intervals.push_back(ByteInterval{offset, offset + width, field_index});
+      if (bitfield) {
+        const BitContainerPlan& container = message.bit_containers[field.bit_container_index];
+        offset = static_cast<std::size_t>(container.byte_offset);
+        width = static_cast<std::size_t>(container.byte_width);
+      } else {
+        field_intervals.push_back(ByteInterval{offset, offset + width, field_index});
+      }
 
       const bool uint64_valid =
           field.value_type == ValueType::UINT64 &&
@@ -450,7 +520,24 @@ PlanBuildResult PlanBuilder::FreezeImpl(detail::PlanDraftData draft) {
           !field.enum_entries.empty() &&
           (field.unknown_enum_policy == UnknownEnumPolicy::REJECT ||
            field.unknown_enum_policy == UnknownEnumPolicy::PRESERVE);
-      if (!uint64_valid && !bytes_valid && !enum_shape_valid) {
+      const std::size_t container_bits = bitfield ? width * 8U : 0U;
+      const bool bit_range_valid = bitfield && field.bit_width != 0U && field.bit_width <= 64U &&
+                                   field.bit_offset <= container_bits &&
+                                   field.bit_width <= container_bits - field.bit_offset;
+      const bool bit_type_valid =
+          bit_range_valid &&
+          (field.value_type == ValueType::UINT64 || field.value_type == ValueType::BOOL ||
+           field.value_type == ValueType::ENUM) &&
+          (field.value_type != ValueType::BOOL || field.bit_width == 1U);
+      const bool bit_encode_valid =
+          bitfield && bit_type_valid &&
+          ((field.encode_source == EncodeSource::INPUT && !field.constant_value.has_value()) ||
+           (field.value_type == ValueType::UINT64 &&
+            field.encode_source == EncodeSource::CONSTANT && field.constant_value.has_value() &&
+            FitsUnsignedBits(*field.constant_value, static_cast<std::size_t>(field.bit_width))));
+      if ((!bitfield && !uint64_valid && !bytes_valid && !enum_shape_valid) ||
+          (bitfield && (!bit_encode_valid ||
+                        (field.value_type == ValueType::ENUM && field.enum_entries.empty())))) {
         return Reject(PlanBuildError::INVALID_FIELD_PLAN, kInvalidPlanBuildIndex,
                       kInvalidPlanBuildIndex, message_index, kInvalidPlanBuildIndex, field_index);
       }
@@ -471,6 +558,34 @@ PlanBuildResult PlanBuilder::FreezeImpl(detail::PlanDraftData draft) {
                                                 : UnknownEnumPolicy::REJECT;
       field_execution.enum_values_begin = execution.enum_raw_values.size();
       field_execution.enum_lookup_begin = execution.enum_lookup_entries.size();
+      field_execution.bit_container_index = field.bit_container_index;
+      field_execution.bit_width = static_cast<std::uint8_t>(field.bit_width);
+      if (bitfield) {
+        const BitContainerPlan& container = message.bit_containers[field.bit_container_index];
+        const std::size_t shift = container.bit_numbering == BitNumbering::LSB0
+                                      ? static_cast<std::size_t>(field.bit_offset)
+                                      : width * 8U - static_cast<std::size_t>(field.bit_offset) -
+                                            static_cast<std::size_t>(field.bit_width);
+        const std::uint64_t low_mask =
+            field.bit_width == 64U
+                ? (std::numeric_limits<std::uint64_t>::max)()
+                : (std::uint64_t{1U} << static_cast<unsigned>(field.bit_width)) - 1U;
+        field_execution.bit_shift = static_cast<std::uint8_t>(shift);
+        field_execution.bit_mask = low_mask << static_cast<unsigned>(shift);
+        if ((member_masks[field.bit_container_index] & field_execution.bit_mask) != 0U) {
+          return Reject(PlanBuildError::INVALID_FIELD_PLAN, kInvalidPlanBuildIndex,
+                        kInvalidPlanBuildIndex, message_index, kInvalidPlanBuildIndex, field_index);
+        }
+        member_masks[field.bit_container_index] |= field_execution.bit_mask;
+        if (field.encode_source == EncodeSource::INPUT) {
+          determined_masks[field.bit_container_index] &= ~field_execution.bit_mask;
+        } else {
+          determined_values[field.bit_container_index] =
+              (determined_values[field.bit_container_index] & ~field_execution.bit_mask) |
+              ((*field.constant_value << static_cast<unsigned>(shift)) & field_execution.bit_mask);
+        }
+        ++member_counts[field.bit_container_index];
+      }
 
       if (field.value_type == ValueType::ENUM) {
         std::unordered_set<std::string> enum_ids;
@@ -481,7 +596,9 @@ PlanBuildResult PlanBuilder::FreezeImpl(detail::PlanDraftData draft) {
           const EnumEntryPlan& entry = field.enum_entries[entry_index];
           if (!IsStableId(entry.id) || !enum_ids.emplace(entry.id).second ||
               !enum_values.emplace(entry.raw_value).second ||
-              !FitsUnsignedWidth(entry.raw_value, width)) {
+              !(bitfield
+                    ? FitsUnsignedBits(entry.raw_value, static_cast<std::size_t>(field.bit_width))
+                    : FitsUnsignedWidth(entry.raw_value, width))) {
             return Reject(PlanBuildError::INVALID_FIELD_PLAN, kInvalidPlanBuildIndex,
                           kInvalidPlanBuildIndex, message_index, kInvalidPlanBuildIndex,
                           field_index);
@@ -500,6 +617,12 @@ PlanBuildResult PlanBuilder::FreezeImpl(detail::PlanDraftData draft) {
                   });
       }
       execution.fields.push_back(field_execution);
+    }
+    for (const std::size_t count : member_counts) {
+      if (count == 0U) {
+        return Reject(PlanBuildError::INVALID_FIELD_PLAN, kInvalidPlanBuildIndex,
+                      kInvalidPlanBuildIndex, message_index);
+      }
     }
     std::sort(field_intervals.begin(), field_intervals.end(),
               [](const ByteInterval& left, const ByteInterval& right) {
@@ -561,7 +684,32 @@ PlanBuildResult PlanBuilder::FreezeImpl(detail::PlanDraftData draft) {
                     kInvalidPlanBuildIndex, message_index);
     }
 
+    for (std::size_t container_index = 0U; container_index < message.bit_containers.size();
+         ++container_index) {
+      const BitContainerPlan& container = message.bit_containers[container_index];
+      const std::size_t offset = static_cast<std::size_t>(container.byte_offset);
+      const std::size_t width = static_cast<std::size_t>(container.byte_width);
+      for (std::size_t byte_index = 0U; byte_index < width; ++byte_index) {
+        const auto matcher_byte = fixed_bytes.find(offset + byte_index);
+        if (matcher_byte == fixed_bytes.end()) {
+          continue;
+        }
+        const std::size_t logical_byte =
+            container.byte_order == ByteOrder::BIG ? width - 1U - byte_index : byte_index;
+        const auto shift = static_cast<unsigned>(logical_byte * 8U);
+        const auto mask = static_cast<std::uint8_t>(determined_masks[container_index] >> shift);
+        const auto value = static_cast<std::uint8_t>(determined_values[container_index] >> shift);
+        if (((matcher_byte->second ^ value) & mask) != 0U) {
+          return Reject(PlanBuildError::INVALID_MATCHER_PLAN, kInvalidPlanBuildIndex,
+                        kInvalidPlanBuildIndex, message_index);
+        }
+      }
+    }
+
     for (const FieldPlan& field : message.fields) {
+      if (field.wire_codec == WireCodec::BITFIELD) {
+        continue;
+      }
       if (field.value_type != ValueType::UINT64 || field.encode_source != EncodeSource::CONSTANT ||
           !field.constant_value.has_value()) {
         continue;
@@ -588,13 +736,22 @@ PlanBuildResult PlanBuilder::FreezeImpl(detail::PlanDraftData draft) {
       (execution_resource_layout.max_input_fields_per_message % kBitsPerAllowedMessageWord == 0U
            ? 0U
            : 1U);
+  for (const MessagePlan& message : draft.messages) {
+    execution_resource_layout.bit_container_value_count =
+        (std::max)(execution_resource_layout.bit_container_value_count,
+                   message.bit_containers.size());
+  }
   std::size_t value_index_bytes = 0U;
   std::size_t presence_word_bytes = 0U;
+  std::size_t bit_container_bytes = 0U;
   if (!MultiplySizeChecked(execution_resource_layout.encode_value_index_count, sizeof(std::size_t),
                            value_index_bytes) ||
       !MultiplySizeChecked(execution_resource_layout.encode_presence_word_count,
                            sizeof(std::uint64_t), presence_word_bytes) ||
+      !MultiplySizeChecked(execution_resource_layout.bit_container_value_count,
+                           sizeof(std::uint64_t), bit_container_bytes) ||
       !AddSizeChecked(presence_word_bytes, value_index_bytes) ||
+      !AddSizeChecked(bit_container_bytes, value_index_bytes) ||
       value_index_bytes > limits->max_session_memory_bytes) {
     return Reject(PlanBuildError::RESOURCE_LIMIT_EXCEEDED);
   }
@@ -741,7 +898,19 @@ PlanBuildResult PlanBuilder::FreezeImpl(detail::PlanDraftData draft) {
                       return FreezePodArray(arena, matcher_source.bytes,
                                             PlanMemoryCategory::MATCHER, matcher.bytes);
                     },
-                    output.matchers)) {
+                    output.matchers) ||
+                !FreezeObjectArray<FrozenBitContainerPlan>(
+                    arena, source.bit_containers.size(), PlanMemoryCategory::METADATA_CONTAINER,
+                    [&arena, &source](std::size_t index, FrozenBitContainerPlan& output_container) {
+                      const BitContainerPlan& input = source.bit_containers[index];
+                      output_container.byte_offset = input.byte_offset;
+                      output_container.byte_width = input.byte_width;
+                      output_container.byte_order = input.byte_order;
+                      output_container.bit_numbering = input.bit_numbering;
+                      output_container.base_value = input.base_value;
+                      return FreezeString(arena, input.id, output_container.id);
+                    },
+                    output.bit_containers)) {
               return false;
             }
             return FreezeObjectArray<FrozenFieldPlan>(
@@ -756,6 +925,9 @@ PlanBuildResult PlanBuilder::FreezeImpl(detail::PlanDraftData draft) {
                   field.encode_source = field_source.encode_source;
                   field.constant_value = field_source.constant_value;
                   field.unknown_enum_policy = field_source.unknown_enum_policy;
+                  field.bit_container_index = field_source.bit_container_index;
+                  field.bit_offset = field_source.bit_offset;
+                  field.bit_width = field_source.bit_width;
                   if (!FreezeString(arena, field_source.id, field.id)) {
                     return false;
                   }
@@ -784,6 +956,9 @@ PlanBuildResult PlanBuilder::FreezeImpl(detail::PlanDraftData draft) {
             output.required_input_count = source.required_input_count;
             return FreezePodArray(arena, source.fixed_bytes, PlanMemoryCategory::MATCHER,
                                   output.fixed_bytes) &&
+                   FreezePodArray(arena, source.bit_containers,
+                                  PlanMemoryCategory::EXECUTION_DESCRIPTOR,
+                                  output.bit_containers) &&
                    FreezePodArray(arena, source.fields, PlanMemoryCategory::EXECUTION_DESCRIPTOR,
                                   output.fields) &&
                    FreezePodArray(arena, source.enum_raw_values, PlanMemoryCategory::INDEX,

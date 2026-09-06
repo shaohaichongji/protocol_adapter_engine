@@ -27,6 +27,57 @@ int ApplyExpectedStatus(const Arguments& arguments, const OperationResult& resul
   return result.status == arguments.expect_status ? 0 : 5;
 }
 
+void BindCompiledPlan(const protocol_plan::PlanBundle& plan, std::string_view operation_kind,
+                      OperationResult& result) {
+  result.schema_version.assign(plan.SchemaVersion().data(), plan.SchemaVersion().size());
+  result.operation_kind.assign(operation_kind.data(), operation_kind.size());
+  result.protocol_id.assign(plan.ProtocolId().data(), plan.ProtocolId().size());
+}
+
+void FinalizePostPlanFailure(OperationResult& result, std::string_view replay_mode,
+                             std::string_view replay_subject) {
+  if (result.schema_version != "0.2") {
+    return;
+  }
+  result.replay_mode.assign(replay_mode.data(), replay_mode.size());
+  result.replay_subject.assign(replay_subject.data(), replay_subject.size());
+  if (result.replay_mode == "NO_CODEC_REEXECUTION") {
+    result.current_execution_status = "NOT_EVALUATED";
+    result.current_execution_diagnostic_id.clear();
+  } else {
+    result.current_execution_status = result.status;
+    result.current_execution_diagnostic_id = result.diagnostic_id;
+  }
+  if (result.command == "replay") {
+    result.comparison_equal.reset();
+    result.comparison_status = "NOT_EVALUATED";
+    result.comparison_reason = "Replay preparation failed before Codec execution";
+  }
+  FinalizeFingerprint(result);
+}
+
+void PreserveHistoricalTransport(const StoredRun& stored, OperationResult& result) {
+  if (stored.operation_kind != "udp-exchange") {
+    return;
+  }
+  result.historical_transport = stored.historical_transport;
+  if (result.historical_transport.present) {
+    return;
+  }
+  result.historical_transport.present = true;
+  result.historical_transport.transport = stored.transport;
+  result.historical_transport.timeout_ms = stored.timeout_ms;
+  result.historical_transport.status = stored.operation_status;
+  result.historical_transport.diagnostic_id = stored.diagnostic_id;
+  result.historical_transport.local_endpoint = stored.local_endpoint;
+  result.historical_transport.remote_endpoint = stored.remote_endpoint;
+  result.historical_transport.received_from = stored.received_from;
+  result.historical_transport.send_attempted = stored.send_attempted;
+  result.historical_transport.send_succeeded = stored.send_succeeded;
+  result.historical_transport.response_received = stored.response_received;
+  result.historical_transport.response_decoded = stored.response_decoded;
+}
+
 void PrintResult(const OperationResult& result, std::string_view output_kind) {
   if (output_kind == "json") {
     std::cout << SerializeResult(result);
@@ -77,8 +128,27 @@ void PrintResult(const OperationResult& result, std::string_view output_kind) {
   }
 }
 
+bool InspectWithinPlanLimit(const protocol_plan::PlanBundle& plan,
+                            const std::vector<std::uint8_t>& frame, OperationResult& result,
+                            IProtocolLabExecutionObserver* execution_observer) {
+  result.frame = frame;
+  if (frame.size() > plan.GetResourceRequirements().max_frame_bytes) {
+    result.status = "INPUT_ERROR";
+    result.diagnostic_id = "PAE_LAB_FRAME_LIMIT_EXCEEDED";
+    result.diagnostic_detail = "frame exceeds compiled Plan limit";
+    FinalizePostPlanFailure(result, "DECODE_RX", "RX");
+    return false;
+  }
+  if (execution_observer != nullptr) {
+    execution_observer->OnProtocolOperation("DECODE_RX");
+  }
+  result = InspectFrame(plan, frame);
+  return true;
+}
+
 int RunInspectOrEncode(const Arguments& arguments, OperationResult& result,
-                       std::string& config_text, std::optional<std::string>& values_text) {
+                       std::string& config_text, std::optional<std::string>& values_text,
+                       IProtocolLabExecutionObserver* execution_observer) {
   protocol_plan::PlanOwner plan;
   std::string error;
   if (!CompileConfig(arguments.config, config_text, plan, result, error)) {
@@ -90,21 +160,20 @@ int RunInspectOrEncode(const Arguments& arguments, OperationResult& result,
   if (!plan) {
     return 4;
   }
+  const bool inspect = arguments.command == Command::INSPECT;
+  BindCompiledPlan(*plan, inspect ? "inspect" : "encode", result);
   if (arguments.command == Command::INSPECT) {
     std::vector<std::uint8_t> frame;
     if (!LoadFrameArgument(arguments.frame_binary, arguments.frame_hex, frame, error)) {
       result.status = "INPUT_ERROR";
       result.diagnostic_id = "PAE_LAB_FRAME_INPUT_ERROR";
       result.diagnostic_detail = error.empty() ? "binary frame must be non-empty" : error;
+      FinalizePostPlanFailure(result, "DECODE_RX", "RX");
       return 3;
     }
-    if (frame.size() > plan->GetResourceRequirements().max_frame_bytes) {
-      result.status = "INPUT_ERROR";
-      result.diagnostic_id = "PAE_LAB_FRAME_LIMIT_EXCEEDED";
-      result.diagnostic_detail = "frame exceeds compiled Plan limit";
+    if (!InspectWithinPlanLimit(*plan, frame, result, execution_observer)) {
       return 3;
     }
-    result = InspectFrame(*plan, frame);
     result.command = "inspect";
     result.config_sha256 = HashBytes(config_text);
   } else {
@@ -114,6 +183,7 @@ int RunInspectOrEncode(const Arguments& arguments, OperationResult& result,
       result.status = "INPUT_ERROR";
       result.diagnostic_id = "PAE_LAB_VALUES_INPUT_ERROR";
       result.diagnostic_detail = error;
+      FinalizePostPlanFailure(result, "ENCODE_TX", "TX");
       return 3;
     }
     values_text = text;
@@ -121,9 +191,19 @@ int RunInspectOrEncode(const Arguments& arguments, OperationResult& result,
       result.status = "VALUES_INVALID";
       result.diagnostic_id = "PAE_LAB_VALUES_INVALID";
       result.diagnostic_detail = error;
+      FinalizePostPlanFailure(result, "ENCODE_TX", "TX");
       return 5;
     }
+    if (execution_observer != nullptr) {
+      execution_observer->OnProtocolOperation("ENCODE_TX");
+    }
     result = EncodeValues(*plan, parsed, error);
+    if (plan->SchemaVersion() == "0.2") {
+      result.replay_mode = "ENCODE_TX";
+      result.replay_subject = "TX";
+      result.current_execution_status = result.status;
+      result.current_execution_diagnostic_id = result.diagnostic_id;
+    }
     result.command = "encode";
     result.config_sha256 = HashBytes(config_text);
   }
@@ -229,11 +309,22 @@ int RunUdpExchange(const Arguments& arguments, OperationResult& result, std::str
     FinalizeFingerprint(result);
     return 4;
   }
+  BindCompiledPlan(*plan, "udp-exchange", result);
+  result.config_sha256 = HashBytes(config_text);
+  result.transport = "UDP";
+  result.local_endpoint = FormatUdpEndpoint(local);
+  result.remote_endpoint = FormatUdpEndpoint(remote);
+  result.timeout_ms = arguments.timeout_ms;
+  result.receive_pipeline_id = arguments.receive_pipeline;
+  const std::uint64_t plan_frame_limit = plan->GetResourceRequirements().max_frame_bytes;
+  result.max_frame_bytes = plan_frame_limit < kMaximumIpv4UdpPayloadBytes
+                               ? plan_frame_limit
+                               : kMaximumIpv4UdpPayloadBytes;
   if (!HasPipeline(*plan, arguments.receive_pipeline)) {
     result.status = "CLI_ERROR";
     result.diagnostic_id = "PAE_LAB_UNKNOWN_RECEIVE_PIPELINE";
     result.diagnostic_detail = "receive pipeline id is unknown";
-    FinalizeFingerprint(result);
+    FinalizePostPlanFailure(result, "ENCODE_TX", "TX");
     return 2;
   }
 
@@ -243,7 +334,7 @@ int RunUdpExchange(const Arguments& arguments, OperationResult& result, std::str
     result.status = "INPUT_ERROR";
     result.diagnostic_id = "PAE_LAB_VALUES_INPUT_ERROR";
     result.diagnostic_detail = error;
-    FinalizeFingerprint(result);
+    FinalizePostPlanFailure(result, "ENCODE_TX", "TX");
     return 3;
   }
   values_text = values;
@@ -251,7 +342,7 @@ int RunUdpExchange(const Arguments& arguments, OperationResult& result, std::str
     result.status = "VALUES_INVALID";
     result.diagnostic_id = "PAE_LAB_VALUES_INVALID";
     result.diagnostic_detail = error;
-    FinalizeFingerprint(result);
+    FinalizePostPlanFailure(result, "ENCODE_TX", "TX");
     return 5;
   }
 
@@ -259,6 +350,12 @@ int RunUdpExchange(const Arguments& arguments, OperationResult& result, std::str
     execution_observer->OnProtocolOperation("ENCODE_TX");
   }
   result = EncodeValues(*plan, parsed, error);
+  if (plan->SchemaVersion() == "0.2") {
+    result.replay_mode = "ENCODE_TX";
+    result.replay_subject = "TX";
+    result.current_execution_status = result.status;
+    result.current_execution_diagnostic_id = result.diagnostic_id;
+  }
   result.command = "udp-exchange";
   result.operation_kind = "udp-exchange";
   result.config_sha256 = HashBytes(config_text);
@@ -267,7 +364,6 @@ int RunUdpExchange(const Arguments& arguments, OperationResult& result, std::str
   result.remote_endpoint = FormatUdpEndpoint(remote);
   result.timeout_ms = arguments.timeout_ms;
   result.receive_pipeline_id = arguments.receive_pipeline;
-  const std::uint64_t plan_frame_limit = plan->GetResourceRequirements().max_frame_bytes;
   result.max_frame_bytes = plan_frame_limit < kMaximumIpv4UdpPayloadBytes
                                ? plan_frame_limit
                                : kMaximumIpv4UdpPayloadBytes;
@@ -422,28 +518,74 @@ int RunReplay(const Arguments& arguments, OperationResult& result, std::string& 
   if (!plan) {
     return 4;
   }
+  BindCompiledPlan(*plan, stored.operation_kind, result);
+  result.command = "replay";
+  result.config_sha256 = HashBytes(config_text);
+  result.cross_config_replay = !arguments.config.empty();
+  result.receive_pipeline_id = stored.receive_pipeline_id;
+  if (stored.operation_kind == "inspect") {
+    result.replay_mode = "DECODE_RX";
+    result.replay_subject = "RX";
+  } else if (stored.operation_kind == "encode") {
+    result.replay_mode = "ENCODE_TX";
+    result.replay_subject = "TX";
+  } else {
+    result.replay_mode = stored.replay_mode;
+    result.replay_subject = stored.replay_subject;
+  }
+  PreserveHistoricalTransport(stored, result);
+  const bool stored_v3 = stored.format_version == kResultFormatV3;
+  const bool plan_v02 = plan->SchemaVersion() == "0.2";
+  if (stored_v3 != plan_v02) {
+    result.status = "INPUT_ERROR";
+    result.diagnostic_id = "PAE_LAB_CROSS_SCHEMA_REPLAY_UNSUPPORTED";
+    result.diagnostic_detail =
+        "Replay configuration and stored Run belong to different Schema generations";
+    FinalizePostPlanFailure(result, result.replay_mode, result.replay_subject);
+    return 3;
+  }
   if (stored.operation_kind == "inspect") {
     std::vector<std::uint8_t> frame;
     if (!ReadFile(arguments.bundle / stored.frame_file, frame, error)) {
       result.status = "INPUT_ERROR";
       result.diagnostic_id = "PAE_LAB_REPLAY_FRAME_ERROR";
       result.diagnostic_detail = error;
+      FinalizePostPlanFailure(result, result.replay_mode, result.replay_subject);
       return 3;
     }
-    result = InspectFrame(*plan, frame);
+    if (!InspectWithinPlanLimit(*plan, frame, result, execution_observer)) {
+      result.command = "replay";
+    }
   } else if (stored.operation_kind == "encode" && !stored.values_file.empty()) {
     std::string text;
     ParsedValues parsed;
-    if (!ReadText(arguments.bundle / stored.values_file, text, error) ||
-        !ParseValues(text, parsed, error)) {
+    if (!ReadText(arguments.bundle / stored.values_file, text, error)) {
       result.status = "INPUT_ERROR";
       result.diagnostic_id = "PAE_LAB_REPLAY_VALUES_ERROR";
       result.diagnostic_detail = error;
+      FinalizePostPlanFailure(result, result.replay_mode, result.replay_subject);
       return 3;
     }
     values_text = text;
+    if (!ParseValues(text, parsed, error)) {
+      result.status = "INPUT_ERROR";
+      result.diagnostic_id = "PAE_LAB_REPLAY_VALUES_ERROR";
+      result.diagnostic_detail = error;
+      FinalizePostPlanFailure(result, result.replay_mode, result.replay_subject);
+      return 3;
+    }
+    if (execution_observer != nullptr) {
+      execution_observer->OnProtocolOperation("ENCODE_TX");
+    }
     result = EncodeValues(*plan, parsed, error);
-  } else if (stored.operation_kind == "udp-exchange" && stored.format_version == kResultFormat) {
+    if (stored_v3) {
+      result.replay_mode = "ENCODE_TX";
+      result.replay_subject = "TX";
+      result.current_execution_status = result.status;
+      result.current_execution_diagnostic_id = result.diagnostic_id;
+    }
+  } else if (stored.operation_kind == "udp-exchange" &&
+             (stored.format_version == kResultFormat || stored.format_version == kResultFormatV3)) {
     std::vector<std::uint8_t> tx_frame;
     std::vector<std::uint8_t> rx_frame;
     const bool replay_uses_rx =
@@ -457,6 +599,7 @@ int RunReplay(const Arguments& arguments, OperationResult& result, std::string& 
       result.status = "INPUT_ERROR";
       result.diagnostic_id = "PAE_LAB_REPLAY_FRAME_ERROR";
       result.diagnostic_detail = "stored UDP frame Hex is invalid: " + error;
+      FinalizePostPlanFailure(result, result.replay_mode, result.replay_subject);
       return 3;
     }
 
@@ -464,15 +607,22 @@ int RunReplay(const Arguments& arguments, OperationResult& result, std::string& 
     ParsedValues parsed;
     if (stored.replay_mode == "ENCODE_TX") {
       if (stored.values_file.empty() ||
-          !ReadText(arguments.bundle / stored.values_file, values, error) ||
-          !ParseValues(values, parsed, error)) {
+          !ReadText(arguments.bundle / stored.values_file, values, error)) {
         result.status = "EVIDENCE_INSUFFICIENT";
         result.diagnostic_id = "PAE_LAB_REPLAY_EVIDENCE_INSUFFICIENT";
         result.diagnostic_detail =
             error.empty() ? "ENCODE_TX Replay requires valid stored Values" : error;
+        FinalizePostPlanFailure(result, result.replay_mode, result.replay_subject);
         return 3;
       }
       values_text = values;
+      if (!ParseValues(values, parsed, error)) {
+        result.status = "EVIDENCE_INSUFFICIENT";
+        result.diagnostic_id = "PAE_LAB_REPLAY_EVIDENCE_INSUFFICIENT";
+        result.diagnostic_detail = error;
+        FinalizePostPlanFailure(result, result.replay_mode, result.replay_subject);
+        return 3;
+      }
       if (execution_observer != nullptr) {
         execution_observer->OnProtocolOperation("ENCODE_TX");
       }
@@ -487,7 +637,19 @@ int RunReplay(const Arguments& arguments, OperationResult& result, std::string& 
         result.status = "EVIDENCE_INSUFFICIENT";
         result.diagnostic_id = "PAE_LAB_REPLAY_EVIDENCE_INSUFFICIENT";
         result.diagnostic_detail = "DECODE_RX Replay requires a recorded response and Pipeline";
+        FinalizePostPlanFailure(result, result.replay_mode, result.replay_subject);
         return 3;
+      }
+      if (!stored.values_file.empty() &&
+          !ReadText(arguments.bundle / stored.values_file, values, error)) {
+        result.status = "INPUT_ERROR";
+        result.diagnostic_id = "PAE_LAB_REPLAY_VALUES_ERROR";
+        result.diagnostic_detail = error;
+        FinalizePostPlanFailure(result, result.replay_mode, result.replay_subject);
+        return 3;
+      }
+      if (!values.empty()) {
+        values_text = values;
       }
       if (execution_observer != nullptr) {
         execution_observer->OnProtocolOperation("DECODE_RX");
@@ -499,16 +661,6 @@ int RunReplay(const Arguments& arguments, OperationResult& result, std::string& 
       result.current_execution_diagnostic_id = result.diagnostic_id;
       result.frame_file = "frames/000001_frame.bin";
       result.response_decoded = result.status == "OK";
-      if (!stored.values_file.empty() &&
-          !ReadText(arguments.bundle / stored.values_file, values, error)) {
-        result.status = "INPUT_ERROR";
-        result.diagnostic_id = "PAE_LAB_REPLAY_VALUES_ERROR";
-        result.diagnostic_detail = error;
-        return 3;
-      }
-      if (!values.empty()) {
-        values_text = values;
-      }
     } else if (stored.replay_mode == "NO_CODEC_REEXECUTION") {
       result.operation_kind = "udp-exchange";
       result.status = "EVIDENCE_VERIFIED";
@@ -524,6 +676,7 @@ int RunReplay(const Arguments& arguments, OperationResult& result, std::string& 
         result.status = "INPUT_ERROR";
         result.diagnostic_id = "PAE_LAB_REPLAY_VALUES_ERROR";
         result.diagnostic_detail = error;
+        FinalizePostPlanFailure(result, result.replay_mode, result.replay_subject);
         return 3;
       }
       if (!values.empty()) {
@@ -533,6 +686,7 @@ int RunReplay(const Arguments& arguments, OperationResult& result, std::string& 
       result.status = "EVIDENCE_INSUFFICIENT";
       result.diagnostic_id = "PAE_LAB_REPLAY_EVIDENCE_INSUFFICIENT";
       result.diagnostic_detail = "UDP Run has no supported explicit replay mode";
+      FinalizePostPlanFailure(result, result.replay_mode, result.replay_subject);
       return 3;
     }
 
@@ -540,38 +694,28 @@ int RunReplay(const Arguments& arguments, OperationResult& result, std::string& 
     result.tx_frame = std::move(tx_frame);
     result.rx_frame = std::move(rx_frame);
     result.receive_pipeline_id = stored.receive_pipeline_id;
-    result.historical_transport = stored.historical_transport;
-    if (!result.historical_transport.present) {
-      result.historical_transport.present = true;
-      result.historical_transport.transport = stored.transport;
-      result.historical_transport.timeout_ms = stored.timeout_ms;
-      result.historical_transport.status = stored.operation_status;
-      result.historical_transport.diagnostic_id = stored.diagnostic_id;
-      result.historical_transport.local_endpoint = stored.local_endpoint;
-      result.historical_transport.remote_endpoint = stored.remote_endpoint;
-      result.historical_transport.received_from = stored.received_from;
-      result.historical_transport.send_attempted = stored.send_attempted;
-      result.historical_transport.send_succeeded = stored.send_succeeded;
-      result.historical_transport.response_received = stored.response_received;
-      result.historical_transport.response_decoded = stored.response_decoded;
-    }
   } else {
     result.status = "INPUT_ERROR";
     result.diagnostic_id = "PAE_LAB_REPLAY_OPERATION_UNSUPPORTED";
     result.diagnostic_detail = "stored operation cannot be replayed by the offline slice";
+    FinalizePostPlanFailure(result, result.replay_mode, result.replay_subject);
     return 3;
   }
   result.command = "replay";
+  result.schema_version.assign(plan->SchemaVersion().data(), plan->SchemaVersion().size());
   result.config_sha256 = HashBytes(config_text);
   result.cross_config_replay = !arguments.config.empty();
+  PreserveHistoricalTransport(stored, result);
   FinalizeFingerprint(result);
   if (result.replay_mode != "NO_CODEC_REEXECUTION") {
-    result.comparison_equal = result.deterministic_fingerprint == stored.deterministic_fingerprint;
+    result.comparison_categories = CompareStoredRuns(stored, ToStoredRun(result));
+    result.comparison_equal =
+        result.deterministic_fingerprint == stored.deterministic_fingerprint &&
+        result.comparison_categories.empty();
     result.comparison_status = *result.comparison_equal ? "EQUAL" : "DIFFERENT";
     result.comparison_reason = *result.comparison_equal
                                    ? "deterministic protocol re-execution matches history"
                                    : "deterministic protocol re-execution differs from history";
-    result.comparison_categories = CompareStoredRuns(stored, ToStoredRun(result));
   }
   record_root =
       arguments.record_root.empty() ? arguments.bundle.parent_path() : arguments.record_root;
@@ -597,6 +741,13 @@ int RunCompare(const Arguments& arguments, OperationResult& result) {
       result.status = "INPUT_ERROR";
       result.diagnostic_id = "PAE_LAB_COMPARE_RUN_ERROR";
       result.diagnostic_detail = error;
+      return 3;
+    }
+    if ((left.format_version == kResultFormatV3) != (right.format_version == kResultFormatV3)) {
+      result.status = "INPUT_ERROR";
+      result.diagnostic_id = "PAE_LAB_CROSS_FORMAT_COMPARE_UNSUPPORTED";
+      result.diagnostic_detail =
+          "Run comparison across legacy and 0.3 fingerprint domains is unsupported";
       return 3;
     }
     result.comparison_categories = CompareStoredRuns(left, right);
@@ -657,7 +808,7 @@ int RunApplicationWithDependencies(int argc, char** argv, RecordFileSystem& file
     return exit_code;
   }
   if (arguments.command == Command::INSPECT || arguments.command == Command::ENCODE) {
-    exit_code = RunInspectOrEncode(arguments, result, config_text, values_text);
+    exit_code = RunInspectOrEncode(arguments, result, config_text, values_text, execution_observer);
   } else if (arguments.command == Command::REPLAY) {
     exit_code =
         RunReplay(arguments, result, config_text, values_text, record_root, execution_observer);
@@ -667,7 +818,12 @@ int RunApplicationWithDependencies(int argc, char** argv, RecordFileSystem& file
 
   exit_code = ApplyExpectedStatus(arguments, result, exit_code);
   result.exit_code = exit_code;
-  if (!record_root.empty() && arguments.command != Command::COMPARE && !config_text.empty()) {
+  const bool required_inputs_available =
+      !((result.operation_kind == "encode" || result.operation_kind == "udp-exchange") &&
+        !values_text.has_value()) &&
+      !(result.operation_kind == "inspect" && result.diagnostic_id == "PAE_LAB_FRAME_INPUT_ERROR");
+  if (!record_root.empty() && arguments.command != Command::COMPARE && !config_text.empty() &&
+      required_inputs_available) {
     std::string record_error;
     if (!CreateEvidenceBundle(record_root, config_text, values_text, result, file_system,
                               record_error)) {

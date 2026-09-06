@@ -817,6 +817,90 @@ bool ParseBytesWire(yyjson_val* value, std::string_view pointer, WireIr& output,
   return true;
 }
 
+bool ParseBitfieldWire(yyjson_val* value, std::string_view pointer, WireIr& output,
+                       CompileDiagnostic& diagnostic) {
+  if (!yyjson_is_obj(value)) {
+    return SetDiagnostic(diagnostic, CompileStage::STRUCTURAL, CompileError::TYPE_MISMATCH,
+                         std::string(pointer), "wire must be an object");
+  }
+  if (!ValidateObjectProperties(value, pointer,
+                                {"codec", "container_id", "bit_offset", "bit_width"}, diagnostic)) {
+    return false;
+  }
+  yyjson_val* codec = RequiredProperty(value, "codec", pointer, diagnostic);
+  std::string codec_token;
+  if (codec == nullptr ||
+      !ReadEnumToken(codec, ChildPointer(pointer, "codec"), {"bitfield"}, codec_token,
+                     diagnostic) ||
+      !ReadRequiredId(value, "container_id", pointer, output.container_id, diagnostic) ||
+      !ReadRequiredUint64(value, "bit_offset", pointer, output.bit_offset, diagnostic) ||
+      !ReadRequiredUint64(value, "bit_width", pointer, output.bit_width, diagnostic)) {
+    return false;
+  }
+  if (output.bit_offset >= 64U || output.bit_width == 0U || output.bit_width > 64U) {
+    return SetDiagnostic(diagnostic, CompileStage::STRUCTURAL, CompileError::INTEGER_OUT_OF_RANGE,
+                         output.bit_width == 0U || output.bit_width > 64U
+                             ? ChildPointer(pointer, "bit_width")
+                             : ChildPointer(pointer, "bit_offset"),
+                         "bitfield offset and width must be within a 64-bit container");
+  }
+  output.codec = WireCodec::BITFIELD;
+  output.origin.json_pointer = std::string{pointer};
+  return true;
+}
+
+bool ParseBitContainer(yyjson_val* value, std::string_view pointer, BitContainerIr& output,
+                       CompileDiagnostic& diagnostic) {
+  if (!yyjson_is_obj(value)) {
+    return SetDiagnostic(diagnostic, CompileStage::STRUCTURAL, CompileError::TYPE_MISMATCH,
+                         std::string(pointer), "bit container must be an object");
+  }
+  if (!ValidateObjectProperties(value, pointer,
+                                {"id", "container_offset", "container_width", "byte_order",
+                                 "bit_numbering", "base_value"},
+                                diagnostic) ||
+      !ReadRequiredId(value, "id", pointer, output.id, diagnostic) ||
+      !ReadRequiredUint64(value, "container_offset", pointer, output.byte_offset, diagnostic) ||
+      !ReadRequiredUint64(value, "container_width", pointer, output.byte_width, diagnostic) ||
+      !ReadRequiredUint64(value, "base_value", pointer, output.base_value, diagnostic)) {
+    return false;
+  }
+  if (output.byte_width != 1U && output.byte_width != 2U && output.byte_width != 4U &&
+      output.byte_width != 8U) {
+    return SetDiagnostic(diagnostic, CompileStage::STRUCTURAL, CompileError::INVALID_ENUM_VALUE,
+                         ChildPointer(pointer, "container_width"),
+                         "bit container width must be 1, 2, 4, or 8 bytes");
+  }
+  yyjson_val* order = yyjson_obj_get(value, "byte_order");
+  if (output.byte_width > 1U && order == nullptr) {
+    return SetDiagnostic(diagnostic, CompileStage::STRUCTURAL, CompileError::MISSING_PROPERTY,
+                         ChildPointer(pointer, "byte_order"),
+                         "multi-byte bit container requires an explicit byte order");
+  }
+  if (output.byte_width == 1U && order != nullptr) {
+    return SetDiagnostic(diagnostic, CompileStage::STRUCTURAL, CompileError::UNKNOWN_PROPERTY,
+                         ChildPointer(pointer, "byte_order"),
+                         "single-byte bit container must omit byte_order");
+  }
+  if (order != nullptr) {
+    std::string token;
+    if (!ReadEnumToken(order, ChildPointer(pointer, "byte_order"), {"big_endian", "little_endian"},
+                       token, diagnostic)) {
+      return false;
+    }
+    output.byte_order = token == "big_endian" ? ByteOrder::BIG : ByteOrder::LITTLE;
+  }
+  yyjson_val* numbering = RequiredProperty(value, "bit_numbering", pointer, diagnostic);
+  std::string token;
+  if (numbering == nullptr || !ReadEnumToken(numbering, ChildPointer(pointer, "bit_numbering"),
+                                             {"lsb0", "msb0"}, token, diagnostic)) {
+    return false;
+  }
+  output.bit_numbering = token == "lsb0" ? BitNumbering::LSB0 : BitNumbering::MSB0;
+  output.origin.json_pointer = std::string{pointer};
+  return true;
+}
+
 bool ParseEncode(yyjson_val* value, std::string_view pointer, ValueType value_type,
                  EncodeIr& output, CompileDiagnostic& diagnostic) {
   if (!yyjson_is_obj(value)) {
@@ -904,7 +988,7 @@ bool ParseEnumEntries(yyjson_val* value, std::string_view pointer, std::vector<E
   return true;
 }
 
-bool ParseField(yyjson_val* value, std::string_view pointer, FieldIr& output,
+bool ParseField(yyjson_val* value, std::string_view pointer, bool schema_v02, FieldIr& output,
                 CompileDiagnostic& diagnostic) {
   if (!yyjson_is_obj(value)) {
     return SetDiagnostic(diagnostic, CompileStage::STRUCTURAL, CompileError::TYPE_MISMATCH,
@@ -913,8 +997,11 @@ bool ParseField(yyjson_val* value, std::string_view pointer, FieldIr& output,
   yyjson_val* value_type_value = RequiredProperty(value, "value_type", pointer, diagnostic);
   std::string value_type;
   if (value_type_value == nullptr ||
-      !ReadEnumToken(value_type_value, ChildPointer(pointer, "value_type"),
-                     {"UINT64", "BYTES", "ENUM"}, value_type, diagnostic)) {
+      !ReadEnumToken(
+          value_type_value, ChildPointer(pointer, "value_type"),
+          schema_v02 ? std::initializer_list<std::string_view>{"UINT64", "BYTES", "ENUM", "BOOL"}
+                     : std::initializer_list<std::string_view>{"UINT64", "BYTES", "ENUM"},
+          value_type, diagnostic)) {
     return false;
   }
   if (value_type == "UINT64") {
@@ -933,12 +1020,20 @@ bool ParseField(yyjson_val* value, std::string_view pointer, FieldIr& output,
             diagnostic)) {
       return false;
     }
-  } else {
+  } else if (value_type == "ENUM") {
     output.value_type = ValueType::ENUM;
     if (!ValidateObjectProperties(value, pointer,
                                   {"id", "display_name", "description", "source_ref", "value_type",
                                    "wire", "encode", "unknown_enum_policy", "enum_entries"},
                                   diagnostic)) {
+      return false;
+    }
+  } else {
+    output.value_type = ValueType::BOOL;
+    if (!ValidateObjectProperties(
+            value, pointer,
+            {"id", "display_name", "description", "source_ref", "value_type", "wire", "encode"},
+            diagnostic)) {
       return false;
     }
   }
@@ -957,7 +1052,23 @@ bool ParseField(yyjson_val* value, std::string_view pointer, FieldIr& output,
     return false;
   }
   const std::string wire_pointer = ChildPointer(pointer, "wire");
-  if (output.value_type == ValueType::BYTES) {
+  yyjson_val* codec_value = yyjson_obj_get(wire, "codec");
+  const bool is_bitfield = codec_value != nullptr && yyjson_is_str(codec_value) &&
+                           std::string_view{yyjson_get_str(codec_value)} == "bitfield";
+  if (is_bitfield) {
+    if (!schema_v02 || output.value_type == ValueType::BYTES ||
+        !ParseBitfieldWire(wire, wire_pointer, output.wire, diagnostic)) {
+      if (!schema_v02 || output.value_type == ValueType::BYTES) {
+        return SetDiagnostic(
+            diagnostic, CompileStage::STRUCTURAL, CompileError::UNSUPPORTED_FEATURE, wire_pointer,
+            "bitfield wire is available only for Schema 0.2 BOOL, UINT64, and ENUM fields");
+      }
+      return false;
+    }
+  } else if (output.value_type == ValueType::BOOL) {
+    return SetDiagnostic(diagnostic, CompileStage::STRUCTURAL, CompileError::UNSUPPORTED_FEATURE,
+                         wire_pointer, "BOOL requires bitfield wire");
+  } else if (output.value_type == ValueType::BYTES) {
     if (!ParseBytesWire(wire, wire_pointer, output.wire, diagnostic)) {
       return false;
     }
@@ -991,8 +1102,8 @@ bool ParseField(yyjson_val* value, std::string_view pointer, FieldIr& output,
   return true;
 }
 
-bool ParseFields(yyjson_val* value, std::string_view pointer, std::vector<FieldIr>& output,
-                 CompileDiagnostic& diagnostic) {
+bool ParseFields(yyjson_val* value, std::string_view pointer, bool schema_v02,
+                 std::vector<FieldIr>& output, CompileDiagnostic& diagnostic) {
   if (!yyjson_is_arr(value)) {
     return SetDiagnostic(diagnostic, CompileStage::STRUCTURAL, CompileError::TYPE_MISMATCH,
                          std::string(pointer), "fields must be an array");
@@ -1008,7 +1119,7 @@ bool ParseFields(yyjson_val* value, std::string_view pointer, std::vector<FieldI
   std::size_t index = 0U;
   while (yyjson_val* field_value = yyjson_arr_iter_next(&iterator)) {
     FieldIr field;
-    if (!ParseField(field_value, IndexPointer(pointer, index), field, diagnostic)) {
+    if (!ParseField(field_value, IndexPointer(pointer, index), schema_v02, field, diagnostic)) {
       return false;
     }
     output.push_back(std::move(field));
@@ -1017,16 +1128,49 @@ bool ParseFields(yyjson_val* value, std::string_view pointer, std::vector<FieldI
   return true;
 }
 
-bool ParseMessage(yyjson_val* value, std::string_view pointer, MessageIr& output,
+bool ParseBitContainers(yyjson_val* value, std::string_view pointer,
+                        std::vector<BitContainerIr>& output, CompileDiagnostic& diagnostic) {
+  if (!yyjson_is_arr(value)) {
+    return SetDiagnostic(diagnostic, CompileStage::STRUCTURAL, CompileError::TYPE_MISMATCH,
+                         std::string(pointer), "bit_containers must be an array");
+  }
+  if (yyjson_arr_size(value) == 0U) {
+    return SetDiagnostic(diagnostic, CompileStage::STRUCTURAL, CompileError::EMPTY_ARRAY,
+                         std::string(pointer), "bit_containers must not be empty when present");
+  }
+  output.clear();
+  output.reserve(yyjson_arr_size(value));
+  yyjson_arr_iter iterator;
+  yyjson_arr_iter_init(value, &iterator);
+  std::size_t index = 0U;
+  while (yyjson_val* item = yyjson_arr_iter_next(&iterator)) {
+    BitContainerIr container;
+    if (!ParseBitContainer(item, IndexPointer(pointer, index), container, diagnostic)) {
+      return false;
+    }
+    output.push_back(std::move(container));
+    ++index;
+  }
+  return true;
+}
+
+bool ParseMessage(yyjson_val* value, std::string_view pointer, bool schema_v02, MessageIr& output,
                   CompileDiagnostic& diagnostic) {
   if (!yyjson_is_obj(value)) {
     return SetDiagnostic(diagnostic, CompileStage::STRUCTURAL, CompileError::TYPE_MISMATCH,
                          std::string(pointer), "message must be an object");
   }
-  if (!ValidateObjectProperties(value, pointer,
-                                {"id", "display_name", "description", "source_ref", "direction_id",
-                                 "frame_length_bytes", "matcher", "fields"},
-                                diagnostic)) {
+  if (!ValidateObjectProperties(
+          value, pointer,
+          schema_v02
+              ? std::initializer_list<std::string_view>{"id", "display_name", "description",
+                                                        "source_ref", "direction_id",
+                                                        "frame_length_bytes", "matcher",
+                                                        "bit_containers", "fields"}
+              : std::initializer_list<std::string_view>{"id", "display_name", "description",
+                                                        "source_ref", "direction_id",
+                                                        "frame_length_bytes", "matcher", "fields"},
+          diagnostic)) {
     return false;
   }
   if (!ReadRequiredId(value, "id", pointer, output.id, diagnostic) ||
@@ -1050,8 +1194,17 @@ bool ParseMessage(yyjson_val* value, std::string_view pointer, MessageIr& output
   if (matcher == nullptr || fields == nullptr ||
       !ParseMatcher(matcher, ChildPointer(pointer, "matcher"), output.matcher_clauses,
                     diagnostic) ||
-      !ParseFields(fields, ChildPointer(pointer, "fields"), output.fields, diagnostic)) {
+      !ParseFields(fields, ChildPointer(pointer, "fields"), schema_v02, output.fields,
+                   diagnostic)) {
     return false;
+  }
+  if (schema_v02) {
+    if (yyjson_val* containers = yyjson_obj_get(value, "bit_containers")) {
+      if (!ParseBitContainers(containers, ChildPointer(pointer, "bit_containers"),
+                              output.bit_containers, diagnostic)) {
+        return false;
+      }
+    }
   }
   output.origin.json_pointer = std::string{pointer};
   return true;
@@ -1105,10 +1258,9 @@ bool BuildSchemaIr(yyjson_val* root, SchemaIr& output, CompileDiagnostic& diagno
       !ReadRequiredString(root, "source_ref", "", 1U, 512U, output.source_ref, diagnostic)) {
     return false;
   }
-  if (output.schema_version != "0.1") {
+  if (output.schema_version != "0.1" && output.schema_version != "0.2") {
     return SetDiagnostic(diagnostic, CompileStage::STRUCTURAL, CompileError::INVALID_ENUM_VALUE,
-                         "/schema_version",
-                         "this internal draft slice accepts schema_version 0.1 only");
+                         "/schema_version", "supported schema_version values are 0.1 and 0.2");
   }
 
   if (yyjson_val* description = yyjson_obj_get(root, "description")) {
@@ -1135,7 +1287,14 @@ bool BuildSchemaIr(yyjson_val* root, SchemaIr& output, CompileDiagnostic& diagno
   return ParseObjectArray(framing_profiles, "/framing_profiles", output.framing_profiles,
                           ParseFramingProfile, diagnostic) &&
          ParseObjectArray(pipelines, "/pipelines", output.pipelines, ParsePipeline, diagnostic) &&
-         ParseObjectArray(messages, "/messages", output.messages, ParseMessage, diagnostic);
+         ParseObjectArray(
+             messages, "/messages", output.messages,
+             [&output](yyjson_val* value, std::string_view pointer, MessageIr& message,
+                       CompileDiagnostic& item_diagnostic) {
+               return ParseMessage(value, pointer, output.schema_version == "0.2", message,
+                                   item_diagnostic);
+             },
+             diagnostic);
 }
 
 template <typename Item, typename OriginAccessor>
@@ -1172,12 +1331,22 @@ bool FitsUnsignedWidth(std::uint64_t value, std::uint64_t byte_width) noexcept {
   return value < (std::uint64_t{1U} << bit_count);
 }
 
+bool FitsUnsignedBits(std::uint64_t value, std::uint64_t bit_width) noexcept {
+  return bit_width == 64U || (bit_width != 0U && bit_width < 64U &&
+                              value < (std::uint64_t{1U} << static_cast<unsigned>(bit_width)));
+}
+
 std::uint8_t EncodeUnsignedConstantByte(std::uint64_t value, std::uint64_t byte_width,
                                         ByteOrder byte_order, std::uint64_t byte_index) noexcept {
   const std::uint64_t encoded_index =
       byte_order == ByteOrder::BIG ? byte_width - 1U - byte_index : byte_index;
   const unsigned shift = static_cast<unsigned>(encoded_index * 8U);
   return static_cast<std::uint8_t>((value >> shift) & 0xFFU);
+}
+
+std::uint64_t BitWidthMask(std::uint64_t byte_width) noexcept {
+  return byte_width == 8U ? (std::numeric_limits<std::uint64_t>::max)()
+                          : (std::uint64_t{1U} << static_cast<unsigned>(byte_width * 8U)) - 1U;
 }
 
 bool FixedMatchersCanIntersect(const MessageIr& left, const MessageIr& right) {
@@ -1210,7 +1379,8 @@ bool FixedMatchersCanIntersect(const MessageIr& left, const MessageIr& right) {
 bool ValidateMessageDomain(MessageIr& message, ResourceRequirements& requirements,
                            CompileDiagnostic& diagnostic) {
   if (!AddSizeChecked(message.fields.size(), requirements.total_field_count) ||
-      !AddSizeChecked(message.matcher_clauses.size(), requirements.total_matcher_count)) {
+      !AddSizeChecked(message.matcher_clauses.size(), requirements.total_matcher_count) ||
+      !AddSizeChecked(message.bit_containers.size(), requirements.total_bit_container_count)) {
     return SetDiagnostic(diagnostic, CompileStage::DOMAIN_VALIDATION,
                          CompileError::INTERNAL_CONTRACT_VIOLATION, message.origin.json_pointer,
                          "resource count overflow");
@@ -1226,7 +1396,33 @@ bool ValidateMessageDomain(MessageIr& message, ResourceRequirements& requirement
     const FieldIr* field = nullptr;
   };
   std::vector<FieldSpan> spans;
-  spans.reserve(message.fields.size());
+  spans.reserve(message.fields.size() + message.bit_containers.size());
+
+  std::unordered_map<std::string, std::size_t> container_ids;
+  std::vector<std::uint64_t> member_masks(message.bit_containers.size(), 0U);
+  std::vector<std::size_t> member_counts(message.bit_containers.size(), 0U);
+  for (std::size_t index = 0U; index < message.bit_containers.size(); ++index) {
+    BitContainerIr& container = message.bit_containers[index];
+    if (!container_ids.emplace(container.id, index).second) {
+      return SetDiagnostic(diagnostic, CompileStage::DOMAIN_VALIDATION, CompileError::DUPLICATE_ID,
+                           ChildPointer(container.origin.json_pointer, "id"),
+                           "bit container ID is duplicated within the message");
+    }
+    if (container.byte_width > std::numeric_limits<std::uint64_t>::max() - container.byte_offset ||
+        container.byte_offset + container.byte_width > message.frame_length_bytes) {
+      return SetDiagnostic(diagnostic, CompileStage::DOMAIN_VALIDATION,
+                           CompileError::FIELD_OUT_OF_BOUNDS, container.origin.json_pointer,
+                           "bit container byte range exceeds message frame_length_bytes");
+    }
+    if (!FitsUnsignedWidth(container.base_value, container.byte_width)) {
+      return SetDiagnostic(diagnostic, CompileStage::DOMAIN_VALIDATION,
+                           CompileError::VALUE_NOT_REPRESENTABLE,
+                           ChildPointer(container.origin.json_pointer, "base_value"),
+                           "bit container base_value does not fit its width");
+    }
+    spans.push_back(
+        FieldSpan{container.byte_offset, container.byte_offset + container.byte_width, nullptr});
+  }
 
   for (FieldIr& field : message.fields) {
     if (!field_ids.emplace(field.id).second) {
@@ -1234,18 +1430,61 @@ bool ValidateMessageDomain(MessageIr& message, ResourceRequirements& requirement
                            ChildPointer(field.origin.json_pointer, "id"),
                            "field ID is duplicated within the message");
     }
-    if (field.wire.byte_width >
-            std::numeric_limits<std::uint64_t>::max() - field.wire.byte_offset ||
-        field.wire.byte_offset + field.wire.byte_width > message.frame_length_bytes) {
+    if (field.wire.codec == WireCodec::BITFIELD) {
+      const auto container = container_ids.find(field.wire.container_id);
+      if (container == container_ids.end()) {
+        return SetDiagnostic(diagnostic, CompileStage::DOMAIN_VALIDATION,
+                             CompileError::UNKNOWN_REFERENCE,
+                             ChildPointer(field.wire.origin.json_pointer, "container_id"),
+                             "bitfield references an unknown bit container");
+      }
+      field.wire.bit_container_index = container->second;
+      const BitContainerIr& container_ir = message.bit_containers[container->second];
+      const std::uint64_t container_bits = container_ir.byte_width * 8U;
+      if (field.wire.bit_width > container_bits ||
+          field.wire.bit_offset > container_bits - field.wire.bit_width) {
+        return SetDiagnostic(diagnostic, CompileStage::DOMAIN_VALIDATION,
+                             CompileError::FIELD_OUT_OF_BOUNDS, field.wire.origin.json_pointer,
+                             "bitfield range exceeds its bit container");
+      }
+      if (field.value_type == ValueType::BOOL && field.wire.bit_width != 1U) {
+        return SetDiagnostic(diagnostic, CompileStage::DOMAIN_VALIDATION,
+                             CompileError::VALUE_NOT_REPRESENTABLE,
+                             ChildPointer(field.wire.origin.json_pointer, "bit_width"),
+                             "BOOL bitfield must have bit_width 1");
+      }
+      const std::uint64_t shift =
+          container_ir.bit_numbering == BitNumbering::LSB0
+              ? field.wire.bit_offset
+              : container_bits - field.wire.bit_offset - field.wire.bit_width;
+      const std::uint64_t mask =
+          field.wire.bit_width == 64U
+              ? std::numeric_limits<std::uint64_t>::max()
+              : ((std::uint64_t{1U} << static_cast<unsigned>(field.wire.bit_width)) - 1U)
+                    << static_cast<unsigned>(shift);
+      if ((member_masks[container->second] & mask) != 0U) {
+        return SetDiagnostic(diagnostic, CompileStage::DOMAIN_VALIDATION,
+                             CompileError::FIELD_OVERLAP, field.origin.json_pointer,
+                             "bitfield members overlap within their container");
+      }
+      member_masks[container->second] |= mask;
+      ++member_counts[container->second];
+    } else if (field.wire.byte_width >
+                   std::numeric_limits<std::uint64_t>::max() - field.wire.byte_offset ||
+               field.wire.byte_offset + field.wire.byte_width > message.frame_length_bytes) {
       return SetDiagnostic(diagnostic, CompileStage::DOMAIN_VALIDATION,
                            CompileError::FIELD_OUT_OF_BOUNDS, field.wire.origin.json_pointer,
                            "field byte range exceeds message frame_length_bytes");
     }
-    spans.push_back(
-        FieldSpan{field.wire.byte_offset, field.wire.byte_offset + field.wire.byte_width, &field});
+    if (field.wire.codec != WireCodec::BITFIELD) {
+      spans.push_back(FieldSpan{field.wire.byte_offset,
+                                field.wire.byte_offset + field.wire.byte_width, &field});
+    }
 
     if (field.encode.constant_value.has_value() &&
-        !FitsUnsignedWidth(*field.encode.constant_value, field.wire.byte_width)) {
+        !(field.wire.codec == WireCodec::BITFIELD
+              ? FitsUnsignedBits(*field.encode.constant_value, field.wire.bit_width)
+              : FitsUnsignedWidth(*field.encode.constant_value, field.wire.byte_width))) {
       return SetDiagnostic(diagnostic, CompileStage::DOMAIN_VALIDATION,
                            CompileError::VALUE_NOT_REPRESENTABLE,
                            ChildPointer(field.encode.origin.json_pointer, "value"),
@@ -1268,13 +1507,23 @@ bool ValidateMessageDomain(MessageIr& message, ResourceRequirements& requirement
                                CompileError::DUPLICATE_ID, entry.origin.json_pointer,
                                "enum entry ID and raw value must both be unique");
         }
-        if (!FitsUnsignedWidth(entry.raw_value, field.wire.byte_width)) {
+        if (!(field.wire.codec == WireCodec::BITFIELD
+                  ? FitsUnsignedBits(entry.raw_value, field.wire.bit_width)
+                  : FitsUnsignedWidth(entry.raw_value, field.wire.byte_width))) {
           return SetDiagnostic(diagnostic, CompileStage::DOMAIN_VALIDATION,
                                CompileError::VALUE_NOT_REPRESENTABLE,
                                ChildPointer(entry.origin.json_pointer, "raw_value"),
                                "enum raw value does not fit the configured wire width");
         }
       }
+    }
+  }
+
+  for (std::size_t index = 0U; index < member_counts.size(); ++index) {
+    if (member_counts[index] == 0U) {
+      return SetDiagnostic(diagnostic, CompileStage::DOMAIN_VALIDATION, CompileError::EMPTY_ARRAY,
+                           message.bit_containers[index].origin.json_pointer,
+                           "bit container must have at least one member field");
     }
   }
 
@@ -1287,8 +1536,9 @@ bool ValidateMessageDomain(MessageIr& message, ResourceRequirements& requirement
   for (std::size_t index = 1U; index < spans.size(); ++index) {
     if (spans[index].begin < spans[index - 1U].end) {
       return SetDiagnostic(diagnostic, CompileStage::DOMAIN_VALIDATION, CompileError::FIELD_OVERLAP,
-                           spans[index].field->origin.json_pointer,
-                           "field byte ranges overlap; overlays are outside this draft slice");
+                           spans[index].field != nullptr ? spans[index].field->origin.json_pointer
+                                                         : message.origin.json_pointer,
+                           "ordinary fields and bit container byte ranges must not overlap");
     }
   }
 
@@ -1322,7 +1572,8 @@ bool ValidateMessageDomain(MessageIr& message, ResourceRequirements& requirement
   }
 
   for (const FieldIr& field : message.fields) {
-    if (field.value_type != ValueType::UINT64 || !field.encode.constant_value.has_value()) {
+    if (field.wire.codec == WireCodec::BITFIELD || field.value_type != ValueType::UINT64 ||
+        !field.encode.constant_value.has_value()) {
       continue;
     }
     for (std::uint64_t byte_index = 0U; byte_index < field.wire.byte_width; ++byte_index) {
@@ -1338,6 +1589,81 @@ bool ValidateMessageDomain(MessageIr& message, ResourceRequirements& requirement
             ChildPointer(field.encode.origin.json_pointer, "value"),
             "fixed byte matcher conflicts with the encoded UINT64 constant field bytes");
       }
+    }
+  }
+
+  std::vector<std::uint64_t> determined_masks(message.bit_containers.size(), 0U);
+  std::vector<std::uint64_t> determined_values(message.bit_containers.size(), 0U);
+  std::vector<std::uint64_t> constant_masks(message.bit_containers.size(), 0U);
+  for (std::size_t index = 0U; index < message.bit_containers.size(); ++index) {
+    determined_masks[index] = BitWidthMask(message.bit_containers[index].byte_width);
+    determined_values[index] = message.bit_containers[index].base_value;
+  }
+  for (const FieldIr& field : message.fields) {
+    if (field.wire.codec != WireCodec::BITFIELD) {
+      continue;
+    }
+    const BitContainerIr& container = message.bit_containers[field.wire.bit_container_index];
+    const std::uint64_t container_bits = container.byte_width * 8U;
+    const std::uint64_t shift = container.bit_numbering == BitNumbering::LSB0
+                                    ? field.wire.bit_offset
+                                    : container_bits - field.wire.bit_offset - field.wire.bit_width;
+    const std::uint64_t low_mask = field.wire.bit_width == 64U
+                                       ? (std::numeric_limits<std::uint64_t>::max)()
+                                       : (std::uint64_t{1U} << field.wire.bit_width) - 1U;
+    const std::uint64_t member_mask = low_mask << shift;
+    if (field.encode.source == EncodeSource::INPUT) {
+      determined_masks[field.wire.bit_container_index] &= ~member_mask;
+    } else {
+      determined_values[field.wire.bit_container_index] =
+          (determined_values[field.wire.bit_container_index] & ~member_mask) |
+          ((*field.encode.constant_value << shift) & member_mask);
+      constant_masks[field.wire.bit_container_index] |= member_mask;
+    }
+  }
+  for (std::size_t container_index = 0U; container_index < message.bit_containers.size();
+       ++container_index) {
+    const BitContainerIr& container = message.bit_containers[container_index];
+    for (std::uint64_t byte_index = 0U; byte_index < container.byte_width; ++byte_index) {
+      const auto matcher = fixed_matcher_bytes.find(container.byte_offset + byte_index);
+      if (matcher == fixed_matcher_bytes.end()) {
+        continue;
+      }
+      const std::uint64_t logical_byte = container.byte_order == ByteOrder::BIG
+                                             ? container.byte_width - 1U - byte_index
+                                             : byte_index;
+      const unsigned shift = static_cast<unsigned>(logical_byte * 8U);
+      const auto mask = static_cast<std::uint8_t>(determined_masks[container_index] >> shift);
+      const auto value = static_cast<std::uint8_t>(determined_values[container_index] >> shift);
+      const auto mismatch = static_cast<std::uint8_t>((matcher->second ^ value) & mask);
+      if (mismatch == 0U) {
+        continue;
+      }
+      std::string pointer = ChildPointer(container.origin.json_pointer, "base_value");
+      const std::uint64_t mismatch_mask = static_cast<std::uint64_t>(mismatch) << shift;
+      if ((constant_masks[container_index] & mismatch_mask) != 0U) {
+        for (const FieldIr& field : message.fields) {
+          if (field.wire.codec != WireCodec::BITFIELD ||
+              field.wire.bit_container_index != container_index ||
+              !field.encode.constant_value.has_value()) {
+            continue;
+          }
+          const std::uint64_t field_shift =
+              container.bit_numbering == BitNumbering::LSB0
+                  ? field.wire.bit_offset
+                  : container.byte_width * 8U - field.wire.bit_offset - field.wire.bit_width;
+          const std::uint64_t field_low_mask =
+              field.wire.bit_width == 64U ? (std::numeric_limits<std::uint64_t>::max)()
+                                          : (std::uint64_t{1U} << field.wire.bit_width) - 1U;
+          if (((field_low_mask << field_shift) & mismatch_mask) != 0U) {
+            pointer = ChildPointer(field.encode.origin.json_pointer, "value");
+            break;
+          }
+        }
+      }
+      return SetDiagnostic(diagnostic, CompileStage::DOMAIN_VALIDATION,
+                           CompileError::MATCHER_CONFLICT, pointer,
+                           "fixed byte matcher conflicts with bit container determined bits");
     }
   }
 
@@ -1535,6 +1861,15 @@ bool EstimateSchemaPlanMemory(const SchemaIr& schema,
         return false;
       }
     }
+    if (!layout.AddArray<FrozenBitContainerPlan>(message.bit_containers.size(),
+                                                 PlanMemoryCategory::METADATA_CONTAINER)) {
+      return false;
+    }
+    for (const BitContainerIr& container : message.bit_containers) {
+      if (!AddStringLayout(layout, container.id)) {
+        return false;
+      }
+    }
     if (!layout.AddArray<FrozenFieldPlan>(message.fields.size(),
                                           PlanMemoryCategory::METADATA_CONTAINER)) {
       return false;
@@ -1574,6 +1909,8 @@ bool EstimateSchemaPlanMemory(const SchemaIr& schema,
     }
     if (!layout.AddArray<FixedByteExecutionPlan>(fixed_byte_offsets.size(),
                                                  PlanMemoryCategory::MATCHER) ||
+        !layout.AddArray<BitContainerExecutionPlan>(message.bit_containers.size(),
+                                                    PlanMemoryCategory::EXECUTION_DESCRIPTOR) ||
         !layout.AddArray<FieldExecutionPlan>(message.fields.size(),
                                              PlanMemoryCategory::EXECUTION_DESCRIPTOR) ||
         !layout.AddArray<std::uint64_t>(enum_entry_count, PlanMemoryCategory::INDEX) ||
@@ -1664,6 +2001,9 @@ ResourceBudgetResult ResourceBudgetValidator::ValidateImpl(
                           "matcher count exceeds the selected resource profile", diagnostic) ||
       !CheckResourceCount(requirements.total_enum_entry_count, budget->max_total_enum_entries,
                           "/messages", "enum entry count exceeds the selected resource profile",
+                          diagnostic) ||
+      !CheckResourceCount(requirements.total_bit_container_count, budget->max_total_fields,
+                          "/messages", "bit container count exceeds the selected resource profile",
                           diagnostic)) {
     return ResourceBudgetResult::Failure(std::move(diagnostic));
   }
@@ -1673,7 +2013,11 @@ ResourceBudgetResult ResourceBudgetValidator::ValidateImpl(
                             "field count exceeds the selected resource profile", diagnostic) ||
         !CheckResourceCount(message.matcher_clauses.size(), budget->max_matchers_per_message,
                             ChildPointer(message.origin.json_pointer, "matcher"),
-                            "matcher count exceeds the selected resource profile", diagnostic)) {
+                            "matcher count exceeds the selected resource profile", diagnostic) ||
+        !CheckResourceCount(message.bit_containers.size(), budget->max_fields_per_message,
+                            ChildPointer(message.origin.json_pointer, "bit_containers"),
+                            "bit container count exceeds the selected resource profile",
+                            diagnostic)) {
       return ResourceBudgetResult::Failure(std::move(diagnostic));
     }
     for (const FieldIr& field : message.fields) {
@@ -1739,6 +2083,12 @@ PlanDraftAssemblyResult PlanDraftAssembler::Assemble(BudgetedSchemaIr budgeted) 
       message_plan.matchers.push_back(MatcherPlan{matcher.kind, matcher.length_bytes,
                                                   matcher.byte_offset, std::move(matcher.bytes)});
     }
+    message_plan.bit_containers.reserve(message.bit_containers.size());
+    for (BitContainerIr& container : message.bit_containers) {
+      message_plan.bit_containers.push_back(protocol_plan::BitContainerPlan{
+          std::move(container.id), container.byte_offset, container.byte_width,
+          container.byte_order, container.bit_numbering, container.base_value});
+    }
     message_plan.fields.reserve(message.fields.size());
     for (FieldIr& field : message.fields) {
       FieldPlan field_plan;
@@ -1752,6 +2102,9 @@ PlanDraftAssemblyResult PlanDraftAssembler::Assemble(BudgetedSchemaIr budgeted) 
       field_plan.constant_value = field.encode.constant_value;
       field_plan.unknown_enum_policy = field.unknown_enum_policy;
       field_plan.enum_entries.reserve(field.enum_entries.size());
+      field_plan.bit_container_index = field.wire.bit_container_index;
+      field_plan.bit_offset = field.wire.bit_offset;
+      field_plan.bit_width = field.wire.bit_width;
       for (EnumEntryIr& entry : field.enum_entries) {
         field_plan.enum_entries.push_back(EnumEntryPlan{std::move(entry.id), entry.raw_value});
       }

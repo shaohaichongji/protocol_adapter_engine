@@ -56,11 +56,18 @@ enum class ValueType {
   UINT64,
   BYTES,
   ENUM,
+  BOOL,
 };
 
 enum class WireCodec {
   UNSIGNED_INTEGER,
   BYTES,
+  BITFIELD,
+};
+
+enum class BitNumbering {
+  LSB0,
+  MSB0,
 };
 
 enum class ByteOrder {
@@ -87,6 +94,7 @@ struct ResourceRequirements {
   std::size_t total_field_count = 0U;
   std::size_t total_matcher_count = 0U;
   std::size_t total_enum_entry_count = 0U;
+  std::size_t total_bit_container_count = 0U;
 };
 
 struct PlanMemoryReport {

@@ -144,6 +144,10 @@ void CopyDecodedFields(const PlanBundle& plan, std::size_t message_index,
       item.kind = "BYTES";
       item.raw_value = HexUpper(slot.bytes_value.data, slot.bytes_value.size);
       item.logical_value = item.raw_value;
+    } else if (slot.value_kind == LogicalValueKind::BOOL) {
+      item.kind = "BOOL";
+      item.raw_value = slot.bool_value ? "1" : "0";
+      item.logical_value = slot.bool_value ? "true" : "false";
     } else {
       item.kind = "ENUM";
       item.raw_value = std::to_string(slot.enum_value.raw_value);
@@ -292,7 +296,8 @@ bool ParseValues(std::string& text, ParsedValues& output, std::string& error) {
     return false;
   }
   std::string format;
-  if (!ReadJsonString(root, "format_version", format, error) || format != kValuesFormat ||
+  if (!ReadJsonString(root, "format_version", format, error) ||
+      (format != kValuesFormat && format != kValuesFormatV2) ||
       !ReadJsonString(root, "pipeline_id", output.pipeline_id, error) ||
       !ReadJsonString(root, "message_id", output.message_id, error)) {
     if (error.empty()) {
@@ -300,6 +305,7 @@ bool ParseValues(std::string& text, ParsedValues& output, std::string& error) {
     }
     return false;
   }
+  output.format_version = format;
   yyjson_val* fields = yyjson_obj_get(root, "fields");
   if (!yyjson_is_arr(fields)) {
     error = "fields must be an array";
@@ -311,7 +317,7 @@ bool ParseValues(std::string& text, ParsedValues& output, std::string& error) {
   yyjson_arr_iter_init(fields, &iterator);
   while (yyjson_val* value = yyjson_arr_iter_next(&iterator)) {
     const std::string pointer = "fields[" + std::to_string(ordinal) + "]";
-    const std::set<std::string_view> allowed{"id", "kind", "uint64", "hex", "entry_id"};
+    const std::set<std::string_view> allowed{"id", "kind", "uint64", "hex", "entry_id", "bool"};
     const std::set<std::string_view> required{"id", "kind"};
     if (!ValidateObject(value, allowed, required, pointer, error)) {
       return false;
@@ -349,6 +355,15 @@ bool ParseValues(std::string& text, ParsedValues& output, std::string& error) {
           !ReadJsonString(value, "entry_id", parsed.enum_entry_id, error)) {
         return false;
       }
+    } else if (parsed.kind == "BOOL") {
+      const std::set<std::string_view> exact{"id", "kind", "bool"};
+      yyjson_val* boolean = yyjson_obj_get(value, "bool");
+      if (format != kValuesFormatV2 || !ValidateObject(value, exact, exact, pointer, error) ||
+          !yyjson_is_bool(boolean)) {
+        if (error.empty()) error = pointer + ".bool must be a native JSON boolean in Values 0.2";
+        return false;
+      }
+      parsed.bool_value = yyjson_get_bool(boolean);
     } else {
       error = pointer + ".kind is unsupported";
       return false;
@@ -361,6 +376,7 @@ bool ParseValues(std::string& text, ParsedValues& output, std::string& error) {
 
 OperationResult InspectFrame(const PlanBundle& plan, const std::vector<std::uint8_t>& frame) {
   OperationResult result;
+  result.schema_version.assign(plan.SchemaVersion().data(), plan.SchemaVersion().size());
   result.operation_kind = "inspect";
   result.protocol_id.assign(plan.ProtocolId().data(), plan.ProtocolId().size());
   result.frame = frame;
@@ -402,12 +418,19 @@ OperationResult InspectFrame(const PlanBundle& plan, const std::vector<std::uint
     result.diagnostic_id = "PAE_LAB_CODEC_" + result.status;
     result.diagnostic_detail = "frame did not produce one unique successful Pipeline match";
   }
+  if (result.schema_version == "0.2") {
+    result.replay_mode = "DECODE_RX";
+    result.replay_subject = "RX";
+    result.current_execution_status = result.status;
+    result.current_execution_diagnostic_id = result.diagnostic_id;
+  }
   return result;
 }
 
 OperationResult InspectFrameInPipeline(const PlanBundle& plan, std::string_view pipeline_id,
                                        const std::vector<std::uint8_t>& frame) {
   OperationResult result;
+  result.schema_version.assign(plan.SchemaVersion().data(), plan.SchemaVersion().size());
   result.operation_kind = "inspect";
   result.protocol_id.assign(plan.ProtocolId().data(), plan.ProtocolId().size());
   result.pipeline_id.assign(pipeline_id.data(), pipeline_id.size());
@@ -436,12 +459,19 @@ OperationResult InspectFrameInPipeline(const PlanBundle& plan, std::string_view 
     result.diagnostic_id = "PAE_LAB_CODEC_" + result.status;
     result.diagnostic_detail = "frame failed in the selected receive Pipeline";
   }
+  if (result.schema_version == "0.2") {
+    result.replay_mode = "DECODE_RX";
+    result.replay_subject = "RX";
+    result.current_execution_status = result.status;
+    result.current_execution_diagnostic_id = result.diagnostic_id;
+  }
   return result;
 }
 
 OperationResult EncodeValues(const PlanBundle& plan, const ParsedValues& parsed,
                              std::string& error) {
   OperationResult result;
+  result.schema_version.assign(plan.SchemaVersion().data(), plan.SchemaVersion().size());
   result.operation_kind = "encode";
   result.protocol_id.assign(plan.ProtocolId().data(), plan.ProtocolId().size());
   result.pipeline_id = parsed.pipeline_id;
@@ -495,6 +525,9 @@ OperationResult EncodeValues(const PlanBundle& plan, const ParsedValues& parsed,
       value.value_kind = LogicalValueKind::ENUM;
       value.enum_value =
           protocol_core::EnumValueRef{&plan, message_index, field_index, entry_index};
+    } else if (input.kind == "BOOL" && field.value_type == ValueType::BOOL) {
+      value.value_kind = LogicalValueKind::BOOL;
+      value.bool_value = input.bool_value;
     } else {
       result.status = "TYPE_MISMATCH";
       result.diagnostic_id = "PAE_LAB_VALUES_TYPE_MISMATCH";
@@ -514,6 +547,12 @@ OperationResult EncodeValues(const PlanBundle& plan, const ParsedValues& parsed,
     result.frame.clear();
     result.diagnostic_id = "PAE_LAB_CODEC_" + result.status;
     result.diagnostic_detail = "EncodeCompleteRecord rejected the values";
+    if (result.schema_version == "0.2") {
+      result.replay_mode = "ENCODE_TX";
+      result.replay_subject = "TX";
+      result.current_execution_status = result.status;
+      result.current_execution_diagnostic_id = result.diagnostic_id;
+    }
     return result;
   }
 
@@ -530,6 +569,12 @@ OperationResult EncodeValues(const PlanBundle& plan, const ParsedValues& parsed,
     return result;
   }
   CopyDecodedFields(plan, message_index, slots, reviewed.field_count, result.fields);
+  if (result.schema_version == "0.2") {
+    result.replay_mode = "ENCODE_TX";
+    result.replay_subject = "TX";
+    result.current_execution_status = result.status;
+    result.current_execution_diagnostic_id = result.diagnostic_id;
+  }
   error.clear();
   return result;
 }

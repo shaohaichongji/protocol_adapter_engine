@@ -7,6 +7,21 @@ configure_file(
     COPYONLY
 )
 configure_file(
+    "${PROJECT_SOURCE_DIR}/examples/config/synthetic_bitfield_slice.pae.json"
+    "${pae_protocol_lab_test_data_dir}/synthetic_bitfield_slice.pae.json"
+    COPYONLY
+)
+configure_file(
+    "${PROJECT_SOURCE_DIR}/examples/config/synthetic_bitfield_slice.values.pae-lab.json"
+    "${pae_protocol_lab_test_data_dir}/synthetic_bitfield_slice.values.pae-lab.json"
+    COPYONLY
+)
+configure_file(
+    "${PROJECT_SOURCE_DIR}/tests/protocol_core/golden/synthetic_bitfield/bitfield_record_001.frame.hex"
+    "${pae_protocol_lab_test_data_dir}/bitfield_record_001.frame.hex"
+    COPYONLY
+)
+configure_file(
     "${PROJECT_SOURCE_DIR}/tests/protocol_core/golden/synthetic_lab_exchange/lab_command_001.frame.hex"
     "${pae_protocol_lab_test_data_dir}/lab_command_001.frame.hex"
     COPYONLY
@@ -58,7 +73,42 @@ set_tests_properties(
         WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
 )
 
+add_test(
+    NAME pae.tools.protocol_lab.bitfield_generation_contract
+    COMMAND
+        "${CMAKE_COMMAND}"
+        "-DPAE_LAB_EXECUTABLE=$<TARGET_FILE:pae_protocol_lab>"
+        "-DPAE_LAB_DATA_DIR=${pae_protocol_lab_test_data_dir}"
+        "-DPAE_LAB_RUN_ROOT=${CMAKE_CURRENT_BINARY_DIR}/bitfield-runs-$<CONFIG>"
+        -P "${CMAKE_CURRENT_SOURCE_DIR}/verify_bitfield_generation_contract.cmake"
+)
+set_tests_properties(
+    pae.tools.protocol_lab.bitfield_generation_contract
+    PROPERTIES LABELS "tools;protocol_lab;offline;bitfield;dec040" TIMEOUT 180
+               WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
+)
+
 if(WIN32)
+    find_program(pae_powershell_executable NAMES pwsh pwsh.exe REQUIRED)
+
+    add_test(
+        NAME pae.tools.protocol_lab.bitfield_schema_contract
+        COMMAND
+            "${pae_powershell_executable}"
+            -NoProfile
+            -File "${CMAKE_CURRENT_SOURCE_DIR}/verify_bitfield_schema_contract.ps1"
+            -LabExecutable "$<TARGET_FILE:pae_protocol_lab>"
+            -SchemaPath "${PROJECT_SOURCE_DIR}/schema/pae.schema.json"
+            -ConfigPath "${pae_protocol_lab_test_data_dir}/synthetic_bitfield_slice.pae.json"
+            -ValuesPath "${pae_protocol_lab_test_data_dir}/synthetic_bitfield_slice.values.pae-lab.json"
+            -TestRoot "${CMAKE_CURRENT_BINARY_DIR}/bitfield-schema-$<CONFIG>"
+    )
+    set_tests_properties(
+        pae.tools.protocol_lab.bitfield_schema_contract
+        PROPERTIES LABELS "tools;protocol_lab;offline;bitfield;dec040;schema" TIMEOUT 180
+                   WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
+    )
+
     add_executable(
         pae_protocol_lab_udp_exchange_tests
         udp_exchange_tests.cpp
@@ -87,6 +137,18 @@ if(WIN32)
         pae.tools.protocol_lab.udp_exchange
         PROPERTIES
             LABELS "tools;protocol_lab;udp;loopback"
+            TIMEOUT 180
+            WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
+    )
+
+    add_test(
+        NAME pae.tools.protocol_lab.dec040_failure_chain
+        COMMAND pae_protocol_lab_udp_exchange_tests --dec040-offline-only
+    )
+    set_tests_properties(
+        pae.tools.protocol_lab.dec040_failure_chain
+        PROPERTIES
+            LABELS "tools;protocol_lab;offline;bitfield;dec040"
             TIMEOUT 180
             WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
     )

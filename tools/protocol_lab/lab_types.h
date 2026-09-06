@@ -15,11 +15,16 @@ inline constexpr std::uint32_t kDefaultUdpTimeoutMs = 2000U;
 inline constexpr std::uint32_t kMaximumUdpTimeoutMs = 60000U;
 inline constexpr std::string_view kResultFormatV1 = "pae.lab.result/0.1";
 inline constexpr std::string_view kResultFormat = "pae.lab.result/0.2";
+inline constexpr std::string_view kResultFormatV3 = "pae.lab.result/0.3";
 inline constexpr std::string_view kValuesFormat = "pae.lab.values/0.1";
+inline constexpr std::string_view kValuesFormatV2 = "pae.lab.values/0.2";
 inline constexpr std::string_view kRecordFormatV1 = "pae.lab.record/0.1";
 inline constexpr std::string_view kRecordFormat = "pae.lab.record/0.2";
+inline constexpr std::string_view kRecordFormatV3 = "pae.lab.record/0.3";
 inline constexpr std::string_view kEventFormat = "pae.lab.event/0.2";
+inline constexpr std::string_view kEventFormatV3 = "pae.lab.event/0.3";
 inline constexpr std::string_view kToolVersion = "0.2.0-udp-exchange-evidence-slice";
+inline constexpr std::string_view kToolVersionV3 = "0.3.0-bitfield-slice";
 inline constexpr int kRecordFailedExitCode = 7;
 
 enum class Command { INSPECT, ENCODE, REPLAY, COMPARE, UDP_EXCHANGE };
@@ -89,6 +94,7 @@ struct HistoricalTransportFacts {
 };
 
 struct OperationResult {
+  std::string schema_version = "0.1";
   std::string command;
   std::string operation_kind;
   std::string status = "INTERNAL_ERROR";
@@ -137,9 +143,11 @@ struct ParsedValue {
   std::uint64_t uint64_value = 0U;
   std::vector<std::uint8_t> bytes;
   std::string enum_entry_id;
+  bool bool_value = false;
 };
 
 struct ParsedValues {
+  std::string format_version;
   std::string pipeline_id;
   std::string message_id;
   std::vector<ParsedValue> fields;

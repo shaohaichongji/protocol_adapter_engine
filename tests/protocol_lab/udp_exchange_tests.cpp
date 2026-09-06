@@ -249,14 +249,17 @@ int RunCaptured(std::vector<std::string> arguments,
   return exit_code;
 }
 
-std::vector<std::string> UdpArguments(const std::filesystem::path& record_root, std::string remote,
-                                      bool send) {
+std::vector<std::string> UdpArguments(
+    const std::filesystem::path& record_root, std::string remote, bool send,
+    std::string config = "data/synthetic_lab_exchange_slice.pae.json",
+    std::string values = "data/valid_command.values.pae-lab.json",
+    std::string receive_pipeline = "fixture_to_host") {
   std::vector<std::string> arguments{
       "pae_protocol_lab",   "udp-exchange",
-      "--config",           "data/synthetic_lab_exchange_slice.pae.json",
-      "--values",           "data/valid_command.values.pae-lab.json",
+      "--config",           std::move(config),
+      "--values",           std::move(values),
       "--remote",           std::move(remote),
-      "--receive-pipeline", "fixture_to_host",
+      "--receive-pipeline", std::move(receive_pipeline),
       "--record-root",      record_root.generic_string(),
       "--output",           "json",
   };
@@ -460,6 +463,9 @@ bool ReplayOnceAndCheck(const std::filesystem::path& source_run,
       source_manifest_before != source_manifest_after ||
       !pae::protocol_lab::LoadStoredRun(source_run, source, error) ||
       !pae::protocol_lab::LoadStoredRun(replay_run, replay, error)) {
+    std::cerr << "Replay precheck failed exit=" << exit_code << " expected=" << expected_exit
+              << " calls=" << adapter.call_count << " operation_matches=" << operation_matches
+              << " replay_run=" << replay_run << " error=" << error << " output=" << output << '\n';
     return false;
   }
   const std::string expected_current_status =
@@ -470,23 +476,37 @@ bool ReplayOnceAndCheck(const std::filesystem::path& source_run,
       mode == "NO_CODEC_REEXECUTION" ? "EVIDENCE_VERIFIED" : expected_current_status;
   const bool comparison_equal = comparison_status == "EQUAL";
   const bool comparison_not_evaluated = comparison_status == "NOT_EVALUATED";
-  return replay.command == "replay" && replay.operation_kind == "udp-exchange" &&
-         replay.operation_status == expected_operation_status &&
-         replay.exit_code == expected_exit && replay.replay_mode == mode &&
-         replay.replay_subject == subject &&
-         replay.current_execution_status == expected_current_status &&
-         replay.current_execution_diagnostic_id == expected_current_diagnostic &&
-         replay.diagnostic_id == expected_current_diagnostic && !replay.response_received &&
-         replay.response_decoded == expected_response_decoded &&
-         replay.comparison_status == comparison_status &&
-         (comparison_not_evaluated ? !replay.comparison_equal.has_value()
-                                   : replay.comparison_equal == comparison_equal) &&
-         replay.tx_frame_hex == source.tx_frame_hex && replay.rx_frame_hex == source.rx_frame_hex &&
-         SameHistoricalTransport(source, replay) &&
-         std::filesystem::is_regular_file(replay_run / "result_summary_v0.2.json") &&
-         std::filesystem::is_regular_file(replay_run / "run_record_v0.2.json") &&
-         std::filesystem::is_regular_file(replay_run / "events_v0.2.jsonl") &&
-         std::filesystem::is_regular_file(replay_run / "COMPLETE");
+  const bool v3 = replay.format_version == pae::protocol_lab::kResultFormatV3;
+  const bool history_matches = source.operation_kind == "udp-exchange"
+                                   ? SameHistoricalTransport(source, replay)
+                                   : !replay.historical_transport.present;
+  const bool matches =
+      replay.command == "replay" && replay.operation_kind == source.operation_kind &&
+      replay.operation_status == expected_operation_status && replay.exit_code == expected_exit &&
+      replay.replay_mode == mode && replay.replay_subject == subject &&
+      replay.current_execution_status == expected_current_status &&
+      replay.current_execution_diagnostic_id == expected_current_diagnostic &&
+      replay.diagnostic_id == expected_current_diagnostic && !replay.response_received &&
+      replay.response_decoded == expected_response_decoded &&
+      replay.comparison_status == comparison_status &&
+      (comparison_not_evaluated ? !replay.comparison_equal.has_value()
+                                : replay.comparison_equal == comparison_equal) &&
+      replay.tx_frame_hex == source.tx_frame_hex && replay.rx_frame_hex == source.rx_frame_hex &&
+      history_matches &&
+      std::filesystem::is_regular_file(
+          replay_run / (v3 ? "result_summary_v0.3.json" : "result_summary_v0.2.json")) &&
+      std::filesystem::is_regular_file(replay_run /
+                                       (v3 ? "run_record_v0.3.json" : "run_record_v0.2.json")) &&
+      std::filesystem::is_regular_file(replay_run /
+                                       (v3 ? "events_v0.3.jsonl" : "events_v0.2.jsonl")) &&
+      std::filesystem::is_regular_file(replay_run / "COMPLETE");
+  if (!matches) {
+    std::cerr << "Replay check mismatch format=" << replay.format_version
+              << " operation=" << replay.operation_kind << " status=" << replay.operation_status
+              << " current=" << replay.current_execution_status
+              << " comparison=" << replay.comparison_status << " error=" << error << '\n';
+  }
+  return matches;
 }
 
 bool ReplayAndCheck(const std::filesystem::path& source_run,
@@ -507,9 +527,12 @@ bool ReplayAndCheck(const std::filesystem::path& source_run,
 bool RebuildManifest(const std::filesystem::path& run);
 
 bool RefreshRunRecordPayload(const std::filesystem::path& run, std::string_view relative) {
+  const std::filesystem::path v3 = run / "run_record_v0.3.json";
   const std::filesystem::path v2 = run / "run_record_v0.2.json";
   const std::filesystem::path record_path =
-      std::filesystem::is_regular_file(v2) ? v2 : run / "run_record_v0.1.json";
+      std::filesystem::is_regular_file(v3)
+          ? v3
+          : (std::filesystem::is_regular_file(v2) ? v2 : run / "run_record_v0.1.json");
   std::string record;
   std::vector<std::uint8_t> bytes;
   std::ifstream input{run / std::filesystem::path{relative}, std::ios::binary};
@@ -705,8 +728,9 @@ bool LegacyV1LoadCompareReplay(const std::filesystem::path& root) {
   const int replay_exit = RunCaptured(std::move(replay), file_system, adapter, output, &observer);
   const std::filesystem::path replay_run = OnlyCompletedRun(root / "replay");
   pae::protocol_lab::StoredRun replayed;
-  return replay_exit == 0 && adapter.call_count == 0 && observer.operations.empty() &&
-         !replay_run.empty() && pae::protocol_lab::LoadStoredRun(replay_run, replayed, error) &&
+  return replay_exit == 0 && adapter.call_count == 0 &&
+         observer.operations == std::vector<std::string>{"DECODE_RX"} && !replay_run.empty() &&
+         pae::protocol_lab::LoadStoredRun(replay_run, replayed, error) &&
          replayed.format_version == "pae.lab.result/0.1" && replayed.command == "replay" &&
          replayed.operation_kind == "inspect" && replayed.operation_status == "OK" &&
          replayed.frame_hex == stored.frame_hex && replayed.comparison_equal == true;
@@ -1232,6 +1256,92 @@ bool TestRealLoopback(const std::filesystem::path& root,
   return true;
 }
 
+bool TestBitfieldV3Loopback(const std::filesystem::path& root,
+                            const std::vector<std::uint8_t>& frame) {
+  LoopbackPeer peer{frame};
+  if (!peer.Start()) return false;
+  pae::protocol_lab::StandardRecordFileSystem file_system;
+  std::unique_ptr<IUdpExchangeAdapter> adapter =
+      pae::protocol_lab::CreatePlatformUdpExchangeAdapter();
+  std::string output;
+  auto arguments =
+      UdpArguments(root, "127.0.0.1:" + std::to_string(peer.Port()), true,
+                   "data/synthetic_bitfield_slice.pae.json",
+                   "data/synthetic_bitfield_slice.values.pae-lab.json", "synthetic_direction");
+  arguments.insert(arguments.end(), {"--timeout-ms", "2000"});
+  const int exit_code = RunCaptured(std::move(arguments), file_system, *adapter, output);
+  peer.Join();
+  if (exit_code != 0) std::cerr << "V0.3 UDP output: " << output << '\n';
+  const std::filesystem::path run = OnlyCompletedRun(root);
+  pae::protocol_lab::StoredRun stored;
+  std::string error;
+  std::string metadata;
+  const bool loaded = !run.empty() && pae::protocol_lab::LoadStoredRun(run, stored, error);
+  if (!loaded) std::cerr << "V0.3 Load failed: " << error << '\n';
+  const bool replayed = loaded && ReplayAndCheck(run, root / "replay", "DECODE_RX", "RX",
+                                                 "DECODE_RX", 0, true, "EQUAL");
+  if (!replayed) std::cerr << "V0.3 Replay failed\n";
+  FakeUdpAdapter mismatch;
+  mismatch.response.status = UdpExchangeStatus::OK;
+  mismatch.response.send_attempted = true;
+  mismatch.response.send_succeeded = true;
+  mismatch.response.response_received = true;
+  mismatch.response.payload = frame;
+  mismatch.response.peer = UdpEndpoint{{127U, 0U, 0U, 1U}, 23457U};
+  std::string mismatch_output;
+  const std::filesystem::path mismatch_root = root.parent_path() / "v3-no-codec";
+  const int mismatch_exit = RunCaptured(
+      UdpArguments(mismatch_root, "127.0.0.1:23456", true, "data/synthetic_bitfield_slice.pae.json",
+                   "data/synthetic_bitfield_slice.values.pae-lab.json", "synthetic_direction"),
+      file_system, mismatch, mismatch_output);
+  const std::filesystem::path mismatch_run = OnlyCompletedRun(mismatch_root);
+  pae::protocol_lab::StoredRun mismatch_stored;
+  const bool mismatch_loaded = !mismatch_run.empty() && pae::protocol_lab::LoadStoredRun(
+                                                            mismatch_run, mismatch_stored, error);
+  const bool no_codec_replayed =
+      mismatch_loaded &&
+      ReplayAndCheck(mismatch_run, mismatch_root / "replay", "NO_CODEC_REEXECUTION", "RX", "", 0,
+                     false, "NOT_EVALUATED");
+  return exit_code == 0 && peer.Captured() == frame && peer.Error().empty() && loaded &&
+         stored.format_version == pae::protocol_lab::kResultFormatV3 &&
+         stored.fields_canonical.find("enabled|BOOL|1|true|false") != std::string::npos &&
+         std::filesystem::is_regular_file(run / "result_summary_v0.3.json") &&
+         std::filesystem::is_regular_file(run / "run_record_v0.3.json") &&
+         std::filesystem::is_regular_file(run / "events_v0.3.jsonl") &&
+         LoadTextFile(run / "frames/000002_rx.meta.json", metadata) &&
+         Contains(metadata, "pae.lab.rx-meta/0.2") && replayed && mismatch_exit == 8 &&
+         mismatch.call_count == 1 && Contains(mismatch_output, "UDP_PEER_MISMATCH") &&
+         mismatch_loaded && mismatch_stored.format_version == pae::protocol_lab::kResultFormatV3 &&
+         !mismatch_stored.response_decoded && no_codec_replayed;
+}
+
+bool TestBitfieldV3PreparationFailuresUseNoSocket(const std::filesystem::path& root) {
+  pae::protocol_lab::StandardRecordFileSystem file_system;
+  FakeUdpAdapter adapter;
+  ExecutionObserver observer;
+  std::string output;
+  const int pipeline_exit = RunCaptured(
+      UdpArguments(root / "pipeline", "127.0.0.1:9", true, "data/synthetic_bitfield_slice.pae.json",
+                   "data/synthetic_bitfield_slice.values.pae-lab.json", "missing_pipeline"),
+      file_system, adapter, output, &observer);
+  if (pipeline_exit != 2 || adapter.call_count != 0 || !observer.operations.empty() ||
+      !Contains(output, "\"format_version\":\"pae.lab.result/0.3\"") ||
+      !Contains(output, "\"id\":\"PAE_LAB_UNKNOWN_RECEIVE_PIPELINE\"") ||
+      !OnlyCompletedRun(root / "pipeline").empty()) {
+    return false;
+  }
+
+  output.clear();
+  const int values_exit = RunCaptured(
+      UdpArguments(root / "values", "127.0.0.1:9", true, "data/synthetic_bitfield_slice.pae.json",
+                   "data/invalid_duplicate.values.pae-lab.json", "synthetic_direction"),
+      file_system, adapter, output, &observer);
+  return values_exit == 5 && adapter.call_count == 0 && observer.operations.empty() &&
+         Contains(output, "\"format_version\":\"pae.lab.result/0.3\"") &&
+         Contains(output, "\"id\":\"PAE_LAB_VALUES_INVALID\"") &&
+         OnlyCompletedRun(root / "values").empty();
+}
+
 bool TestRealTimeout(const std::filesystem::path& root) {
   LoopbackPeer peer{{}};
   if (!peer.Start()) {
@@ -1558,9 +1668,142 @@ bool TestZeroLengthResponse(const std::filesystem::path& root) {
          ReplayAndCheck(run, root / "replay", "DECODE_RX", "RX", "DECODE_RX", 5, false, "EQUAL");
 }
 
+bool TestDec040OfflineRegressions(const std::filesystem::path& root) {
+  std::error_code directory_error;
+  std::filesystem::create_directories(root, directory_error);
+  if (directory_error) {
+    return false;
+  }
+  pae::protocol_lab::StandardRecordFileSystem file_system;
+  FakeUdpAdapter adapter;
+  ExecutionObserver observer;
+  std::string output;
+  const std::string oversized_hex(38U, '0');
+  const std::filesystem::path oversized_path = root / "oversized.frame.hex";
+  if (!WriteTextFile(oversized_path, oversized_hex + "\n")) {
+    return false;
+  }
+  std::vector<std::string> inspect_args{
+      "pae_protocol_lab", "inspect",
+      "--config",         "data/synthetic_bitfield_slice.pae.json",
+      "--frame-hex",      oversized_path.generic_string(),
+      "--record-root",    (root / "frame-limit").generic_string(),
+      "--output",         "json"};
+  const int inspect_exit =
+      RunCaptured(std::move(inspect_args), file_system, adapter, output, &observer);
+  const std::filesystem::path source = OnlyCompletedRun(root / "frame-limit");
+  pae::protocol_lab::StoredRun stored;
+  std::string error;
+  if (inspect_exit != 3 || adapter.call_count != 0 || !observer.operations.empty() ||
+      source.empty() || !pae::protocol_lab::LoadStoredRun(source, stored, error) ||
+      stored.format_version != pae::protocol_lab::kResultFormatV3 ||
+      stored.operation_status != "INPUT_ERROR" ||
+      stored.current_execution_status != "INPUT_ERROR" ||
+      stored.current_execution_diagnostic_id != "PAE_LAB_FRAME_LIMIT_EXCEEDED" ||
+      stored.frame_hex != oversized_hex || stored.comparison_status != "NOT_APPLICABLE") {
+    std::cerr << "DEC-040 frame-limit source mismatch: " << error << ' ' << output << '\n';
+    return false;
+  }
+  if (!ReplayAndCheck(source, root / "frame-limit-replay", "DECODE_RX", "RX", "", 5, false,
+                      "EQUAL")) {
+    return false;
+  }
+
+  std::string replacement_config;
+  if (!LoadTextFile("data/synthetic_bitfield_slice.pae.json", replacement_config)) {
+    return false;
+  }
+  const std::string original_matcher =
+      "\"matcher\": {\"all\": [{\"kind\": \"frame_length_equals\", \"length_bytes\": 18}]}";
+  const std::string replacement_matcher =
+      "\"matcher\": {\"all\": [{\"kind\": \"frame_length_equals\", \"length_bytes\": "
+      "19}, {\"kind\": \"fixed_bytes\", \"byte_offset\": 18, \"bytes\": \"00\"}]}";
+  const std::size_t matcher_position = replacement_config.find(original_matcher);
+  const std::size_t length_position = replacement_config.find("\"frame_length_bytes\": 18");
+  if (matcher_position == std::string::npos || length_position == std::string::npos) {
+    return false;
+  }
+  replacement_config.replace(matcher_position, original_matcher.size(), replacement_matcher);
+  replacement_config.replace(length_position, std::string{"\"frame_length_bytes\": 18"}.size(),
+                             "\"frame_length_bytes\": 19");
+  const std::filesystem::path replacement_path = root / "replacement.pae.json";
+  if (!WriteTextFile(replacement_path, replacement_config)) {
+    return false;
+  }
+  observer.operations.clear();
+  output.clear();
+  std::vector<std::string> replacement_args{
+      "pae_protocol_lab", "replay",
+      "--bundle",         source.generic_string(),
+      "--config",         replacement_path.generic_string(),
+      "--record-root",    (root / "replacement-replay").generic_string(),
+      "--output",         "json"};
+  const int replacement_exit =
+      RunCaptured(std::move(replacement_args), file_system, adapter, output, &observer);
+  const std::filesystem::path replacement_run = OnlyCompletedRun(root / "replacement-replay");
+  pae::protocol_lab::StoredRun replacement;
+  if (replacement_exit != 6 || adapter.call_count != 0 ||
+      observer.operations != std::vector<std::string>{"DECODE_RX"} || replacement_run.empty() ||
+      !pae::protocol_lab::LoadStoredRun(replacement_run, replacement, error) ||
+      replacement.operation_status != "OK" || replacement.current_execution_status != "OK" ||
+      replacement.comparison_status != "DIFFERENT" || replacement.comparison_equal != false ||
+      !replacement.cross_config_replay || replacement.frame_hex != oversized_hex) {
+    std::cerr << "DEC-040 replacement replay mismatch: " << error << ' ' << output << '\n';
+    return false;
+  }
+  std::filesystem::path replacement_b;
+  if (!ReplayOnceAndCheck(replacement_run, root / "replacement-replay-b", "DECODE_RX", "RX",
+                          "DECODE_RX", 0, false, "EQUAL", replacement_b)) {
+    return false;
+  }
+
+  observer.operations.clear();
+  output.clear();
+  std::vector<std::string> encode_args{
+      "pae_protocol_lab", "encode",
+      "--config",         "data/synthetic_bitfield_slice.pae.json",
+      "--values",         "data/synthetic_bitfield_slice.values.pae-lab.json",
+      "--record-root",    (root / "stored-fields").generic_string(),
+      "--output",         "json"};
+  if (RunCaptured(std::move(encode_args), file_system, adapter, output, &observer) != 0) {
+    return false;
+  }
+  const std::filesystem::path valid = OnlyCompletedRun(root / "stored-fields");
+  if (valid.empty() || !pae::protocol_lab::LoadStoredRun(valid, stored, error) ||
+      !ReplayAndCheck(valid, root / "stored-fields-replay", "ENCODE_TX", "TX", "ENCODE_TX", 0,
+                      false, "EQUAL")) {
+    return false;
+  }
+  const auto reject_mutation = [&](std::string_view name, std::string_view from,
+                                   std::string_view to, std::string_view expected_error) {
+    const std::filesystem::path copy = root / std::string{name};
+    const std::filesystem::path summary = copy / "result_summary_v0.3.json";
+    pae::protocol_lab::StoredRun rejected;
+    std::string load_error;
+    return CopyRun(valid, copy) && ReplaceInFile(summary, from, to) &&
+           RefreshRunRecordPayload(copy, "result_summary_v0.3.json") && RebuildManifest(copy) &&
+           !pae::protocol_lab::LoadStoredRun(copy, rejected, load_error) &&
+           load_error == expected_error &&
+           RejectsReplayInput(copy, root / (std::string{name} + "-replay"), expected_error);
+  };
+  return reject_mutation("unknown-kind", "\"kind\":\"BOOL\"", "\"kind\":\"UNKNOWN\"",
+                         "stored field kind is unsupported") &&
+         reject_mutation("bool-as-uint64", "\"kind\":\"BOOL\"", "\"kind\":\"UINT64\"",
+                         "stored UINT64 field has an invalid raw/logical/enum_known tuple") &&
+         reject_mutation("uint64-leading-zero", "\"raw_value\":\"90\",\"logical_value\":\"90\"",
+                         "\"raw_value\":\"090\",\"logical_value\":\"090\"",
+                         "stored UINT64 field has an invalid raw/logical/enum_known tuple");
+}
+
 }  // namespace
 
 int main(int argc, char* argv[]) {
+  if (argc == 2 && std::string_view{argv[1]} == "--dec040-offline-only") {
+    const std::filesystem::path root{"dec040-offline-only-runs"};
+    std::error_code error;
+    std::filesystem::remove_all(root, error);
+    return !error && TestDec040OfflineRegressions(root) ? 0 : 1;
+  }
   if (argc == 2 && std::string_view{argv[1]} == "--legacy-offline-only") {
     const std::filesystem::path root{"legacy-offline-only-runs"};
     std::error_code error;
@@ -1576,8 +1819,10 @@ int main(int argc, char* argv[]) {
 
   std::vector<std::uint8_t> request;
   std::vector<std::uint8_t> response;
+  std::vector<std::uint8_t> bitfield_frame;
   if (!LoadHexFile("data/lab_command_001.frame.hex", request) ||
-      !LoadHexFile("data/lab_report_001.frame.hex", response)) {
+      !LoadHexFile("data/lab_report_001.frame.hex", response) ||
+      !LoadHexFile("data/bitfield_record_001.frame.hex", bitfield_frame)) {
     std::cerr << "could not load UDP test vectors\n";
     return 1;
   }
@@ -1595,6 +1840,12 @@ int main(int argc, char* argv[]) {
   passed = run_case("preview-zero-socket", TestPreviewUsesNoSocket(root / "preview")) && passed;
   passed =
       run_case("real-loopback", TestRealLoopback(root / "loopback", request, response)) && passed;
+  passed = run_case("bitfield-v0.3-loopback",
+                    TestBitfieldV3Loopback(root / "bitfield-v0.3-loopback", bitfield_frame)) &&
+           passed;
+  passed = run_case("bitfield-v0.3-preparation-failures",
+                    TestBitfieldV3PreparationFailuresUseNoSocket(root / "bitfield-v0.3-early")) &&
+           passed;
   passed = run_case("real-timeout", TestRealTimeout(root / "timeout")) && passed;
   passed = run_case("record-order", TestTxAndRxRecordOrdering(root / "record-order", response)) &&
            passed;

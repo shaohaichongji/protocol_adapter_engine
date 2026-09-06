@@ -1,0 +1,14 @@
+{
+  "format_version": "pae.lab.values/0.2",
+  "pipeline_id": "synthetic_direction",
+  "message_id": "bitfield_record",
+  "fields": [
+    {"id": "enabled", "kind": "BOOL", "bool": true},
+    {"id": "mode", "kind": "ENUM", "entry_id": "active"},
+    {"id": "cross_lsb", "kind": "UINT64", "uint64": "90"},
+    {"id": "cross_msb", "kind": "UINT64", "uint64": "257"},
+    {"id": "middle16", "kind": "UINT64", "uint64": "48879"},
+    {"id": "full64", "kind": "UINT64", "uint64": "81985529216486895"},
+    {"id": "last_bit", "kind": "BOOL", "bool": false}
+  ]
+}

@@ -45,6 +45,18 @@ struct FieldPlan {
   std::optional<std::uint64_t> constant_value;
   UnknownEnumPolicy unknown_enum_policy = UnknownEnumPolicy::REJECT;
   std::vector<EnumEntryPlan> enum_entries;
+  std::size_t bit_container_index = static_cast<std::size_t>(-1);
+  std::uint64_t bit_offset = 0U;
+  std::uint64_t bit_width = 0U;
+};
+
+struct BitContainerPlan {
+  std::string id;
+  std::uint64_t byte_offset = 0U;
+  std::uint64_t byte_width = 0U;
+  ByteOrder byte_order = ByteOrder::NOT_APPLICABLE;
+  BitNumbering bit_numbering = BitNumbering::LSB0;
+  std::uint64_t base_value = 0U;
 };
 
 struct MessagePlan {
@@ -52,6 +64,7 @@ struct MessagePlan {
   std::string direction_id;
   std::uint64_t frame_length_bytes = 0U;
   std::vector<MatcherPlan> matchers;
+  std::vector<BitContainerPlan> bit_containers;
   std::vector<FieldPlan> fields;
 };
 
@@ -90,6 +103,18 @@ struct FrozenFieldPlan {
   std::optional<std::uint64_t> constant_value;
   UnknownEnumPolicy unknown_enum_policy = UnknownEnumPolicy::REJECT;
   FrozenArray<FrozenEnumEntryPlan> enum_entries;
+  std::size_t bit_container_index = static_cast<std::size_t>(-1);
+  std::uint64_t bit_offset = 0U;
+  std::uint64_t bit_width = 0U;
+};
+
+struct FrozenBitContainerPlan {
+  FrozenString id;
+  std::uint64_t byte_offset = 0U;
+  std::uint64_t byte_width = 0U;
+  ByteOrder byte_order = ByteOrder::NOT_APPLICABLE;
+  BitNumbering bit_numbering = BitNumbering::LSB0;
+  std::uint64_t base_value = 0U;
 };
 
 struct FrozenMessagePlan {
@@ -97,7 +122,15 @@ struct FrozenMessagePlan {
   FrozenString direction_id;
   std::uint64_t frame_length_bytes = 0U;
   FrozenArray<FrozenMatcherPlan> matchers;
+  FrozenArray<FrozenBitContainerPlan> bit_containers;
   FrozenArray<FrozenFieldPlan> fields;
+};
+
+struct BitContainerExecutionPlan {
+  std::size_t offset = 0U;
+  std::size_t width = 0U;
+  ByteOrder byte_order = ByteOrder::NOT_APPLICABLE;
+  std::uint64_t base_value = 0U;
 };
 
 struct FrozenPipelinePlan {
@@ -131,12 +164,17 @@ struct FieldExecutionPlan {
   std::size_t enum_values_count = 0U;
   std::size_t enum_lookup_begin = 0U;
   std::size_t enum_lookup_count = 0U;
+  std::size_t bit_container_index = static_cast<std::size_t>(-1);
+  std::uint64_t bit_mask = 0U;
+  std::uint8_t bit_shift = 0U;
+  std::uint8_t bit_width = 0U;
 };
 
 struct MessageExecutionPlan {
   std::size_t frame_size = 0U;
   std::size_t required_input_count = 0U;
   FrozenArray<FixedByteExecutionPlan> fixed_bytes;
+  FrozenArray<BitContainerExecutionPlan> bit_containers;
   FrozenArray<FieldExecutionPlan> fields;
   FrozenArray<std::uint64_t> enum_raw_values;
   FrozenArray<EnumLookupExecutionPlan> enum_lookup_entries;
@@ -158,6 +196,7 @@ struct ExecutionResourceLayout {
   std::size_t max_input_fields_per_message = 0U;
   std::size_t encode_value_index_count = 0U;
   std::size_t encode_presence_word_count = 0U;
+  std::size_t bit_container_value_count = 0U;
   std::size_t estimated_workspace_bytes = 0U;
 };
 

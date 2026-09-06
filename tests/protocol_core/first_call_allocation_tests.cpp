@@ -187,6 +187,32 @@ CompileResult BuildPlan() {
                          {std::move(pipeline)}, {std::move(message)});
 }
 
+CompileResult BuildBitfieldPlan() {
+  return pae::config_compiler::CompileJsonToPlan(R"json({
+    "schema_version":"0.2","protocol_id":"allocation_bitfield","protocol_version":"1",
+    "display_name":"Synthetic","description":"","source_ref":"SYNTHETIC_FROM_SCRATCH:allocation",
+    "resource_profile":"desktop",
+    "framing_profiles":[{"id":"complete_record","display_name":"Synthetic","description":"",
+      "source_ref":"SYNTHETIC_FROM_SCRATCH:allocation","input_kind":"complete_record"}],
+    "pipelines":[{"id":"bit_pipe","display_name":"Synthetic","description":"",
+      "source_ref":"SYNTHETIC_FROM_SCRATCH:allocation","direction_id":"bit_direction",
+      "input_framing_profile_id":"complete_record","message_ids":["bit_message"]}],
+    "messages":[{"id":"bit_message","display_name":"Synthetic","description":"",
+      "source_ref":"SYNTHETIC_FROM_SCRATCH:allocation","direction_id":"bit_direction",
+      "frame_length_bytes":1,"matcher":{"all":[{"kind":"frame_length_equals","length_bytes":1}]},
+      "bit_containers":[{"id":"bits","container_offset":0,"container_width":1,
+        "bit_numbering":"lsb0","base_value":240}],
+      "fields":[
+        {"id":"enabled","display_name":"Synthetic","description":"",
+         "source_ref":"SYNTHETIC_FROM_SCRATCH:allocation","value_type":"BOOL",
+         "wire":{"codec":"bitfield","container_id":"bits","bit_offset":0,"bit_width":1},
+         "encode":{"source":"input"}},
+        {"id":"value","display_name":"Synthetic","description":"",
+         "source_ref":"SYNTHETIC_FROM_SCRATCH:allocation","value_type":"UINT64",
+         "wire":{"codec":"bitfield","container_id":"bits","bit_offset":1,"bit_width":3},
+         "encode":{"source":"input"}}]}]})json");
+}
+
 bool CounterProbe() {
   const std::size_t before = g_allocation_count.load(std::memory_order_relaxed);
   void* memory = ::operator new(17U);
@@ -231,6 +257,31 @@ bool RunFirstEncode() {
          output == std::array<std::uint8_t, 2U>{0xA5U, 0x11U} && before == after;
 }
 
+bool RunFirstBitfieldCalls() {
+  CompileResult frozen = BuildBitfieldPlan();
+  if (!frozen.Succeeded()) return false;
+  ExecutionWorkspace workspace{*frozen.Plan()};
+  std::array<EncodeFieldValue, 2U> values{};
+  values[0].field = FieldRef{frozen.Plan(), 0U, 0U};
+  values[0].value_kind = LogicalValueKind::BOOL;
+  values[0].bool_value = true;
+  values[1].field = FieldRef{frozen.Plan(), 0U, 1U};
+  values[1].uint64_value = 5U;
+  std::array<std::uint8_t, 1U> output{0xCCU};
+  std::size_t before = g_allocation_count.load(std::memory_order_relaxed);
+  const auto encoded = EncodeCompleteRecord(*frozen.Plan(), workspace, 0U, 0U, values.data(),
+                                            values.size(), {output.data(), output.size()});
+  std::size_t after = g_allocation_count.load(std::memory_order_relaxed);
+  if (encoded.status != CodecStatus::OK || output[0] != 0xFBU || before != after) return false;
+  std::array<DecodedFieldSlot, 2U> slots{};
+  before = g_allocation_count.load(std::memory_order_relaxed);
+  const auto decoded = DecodeCompleteRecord(
+      *frozen.Plan(), workspace, 0U, {output.data(), output.size()}, slots.data(), slots.size());
+  after = g_allocation_count.load(std::memory_order_relaxed);
+  return decoded.status == CodecStatus::OK && slots[0].bool_value && slots[1].uint64_value == 5U &&
+         before == after;
+}
+
 }  // namespace
 
 int main(int argc, char** argv) {
@@ -239,12 +290,15 @@ int main(int argc, char** argv) {
     return 1;
   }
   const std::string_view mode{argv[1]};
-  const bool passed = mode == "--first-decode"   ? RunFirstDecode()
-                      : mode == "--first-encode" ? RunFirstEncode()
-                                                 : false;
-  const std::string_view case_id = mode == "--first-decode"
-                                       ? "first_decode_zero_replaceable_new_allocation"
-                                       : "first_encode_zero_replaceable_new_allocation";
+  const bool passed = mode == "--first-decode"     ? RunFirstDecode()
+                      : mode == "--first-encode"   ? RunFirstEncode()
+                      : mode == "--first-bitfield" ? RunFirstBitfieldCalls()
+                                                   : false;
+  const std::string_view case_id =
+      mode == "--first-decode"
+          ? "first_decode_zero_replaceable_new_allocation"
+          : (mode == "--first-encode" ? "first_encode_zero_replaceable_new_allocation"
+                                      : "first_bitfield_calls_zero_replaceable_new_allocation");
   std::cout << (passed ? "PASS" : "FAIL") << " case=" << case_id << '\n';
   std::cout << "FIRST_CALL_ALLOCATION_TEST_SUMMARY passed=" << (passed ? 1 : 0)
             << " failed=" << (passed ? 0 : 1) << " expected=1 gate=" << (passed ? "PASS" : "FAIL")

@@ -1,0 +1,58 @@
+{
+  "schema_version": "0.2",
+  "protocol_id": "synthetic_bitfield_slice",
+  "protocol_version": "0.2-synthetic",
+  "display_name": "公开人工位字段切片",
+  "description": "从零设计的公开人工向量，仅验证位容器、位编号、字节序、BOOL、UINT64与ENUM；不来自任何真实协议或现场报文。",
+  "source_ref": "SYNTHETIC_FROM_SCRATCH:dec040_public_vector",
+  "resource_profile": "desktop",
+  "framing_profiles": [
+    {
+      "id": "complete_record",
+      "display_name": "完整记录",
+      "description": "一次提交完整人工记录。",
+      "source_ref": "SYNTHETIC_FROM_SCRATCH:dec040_public_vector#framing",
+      "input_kind": "complete_record"
+    }
+  ],
+  "pipelines": [
+    {
+      "id": "synthetic_direction",
+      "display_name": "人工方向",
+      "description": "位字段测试专用方向。",
+      "source_ref": "SYNTHETIC_FROM_SCRATCH:dec040_public_vector#pipeline",
+      "direction_id": "synthetic_direction",
+      "input_framing_profile_id": "complete_record",
+      "message_ids": ["bitfield_record"]
+    }
+  ],
+  "messages": [
+    {
+      "id": "bitfield_record",
+      "display_name": "人工位字段记录",
+      "description": "覆盖1/2/4/8字节容器、大小端、lsb0/msb0、跨字节与64位满宽。",
+      "source_ref": "SYNTHETIC_FROM_SCRATCH:dec040_public_vector#record",
+      "direction_id": "synthetic_direction",
+      "frame_length_bytes": 18,
+      "matcher": {"all": [{"kind": "frame_length_equals", "length_bytes": 18}]},
+      "bit_containers": [
+        {"id": "flags8", "container_offset": 0, "container_width": 1, "bit_numbering": "lsb0", "base_value": 160},
+        {"id": "be_lsb16", "container_offset": 1, "container_width": 2, "byte_order": "big_endian", "bit_numbering": "lsb0", "base_value": 32768},
+        {"id": "le_msb16", "container_offset": 3, "container_width": 2, "byte_order": "little_endian", "bit_numbering": "msb0", "base_value": 3},
+        {"id": "be_msb32", "container_offset": 5, "container_width": 4, "byte_order": "big_endian", "bit_numbering": "msb0", "base_value": 2147483649},
+        {"id": "le_lsb64", "container_offset": 9, "container_width": 8, "byte_order": "little_endian", "bit_numbering": "lsb0", "base_value": 0},
+        {"id": "tail8", "container_offset": 17, "container_width": 1, "bit_numbering": "msb0", "base_value": 85}
+      ],
+      "fields": [
+        {"id": "enabled", "display_name": "启用", "description": "原生BOOL。", "source_ref": "SYNTHETIC_FROM_SCRATCH:enabled", "value_type": "BOOL", "wire": {"codec": "bitfield", "container_id": "flags8", "bit_offset": 0, "bit_width": 1}, "encode": {"source": "input"}},
+        {"id": "mode", "display_name": "模式", "description": "无符号原始ENUM。", "source_ref": "SYNTHETIC_FROM_SCRATCH:mode", "value_type": "ENUM", "wire": {"codec": "bitfield", "container_id": "flags8", "bit_offset": 1, "bit_width": 2}, "encode": {"source": "input"}, "unknown_enum_policy": "reject", "enum_entries": [{"id": "idle", "display_name": "空闲", "raw_value": 0}, {"id": "active", "display_name": "活动", "raw_value": 2}]},
+        {"id": "constant_mark", "display_name": "常量标记", "description": "常量覆盖base_value中的成员位。", "source_ref": "SYNTHETIC_FROM_SCRATCH:constant", "value_type": "UINT64", "wire": {"codec": "bitfield", "container_id": "flags8", "bit_offset": 3, "bit_width": 1}, "encode": {"source": "constant", "value": 1}},
+        {"id": "cross_lsb", "display_name": "跨字节LSB0", "description": "8位成员跨越16位容器的字节边界。", "source_ref": "SYNTHETIC_FROM_SCRATCH:cross_lsb", "value_type": "UINT64", "wire": {"codec": "bitfield", "container_id": "be_lsb16", "bit_offset": 4, "bit_width": 8}, "encode": {"source": "input"}},
+        {"id": "cross_msb", "display_name": "跨字节MSB0", "description": "9位成员使用MSB0编号。", "source_ref": "SYNTHETIC_FROM_SCRATCH:cross_msb", "value_type": "UINT64", "wire": {"codec": "bitfield", "container_id": "le_msb16", "bit_offset": 1, "bit_width": 9}, "encode": {"source": "input"}},
+        {"id": "middle16", "display_name": "32位容器成员", "description": "验证大端与MSB0组合。", "source_ref": "SYNTHETIC_FROM_SCRATCH:middle16", "value_type": "UINT64", "wire": {"codec": "bitfield", "container_id": "be_msb32", "bit_offset": 8, "bit_width": 16}, "encode": {"source": "input"}},
+        {"id": "full64", "display_name": "64位满宽", "description": "避免64位移位未定义行为。", "source_ref": "SYNTHETIC_FROM_SCRATCH:full64", "value_type": "UINT64", "wire": {"codec": "bitfield", "container_id": "le_lsb64", "bit_offset": 0, "bit_width": 64}, "encode": {"source": "input"}},
+        {"id": "last_bit", "display_name": "末位", "description": "MSB0容器的最后一位。", "source_ref": "SYNTHETIC_FROM_SCRATCH:last_bit", "value_type": "BOOL", "wire": {"codec": "bitfield", "container_id": "tail8", "bit_offset": 7, "bit_width": 1}, "encode": {"source": "input"}}
+      ]
+    }
+  ]
+}
