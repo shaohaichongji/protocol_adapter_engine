@@ -16,6 +16,7 @@ using protocol_plan::BitNumbering;
 using protocol_plan::ByteOrder;
 using protocol_plan::EncodeSource;
 using protocol_plan::InputKind;
+using protocol_plan::IntegrityAlgorithm;
 using protocol_plan::MatcherKind;
 using protocol_plan::ResourceProfile;
 using protocol_plan::ResourceRequirements;
@@ -77,6 +78,16 @@ struct BitContainerIr {
   ConfigOrigin origin;
 };
 
+struct IntegrityIr {
+  IntegrityAlgorithm algorithm = IntegrityAlgorithm::SUM8;
+  std::uint64_t range_offset = 0U;
+  std::uint64_t range_length = 0U;
+  std::uint64_t storage_offset = 0U;
+  ConfigOrigin origin;
+  ConfigOrigin range_origin;
+  ConfigOrigin storage_origin;
+};
+
 struct EncodeIr {
   EncodeSource source = EncodeSource::INPUT;
   std::optional<std::uint64_t> constant_value;
@@ -112,6 +123,7 @@ struct MessageIr {
   std::uint64_t frame_length_bytes = 0U;
   std::vector<MatcherClauseIr> matcher_clauses;
   std::vector<BitContainerIr> bit_containers;
+  std::optional<IntegrityIr> integrity;
   std::vector<FieldIr> fields;
   ConfigOrigin origin;
 };

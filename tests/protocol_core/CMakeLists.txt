@@ -123,6 +123,16 @@ configure_file(
     "${pae_protocol_core_test_data_dir}/bitfield_record_001.frame.hex"
     COPYONLY
 )
+configure_file(
+    "${PROJECT_SOURCE_DIR}/examples/config/synthetic_sum8_slice.pae.json"
+    "${pae_protocol_core_test_data_dir}/synthetic_sum8_slice.pae.json"
+    COPYONLY
+)
+configure_file(
+    "${CMAKE_CURRENT_SOURCE_DIR}/golden/synthetic_sum8/sum8_record_001.frame.hex"
+    "${pae_protocol_core_test_data_dir}/sum8_record_001.frame.hex"
+    COPYONLY
+)
 
 add_executable(pae_bitfield_contract_tests bitfield_contract_tests.cpp)
 target_include_directories(
@@ -142,6 +152,26 @@ add_test(
 set_tests_properties(
     pae.protocol_core.bitfield.contract
     PROPERTIES LABELS "protocol_core;bitfield;dec040" TIMEOUT 180
+)
+
+add_executable(pae_sum8_contract_tests sum8_contract_tests.cpp)
+target_include_directories(
+    pae_sum8_contract_tests
+    PRIVATE
+        "${PROJECT_SOURCE_DIR}/src/config_compiler"
+        "${PROJECT_SOURCE_DIR}/src/protocol_core"
+)
+target_link_libraries(
+    pae_sum8_contract_tests
+    PRIVATE pae_config_compiler pae_protocol_core_slice_instrumented pae::protocol_plan pae::project_options
+)
+add_test(
+    NAME pae.protocol_core.sum8.contract
+    COMMAND pae_sum8_contract_tests "${pae_protocol_core_test_data_dir}"
+)
+set_tests_properties(
+    pae.protocol_core.sum8.contract
+    PROPERTIES LABELS "protocol_core;sum8;dec041" TIMEOUT 180
 )
 configure_file(
     "${pae_request_frame}"
@@ -270,11 +300,16 @@ add_test(
     NAME pae.protocol_core.complete_record_codec.first_bitfield_allocation
     COMMAND pae_complete_record_first_call_allocation_tests --first-bitfield
 )
+add_test(
+    NAME pae.protocol_core.complete_record_codec.first_sum8_allocation
+    COMMAND pae_complete_record_first_call_allocation_tests --first-sum8
+)
 
 set_tests_properties(
     pae.protocol_core.complete_record_codec.first_decode_allocation
     pae.protocol_core.complete_record_codec.first_encode_allocation
     pae.protocol_core.complete_record_codec.first_bitfield_allocation
+    pae.protocol_core.complete_record_codec.first_sum8_allocation
     PROPERTIES
         LABELS "protocol_core;complete_record_codec;allocation"
         TIMEOUT 180

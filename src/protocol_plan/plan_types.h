@@ -86,6 +86,10 @@ enum class UnknownEnumPolicy {
   PRESERVE,
 };
 
+enum class IntegrityAlgorithm {
+  SUM8,
+};
+
 struct ResourceRequirements {
   std::uint64_t max_frame_bytes = 0U;
   std::size_t framing_profile_count = 0U;
@@ -95,6 +99,7 @@ struct ResourceRequirements {
   std::size_t total_matcher_count = 0U;
   std::size_t total_enum_entry_count = 0U;
   std::size_t total_bit_container_count = 0U;
+  std::size_t total_integrity_rule_count = 0U;
 };
 
 struct PlanMemoryReport {

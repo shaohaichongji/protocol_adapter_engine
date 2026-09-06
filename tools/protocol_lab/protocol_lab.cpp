@@ -36,7 +36,7 @@ void BindCompiledPlan(const protocol_plan::PlanBundle& plan, std::string_view op
 
 void FinalizePostPlanFailure(OperationResult& result, std::string_view replay_mode,
                              std::string_view replay_subject) {
-  if (result.schema_version != "0.2") {
+  if (result.schema_version == "0.1") {
     return;
   }
   result.replay_mode.assign(replay_mode.data(), replay_mode.size());
@@ -198,7 +198,7 @@ int RunInspectOrEncode(const Arguments& arguments, OperationResult& result,
       execution_observer->OnProtocolOperation("ENCODE_TX");
     }
     result = EncodeValues(*plan, parsed, error);
-    if (plan->SchemaVersion() == "0.2") {
+    if (plan->SchemaVersion() != "0.1") {
       result.replay_mode = "ENCODE_TX";
       result.replay_subject = "TX";
       result.current_execution_status = result.status;
@@ -350,7 +350,7 @@ int RunUdpExchange(const Arguments& arguments, OperationResult& result, std::str
     execution_observer->OnProtocolOperation("ENCODE_TX");
   }
   result = EncodeValues(*plan, parsed, error);
-  if (plan->SchemaVersion() == "0.2") {
+  if (plan->SchemaVersion() != "0.1") {
     result.replay_mode = "ENCODE_TX";
     result.replay_subject = "TX";
     result.current_execution_status = result.status;
@@ -534,9 +534,12 @@ int RunReplay(const Arguments& arguments, OperationResult& result, std::string& 
     result.replay_subject = stored.replay_subject;
   }
   PreserveHistoricalTransport(stored, result);
-  const bool stored_v3 = stored.format_version == kResultFormatV3;
-  const bool plan_v02 = plan->SchemaVersion() == "0.2";
-  if (stored_v3 != plan_v02) {
+  const unsigned stored_generation = stored.format_version == kResultFormatV4
+                                         ? 4U
+                                         : (stored.format_version == kResultFormatV3 ? 3U : 2U);
+  const unsigned plan_generation =
+      plan->SchemaVersion() == "0.3" ? 4U : (plan->SchemaVersion() == "0.2" ? 3U : 2U);
+  if (stored_generation != plan_generation) {
     result.status = "INPUT_ERROR";
     result.diagnostic_id = "PAE_LAB_CROSS_SCHEMA_REPLAY_UNSUPPORTED";
     result.diagnostic_detail =
@@ -578,14 +581,15 @@ int RunReplay(const Arguments& arguments, OperationResult& result, std::string& 
       execution_observer->OnProtocolOperation("ENCODE_TX");
     }
     result = EncodeValues(*plan, parsed, error);
-    if (stored_v3) {
+    if (stored_generation >= 3U) {
       result.replay_mode = "ENCODE_TX";
       result.replay_subject = "TX";
       result.current_execution_status = result.status;
       result.current_execution_diagnostic_id = result.diagnostic_id;
     }
   } else if (stored.operation_kind == "udp-exchange" &&
-             (stored.format_version == kResultFormat || stored.format_version == kResultFormatV3)) {
+             (stored.format_version == kResultFormat || stored.format_version == kResultFormatV3 ||
+              stored.format_version == kResultFormatV4)) {
     std::vector<std::uint8_t> tx_frame;
     std::vector<std::uint8_t> rx_frame;
     const bool replay_uses_rx =
@@ -743,7 +747,10 @@ int RunCompare(const Arguments& arguments, OperationResult& result) {
       result.diagnostic_detail = error;
       return 3;
     }
-    if ((left.format_version == kResultFormatV3) != (right.format_version == kResultFormatV3)) {
+    const auto generation = [](std::string_view format) {
+      return format == kResultFormatV4 ? 4U : (format == kResultFormatV3 ? 3U : 2U);
+    };
+    if (generation(left.format_version) != generation(right.format_version)) {
       result.status = "INPUT_ERROR";
       result.diagnostic_id = "PAE_LAB_CROSS_FORMAT_COMPARE_UNSUPPORTED";
       result.diagnostic_detail =

@@ -82,9 +82,10 @@ pae_protocol_lab udp-exchange \
 `inspect`和`encode`只有提供`--record-root`时才写Evidence Bundle；`replay`总会创建新Run，
 未指定`--record-root`时写到源Run的父目录；`udp-exchange`强制要求`--record-root`，没有
 非证据型发送旁路。Schema 0.1执行保持原离线Result/Record 0.1和UDP Result/Record/Event 0.2；
-Schema 0.2执行统一使用Result/Record/Event 0.3，RX Metadata仍为0.2。Replay显式标记
+Schema 0.2执行统一使用Result/Record/Event 0.3；Schema 0.3执行统一使用Result/Record/Event
+0.4，并增加唯一结构候选上的SUM8失败状态`PAE_LAB_CODEC_INTEGRITY_FAILED`。RX Metadata仍为0.2。Replay显式标记
 `ENCODE_TX`、`DECODE_RX`或`NO_CODEC_REEXECUTION`。旧离线V0.1继续兼容，旧UDP草案、未知版本、
-跨Schema替换配置Replay和旧格式Run与0.3 Run直接Compare均失败关闭；原始Frame比较不受格式代际限制。
+跨Schema替换配置Replay和跨代Run Compare均失败关闭；原始Frame比较不受格式代际限制。
 默认文本输出便于人工查看。`--expect-status <status>`可把预期的Codec失败
 作为成功用例返回`0`，但Compare发现差异始终返回`6`。
 

@@ -198,7 +198,7 @@ std::string_view ToString(CompileError value) noexcept {
 
 class TestRunner final {
  public:
-  static constexpr std::size_t kExpectedCaseCount = 33U;
+  static constexpr std::size_t kExpectedCaseCount = 36U;
 
   void Pass(std::string_view case_id) {
     ++passed_;
@@ -543,6 +543,25 @@ void RunPlanBuilderBitfieldDefenseCases(TestRunner& runner) {
                         pae::test_support::MakeBitfieldDraftWithTooManyMessageContainers());
   reject_resource_limit("bitfield_builder_total_container_limit_defense",
                         pae::test_support::MakeBitfieldDraftWithTooManyTotalContainers());
+}
+
+void RunPlanBuilderIntegrityDefenseCases(TestRunner& runner) {
+  const auto reject = [&runner](std::string_view case_id, BudgetedPlanDraft draft) {
+    const auto result = PlanBuilder::Freeze(std::move(draft));
+    if (result.Succeeded() || result.Diagnostic() == nullptr ||
+        result.Diagnostic()->code != PlanBuildError::INVALID_MESSAGE_PLAN ||
+        result.Diagnostic()->message_index != 0U) {
+      runner.Fail(case_id, "PlanBuilder accepted a corrupted SUM8 integrity invariant");
+      return;
+    }
+    runner.Pass(case_id);
+  };
+  reject("sum8_builder_algorithm_enum_defense",
+         pae::test_support::MakeIntegrityDraftWithUnknownAlgorithm());
+  reject("sum8_builder_self_inclusion_defense",
+         pae::test_support::MakeIntegrityDraftWithSelfIncludedStorage());
+  reject("sum8_builder_field_storage_conflict_defense",
+         pae::test_support::MakeIntegrityDraftWithFieldStorageConflict());
 }
 
 bool ReadBinaryFile(const std::filesystem::path& path, std::string& output, std::string& error) {
@@ -948,6 +967,7 @@ int main(int argc, char** argv) {
   RunCapabilityStateCase(runner);
   RunCorruptedBudgetedDraftCase(runner);
   RunPlanBuilderBitfieldDefenseCases(runner);
+  RunPlanBuilderIntegrityDefenseCases(runner);
   RunPlanMemoryContractCases(runner);
 
   const std::filesystem::path data_root{argv[1]};

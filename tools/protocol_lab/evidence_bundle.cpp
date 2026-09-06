@@ -49,6 +49,18 @@ std::string RandomRunId() {
 
 std::string GenericPath(const std::filesystem::path& path) { return path.generic_string(); }
 
+std::string_view EventFormatForSchema(std::string_view schema_version) {
+  return schema_version == "0.3"   ? kEventFormatV4
+         : schema_version == "0.2" ? kEventFormatV3
+                                   : kEventFormat;
+}
+
+std::string EventFileForResult(std::string_view result_format) {
+  return result_format == kResultFormatV4   ? "events_v0.4.jsonl"
+         : result_format == kResultFormatV3 ? "events_v0.3.jsonl"
+                                            : "events_v0.2.jsonl";
+}
+
 bool WriteVerified(RecordFileSystem& file_system, const std::filesystem::path& root,
                    const std::filesystem::path& relative, const std::uint8_t* data,
                    std::size_t size, std::vector<RecordedFile>& files, std::string& error) {
@@ -98,13 +110,17 @@ bool WriteVerified(RecordFileSystem& file_system, const std::filesystem::path& r
 std::string SerializeRunRecord(const OperationResult& result, std::string_view run_id,
                                std::string_view timestamp, const std::vector<RecordedFile>& files) {
   const std::string_view record_format =
-      result.schema_version == "0.2"
-          ? kRecordFormatV3
-          : (result.operation_kind == "udp-exchange" ? kRecordFormat : kRecordFormatV1);
+      result.schema_version == "0.3"
+          ? kRecordFormatV4
+          : (result.schema_version == "0.2"
+                 ? kRecordFormatV3
+                 : (result.operation_kind == "udp-exchange" ? kRecordFormat : kRecordFormatV1));
   const std::string_view tool_version =
       record_format == kRecordFormatV1
           ? "0.1.0-udp-exchange-slice"
-          : (record_format == kRecordFormatV3 ? kToolVersionV3 : kToolVersion);
+          : (record_format == kRecordFormatV4
+                 ? kToolVersionV4
+                 : (record_format == kRecordFormatV3 ? kToolVersionV3 : kToolVersion));
   std::ostringstream output;
   output << "{\n"
          << "  \"format_version\":" << Quoted(record_format) << ",\n"
@@ -136,7 +152,8 @@ std::string SerializeRunRecord(const OperationResult& result, std::string_view r
          << "  \"send_succeeded\":" << (result.send_succeeded ? "true" : "false") << ",\n"
          << "  \"response_received\":" << (result.response_received ? "true" : "false") << ",\n"
          << "  \"response_decoded\":" << (result.response_decoded ? "true" : "false");
-  if (record_format == kRecordFormat || record_format == kRecordFormatV3) {
+  if (record_format == kRecordFormat || record_format == kRecordFormatV3 ||
+      record_format == kRecordFormatV4) {
     output << ",\n"
            << "  \"receive_pipeline_id\":" << Quoted(result.receive_pipeline_id) << ",\n"
            << "  \"replay_mode\":" << Quoted(result.replay_mode) << ",\n"
@@ -184,7 +201,7 @@ std::string SerializeEvent(const LabEvent& event, std::string_view format) {
 }
 
 std::string SerializeEvents(const OperationResult& result) {
-  if (result.operation_kind != "udp-exchange" && result.schema_version != "0.2") {
+  if (result.operation_kind != "udp-exchange" && result.schema_version == "0.1") {
     const std::string direction =
         result.command == "encode" ? "TX" : (result.command == "replay" ? "REPLAY" : "RX");
     const std::string origin = result.command == "encode"
@@ -208,7 +225,7 @@ std::string SerializeEvents(const OperationResult& result) {
   }
   std::ostringstream output;
   for (const LabEvent& event : result.events) {
-    output << SerializeEvent(event, result.schema_version == "0.2" ? kEventFormatV3 : kEventFormat);
+    output << SerializeEvent(event, EventFormatForSchema(result.schema_version));
   }
   return output.str();
 }
@@ -255,7 +272,7 @@ bool ReadJsonNonnegativeInt(yyjson_val* object, const char* name, int& output, s
   return true;
 }
 
-bool VerifyRxMetadata(const std::filesystem::path& bundle, const StoredRun& run, bool v3,
+bool VerifyRxMetadata(const std::filesystem::path& bundle, const StoredRun& run, bool /*v3*/,
                       std::string& error) {
   const std::filesystem::path metadata_path = bundle / "frames/000002_rx.meta.json";
   if (!std::filesystem::is_regular_file(metadata_path)) {
@@ -305,7 +322,7 @@ bool VerifyRxMetadata(const std::filesystem::path& bundle, const StoredRun& run,
   }
 
   std::string events_text;
-  if (!ReadText(bundle / (v3 ? "events_v0.3.jsonl" : "events_v0.2.jsonl"), events_text, error)) {
+  if (!ReadText(bundle / EventFileForResult(run.format_version), events_text, error)) {
     return false;
   }
   std::istringstream event_lines{events_text};
@@ -349,7 +366,8 @@ bool VerifyRxMetadata(const std::filesystem::path& bundle, const StoredRun& run,
   return matched;
 }
 
-bool ReadEventV2(yyjson_val* event, LabEvent& output, bool v3, std::string& error) {
+bool ReadEventV2(yyjson_val* event, LabEvent& output, std::string_view expected_format,
+                 std::string& error) {
   const std::set<std::string_view> keys{
       "format_version", "event_id",     "event_kind",    "direction",      "frame_file",
       "frame_length",   "frame_sha256", "frame_origin",  "peer_kind",      "remote_endpoint",
@@ -359,8 +377,7 @@ bool ReadEventV2(yyjson_val* event, LabEvent& output, bool v3, std::string& erro
   }
   std::string format;
   std::size_t offset = 0U;
-  if (!ReadJsonString(event, "format_version", format, error) ||
-      format != (v3 ? kEventFormatV3 : kEventFormat) ||
+  if (!ReadJsonString(event, "format_version", format, error) || format != expected_format ||
       !ReadJsonSize(event, "event_id", output.event_id, error) ||
       !ReadJsonString(event, "event_kind", output.event_kind, error) ||
       !ReadJsonString(event, "direction", output.direction, error) ||
@@ -451,7 +468,10 @@ bool EventBindsFrame(const std::filesystem::path& bundle, const LabEvent& event,
 bool VerifyEventLogV2(const std::filesystem::path& bundle, const StoredRun& run, bool v3,
                       std::string& error) {
   std::string events_text;
-  if (!ReadText(bundle / (v3 ? "events_v0.3.jsonl" : "events_v0.2.jsonl"), events_text, error)) {
+  const std::string events_file = EventFileForResult(run.format_version);
+  const std::string_view expected_format =
+      run.format_version == kResultFormatV4 ? kEventFormatV4 : (v3 ? kEventFormatV3 : kEventFormat);
+  if (!ReadText(bundle / events_file, events_text, error)) {
     return false;
   }
   std::istringstream lines{events_text};
@@ -470,7 +490,7 @@ bool VerifyEventLogV2(const std::filesystem::path& bundle, const StoredRun& run,
     }
     yyjson_val* event = yyjson_doc_get_root(document.get());
     LabEvent parsed;
-    if (!ReadEventV2(event, parsed, v3, error) || parsed.event_id != expected_id ||
+    if (!ReadEventV2(event, parsed, expected_format, error) || parsed.event_id != expected_id ||
         (expected_id > 1U && parsed.monotonic_offset_ns < previous_offset)) {
       if (error.empty()) {
         error = "V0.2 event ids, version, or monotonic offsets are invalid";
@@ -570,14 +590,14 @@ bool VerifyEventLogV2(const std::filesystem::path& bundle, const StoredRun& run,
       }
       return false;
     }
-  } else if (v3 && run.command == "encode") {
+  } else if ((v3 || run.format_version == kResultFormatV4) && run.command == "encode") {
     if (tx_frames != 1U || rx_frames != 0U || replay_frames != 0U || intents != 0U ||
         send_results != 0U ||
         !EventBindsFrame(bundle, events.front(), run.frame_file, frame, error)) {
       if (error.empty()) error = "V0.3 Encode event does not bind its result frame";
       return false;
     }
-  } else if (v3 && run.command == "inspect") {
+  } else if ((v3 || run.format_version == kResultFormatV4) && run.command == "inspect") {
     if (rx_frames != 1U || tx_frames != 0U || replay_frames != 0U || intents != 0U ||
         send_results != 0U ||
         !EventBindsFrame(bundle, events.front(), run.frame_file, frame, error)) {
@@ -595,9 +615,10 @@ bool VerifyRunRecord(const std::filesystem::path& bundle, const StoredRun& run, 
                      std::string& error) {
   const bool modern = generation >= 2;
   const std::filesystem::path record_path =
-      bundle / (generation == 3
-                    ? "run_record_v0.3.json"
-                    : (generation == 2 ? "run_record_v0.2.json" : "run_record_v0.1.json"));
+      bundle / (generation == 4 ? "run_record_v0.4.json"
+                                : (generation == 3 ? "run_record_v0.3.json"
+                                                   : (generation == 2 ? "run_record_v0.2.json"
+                                                                      : "run_record_v0.1.json")));
   std::string text;
   if (!ReadText(record_path, text, error)) {
     return false;
@@ -717,7 +738,8 @@ bool VerifyRunRecord(const std::filesystem::path& bundle, const StoredRun& run, 
       !read_optional_bool("response_decoded", response_decoded, has_response_decoded)) {
     return false;
   }
-  const std::string expected_format = generation == 3   ? std::string{kRecordFormatV3}
+  const std::string expected_format = generation == 4   ? std::string{kRecordFormatV4}
+                                      : generation == 3 ? std::string{kRecordFormatV3}
                                       : generation == 2 ? std::string{kRecordFormat}
                                                         : std::string{kRecordFormatV1};
   if (format != expected_format || hash_manifest != "SHA256SUMS" || !manifest_excludes_self) {
@@ -810,10 +832,12 @@ bool VerifyRunRecord(const std::filesystem::path& bundle, const StoredRun& run, 
       return false;
     }
   }
-  const std::string result_name = generation == 3   ? "result_summary_v0.3.json"
+  const std::string result_name = generation == 4   ? "result_summary_v0.4.json"
+                                  : generation == 3 ? "result_summary_v0.3.json"
                                   : generation == 2 ? "result_summary_v0.2.json"
                                                     : "result_summary_v0.1.json";
-  const std::string events_name = generation == 3   ? "events_v0.3.jsonl"
+  const std::string events_name = generation == 4   ? "events_v0.4.jsonl"
+                                  : generation == 3 ? "events_v0.3.jsonl"
                                   : generation == 2 ? "events_v0.2.jsonl"
                                                     : "events_v0.1.jsonl";
   auto requires_payload = [&](const std::string& path) {
@@ -871,12 +895,15 @@ bool VerifyBundleHashes(const std::filesystem::path& bundle, std::string& error)
   bool saw_result_v1 = false;
   bool saw_result_v2 = false;
   bool saw_result_v3 = false;
+  bool saw_result_v4 = false;
   bool saw_record_v1 = false;
   bool saw_record_v2 = false;
   bool saw_record_v3 = false;
+  bool saw_record_v4 = false;
   bool saw_events_v1 = false;
   bool saw_events_v2 = false;
   bool saw_events_v3 = false;
+  bool saw_events_v4 = false;
   bool saw_config = false;
   bool saw_frame = false;
   std::size_t entry_count = 0U;
@@ -924,12 +951,15 @@ bool VerifyBundleHashes(const std::filesystem::path& bundle, std::string& error)
     saw_result_v1 = saw_result_v1 || relative_text == "result_summary_v0.1.json";
     saw_result_v2 = saw_result_v2 || relative_text == "result_summary_v0.2.json";
     saw_result_v3 = saw_result_v3 || relative_text == "result_summary_v0.3.json";
+    saw_result_v4 = saw_result_v4 || relative_text == "result_summary_v0.4.json";
     saw_record_v1 = saw_record_v1 || relative_text == "run_record_v0.1.json";
     saw_record_v2 = saw_record_v2 || relative_text == "run_record_v0.2.json";
     saw_record_v3 = saw_record_v3 || relative_text == "run_record_v0.3.json";
+    saw_record_v4 = saw_record_v4 || relative_text == "run_record_v0.4.json";
     saw_events_v1 = saw_events_v1 || relative_text == "events_v0.1.jsonl";
     saw_events_v2 = saw_events_v2 || relative_text == "events_v0.2.jsonl";
     saw_events_v3 = saw_events_v3 || relative_text == "events_v0.3.jsonl";
+    saw_events_v4 = saw_events_v4 || relative_text == "events_v0.4.jsonl";
     saw_config = saw_config || relative_text == "inputs/protocol.pae.json";
     saw_frame = saw_frame || relative_text == "frames/000001_frame.bin" ||
                 relative_text == "frames/000001_tx.bin" || relative_text == "frames/000002_rx.bin";
@@ -937,15 +967,18 @@ bool VerifyBundleHashes(const std::filesystem::path& bundle, std::string& error)
   }
   const bool complete_v1 = saw_result_v1 && saw_record_v1 && saw_events_v1 && !saw_result_v2 &&
                            !saw_record_v2 && !saw_events_v2 && !saw_result_v3 && !saw_record_v3 &&
-                           !saw_events_v3;
+                           !saw_events_v3 && !saw_result_v4 && !saw_record_v4 && !saw_events_v4;
   const bool complete_v2 = saw_result_v2 && saw_record_v2 && saw_events_v2 && !saw_result_v1 &&
                            !saw_record_v1 && !saw_events_v1 && !saw_result_v3 && !saw_record_v3 &&
-                           !saw_events_v3;
+                           !saw_events_v3 && !saw_result_v4 && !saw_record_v4 && !saw_events_v4;
   const bool complete_v3 = saw_result_v3 && saw_record_v3 && saw_events_v3 && !saw_result_v1 &&
                            !saw_record_v1 && !saw_events_v1 && !saw_result_v2 && !saw_record_v2 &&
-                           !saw_events_v2;
+                           !saw_events_v2 && !saw_result_v4 && !saw_record_v4 && !saw_events_v4;
+  const bool complete_v4 = saw_result_v4 && saw_record_v4 && saw_events_v4 && !saw_result_v1 &&
+                           !saw_record_v1 && !saw_events_v1 && !saw_result_v2 && !saw_record_v2 &&
+                           !saw_events_v2 && !saw_result_v3 && !saw_record_v3 && !saw_events_v3;
   if (entry_count == 0U || !saw_complete || !saw_config || !saw_frame ||
-      (!complete_v1 && !complete_v2 && !complete_v3)) {
+      (!complete_v1 && !complete_v2 && !complete_v3 && !complete_v4)) {
     error = "SHA256SUMS omits a required Evidence Bundle file";
     return false;
   }
@@ -1238,15 +1271,20 @@ bool EvidenceBundleTransaction::Complete(OperationResult& result, std::string& e
   }
   result.events = events_;
   const std::string result_json = SerializeResult(result);
+  const bool v4 = result.schema_version == "0.3";
   const bool v3 = result.schema_version == "0.2";
-  const bool udp_v2 = !v3 && result.operation_kind == "udp-exchange";
+  const bool udp_v2 = !v4 && !v3 && result.operation_kind == "udp-exchange";
   const std::filesystem::path result_name =
-      v3 ? "result_summary_v0.3.json"
-         : (udp_v2 ? "result_summary_v0.2.json" : "result_summary_v0.1.json");
+      v4 ? "result_summary_v0.4.json"
+         : (v3 ? "result_summary_v0.3.json"
+               : (udp_v2 ? "result_summary_v0.2.json" : "result_summary_v0.1.json"));
   const std::filesystem::path events_name =
-      v3 ? "events_v0.3.jsonl" : (udp_v2 ? "events_v0.2.jsonl" : "events_v0.1.jsonl");
+      v4 ? "events_v0.4.jsonl"
+         : (v3 ? "events_v0.3.jsonl" : (udp_v2 ? "events_v0.2.jsonl" : "events_v0.1.jsonl"));
   const std::filesystem::path record_name =
-      v3 ? "run_record_v0.3.json" : (udp_v2 ? "run_record_v0.2.json" : "run_record_v0.1.json");
+      v4 ? "run_record_v0.4.json"
+         : (v3 ? "run_record_v0.3.json"
+               : (udp_v2 ? "run_record_v0.2.json" : "run_record_v0.1.json"));
   if (!WriteVerified(file_system_, in_progress_, result_name, result_json, files_, error) ||
       !WriteVerified(file_system_, in_progress_, events_name, SerializeEvents(result), files_,
                      error)) {
@@ -1298,16 +1336,19 @@ bool LoadStoredRun(const std::filesystem::path& bundle, StoredRun& output, std::
   const bool has_v2 = std::filesystem::is_regular_file(bundle / "result_summary_v0.2.json");
   const bool has_v1 = std::filesystem::is_regular_file(bundle / "result_summary_v0.1.json");
   const bool has_v3 = std::filesystem::is_regular_file(bundle / "result_summary_v0.3.json");
+  const bool has_v4 = std::filesystem::is_regular_file(bundle / "result_summary_v0.4.json");
   if (static_cast<unsigned>(has_v1) + static_cast<unsigned>(has_v2) +
-          static_cast<unsigned>(has_v3) !=
+          static_cast<unsigned>(has_v3) + static_cast<unsigned>(has_v4) !=
       1U) {
     error = "Run must contain exactly one supported result summary";
     return false;
   }
   const std::filesystem::path result_path =
-      bundle / (has_v3 ? "result_summary_v0.3.json"
-                       : (has_v2 ? "result_summary_v0.2.json" : "result_summary_v0.1.json"));
-  const bool modern = has_v2 || has_v3;
+      bundle /
+      (has_v4 ? "result_summary_v0.4.json"
+              : (has_v3 ? "result_summary_v0.3.json"
+                        : (has_v2 ? "result_summary_v0.2.json" : "result_summary_v0.1.json")));
+  const bool modern = has_v2 || has_v3 || has_v4;
   std::string text;
   if (!ReadText(result_path, text, error)) {
     return false;
@@ -1319,13 +1360,15 @@ bool LoadStoredRun(const std::filesystem::path& bundle, StoredRun& output, std::
   yyjson_val* root = yyjson_doc_get_root(document.get());
   std::string format;
   if (!ReadJsonString(root, "format_version", format, error) ||
-      (format != kResultFormatV1 && format != kResultFormat && format != kResultFormatV3)) {
+      (format != kResultFormatV1 && format != kResultFormat && format != kResultFormatV3 &&
+       format != kResultFormatV4)) {
     if (error.empty()) {
       error = "unsupported result format_version";
     }
     return false;
   }
-  if ((format == kResultFormat) != has_v2 || (format == kResultFormatV3) != has_v3) {
+  if ((format == kResultFormat) != has_v2 || (format == kResultFormatV3) != has_v3 ||
+      (format == kResultFormatV4) != has_v4) {
     error = "result filename and format_version do not agree";
     return false;
   }
@@ -1553,8 +1596,8 @@ bool LoadStoredRun(const std::filesystem::path& bundle, StoredRun& output, std::
       error = "stored field kind is unsupported";
       return false;
     }
-    if (kind == "BOOL" && !has_v3) {
-      error = "BOOL fields require result format 0.3";
+    if (kind == "BOOL" && !has_v3 && !has_v4) {
+      error = "BOOL fields require result format 0.3 or 0.4";
       return false;
     }
     if (kind == "BOOL" &&
@@ -1739,7 +1782,7 @@ bool LoadStoredRun(const std::filesystem::path& bundle, StoredRun& output, std::
     error = "V0.2 UDP Run with a received response has no RX metadata";
     return false;
   }
-  const int generation = has_v3 ? 3 : (has_v2 ? 2 : 1);
+  const int generation = has_v4 ? 4 : (has_v3 ? 3 : (has_v2 ? 2 : 1));
   if (!VerifyRunRecord(bundle, output, generation, error)) {
     return false;
   }

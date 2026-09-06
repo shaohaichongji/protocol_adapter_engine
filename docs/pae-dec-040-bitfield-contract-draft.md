@@ -214,6 +214,7 @@ BOOL内部需要独立LogicalValueKind及布尔存储，不能复用UINT64并要
 
 提交后补记（2026-09-06）：DEC-040实现与范围内审查纠错已随`3b23db9`提交并Push；
 人工Lab文档检查点为独立提交`263f514`。本轮已发现的审查项已关闭，不扩大下文验证边界。
+后续能力及DEC-041进展见[推进路线](post-dec040-roadmap.md)，不扩大本DEC-040契约范围。
 
 本轮公开人工样例位于`examples/config/synthetic_bitfield_slice.*`，独立字节预期位于
 `tests/protocol_core/golden/synthetic_bitfield/`。Schema、Loader/Validator、冻结Plan、

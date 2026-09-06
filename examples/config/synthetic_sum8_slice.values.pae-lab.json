@@ -1,0 +1,10 @@
+{
+  "format_version": "pae.lab.values/0.1",
+  "pipeline_id": "synthetic_direction",
+  "message_id": "sum8_record",
+  "fields": [
+    {"id": "payload_word", "kind": "UINT64", "uint64": "258"},
+    {"id": "payload_b", "kind": "UINT64", "uint64": "32"},
+    {"id": "payload_a", "kind": "UINT64", "uint64": "240"}
+  ]
+}

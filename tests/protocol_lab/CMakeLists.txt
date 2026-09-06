@@ -17,6 +17,26 @@ configure_file(
     COPYONLY
 )
 configure_file(
+    "${PROJECT_SOURCE_DIR}/examples/config/synthetic_sum8_slice.pae.json"
+    "${pae_protocol_lab_test_data_dir}/synthetic_sum8_slice.pae.json"
+    COPYONLY
+)
+configure_file(
+    "${PROJECT_SOURCE_DIR}/examples/config/synthetic_sum8_slice.values.pae-lab.json"
+    "${pae_protocol_lab_test_data_dir}/synthetic_sum8_slice.values.pae-lab.json"
+    COPYONLY
+)
+configure_file(
+    "${PROJECT_SOURCE_DIR}/tests/protocol_core/golden/synthetic_sum8/sum8_record_001.frame.hex"
+    "${pae_protocol_lab_test_data_dir}/sum8_record_001.frame.hex"
+    COPYONLY
+)
+configure_file(
+    "${CMAKE_CURRENT_SOURCE_DIR}/fixtures/sum8_cross_pipeline_ambiguous.pae.json"
+    "${pae_protocol_lab_test_data_dir}/sum8_cross_pipeline_ambiguous.pae.json"
+    COPYONLY
+)
+configure_file(
     "${PROJECT_SOURCE_DIR}/tests/protocol_core/golden/synthetic_bitfield/bitfield_record_001.frame.hex"
     "${pae_protocol_lab_test_data_dir}/bitfield_record_001.frame.hex"
     COPYONLY
@@ -74,6 +94,51 @@ set_tests_properties(
 )
 
 add_test(
+    NAME pae.tools.protocol_lab.sum8_generation_contract
+    COMMAND
+        "${CMAKE_COMMAND}"
+        "-DPAE_LAB_EXECUTABLE=$<TARGET_FILE:pae_protocol_lab>"
+        "-DPAE_LAB_DATA_DIR=${pae_protocol_lab_test_data_dir}"
+        "-DPAE_LAB_RUN_ROOT=${CMAKE_CURRENT_BINARY_DIR}/sum8-runs-$<CONFIG>"
+        -P "${CMAKE_CURRENT_SOURCE_DIR}/verify_sum8_generation_contract.cmake"
+)
+set_tests_properties(
+    pae.tools.protocol_lab.sum8_generation_contract
+    PROPERTIES LABELS "tools;protocol_lab;offline;sum8;dec041" TIMEOUT 180
+               WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
+)
+
+add_executable(
+    pae_protocol_lab_inspect_phase_tests
+    inspect_frame_phase_tests.cpp
+)
+target_include_directories(
+    pae_protocol_lab_inspect_phase_tests
+    PRIVATE
+        "${PROJECT_SOURCE_DIR}/src/config_compiler"
+        "${PROJECT_SOURCE_DIR}/src/protocol_core"
+        "${PROJECT_SOURCE_DIR}/src/protocol_plan"
+        "${PROJECT_SOURCE_DIR}/tools/protocol_lab"
+)
+target_link_libraries(
+    pae_protocol_lab_inspect_phase_tests
+    PRIVATE
+        pae_protocol_lab_internal
+        pae_config_compiler
+        pae::project_options
+        pae::yyjson_candidate
+)
+add_test(
+    NAME pae.tools.protocol_lab.inspect_phase
+    COMMAND pae_protocol_lab_inspect_phase_tests "${pae_protocol_lab_test_data_dir}"
+)
+set_tests_properties(
+    pae.tools.protocol_lab.inspect_phase
+    PROPERTIES LABELS "tools;protocol_lab;offline;sum8;dec041" TIMEOUT 180
+               WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
+)
+
+add_test(
     NAME pae.tools.protocol_lab.bitfield_generation_contract
     COMMAND
         "${CMAKE_COMMAND}"
@@ -106,6 +171,24 @@ if(WIN32)
     set_tests_properties(
         pae.tools.protocol_lab.bitfield_schema_contract
         PROPERTIES LABELS "tools;protocol_lab;offline;bitfield;dec040;schema" TIMEOUT 180
+                   WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
+    )
+
+    add_test(
+        NAME pae.tools.protocol_lab.sum8_schema_contract
+        COMMAND
+            "${pae_powershell_executable}"
+            -NoProfile
+            -File "${CMAKE_CURRENT_SOURCE_DIR}/verify_sum8_schema_contract.ps1"
+            -LabExecutable "$<TARGET_FILE:pae_protocol_lab>"
+            -SchemaPath "${PROJECT_SOURCE_DIR}/schema/pae.schema.json"
+            -ConfigPath "${pae_protocol_lab_test_data_dir}/synthetic_sum8_slice.pae.json"
+            -ValuesPath "${pae_protocol_lab_test_data_dir}/synthetic_sum8_slice.values.pae-lab.json"
+            -TestRoot "${CMAKE_CURRENT_BINARY_DIR}/sum8-schema-$<CONFIG>"
+    )
+    set_tests_properties(
+        pae.tools.protocol_lab.sum8_schema_contract
+        PROPERTIES LABELS "tools;protocol_lab;offline;sum8;dec041;schema" TIMEOUT 180
                    WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
     )
 
@@ -149,6 +232,17 @@ if(WIN32)
         pae.tools.protocol_lab.dec040_failure_chain
         PROPERTIES
             LABELS "tools;protocol_lab;offline;bitfield;dec040"
+            TIMEOUT 180
+            WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
+    )
+    add_test(
+        NAME pae.tools.protocol_lab.dec041_failure_chain
+        COMMAND pae_protocol_lab_udp_exchange_tests --dec041-offline-only
+    )
+    set_tests_properties(
+        pae.tools.protocol_lab.dec041_failure_chain
+        PROPERTIES
+            LABELS "tools;protocol_lab;offline;sum8;dec041"
             TIMEOUT 180
             WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
     )

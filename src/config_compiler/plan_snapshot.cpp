@@ -182,9 +182,12 @@ std::string MakeDeterministicPlanSnapshot(const PlanBundle& plan) {
   output.reserve(1024U);
   output.push_back('{');
   const bool v02 = plan.SchemaVersion() == "0.2";
+  const bool v03 = plan.SchemaVersion() == "0.3";
   AppendStringProperty(
       "snapshot_format",
-      v02 ? "pae_plan_bundle_v0.2_bitfield_slice" : "pae_plan_bundle_v0.1_draft_slice", output);
+      v03 ? "pae_plan_bundle_v0.3_sum8_slice"
+          : (v02 ? "pae_plan_bundle_v0.2_bitfield_slice" : "pae_plan_bundle_v0.1_draft_slice"),
+      output);
   output.push_back(',');
   AppendStringProperty("schema_version", plan.SchemaVersion(), output);
   output.push_back(',');
@@ -209,9 +212,14 @@ std::string MakeDeterministicPlanSnapshot(const PlanBundle& plan) {
   AppendIntegerProperty("total_matcher_count", requirements.total_matcher_count, output);
   output.push_back(',');
   AppendIntegerProperty("total_enum_entry_count", requirements.total_enum_entry_count, output);
-  if (v02) {
+  if (v02 || v03) {
     output.push_back(',');
     AppendIntegerProperty("total_bit_container_count", requirements.total_bit_container_count,
+                          output);
+  }
+  if (v03) {
+    output.push_back(',');
+    AppendIntegerProperty("total_integrity_rule_count", requirements.total_integrity_rule_count,
                           output);
   }
   output.push_back('}');
@@ -291,7 +299,7 @@ std::string MakeDeterministicPlanSnapshot(const PlanBundle& plan) {
     }
     output.push_back(']');
 
-    if (v02) {
+    if (v02 || v03) {
       output.append(",\"bit_containers\":[");
       for (std::size_t index = 0U; index < message.bit_containers.size(); ++index) {
         if (index != 0U) output.push_back(',');
@@ -311,6 +319,23 @@ std::string MakeDeterministicPlanSnapshot(const PlanBundle& plan) {
         output.push_back('}');
       }
       output.push_back(']');
+    }
+
+    if (v03) {
+      output.append(",\"integrity\":");
+      if (!message.integrity.has_value()) {
+        output.append("null");
+      } else {
+        output.push_back('{');
+        AppendStringProperty("algorithm", "sum8", output);
+        output.push_back(',');
+        AppendIntegerProperty("range_offset", message.integrity->range_offset, output);
+        output.push_back(',');
+        AppendIntegerProperty("range_length", message.integrity->range_length, output);
+        output.push_back(',');
+        AppendIntegerProperty("storage_offset", message.integrity->storage_offset, output);
+        output.push_back('}');
+      }
     }
 
     output.append(",\"fields\":[");

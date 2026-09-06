@@ -3,6 +3,8 @@
 只允许放置脱敏、人工构造或已确认可分发的协议示例。真实客户协议和现场数据默认禁止进入 Git。
 
 - [`config/synthetic_lab_exchange_slice.pae.json`](config/synthetic_lab_exchange_slice.pae.json)：从零设计的人工实验台双向配置切片；状态为`V0.1 DRAFT SLICE / INCOMPLETE`。
+- [`config/synthetic_sum8_slice.pae.json`](config/synthetic_sum8_slice.pae.json)：从零设计的Schema 0.3
+  SUM8完整记录样例，配套Values与独立计算Frame；不来自真实协议或现场报文。
 
 该样例只用于当前及后续 Loader/Compiler 和 Plan快照验证：
 

@@ -1,0 +1,108 @@
+{
+  "schema_version": "0.3",
+  "protocol_id": "synthetic_sum8_ambiguity",
+  "protocol_version": "0.3-synthetic",
+  "display_name": "公开人工SUM8歧义样例",
+  "description": "两个Pipeline具有相同结构候选，但只有一个SUM8通过。",
+  "source_ref": "SYNTHETIC_FROM_SCRATCH:dec041_ambiguity",
+  "resource_profile": "desktop",
+  "framing_profiles": [
+    {
+      "id": "record",
+      "display_name": "完整记录",
+      "description": "一次提交完整记录。",
+      "source_ref": "SYNTHETIC_FROM_SCRATCH:dec041_ambiguity#framing",
+      "input_kind": "complete_record"
+    }
+  ],
+  "pipelines": [
+    {
+      "id": "candidate_a",
+      "display_name": "候选A",
+      "description": "SUM8通过的结构候选。",
+      "source_ref": "SYNTHETIC_FROM_SCRATCH:dec041_ambiguity#a",
+      "direction_id": "a",
+      "input_framing_profile_id": "record",
+      "message_ids": ["message_a"]
+    },
+    {
+      "id": "candidate_b",
+      "display_name": "候选B",
+      "description": "SUM8失败的结构候选。",
+      "source_ref": "SYNTHETIC_FROM_SCRATCH:dec041_ambiguity#b",
+      "direction_id": "b",
+      "input_framing_profile_id": "record",
+      "message_ids": ["message_b"]
+    }
+  ],
+  "messages": [
+    {
+      "id": "message_a",
+      "display_name": "消息A",
+      "description": "校验第0字节并存入第2字节。",
+      "source_ref": "SYNTHETIC_FROM_SCRATCH:dec041_ambiguity#message_a",
+      "direction_id": "a",
+      "frame_length_bytes": 3,
+      "matcher": {"all": [{"kind": "frame_length_equals", "length_bytes": 3}]},
+      "integrity": {
+        "algorithm": "sum8",
+        "range": {"byte_offset": 0, "byte_length": 1},
+        "storage": {"byte_offset": 2}
+      },
+      "fields": [
+        {
+          "id": "first",
+          "display_name": "首字节",
+          "description": "候选A校验覆盖字节。",
+          "source_ref": "SYNTHETIC_FROM_SCRATCH:dec041_ambiguity#first_a",
+          "value_type": "UINT64",
+          "wire": {"codec": "unsigned_integer", "byte_offset": 0, "byte_width": 1},
+          "encode": {"source": "input"}
+        },
+        {
+          "id": "second",
+          "display_name": "次字节",
+          "description": "范围外业务字节。",
+          "source_ref": "SYNTHETIC_FROM_SCRATCH:dec041_ambiguity#second_a",
+          "value_type": "UINT64",
+          "wire": {"codec": "unsigned_integer", "byte_offset": 1, "byte_width": 1},
+          "encode": {"source": "input"}
+        }
+      ]
+    },
+    {
+      "id": "message_b",
+      "display_name": "消息B",
+      "description": "校验第1字节并存入第2字节。",
+      "source_ref": "SYNTHETIC_FROM_SCRATCH:dec041_ambiguity#message_b",
+      "direction_id": "b",
+      "frame_length_bytes": 3,
+      "matcher": {"all": [{"kind": "frame_length_equals", "length_bytes": 3}]},
+      "integrity": {
+        "algorithm": "sum8",
+        "range": {"byte_offset": 1, "byte_length": 1},
+        "storage": {"byte_offset": 2}
+      },
+      "fields": [
+        {
+          "id": "first",
+          "display_name": "首字节",
+          "description": "范围外业务字节。",
+          "source_ref": "SYNTHETIC_FROM_SCRATCH:dec041_ambiguity#first_b",
+          "value_type": "UINT64",
+          "wire": {"codec": "unsigned_integer", "byte_offset": 0, "byte_width": 1},
+          "encode": {"source": "input"}
+        },
+        {
+          "id": "second",
+          "display_name": "次字节",
+          "description": "候选B校验覆盖字节。",
+          "source_ref": "SYNTHETIC_FROM_SCRATCH:dec041_ambiguity#second_b",
+          "value_type": "UINT64",
+          "wire": {"codec": "unsigned_integer", "byte_offset": 1, "byte_width": 1},
+          "encode": {"source": "input"}
+        }
+      ]
+    }
+  ]
+}

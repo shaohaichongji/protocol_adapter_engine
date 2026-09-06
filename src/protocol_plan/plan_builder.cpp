@@ -140,7 +140,8 @@ bool RequirementsEqual(const ResourceRequirements& left,
          left.total_field_count == right.total_field_count &&
          left.total_matcher_count == right.total_matcher_count &&
          left.total_enum_entry_count == right.total_enum_entry_count &&
-         left.total_bit_container_count == right.total_bit_container_count;
+         left.total_bit_container_count == right.total_bit_container_count &&
+         left.total_integrity_rule_count == right.total_integrity_rule_count;
 }
 
 bool CoversWholeFrame(std::vector<ByteInterval>& intervals, std::size_t frame_size) {
@@ -368,7 +369,8 @@ BudgetedPlanDraft::~BudgetedPlanDraft() = default;
 
 PlanBuildResult PlanBuilder::FreezeImpl(detail::PlanDraftData draft) {
   const ResourceProfileLimits* limits = GetResourceProfileLimits(draft.resource_profile);
-  if ((draft.schema_version != "0.1" && draft.schema_version != "0.2") ||
+  if ((draft.schema_version != "0.1" && draft.schema_version != "0.2" &&
+       draft.schema_version != "0.3") ||
       !IsStableId(draft.protocol_id) || draft.protocol_version.empty() || limits == nullptr ||
       draft.framing_profiles.empty() || draft.pipelines.empty() || draft.messages.empty()) {
     return Reject(PlanBuildError::INVALID_METADATA);
@@ -393,8 +395,11 @@ PlanBuildResult PlanBuilder::FreezeImpl(detail::PlanDraftData draft) {
         !AddSizeChecked(message.matchers.size(), actual_requirements.total_matcher_count) ||
         !AddSizeChecked(message.bit_containers.size(),
                         actual_requirements.total_bit_container_count) ||
+        (message.integrity.has_value() &&
+         !AddSizeChecked(1U, actual_requirements.total_integrity_rule_count)) ||
         actual_requirements.total_field_count > limits->max_total_fields ||
         actual_requirements.total_bit_container_count > limits->max_total_fields ||
+        actual_requirements.total_integrity_rule_count > limits->max_messages ||
         actual_requirements.total_matcher_count > limits->max_total_matchers) {
       return Reject(PlanBuildError::RESOURCE_LIMIT_EXCEEDED, kInvalidPlanBuildIndex,
                     kInvalidPlanBuildIndex, message_index);
@@ -447,6 +452,23 @@ PlanBuildResult PlanBuilder::FreezeImpl(detail::PlanDraftData draft) {
 
     detail::PreparedMessageExecutionPlan execution;
     execution.frame_size = frame_size;
+    if (message.integrity.has_value()) {
+      std::size_t range_offset = 0U;
+      std::size_t range_length = 0U;
+      std::size_t storage_offset = 0U;
+      const IntegrityPlan& integrity = *message.integrity;
+      if (draft.schema_version != "0.3" || integrity.algorithm != IntegrityAlgorithm::SUM8 ||
+          !ToSize(integrity.range_offset, range_offset) ||
+          !ToSize(integrity.range_length, range_length) ||
+          !ToSize(integrity.storage_offset, storage_offset) || range_length == 0U ||
+          !IsRangeWithin(range_offset, range_length, frame_size) || storage_offset >= frame_size ||
+          (storage_offset >= range_offset && storage_offset - range_offset < range_length)) {
+        return Reject(PlanBuildError::INVALID_MESSAGE_PLAN, kInvalidPlanBuildIndex,
+                      kInvalidPlanBuildIndex, message_index);
+      }
+      execution.integrity =
+          FrozenIntegrityPlan{integrity.algorithm, range_offset, range_length, storage_offset};
+    }
     execution.fields.reserve(message.fields.size());
     std::unordered_set<std::string> field_ids;
     field_ids.reserve(message.fields.size());
@@ -640,6 +662,15 @@ PlanBuildResult PlanBuilder::FreezeImpl(detail::PlanDraftData draft) {
                       field_intervals[field_interval_index].source_index);
       }
     }
+    if (execution.integrity.has_value()) {
+      for (const ByteInterval& interval : field_intervals) {
+        if (execution.integrity->storage_offset >= interval.begin &&
+            execution.integrity->storage_offset < interval.end) {
+          return Reject(PlanBuildError::INVALID_MESSAGE_PLAN, kInvalidPlanBuildIndex,
+                        kInvalidPlanBuildIndex, message_index);
+        }
+      }
+    }
     execution.required_input_count = input_ordinal;
     execution_resource_layout.max_input_fields_per_message =
         (std::max)(execution_resource_layout.max_input_fields_per_message, input_ordinal);
@@ -674,10 +705,20 @@ PlanBuildResult PlanBuilder::FreezeImpl(detail::PlanDraftData draft) {
 
     execution.fixed_bytes.reserve(fixed_bytes.size());
     std::vector<ByteInterval> coverage_intervals = field_intervals;
-    coverage_intervals.reserve(field_intervals.size() + fixed_bytes.size());
+    coverage_intervals.reserve(field_intervals.size() + fixed_bytes.size() +
+                               (execution.integrity.has_value() ? 1U : 0U));
     for (const auto& [offset, value] : fixed_bytes) {
       execution.fixed_bytes.push_back(FixedByteExecutionPlan{offset, value});
       coverage_intervals.push_back(ByteInterval{offset, offset + 1U, kInvalidPlanBuildIndex});
+    }
+    if (execution.integrity.has_value()) {
+      if (fixed_bytes.find(execution.integrity->storage_offset) != fixed_bytes.end()) {
+        return Reject(PlanBuildError::INVALID_MESSAGE_PLAN, kInvalidPlanBuildIndex,
+                      kInvalidPlanBuildIndex, message_index);
+      }
+      coverage_intervals.push_back(ByteInterval{execution.integrity->storage_offset,
+                                                execution.integrity->storage_offset + 1U,
+                                                kInvalidPlanBuildIndex});
     }
     if (!CoversWholeFrame(coverage_intervals, frame_size)) {
       return Reject(PlanBuildError::FRAME_NOT_FULLY_DEFINED, kInvalidPlanBuildIndex,
@@ -886,6 +927,11 @@ PlanBuildResult PlanBuilder::FreezeImpl(detail::PlanDraftData draft) {
           [&arena, &draft](std::size_t message_index, FrozenMessagePlan& output) {
             const MessagePlan& source = draft.messages[message_index];
             output.frame_length_bytes = source.frame_length_bytes;
+            if (source.integrity.has_value()) {
+              output.integrity = FrozenIntegrityPlan{
+                  source.integrity->algorithm, source.integrity->range_offset,
+                  source.integrity->range_length, source.integrity->storage_offset};
+            }
             if (!FreezeString(arena, source.id, output.id) ||
                 !FreezeString(arena, source.direction_id, output.direction_id) ||
                 !FreezeObjectArray<FrozenMatcherPlan>(
@@ -954,6 +1000,7 @@ PlanBuildResult PlanBuilder::FreezeImpl(detail::PlanDraftData draft) {
             const detail::PreparedMessageExecutionPlan& source = message_execution_plans[index];
             output.frame_size = source.frame_size;
             output.required_input_count = source.required_input_count;
+            output.integrity = source.integrity;
             return FreezePodArray(arena, source.fixed_bytes, PlanMemoryCategory::MATCHER,
                                   output.fixed_bytes) &&
                    FreezePodArray(arena, source.bit_containers,

@@ -80,6 +80,8 @@ std::string CodecStatusName(protocol_core::CodecStatus status) {
       return "AMBIGUOUS_MESSAGE";
     case CodecStatus::OUTPUT_SLOTS_TOO_SMALL:
       return "OUTPUT_SLOTS_TOO_SMALL";
+    case CodecStatus::INTEGRITY_FAILED:
+      return "INTEGRITY_FAILED";
     case CodecStatus::MESSAGE_NOT_ALLOWED:
       return "MESSAGE_NOT_ALLOWED";
     case CodecStatus::FIELD_REFERENCE_MISMATCH:
@@ -114,7 +116,9 @@ namespace {
 
 std::string DeterministicPayload(const OperationResult& result) {
   std::ostringstream output;
-  if (result.schema_version == "0.2") {
+  if (result.schema_version == "0.3") {
+    output << "fingerprint_domain=pae.lab.fingerprint/0.4\n";
+  } else if (result.schema_version == "0.2") {
     output << "fingerprint_domain=pae.lab.fingerprint/0.3\n";
   }
   output << "operation=" << result.operation_kind << '\n';
@@ -208,9 +212,11 @@ std::string SerializeFieldsCompact(const std::vector<FieldResult>& fields) {
 
 std::string SerializeResult(const OperationResult& result) {
   const std::string_view result_format =
-      result.schema_version == "0.2"
-          ? kResultFormatV3
-          : (result.operation_kind == "udp-exchange" ? kResultFormat : kResultFormatV1);
+      result.schema_version == "0.3"
+          ? kResultFormatV4
+          : (result.schema_version == "0.2"
+                 ? kResultFormatV3
+                 : (result.operation_kind == "udp-exchange" ? kResultFormat : kResultFormatV1));
   const std::string frame_hex = HexUpper(result.frame);
   const std::string frame_file =
       result.frame_file.empty() ? "frames/000001_frame.bin" : result.frame_file;
@@ -279,7 +285,8 @@ std::string SerializeResult(const OperationResult& result) {
          << "  \"send_succeeded\":" << (result.send_succeeded ? "true" : "false") << ",\n"
          << "  \"response_received\":" << (result.response_received ? "true" : "false") << ",\n"
          << "  \"response_decoded\":" << (result.response_decoded ? "true" : "false");
-  if (result_format == kResultFormat || result_format == kResultFormatV3) {
+  if (result_format == kResultFormat || result_format == kResultFormatV3 ||
+      result_format == kResultFormatV4) {
     output << ",\n"
            << "  \"receive_pipeline_id\":" << Quoted(result.receive_pipeline_id) << ",\n"
            << "  \"replay_mode\":" << Quoted(result.replay_mode) << ",\n"
@@ -341,6 +348,7 @@ std::string FieldsCanonical(const OperationResult& result) {
 std::vector<std::string> CompareStoredRuns(const StoredRun& left, const StoredRun& right) {
   std::vector<std::string> categories;
   const bool modern =
+      (left.format_version == kResultFormatV4 && right.format_version == kResultFormatV4) ||
       (left.format_version == kResultFormatV3 && right.format_version == kResultFormatV3) ||
       (left.operation_kind == "udp-exchange" && right.operation_kind == "udp-exchange" &&
        left.format_version == kResultFormat && right.format_version == kResultFormat);
@@ -381,10 +389,12 @@ std::vector<std::string> CompareStoredRuns(const StoredRun& left, const StoredRu
 
 StoredRun ToStoredRun(const OperationResult& result) {
   StoredRun stored;
-  stored.format_version = result.schema_version == "0.2" ? std::string{kResultFormatV3}
-                                                         : (result.operation_kind == "udp-exchange"
-                                                                ? std::string{kResultFormat}
-                                                                : std::string{kResultFormatV1});
+  stored.format_version =
+      result.schema_version == "0.3" ? std::string{kResultFormatV4}
+      : result.schema_version == "0.2"
+          ? std::string{kResultFormatV3}
+          : (result.operation_kind == "udp-exchange" ? std::string{kResultFormat}
+                                                     : std::string{kResultFormatV1});
   stored.command = result.command;
   stored.operation_kind = result.operation_kind;
   stored.operation_status = result.status;

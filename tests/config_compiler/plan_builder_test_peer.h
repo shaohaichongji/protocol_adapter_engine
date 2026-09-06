@@ -12,6 +12,9 @@ protocol_plan::BudgetedPlanDraft MakeBitfieldDraftWithInvalidBitNumbering();
 protocol_plan::BudgetedPlanDraft MakeBitfieldDraftWithMatcherConflict();
 protocol_plan::BudgetedPlanDraft MakeBitfieldDraftWithTooManyMessageContainers();
 protocol_plan::BudgetedPlanDraft MakeBitfieldDraftWithTooManyTotalContainers();
+protocol_plan::BudgetedPlanDraft MakeIntegrityDraftWithUnknownAlgorithm();
+protocol_plan::BudgetedPlanDraft MakeIntegrityDraftWithSelfIncludedStorage();
+protocol_plan::BudgetedPlanDraft MakeIntegrityDraftWithFieldStorageConflict();
 
 protocol_plan::BudgetedPlanDraft ConfigurePlanMemoryFailure(
     protocol_plan::BudgetedPlanDraft draft, std::size_t fail_at_allocation,

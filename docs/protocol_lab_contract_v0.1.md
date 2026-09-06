@@ -265,7 +265,7 @@ Windows实现通过内部、不可安装且不可导出的`IUdpExchangeAdapter`�
 第一版不为了统一Socket API引入Qt、Boost或其他大型框架。若未来选择轻量第三方库，必须单独
 记录版本、License、源码范围和引入理由。
 
-## 7. Evidence Bundle V0.1/V0.2/V0.3
+## 7. Evidence Bundle V0.1/V0.2/V0.3/V0.4
 
 每次Lab执行产生一个独立且不可原地覆盖的Run目录：
 
@@ -370,6 +370,21 @@ Run Record与清单Hash均已同步也拒绝读取。Replay的`comparison_equal=
 
 0.3指纹带独立版本域；0.1/0.2旧指纹算法和固定历史样本不重算。首批明确拒绝Schema 0.1与0.2
 双向替换配置Replay，以及旧格式Run与0.3 Run直接Compare；原始Frame比较仍按实际字节允许。
+
+### 7.2 Schema 0.3与Lab 0.4
+
+Schema 0.3执行统一产生`pae.lab.result/0.4`、`pae.lab.record/0.4`和
+`pae.lab.event/0.4`，即使目标Message没有配置`integrity`。Values继续使用0.1/0.2，BOOL仍只在
+Values 0.2中以原生JSON布尔表示；RX Metadata语义不变，继续使用0.2。
+
+SUM8接收失败映射为`INTEGRITY_FAILED`和`PAE_LAB_CODEC_INTEGRITY_FAILED`，当前执行退出5且
+不交付字段。同代Replay必须重新执行校验；即使比较为`EQUAL`，当前执行失败仍保持退出5。
+0.4使用独立指纹域；旧结果、记录、事件、指纹算法和固定夹具不迁移、不重写。跨Schema替换
+配置Replay及跨代Run Compare在协议差异比较前拒绝，原始Frame比较仍允许跨代。
+
+结构候选选择发生在SUM8之前，跨Pipeline也不能只统计Decode成功项。`NO_CODEC_REEXECUTION`
+保持当前执行与比较`NOT_EVALUATED`，不伪造完整性通过；Bundle SHA-256验证证据文件内部绑定，
+SUM8验证协议Frame覆盖范围，两者职责互不替代。
 同代Replay保留三种模式、历史Transport隔离、跨配置差异和链式再次Replay。未知版本、Result/
 Record/Event混合代际或内部关联不一致，即使Hash清单自洽也必须失败关闭。
 

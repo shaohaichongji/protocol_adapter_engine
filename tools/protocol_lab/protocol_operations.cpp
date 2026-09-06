@@ -374,12 +374,79 @@ bool ParseValues(std::string& text, ParsedValues& output, std::string& error) {
   return true;
 }
 
-OperationResult InspectFrame(const PlanBundle& plan, const std::vector<std::uint8_t>& frame) {
+OperationResult InspectFrame(const PlanBundle& plan, const std::vector<std::uint8_t>& frame,
+                             InspectFrameExecutionCounts* execution_counts) {
   OperationResult result;
+  if (execution_counts != nullptr) {
+    *execution_counts = InspectFrameExecutionCounts{};
+  }
   result.schema_version.assign(plan.SchemaVersion().data(), plan.SchemaVersion().size());
   result.operation_kind = "inspect";
   result.protocol_id.assign(plan.ProtocolId().data(), plan.ProtocolId().size());
   result.frame = frame;
+  const bool integrity_generation = plan.SchemaVersion() == "0.3";
+  if (integrity_generation) {
+    std::size_t selected_pipeline_index = kInvalidIndex;
+    std::size_t selected_message_index = kInvalidIndex;
+    std::size_t structural_candidate_count = 0U;
+    for (std::size_t pipeline_index = 0U; pipeline_index < plan.Pipelines().size();
+         ++pipeline_index) {
+      if (execution_counts != nullptr) {
+        ++execution_counts->structural_query_calls;
+      }
+      const auto matched = protocol_core::internal::MatchCompleteRecordStructure(
+          plan, pipeline_index, ByteView{frame.data(), frame.size()});
+      if (matched.status == CodecStatus::AMBIGUOUS_MESSAGE) {
+        structural_candidate_count = 2U;
+        break;
+      }
+      if (matched.status != CodecStatus::OK) {
+        continue;
+      }
+      ++structural_candidate_count;
+      if (structural_candidate_count == 1U) {
+        selected_pipeline_index = pipeline_index;
+        selected_message_index = matched.message_index;
+      }
+    }
+
+    if (structural_candidate_count == 0U) {
+      result.status = "UNKNOWN_MESSAGE";
+    } else if (structural_candidate_count > 1U) {
+      result.status = "AMBIGUOUS_MESSAGE";
+    } else {
+      const auto& pipeline = plan.Pipelines()[selected_pipeline_index];
+      const auto& message = plan.Messages()[selected_message_index];
+      result.pipeline_id.assign(pipeline.id.data(), pipeline.id.size());
+      result.message_id.assign(message.id.data(), message.id.size());
+      result.direction_id.assign(message.direction_id.data(), message.direction_id.size());
+
+      std::vector<DecodedFieldSlot> slots(plan.GetExecutionResourceLayout().max_fields_per_message);
+      ExecutionWorkspace workspace{plan};
+      if (execution_counts != nullptr) {
+        ++execution_counts->decode_calls;
+      }
+      const auto decoded =
+          DecodeCompleteRecord(plan, workspace, selected_pipeline_index,
+                               ByteView{frame.data(), frame.size()}, slots.data(), slots.size());
+      result.status = CodecStatusName(decoded.status);
+      if (decoded.status == CodecStatus::OK) {
+        CopyDecodedFields(plan, decoded.message_index, slots, decoded.field_count, result.fields);
+      }
+    }
+
+    if (result.status != "OK") {
+      result.fields.clear();
+      result.diagnostic_id = "PAE_LAB_CODEC_" + result.status;
+      result.diagnostic_detail = "frame did not produce one unique successful Pipeline match";
+    }
+    result.replay_mode = "DECODE_RX";
+    result.replay_subject = "RX";
+    result.current_execution_status = result.status;
+    result.current_execution_diagnostic_id = result.diagnostic_id;
+    return result;
+  }
+
   std::size_t success_count = 0U;
   CodecStatus selected_failure = CodecStatus::UNKNOWN_MESSAGE;
   for (std::size_t pipeline_index = 0U; pipeline_index < plan.Pipelines().size();
@@ -418,7 +485,7 @@ OperationResult InspectFrame(const PlanBundle& plan, const std::vector<std::uint
     result.diagnostic_id = "PAE_LAB_CODEC_" + result.status;
     result.diagnostic_detail = "frame did not produce one unique successful Pipeline match";
   }
-  if (result.schema_version == "0.2") {
+  if (result.schema_version != "0.1") {
     result.replay_mode = "DECODE_RX";
     result.replay_subject = "RX";
     result.current_execution_status = result.status;
@@ -459,7 +526,7 @@ OperationResult InspectFrameInPipeline(const PlanBundle& plan, std::string_view 
     result.diagnostic_id = "PAE_LAB_CODEC_" + result.status;
     result.diagnostic_detail = "frame failed in the selected receive Pipeline";
   }
-  if (result.schema_version == "0.2") {
+  if (result.schema_version != "0.1") {
     result.replay_mode = "DECODE_RX";
     result.replay_subject = "RX";
     result.current_execution_status = result.status;
@@ -547,7 +614,7 @@ OperationResult EncodeValues(const PlanBundle& plan, const ParsedValues& parsed,
     result.frame.clear();
     result.diagnostic_id = "PAE_LAB_CODEC_" + result.status;
     result.diagnostic_detail = "EncodeCompleteRecord rejected the values";
-    if (result.schema_version == "0.2") {
+    if (result.schema_version != "0.1") {
       result.replay_mode = "ENCODE_TX";
       result.replay_subject = "TX";
       result.current_execution_status = result.status;
@@ -569,7 +636,7 @@ OperationResult EncodeValues(const PlanBundle& plan, const ParsedValues& parsed,
     return result;
   }
   CopyDecodedFields(plan, message_index, slots, reviewed.field_count, result.fields);
-  if (result.schema_version == "0.2") {
+  if (result.schema_version != "0.1") {
     result.replay_mode = "ENCODE_TX";
     result.replay_subject = "TX";
     result.current_execution_status = result.status;

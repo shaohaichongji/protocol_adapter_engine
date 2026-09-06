@@ -86,6 +86,61 @@ class PlanBuilderTestPeer final {
     return draft;
   }
 
+  static BudgetedPlanDraft MakeIntegrityDraft() {
+    auto draft = std::make_unique<detail::PlanDraftData>();
+    draft->schema_version = "0.3";
+    draft->protocol_id = "integrity_defense_test";
+    draft->protocol_version = "1";
+    draft->resource_profile = ResourceProfile::DESKTOP;
+    draft->resource_requirements.max_frame_bytes = 2U;
+    draft->resource_requirements.framing_profile_count = 1U;
+    draft->resource_requirements.pipeline_count = 1U;
+    draft->resource_requirements.message_count = 1U;
+    draft->resource_requirements.total_field_count = 1U;
+    draft->resource_requirements.total_matcher_count = 1U;
+    draft->resource_requirements.total_integrity_rule_count = 1U;
+    draft->framing_profiles.push_back(FramingPlan{"record", InputKind::COMPLETE_RECORD});
+    PipelinePlan pipeline;
+    pipeline.id = "pipeline";
+    pipeline.direction_id = "rx";
+    pipeline.message_indices.push_back(0U);
+    draft->pipelines.push_back(std::move(pipeline));
+    MessagePlan message;
+    message.id = "message";
+    message.direction_id = "rx";
+    message.frame_length_bytes = 2U;
+    message.matchers.push_back(MatcherPlan{MatcherKind::FRAME_LENGTH_EQUALS, 2U});
+    FieldPlan field;
+    field.id = "value";
+    field.value_type = ValueType::UINT64;
+    field.wire_codec = WireCodec::UNSIGNED_INTEGER;
+    field.byte_offset = 0U;
+    field.byte_width = 1U;
+    message.fields.push_back(std::move(field));
+    message.integrity = IntegrityPlan{IntegrityAlgorithm::SUM8, 0U, 1U, 1U};
+    draft->messages.push_back(std::move(message));
+    return BudgetedPlanDraft{std::move(draft)};
+  }
+
+  static BudgetedPlanDraft MakeIntegrityDraftWithUnknownAlgorithm() {
+    auto draft = MakeIntegrityDraft();
+    draft.draft_->messages[0].integrity->algorithm = static_cast<IntegrityAlgorithm>(255);
+    return draft;
+  }
+
+  static BudgetedPlanDraft MakeIntegrityDraftWithSelfIncludedStorage() {
+    auto draft = MakeIntegrityDraft();
+    draft.draft_->messages[0].integrity->range_length = 2U;
+    return draft;
+  }
+
+  static BudgetedPlanDraft MakeIntegrityDraftWithFieldStorageConflict() {
+    auto draft = MakeIntegrityDraft();
+    draft.draft_->messages[0].integrity->range_offset = 1U;
+    draft.draft_->messages[0].integrity->storage_offset = 0U;
+    return draft;
+  }
+
   static BudgetedPlanDraft ConfigurePlanMemoryFailure(BudgetedPlanDraft draft,
                                                       std::size_t fail_at_allocation,
                                                       test_only::PlanMemoryTestProbe* probe) {
@@ -135,6 +190,19 @@ protocol_plan::BudgetedPlanDraft MakeBitfieldDraftWithTooManyMessageContainers()
 protocol_plan::BudgetedPlanDraft MakeBitfieldDraftWithTooManyTotalContainers() {
   return protocol_plan::test_only::PlanBuilderTestPeer::
       MakeBitfieldDraftWithTooManyTotalContainers();
+}
+
+protocol_plan::BudgetedPlanDraft MakeIntegrityDraftWithUnknownAlgorithm() {
+  return protocol_plan::test_only::PlanBuilderTestPeer::MakeIntegrityDraftWithUnknownAlgorithm();
+}
+
+protocol_plan::BudgetedPlanDraft MakeIntegrityDraftWithSelfIncludedStorage() {
+  return protocol_plan::test_only::PlanBuilderTestPeer::MakeIntegrityDraftWithSelfIncludedStorage();
+}
+
+protocol_plan::BudgetedPlanDraft MakeIntegrityDraftWithFieldStorageConflict() {
+  return protocol_plan::test_only::PlanBuilderTestPeer::
+      MakeIntegrityDraftWithFieldStorageConflict();
 }
 
 protocol_plan::BudgetedPlanDraft ConfigurePlanMemoryFailure(

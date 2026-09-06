@@ -31,6 +31,10 @@ struct MatchOutcome {
 
 constexpr std::size_t kPresenceWordBits = 64U;
 
+#if defined(PAE_ENABLE_OPERATION_COUNTERS)
+std::atomic<bool> g_corrupt_integrity_storage_before_final_review{false};
+#endif
+
 std::size_t PresenceWordCount(std::size_t bit_count) noexcept {
   return bit_count / kPresenceWordBits + (bit_count % kPresenceWordBits == 0U ? 0U : 1U);
 }
@@ -172,6 +176,51 @@ bool MessageMatches(const MessageExecutionPlan& message,
     }
   }
   return true;
+}
+
+bool IntegrityDescriptorValid(const MessageExecutionPlan& message) noexcept {
+  if (!message.integrity.has_value()) {
+    return true;
+  }
+  const auto& integrity = *message.integrity;
+  return integrity.algorithm == protocol_plan::IntegrityAlgorithm::SUM8 &&
+         integrity.range_length != 0U && integrity.range_offset <= message.frame_size &&
+         integrity.range_length <= message.frame_size - integrity.range_offset &&
+         integrity.storage_offset < message.frame_size &&
+         !(integrity.storage_offset >= integrity.range_offset &&
+           integrity.storage_offset - integrity.range_offset < integrity.range_length);
+}
+
+std::uint8_t Sum8(const std::uint8_t* data, std::size_t offset, std::size_t length,
+                  bool review PAE_OPERATION_COUNTS_PARAMETER) noexcept {
+  std::uint8_t sum = 0U;
+  for (std::size_t index = 0U; index < length; ++index) {
+#if defined(PAE_ENABLE_OPERATION_COUNTERS)
+    if (review) {
+      ++counts.integrity_bytes_verified;
+    } else {
+      ++counts.integrity_bytes_accumulated;
+    }
+#else
+    static_cast<void>(review);
+#endif
+    sum = static_cast<std::uint8_t>(sum + data[offset + index]);
+  }
+  return sum;
+}
+
+bool IntegrityMatches(const MessageExecutionPlan& message,
+                      const std::uint8_t* data PAE_OPERATION_COUNTS_PARAMETER) noexcept {
+  if (!IntegrityDescriptorValid(message)) {
+    return false;
+  }
+  if (!message.integrity.has_value()) {
+    return true;
+  }
+  const auto& integrity = *message.integrity;
+  return Sum8(data, static_cast<std::size_t>(integrity.range_offset),
+              static_cast<std::size_t>(integrity.range_length),
+              true PAE_OPERATION_COUNTS_ARGUMENT) == data[integrity.storage_offset];
 }
 
 MatchOutcome FindPipelineMatch(const PipelineExecutionPlan& pipeline,
@@ -440,6 +489,33 @@ bool VerifyFields(const MessageExecutionPlan& message, const EncodeFieldValue* v
 
 }  // namespace
 
+internal::StructuralMatchResult internal::MatchCompleteRecordStructure(const PlanBundle& plan,
+                                                                       std::size_t pipeline_index,
+                                                                       ByteView input) noexcept {
+  StructuralMatchResult result;
+  if (input.data == nullptr && input.size != 0U) {
+    return result;
+  }
+  const auto& pipelines = plan.PipelineExecutionPlans();
+  if (pipeline_index >= pipelines.size()) {
+    return result;
+  }
+#if defined(PAE_ENABLE_OPERATION_COUNTERS)
+  CodecOperationCounts counts;
+#endif
+  const MatchOutcome match = FindPipelineMatch(
+      pipelines[pipeline_index], plan.MessageExecutionPlans(), input PAE_OPERATION_COUNTS_ARGUMENT);
+  if (match.match_count == 0U) {
+    result.status = CodecStatus::UNKNOWN_MESSAGE;
+  } else if (match.match_count != 1U) {
+    result.status = CodecStatus::AMBIGUOUS_MESSAGE;
+  } else {
+    result.status = CodecStatus::OK;
+    result.message_index = match.message_index;
+  }
+  return result;
+}
+
 class ExecutionWorkspaceLease final {
  public:
   explicit ExecutionWorkspaceLease(ExecutionWorkspace& workspace) noexcept
@@ -538,6 +614,15 @@ DecodeResult DecodeCompleteRecord(const PlanBundle& plan, ExecutionWorkspace& wo
   }
   if (RangesOverlap(input_range, slot_range)) {
     result.status = CodecStatus::INPUT_OUTPUT_OVERLAP;
+    return result;
+  }
+
+  if (!IntegrityDescriptorValid(message)) {
+    result.status = CodecStatus::INVALID_PLAN;
+    return result;
+  }
+  if (!IntegrityMatches(message, input.data PAE_OPERATION_COUNTS_ARGUMENT)) {
+    result.status = CodecStatus::INTEGRITY_FAILED;
     return result;
   }
 
@@ -722,6 +807,27 @@ EncodeResult EncodeCompleteRecord(const PlanBundle& plan, ExecutionWorkspace& wo
     return result;
   }
 
+  if (!IntegrityDescriptorValid(message)) {
+    result.status = CodecStatus::FINAL_REVIEW_FAILED;
+    return result;
+  }
+  if (message.integrity.has_value()) {
+    const auto& integrity = *message.integrity;
+    output.data[integrity.storage_offset] =
+        Sum8(output.data, static_cast<std::size_t>(integrity.range_offset),
+             static_cast<std::size_t>(integrity.range_length), false PAE_OPERATION_COUNTS_ARGUMENT);
+#if defined(PAE_ENABLE_OPERATION_COUNTERS)
+    if (g_corrupt_integrity_storage_before_final_review.exchange(false,
+                                                                 std::memory_order_relaxed)) {
+      output.data[integrity.storage_offset] ^= 0x01U;
+    }
+#endif
+    if (!IntegrityMatches(message, output.data PAE_OPERATION_COUNTS_ARGUMENT)) {
+      result.status = CodecStatus::FINAL_REVIEW_FAILED;
+      return result;
+    }
+  }
+
   const ByteView encoded{output.data, message.frame_size};
   const MatchOutcome final_match =
       FindPipelineMatch(pipeline, messages, encoded PAE_OPERATION_COUNTS_ARGUMENT);
@@ -738,6 +844,16 @@ EncodeResult EncodeCompleteRecord(const PlanBundle& plan, ExecutionWorkspace& wo
   result.failed_field_index = kInvalidIndex;
   return result;
 }
+
+#if defined(PAE_ENABLE_OPERATION_COUNTERS)
+namespace test_only {
+
+void CorruptIntegrityStorageBeforeFinalReviewOnce() noexcept {
+  g_corrupt_integrity_storage_before_final_review.store(true, std::memory_order_relaxed);
+}
+
+}  // namespace test_only
+#endif
 
 #undef PAE_INCREMENT_OPERATION_COUNT
 #undef PAE_OPERATION_COUNTS_ARGUMENT

@@ -28,6 +28,7 @@ struct PlanDraftData {
 struct PreparedMessageExecutionPlan {
   std::size_t frame_size = 0U;
   std::size_t required_input_count = 0U;
+  std::optional<FrozenIntegrityPlan> integrity;
   std::vector<FixedByteExecutionPlan> fixed_bytes;
   std::vector<BitContainerExecutionPlan> bit_containers;
   std::vector<FieldExecutionPlan> fields;

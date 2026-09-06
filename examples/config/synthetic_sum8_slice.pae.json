@@ -1,0 +1,90 @@
+{
+  "schema_version": "0.3",
+  "protocol_id": "synthetic_sum8_slice",
+  "protocol_version": "0.3-synthetic",
+  "display_name": "公开人工SUM8切片",
+  "description": "从零设计的公开人工向量，仅验证SUM8完整记录校验。",
+  "source_ref": "SYNTHETIC_FROM_SCRATCH:dec041_public_vector",
+  "resource_profile": "desktop",
+  "framing_profiles": [
+    {
+      "id": "complete_record",
+      "display_name": "完整记录",
+      "description": "一次提交完整人工记录。",
+      "source_ref": "SYNTHETIC_FROM_SCRATCH:dec041_public_vector#framing",
+      "input_kind": "complete_record"
+    }
+  ],
+  "pipelines": [
+    {
+      "id": "synthetic_direction",
+      "display_name": "人工方向",
+      "description": "SUM8测试专用方向。",
+      "source_ref": "SYNTHETIC_FROM_SCRATCH:dec041_public_vector#pipeline",
+      "direction_id": "synthetic_direction",
+      "input_framing_profile_id": "complete_record",
+      "message_ids": ["sum8_record"]
+    }
+  ],
+  "messages": [
+    {
+      "id": "sum8_record",
+      "display_name": "人工SUM8记录",
+      "description": "覆盖普通字段、位容器、范围外固定字节和SUM8存储。",
+      "source_ref": "SYNTHETIC_FROM_SCRATCH:dec041_public_vector#record",
+      "direction_id": "synthetic_direction",
+      "frame_length_bytes": 7,
+      "matcher": {
+        "all": [
+          {"kind": "frame_length_equals", "length_bytes": 7},
+          {"kind": "fixed_bytes", "byte_offset": 0, "bytes": "70"},
+          {"kind": "fixed_bytes", "byte_offset": 6, "bytes": "7E"}
+        ]
+      },
+      "bit_containers": [
+        {
+          "id": "payload_bits",
+          "container_offset": 3,
+          "container_width": 2,
+          "byte_order": "big_endian",
+          "bit_numbering": "lsb0",
+          "base_value": 0
+        }
+      ],
+      "integrity": {
+        "algorithm": "sum8",
+        "range": {"byte_offset": 1, "byte_length": 4},
+        "storage": {"byte_offset": 5}
+      },
+      "fields": [
+        {
+          "id": "payload_a",
+          "display_name": "载荷A",
+          "description": "单字节动态值。",
+          "source_ref": "SYNTHETIC_FROM_SCRATCH:dec041_public_vector#payload_a",
+          "value_type": "UINT64",
+          "wire": {"codec": "unsigned_integer", "byte_offset": 1, "byte_width": 1},
+          "encode": {"source": "input"}
+        },
+        {
+          "id": "payload_b",
+          "display_name": "载荷B",
+          "description": "单字节动态值。",
+          "source_ref": "SYNTHETIC_FROM_SCRATCH:dec041_public_vector#payload_b",
+          "value_type": "UINT64",
+          "wire": {"codec": "unsigned_integer", "byte_offset": 2, "byte_width": 1},
+          "encode": {"source": "input"}
+        },
+        {
+          "id": "payload_word",
+          "display_name": "位容器载荷",
+          "description": "覆盖整个双字节位容器。",
+          "source_ref": "SYNTHETIC_FROM_SCRATCH:dec041_public_vector#payload_word",
+          "value_type": "UINT64",
+          "wire": {"codec": "bitfield", "container_id": "payload_bits", "bit_offset": 0, "bit_width": 16},
+          "encode": {"source": "input"}
+        }
+      ]
+    }
+  ]
+}

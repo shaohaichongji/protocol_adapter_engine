@@ -59,12 +59,20 @@ struct BitContainerPlan {
   std::uint64_t base_value = 0U;
 };
 
+struct IntegrityPlan {
+  IntegrityAlgorithm algorithm = IntegrityAlgorithm::SUM8;
+  std::uint64_t range_offset = 0U;
+  std::uint64_t range_length = 0U;
+  std::uint64_t storage_offset = 0U;
+};
+
 struct MessagePlan {
   std::string id;
   std::string direction_id;
   std::uint64_t frame_length_bytes = 0U;
   std::vector<MatcherPlan> matchers;
   std::vector<BitContainerPlan> bit_containers;
+  std::optional<IntegrityPlan> integrity;
   std::vector<FieldPlan> fields;
 };
 
@@ -117,12 +125,20 @@ struct FrozenBitContainerPlan {
   std::uint64_t base_value = 0U;
 };
 
+struct FrozenIntegrityPlan {
+  IntegrityAlgorithm algorithm = IntegrityAlgorithm::SUM8;
+  std::uint64_t range_offset = 0U;
+  std::uint64_t range_length = 0U;
+  std::uint64_t storage_offset = 0U;
+};
+
 struct FrozenMessagePlan {
   FrozenString id;
   FrozenString direction_id;
   std::uint64_t frame_length_bytes = 0U;
   FrozenArray<FrozenMatcherPlan> matchers;
   FrozenArray<FrozenBitContainerPlan> bit_containers;
+  std::optional<FrozenIntegrityPlan> integrity;
   FrozenArray<FrozenFieldPlan> fields;
 };
 
@@ -173,6 +189,7 @@ struct FieldExecutionPlan {
 struct MessageExecutionPlan {
   std::size_t frame_size = 0U;
   std::size_t required_input_count = 0U;
+  std::optional<FrozenIntegrityPlan> integrity;
   FrozenArray<FixedByteExecutionPlan> fixed_bytes;
   FrozenArray<BitContainerExecutionPlan> bit_containers;
   FrozenArray<FieldExecutionPlan> fields;

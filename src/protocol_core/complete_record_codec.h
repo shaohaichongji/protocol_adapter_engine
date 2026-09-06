@@ -21,6 +21,7 @@ enum class CodecStatus {
   UNKNOWN_MESSAGE,
   AMBIGUOUS_MESSAGE,
   OUTPUT_SLOTS_TOO_SMALL,
+  INTEGRITY_FAILED,
   MESSAGE_NOT_ALLOWED,
   FIELD_REFERENCE_MISMATCH,
   DUPLICATE_FIELD,
@@ -99,6 +100,21 @@ struct DecodeResult {
   bool tainted = false;
 };
 
+namespace internal {
+
+// Internal COMPLETE_RECORD matcher query used by bounded orchestration layers that must establish
+// structural uniqueness before executing integrity or field semantics. This is not a stable public
+// protocol API and does not allocate or mutate an ExecutionWorkspace.
+struct StructuralMatchResult {
+  CodecStatus status = CodecStatus::INVALID_ARGUMENT;
+  std::size_t message_index = kInvalidIndex;
+};
+
+[[nodiscard]] StructuralMatchResult MatchCompleteRecordStructure(
+    const protocol_plan::PlanBundle& plan, std::size_t pipeline_index, ByteView input) noexcept;
+
+}  // namespace internal
+
 struct EncodeResult {
   CodecStatus status = CodecStatus::INVALID_ARGUMENT;
   std::size_t bytes_written = 0U;
@@ -121,9 +137,19 @@ struct CodecOperationCounts {
   std::size_t candidate_group_search_steps = 0U;
   std::size_t candidate_messages_examined = 0U;
   std::size_t matcher_bytes_compared = 0U;
+  std::size_t integrity_bytes_accumulated = 0U;
+  std::size_t integrity_bytes_verified = 0U;
   std::size_t enum_search_steps = 0U;
   std::size_t static_plan_validation_visits = 0U;
 };
+
+#if defined(PAE_ENABLE_OPERATION_COUNTERS)
+namespace test_only {
+// Test-only fault injection for the instrumented target. The production target does not expose
+// this declaration or carry the associated branch.
+void CorruptIntegrityStorageBeforeFinalReviewOnce() noexcept;
+}  // namespace test_only
+#endif
 
 class ExecutionWorkspaceLease;
 

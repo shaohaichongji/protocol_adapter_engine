@@ -29,8 +29,18 @@ bool ValidateObject(yyjson_val* object, const std::set<std::string_view>& allowe
                     std::string& error);
 bool ReadJsonString(yyjson_val* object, const char* name, std::string& output, std::string& error);
 bool ParseValues(std::string& text, ParsedValues& output, std::string& error);
+
+// Internal execution evidence for tests of the Schema 0.3 two-phase Inspect path. Counters are
+// collected at the actual Core query/Decode call sites; they are not serialized or exposed by the
+// command-line contract.
+struct InspectFrameExecutionCounts {
+  std::size_t structural_query_calls = 0U;
+  std::size_t decode_calls = 0U;
+};
+
 OperationResult InspectFrame(const protocol_plan::PlanBundle& plan,
-                             const std::vector<std::uint8_t>& frame);
+                             const std::vector<std::uint8_t>& frame,
+                             InspectFrameExecutionCounts* execution_counts = nullptr);
 OperationResult InspectFrameInPipeline(const protocol_plan::PlanBundle& plan,
                                        std::string_view pipeline_id,
                                        const std::vector<std::uint8_t>& frame);

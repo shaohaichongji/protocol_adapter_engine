@@ -213,6 +213,27 @@ CompileResult BuildBitfieldPlan() {
          "encode":{"source":"input"}}]}]})json");
 }
 
+CompileResult BuildSum8Plan() {
+  return pae::config_compiler::CompileJsonToPlan(R"json({
+    "schema_version":"0.3","protocol_id":"allocation_sum8","protocol_version":"1",
+    "display_name":"Synthetic","description":"","source_ref":"SYNTHETIC_FROM_SCRATCH:allocation",
+    "resource_profile":"desktop",
+    "framing_profiles":[{"id":"complete_record","display_name":"Synthetic","description":"",
+      "source_ref":"SYNTHETIC_FROM_SCRATCH:allocation","input_kind":"complete_record"}],
+    "pipelines":[{"id":"sum_pipe","display_name":"Synthetic","description":"",
+      "source_ref":"SYNTHETIC_FROM_SCRATCH:allocation","direction_id":"sum_direction",
+      "input_framing_profile_id":"complete_record","message_ids":["sum_message"]}],
+    "messages":[{"id":"sum_message","display_name":"Synthetic","description":"",
+      "source_ref":"SYNTHETIC_FROM_SCRATCH:allocation","direction_id":"sum_direction",
+      "frame_length_bytes":2,"matcher":{"all":[{"kind":"frame_length_equals","length_bytes":2}]},
+      "integrity":{"algorithm":"sum8","range":{"byte_offset":0,"byte_length":1},
+        "storage":{"byte_offset":1}},
+      "fields":[{"id":"value","display_name":"Synthetic","description":"",
+        "source_ref":"SYNTHETIC_FROM_SCRATCH:allocation","value_type":"UINT64",
+        "wire":{"codec":"unsigned_integer","byte_offset":0,"byte_width":1},
+        "encode":{"source":"input"}}]}]})json");
+}
+
 bool CounterProbe() {
   const std::size_t before = g_allocation_count.load(std::memory_order_relaxed);
   void* memory = ::operator new(17U);
@@ -282,6 +303,30 @@ bool RunFirstBitfieldCalls() {
          before == after;
 }
 
+bool RunFirstSum8Calls() {
+  CompileResult frozen = BuildSum8Plan();
+  if (!frozen.Succeeded()) return false;
+  ExecutionWorkspace workspace{*frozen.Plan()};
+  EncodeFieldValue value;
+  value.field = FieldRef{frozen.Plan(), 0U, 0U};
+  value.uint64_value = 0x11U;
+  std::array<std::uint8_t, 2U> output{0xCCU, 0xCCU};
+  std::size_t before = g_allocation_count.load(std::memory_order_relaxed);
+  const auto encoded = EncodeCompleteRecord(*frozen.Plan(), workspace, 0U, 0U, &value, 1U,
+                                            {output.data(), output.size()});
+  std::size_t after = g_allocation_count.load(std::memory_order_relaxed);
+  if (encoded.status != CodecStatus::OK || output != std::array<std::uint8_t, 2U>{0x11U, 0x11U} ||
+      before != after)
+    return false;
+  std::array<DecodedFieldSlot, 1U> slots{};
+  before = g_allocation_count.load(std::memory_order_relaxed);
+  const auto decoded = DecodeCompleteRecord(
+      *frozen.Plan(), workspace, 0U, {output.data(), output.size()}, slots.data(), slots.size());
+  after = g_allocation_count.load(std::memory_order_relaxed);
+  return decoded.status == CodecStatus::OK && decoded.field_count == 1U &&
+         slots[0].uint64_value == 0x11U && before == after;
+}
+
 }  // namespace
 
 int main(int argc, char** argv) {
@@ -293,12 +338,16 @@ int main(int argc, char** argv) {
   const bool passed = mode == "--first-decode"     ? RunFirstDecode()
                       : mode == "--first-encode"   ? RunFirstEncode()
                       : mode == "--first-bitfield" ? RunFirstBitfieldCalls()
+                      : mode == "--first-sum8"     ? RunFirstSum8Calls()
                                                    : false;
   const std::string_view case_id =
       mode == "--first-decode"
           ? "first_decode_zero_replaceable_new_allocation"
-          : (mode == "--first-encode" ? "first_encode_zero_replaceable_new_allocation"
-                                      : "first_bitfield_calls_zero_replaceable_new_allocation");
+          : (mode == "--first-encode"
+                 ? "first_encode_zero_replaceable_new_allocation"
+                 : (mode == "--first-bitfield"
+                        ? "first_bitfield_calls_zero_replaceable_new_allocation"
+                        : "first_sum8_calls_zero_replaceable_new_allocation"));
   std::cout << (passed ? "PASS" : "FAIL") << " case=" << case_id << '\n';
   std::cout << "FIRST_CALL_ALLOCATION_TEST_SUMMARY passed=" << (passed ? 1 : 0)
             << " failed=" << (passed ? 0 : 1) << " expected=1 gate=" << (passed ? "PASS" : "FAIL")

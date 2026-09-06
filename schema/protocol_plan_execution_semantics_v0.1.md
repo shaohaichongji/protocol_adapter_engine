@@ -6,8 +6,8 @@
 | --- | --- |
 | 当前状态 | `V0.1 DRAFT SLICE / INCOMPLETE（V0.1 草案切片 / 不完整）` |
 | 对应 Schema | [`pae.schema.json`](pae.schema.json) |
-| 当前切片 | 严格配置编译、yyjson-free（不依赖yyjson）的Frozen Execution Plan（冻结执行计划）、显式ExecutionWorkspace、COMPLETE_RECORD内部Decode/Encode、固定长度/固定字节Matcher、UINT64/BYTES/ENUM，以及Schema 0.2中的BOOL与位容器；`input`与UINT64 `constant` Encode Source |
-| 不覆盖 | STREAM_CHUNK流式Framing、Integrity、Receive Gate、Mapping、Session、Runtime注册、公共API及完整V0.1字段类型 |
+| 当前切片 | 严格配置编译、yyjson-free（不依赖yyjson）的Frozen Execution Plan（冻结执行计划）、显式ExecutionWorkspace、COMPLETE_RECORD内部Decode/Encode、固定长度/固定字节Matcher、UINT64/BYTES/ENUM，Schema 0.2中的BOOL与位容器，以及Schema 0.3中的单段SUM8完整记录校验；`input`与UINT64 `constant` Encode Source |
+| 不覆盖 | STREAM_CHUNK流式Framing、CRC及其他Integrity算法、Receive Gate、Mapping、Session、Runtime注册、公共API及完整V0.1字段类型 |
 
 本文描述PAE（Protocol Adapter Engine，协议适配引擎）首个Loader/Compiler（加载器/编译器）垂直切片及其后的`COMPLETE_RECORD（完整记录）`Codec（编解码器）内部切片。它没有完成《PAE V0.1 技术细节拍板方案》中`PAE-DEC-027`要求的完整Schema V0.1语义覆盖，也没有冻结公共API（Application Programming Interface，应用程序接口），不能作为完整V0.1配置语言或生产协议正确性声明。
 
@@ -87,8 +87,8 @@ PlanBundle + bound ExecutionWorkspace + pipeline_index + message_index + typed i
 
 `DRAFT SLICE RULE`：
 
-- `schema_version`接受字符串`"0.1"`或`"0.2"`；0.1保持原属性与类型集合，0.2才允许
-  `bit_containers`、`bitfield` Wire和BOOL；
+- `schema_version`接受字符串`"0.1"`、`"0.2"`或`"0.3"`；0.1保持原属性与类型集合，0.2允许
+  `bit_containers`、`bitfield` Wire和BOOL，0.3在此基础上允许Message的单对象`integrity`；
 - stable ID匹配`^[a-z][a-z0-9_]*$`，本草案切片最多128个字符；
 - `resource_profile`只接受`desktop`和`constrained`；
 - 根对象及所有子对象的未知属性必须拒绝。
@@ -334,6 +334,25 @@ Workspace按单Message最大容器数预留`uint64_t`槽。Encode从`base_value`
 Core内部BOOL使用独立`LogicalValueKind::BOOL`和真正的`bool`值。位字段没有扩展Matcher、普通字段
 接收规则、Runtime/Session、公共API或C ABI。公开独立向量及Windows证据见
 [`windows-msvc-2026-dec040-bitfield-slice.md`](../docs/windows-msvc-2026-dec040-bitfield-slice.md)。
+
+### 11.4 Schema 0.3 SUM8完整记录校验规则
+
+`PAE-DEC-041`只扩展`COMPLETE_RECORD`。Message可选一个`integrity`对象，首版算法固定为
+`sum8`，对非空连续范围逐字节无符号累加并取低8位，结果写入范围外的独占单字节存储位置。
+存储位置参与Frame完整覆盖，但不是Field，不能由Values输入，也不能与普通字段、位容器或
+`fixed_bytes` Matcher重叠。范围、存储和所有权在Domain Validator中用受检减法验证，Builder
+发布前复核算法枚举、边界、自包含和冲突不变量。
+
+Decode先按长度和固定字节选择结构候选；零候选为`UNKNOWN_MESSAGE`，多候选为
+`AMBIGUOUS_MESSAGE`。仅在唯一候选且输出槽容量满足后验证SUM8，失败返回
+`INTEGRITY_FAILED`且`field_count=0`，校验通过后仍执行Enum等字段语义。跨Pipeline选择不得用
+SUM8成败消除结构歧义。Encode先写既有字段、常量、固定字节和位容器，再生成并复算SUM8，
+最终Matcher/字段复核成功才交付完整长度；复核失败沿用`FINAL_REVIEW_FAILED`且有效长度为0。
+
+规则以冻结枚举和偏移保存在现有单Arena Plan对象/执行描述符中，资源需求单独记录实际规则数；
+执行使用局部`uint8_t`累加器，不增加Workspace槽或逐帧分配。Decode校验计数为覆盖长度N，
+Encode生成和复算为2N；这是操作上界证据，不是性能结论。公开向量和Windows验证见
+[`windows-msvc-2026-dec041-sum8-slice.md`](../docs/windows-msvc-2026-dec041-sum8-slice.md)。
 
 ## 12. 当前不覆盖的完整 V0.1 能力
 

@@ -19,3 +19,6 @@
 - [Protocol Lab Windows UDP Exchange验证报告](windows-msvc-2026-protocol-lab-udp-exchange-slice.md)
 - [Protocol Lab 人工Loopback验收报告（2026-09-06）](windows-protocol-lab-manual-loopback-acceptance-20260906.md)
 - [PAE-DEC-040 位字段最小切片Windows验证报告](windows-msvc-2026-dec040-bitfield-slice.md)
+- [DEC-040 后续推进路线与当前状态](post-dec040-roadmap.md)
+- [PAE-DEC-041 SUM8完整记录校验确认契约](pae-dec-041-sum8-contract.md)
+- [PAE-DEC-041 SUM8最小切片Windows验证报告](windows-msvc-2026-dec041-sum8-slice.md)

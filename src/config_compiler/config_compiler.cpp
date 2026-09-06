@@ -1154,15 +1154,70 @@ bool ParseBitContainers(yyjson_val* value, std::string_view pointer,
   return true;
 }
 
-bool ParseMessage(yyjson_val* value, std::string_view pointer, bool schema_v02, MessageIr& output,
-                  CompileDiagnostic& diagnostic) {
+bool ParseIntegrity(yyjson_val* value, std::string_view pointer, IntegrityIr& output,
+                    CompileDiagnostic& diagnostic) {
+  if (!yyjson_is_obj(value)) {
+    return SetDiagnostic(diagnostic, CompileStage::STRUCTURAL, CompileError::TYPE_MISMATCH,
+                         std::string(pointer), "integrity must be an object");
+  }
+  if (!ValidateObjectProperties(value, pointer, {"algorithm", "range", "storage"}, diagnostic)) {
+    return false;
+  }
+  yyjson_val* algorithm = RequiredProperty(value, "algorithm", pointer, diagnostic);
+  std::string algorithm_token;
+  if (algorithm == nullptr || !ReadEnumToken(algorithm, ChildPointer(pointer, "algorithm"),
+                                             {"sum8"}, algorithm_token, diagnostic)) {
+    return false;
+  }
+  yyjson_val* range = RequiredProperty(value, "range", pointer, diagnostic);
+  const std::string range_pointer = ChildPointer(pointer, "range");
+  if (range == nullptr) {
+    return false;
+  }
+  if (!yyjson_is_obj(range)) {
+    return SetDiagnostic(diagnostic, CompileStage::STRUCTURAL, CompileError::TYPE_MISMATCH,
+                         range_pointer, "integrity range must be an object");
+  }
+  if (!ValidateObjectProperties(range, range_pointer, {"byte_offset", "byte_length"}, diagnostic) ||
+      !ReadRequiredUint64(range, "byte_offset", range_pointer, output.range_offset, diagnostic) ||
+      !ReadRequiredUint64(range, "byte_length", range_pointer, output.range_length, diagnostic)) {
+    return false;
+  }
+  yyjson_val* storage = RequiredProperty(value, "storage", pointer, diagnostic);
+  const std::string storage_pointer = ChildPointer(pointer, "storage");
+  if (storage == nullptr) {
+    return false;
+  }
+  if (!yyjson_is_obj(storage)) {
+    return SetDiagnostic(diagnostic, CompileStage::STRUCTURAL, CompileError::TYPE_MISMATCH,
+                         storage_pointer, "integrity storage must be an object");
+  }
+  if (!ValidateObjectProperties(storage, storage_pointer, {"byte_offset"}, diagnostic) ||
+      !ReadRequiredUint64(storage, "byte_offset", storage_pointer, output.storage_offset,
+                          diagnostic)) {
+    return false;
+  }
+  output.algorithm = IntegrityAlgorithm::SUM8;
+  output.origin.json_pointer = std::string{pointer};
+  output.range_origin.json_pointer = range_pointer;
+  output.storage_origin.json_pointer = storage_pointer;
+  return true;
+}
+
+bool ParseMessage(yyjson_val* value, std::string_view pointer, bool supports_bitfields,
+                  bool supports_integrity, MessageIr& output, CompileDiagnostic& diagnostic) {
   if (!yyjson_is_obj(value)) {
     return SetDiagnostic(diagnostic, CompileStage::STRUCTURAL, CompileError::TYPE_MISMATCH,
                          std::string(pointer), "message must be an object");
   }
   if (!ValidateObjectProperties(
           value, pointer,
-          schema_v02
+          supports_integrity
+              ? std::initializer_list<std::string_view>{"id", "display_name", "description",
+                                                        "source_ref", "direction_id",
+                                                        "frame_length_bytes", "matcher",
+                                                        "bit_containers", "integrity", "fields"}
+          : supports_bitfields
               ? std::initializer_list<std::string_view>{"id", "display_name", "description",
                                                         "source_ref", "direction_id",
                                                         "frame_length_bytes", "matcher",
@@ -1194,16 +1249,25 @@ bool ParseMessage(yyjson_val* value, std::string_view pointer, bool schema_v02, 
   if (matcher == nullptr || fields == nullptr ||
       !ParseMatcher(matcher, ChildPointer(pointer, "matcher"), output.matcher_clauses,
                     diagnostic) ||
-      !ParseFields(fields, ChildPointer(pointer, "fields"), schema_v02, output.fields,
+      !ParseFields(fields, ChildPointer(pointer, "fields"), supports_bitfields, output.fields,
                    diagnostic)) {
     return false;
   }
-  if (schema_v02) {
+  if (supports_bitfields) {
     if (yyjson_val* containers = yyjson_obj_get(value, "bit_containers")) {
       if (!ParseBitContainers(containers, ChildPointer(pointer, "bit_containers"),
                               output.bit_containers, diagnostic)) {
         return false;
       }
+    }
+  }
+  if (supports_integrity) {
+    if (yyjson_val* integrity = yyjson_obj_get(value, "integrity")) {
+      IntegrityIr parsed;
+      if (!ParseIntegrity(integrity, ChildPointer(pointer, "integrity"), parsed, diagnostic)) {
+        return false;
+      }
+      output.integrity = std::move(parsed);
     }
   }
   output.origin.json_pointer = std::string{pointer};
@@ -1258,9 +1322,11 @@ bool BuildSchemaIr(yyjson_val* root, SchemaIr& output, CompileDiagnostic& diagno
       !ReadRequiredString(root, "source_ref", "", 1U, 512U, output.source_ref, diagnostic)) {
     return false;
   }
-  if (output.schema_version != "0.1" && output.schema_version != "0.2") {
+  if (output.schema_version != "0.1" && output.schema_version != "0.2" &&
+      output.schema_version != "0.3") {
     return SetDiagnostic(diagnostic, CompileStage::STRUCTURAL, CompileError::INVALID_ENUM_VALUE,
-                         "/schema_version", "supported schema_version values are 0.1 and 0.2");
+                         "/schema_version",
+                         "supported schema_version values are 0.1, 0.2, and 0.3");
   }
 
   if (yyjson_val* description = yyjson_obj_get(root, "description")) {
@@ -1291,8 +1357,8 @@ bool BuildSchemaIr(yyjson_val* root, SchemaIr& output, CompileDiagnostic& diagno
              messages, "/messages", output.messages,
              [&output](yyjson_val* value, std::string_view pointer, MessageIr& message,
                        CompileDiagnostic& item_diagnostic) {
-               return ParseMessage(value, pointer, output.schema_version == "0.2", message,
-                                   item_diagnostic);
+               return ParseMessage(value, pointer, output.schema_version != "0.1",
+                                   output.schema_version == "0.3", message, item_diagnostic);
              },
              diagnostic);
 }
@@ -1380,7 +1446,9 @@ bool ValidateMessageDomain(MessageIr& message, ResourceRequirements& requirement
                            CompileDiagnostic& diagnostic) {
   if (!AddSizeChecked(message.fields.size(), requirements.total_field_count) ||
       !AddSizeChecked(message.matcher_clauses.size(), requirements.total_matcher_count) ||
-      !AddSizeChecked(message.bit_containers.size(), requirements.total_bit_container_count)) {
+      !AddSizeChecked(message.bit_containers.size(), requirements.total_bit_container_count) ||
+      (message.integrity.has_value() &&
+       !AddSizeChecked(1U, requirements.total_integrity_rule_count))) {
     return SetDiagnostic(diagnostic, CompileStage::DOMAIN_VALIDATION,
                          CompileError::INTERNAL_CONTRACT_VIOLATION, message.origin.json_pointer,
                          "resource count overflow");
@@ -1542,6 +1610,43 @@ bool ValidateMessageDomain(MessageIr& message, ResourceRequirements& requirement
     }
   }
 
+  if (message.integrity.has_value()) {
+    const IntegrityIr& integrity = *message.integrity;
+    if (integrity.range_length == 0U) {
+      return SetDiagnostic(diagnostic, CompileStage::DOMAIN_VALIDATION,
+                           CompileError::INTEGRITY_RANGE_OUT_OF_BOUNDS,
+                           ChildPointer(integrity.range_origin.json_pointer, "byte_length"),
+                           "SUM8 range must contain at least one byte");
+    }
+    if (integrity.range_offset > message.frame_length_bytes ||
+        integrity.range_length > message.frame_length_bytes - integrity.range_offset) {
+      return SetDiagnostic(
+          diagnostic, CompileStage::DOMAIN_VALIDATION, CompileError::INTEGRITY_RANGE_OUT_OF_BOUNDS,
+          integrity.range_origin.json_pointer, "SUM8 range exceeds message frame_length_bytes");
+    }
+    if (integrity.storage_offset >= message.frame_length_bytes) {
+      return SetDiagnostic(diagnostic, CompileStage::DOMAIN_VALIDATION,
+                           CompileError::INTEGRITY_STORAGE_OUT_OF_BOUNDS,
+                           ChildPointer(integrity.storage_origin.json_pointer, "byte_offset"),
+                           "SUM8 storage byte exceeds message frame_length_bytes");
+    }
+    if (integrity.storage_offset >= integrity.range_offset &&
+        integrity.storage_offset - integrity.range_offset < integrity.range_length) {
+      return SetDiagnostic(diagnostic, CompileStage::DOMAIN_VALIDATION,
+                           CompileError::INTEGRITY_SELF_INCLUDED,
+                           ChildPointer(integrity.storage_origin.json_pointer, "byte_offset"),
+                           "SUM8 storage byte must be outside its covered range");
+    }
+    for (const FieldSpan& span : spans) {
+      if (integrity.storage_offset >= span.begin && integrity.storage_offset < span.end) {
+        return SetDiagnostic(diagnostic, CompileStage::DOMAIN_VALIDATION,
+                             CompileError::INTEGRITY_STORAGE_CONFLICT,
+                             ChildPointer(integrity.storage_origin.json_pointer, "byte_offset"),
+                             "SUM8 storage byte overlaps a field or bit container");
+      }
+    }
+  }
+
   std::unordered_map<std::uint64_t, std::uint8_t> fixed_matcher_bytes;
   for (const MatcherClauseIr& matcher : message.matcher_clauses) {
     if (matcher.kind == MatcherKind::FRAME_LENGTH_EQUALS) {
@@ -1569,6 +1674,14 @@ bool ValidateMessageDomain(MessageIr& message, ResourceRequirements& requirement
                              "fixed byte matcher clauses contradict each other");
       }
     }
+  }
+
+  if (message.integrity.has_value() &&
+      fixed_matcher_bytes.find(message.integrity->storage_offset) != fixed_matcher_bytes.end()) {
+    return SetDiagnostic(
+        diagnostic, CompileStage::DOMAIN_VALIDATION, CompileError::INTEGRITY_STORAGE_CONFLICT,
+        ChildPointer(message.integrity->storage_origin.json_pointer, "byte_offset"),
+        "SUM8 storage byte overlaps a fixed_bytes matcher");
   }
 
   for (const FieldIr& field : message.fields) {
@@ -1672,13 +1785,18 @@ bool ValidateMessageDomain(MessageIr& message, ResourceRequirements& requirement
     std::uint64_t end = 0U;
   };
   std::vector<CoverageSpan> coverage_spans;
-  coverage_spans.reserve(spans.size() + fixed_matcher_bytes.size());
+  coverage_spans.reserve(spans.size() + fixed_matcher_bytes.size() +
+                         (message.integrity.has_value() ? 1U : 0U));
   for (const FieldSpan& span : spans) {
     coverage_spans.push_back(CoverageSpan{span.begin, span.end});
   }
   for (const auto& [offset, unused_value] : fixed_matcher_bytes) {
     static_cast<void>(unused_value);
     coverage_spans.push_back(CoverageSpan{offset, offset + 1U});
+  }
+  if (message.integrity.has_value()) {
+    coverage_spans.push_back(
+        CoverageSpan{message.integrity->storage_offset, message.integrity->storage_offset + 1U});
   }
   std::sort(coverage_spans.begin(), coverage_spans.end(),
             [](const CoverageSpan& left, const CoverageSpan& right) {
@@ -2004,6 +2122,9 @@ ResourceBudgetResult ResourceBudgetValidator::ValidateImpl(
                           diagnostic) ||
       !CheckResourceCount(requirements.total_bit_container_count, budget->max_total_fields,
                           "/messages", "bit container count exceeds the selected resource profile",
+                          diagnostic) ||
+      !CheckResourceCount(requirements.total_integrity_rule_count, budget->max_messages,
+                          "/messages", "integrity rule count exceeds the message count limit",
                           diagnostic)) {
     return ResourceBudgetResult::Failure(std::move(diagnostic));
   }
@@ -2088,6 +2209,11 @@ PlanDraftAssemblyResult PlanDraftAssembler::Assemble(BudgetedSchemaIr budgeted) 
       message_plan.bit_containers.push_back(protocol_plan::BitContainerPlan{
           std::move(container.id), container.byte_offset, container.byte_width,
           container.byte_order, container.bit_numbering, container.base_value});
+    }
+    if (message.integrity.has_value()) {
+      message_plan.integrity = protocol_plan::IntegrityPlan{
+          message.integrity->algorithm, message.integrity->range_offset,
+          message.integrity->range_length, message.integrity->storage_offset};
     }
     message_plan.fields.reserve(message.fields.size());
     for (FieldIr& field : message.fields) {

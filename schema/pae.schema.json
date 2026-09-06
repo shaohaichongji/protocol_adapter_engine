@@ -1,9 +1,9 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "urn:pae:schema:protocol-package:0.2:bitfield-slice",
-  "title": "PAE ProtocolPackage V0.1/V0.2 Bitfield Slice",
-  "description": "Schema 0.1保持原COMPLETE_RECORD能力；Schema 0.2增加最小位容器、BOOL及UINT64/ENUM位成员。",
-  "x-pae-status": "DEC-040 MINIMAL BITFIELD SLICE",
+  "$id": "urn:pae:schema:protocol-package:0.3:sum8-slice",
+  "title": "PAE ProtocolPackage V0.1/V0.2/V0.3 SUM8 Slice",
+  "description": "Schema 0.1保持原COMPLETE_RECORD能力；Schema 0.2增加位字段；Schema 0.3增加可选SUM8完整性规则。",
+  "x-pae-status": "DEC-041 MINIMAL SUM8 SLICE",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -19,7 +19,7 @@
   ],
   "properties": {
     "schema_version": {
-      "enum": ["0.1", "0.2"]
+      "enum": ["0.1", "0.2", "0.3"]
     },
     "protocol_id": {
       "$ref": "#/$defs/stable_id"
@@ -70,7 +70,11 @@
     {
       "if": {"properties": {"schema_version": {"const": "0.1"}}},
       "then": {"properties": {"messages": {"items": {"$ref": "#/$defs/message_v01"}}}},
-      "else": {"properties": {"messages": {"items": {"$ref": "#/$defs/message_v02"}}}}
+      "else": {
+        "if": {"properties": {"schema_version": {"const": "0.2"}}},
+        "then": {"properties": {"messages": {"items": {"$ref": "#/$defs/message_v02"}}}},
+        "else": {"properties": {"messages": {"items": {"$ref": "#/$defs/message_v03"}}}}
+      }
     }
   ],
   "$defs": {
@@ -230,6 +234,55 @@
         "fields": {
           "type": "array", "minItems": 1, "maxItems": 4096,
           "items": {"$ref": "#/$defs/field_v02"}
+        }
+      }
+    },
+    "message_v03": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "display_name", "description", "source_ref", "direction_id",
+                   "frame_length_bytes", "matcher", "fields"],
+      "properties": {
+        "id": {"$ref": "#/$defs/stable_id"},
+        "display_name": {"$ref": "#/$defs/display_name"},
+        "description": {"$ref": "#/$defs/description"},
+        "source_ref": {"$ref": "#/$defs/source_ref"},
+        "direction_id": {"$ref": "#/$defs/stable_id"},
+        "frame_length_bytes": {"type": "integer", "minimum": 1, "maximum": 1048576},
+        "matcher": {"$ref": "#/$defs/matcher"},
+        "bit_containers": {
+          "type": "array", "minItems": 1, "maxItems": 4096,
+          "items": {"$ref": "#/$defs/bit_container"}
+        },
+        "integrity": {"$ref": "#/$defs/integrity_sum8"},
+        "fields": {
+          "type": "array", "minItems": 1, "maxItems": 4096,
+          "items": {"$ref": "#/$defs/field_v02"}
+        }
+      }
+    },
+    "integrity_sum8": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["algorithm", "range", "storage"],
+      "properties": {
+        "algorithm": {"const": "sum8"},
+        "range": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["byte_offset", "byte_length"],
+          "properties": {
+            "byte_offset": {"type": "integer", "minimum": 0, "maximum": 18446744073709551615},
+            "byte_length": {"type": "integer", "minimum": 1, "maximum": 18446744073709551615}
+          }
+        },
+        "storage": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["byte_offset"],
+          "properties": {
+            "byte_offset": {"type": "integer", "minimum": 0, "maximum": 18446744073709551615}
+          }
         }
       }
     },
