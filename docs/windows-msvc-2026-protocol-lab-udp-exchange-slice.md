@@ -278,7 +278,8 @@ CRLF，SHA-256由`3e8097698e579119fc83578c610d008858501e5f281b07392ab72c2b71f1fb
 
 ## 7. 当前未验证与保留边界
 
-- 未使用外部网络调试工具执行人工Loopback收发、人工逐字节核对和Replay门禁；
+- 上述自动化检查点未执行人工门禁；2026-09-06后续NetAssist人工Loopback收发、逐字节核对
+  和关闭工具或端口后的Replay已通过，见[人工验收报告](windows-protocol-lab-manual-loopback-acceptance-20260906.md)；
 - 未执行任何非Loopback主动发送；测试中的`192.0.2.0/24`文档地址只进入安全拒绝或注入Adapter；
 - 未实现Linux POSIX Socket Adapter，也未执行Linux GCC/Clang；
 - 未验证真实设备、独立仿真端、生产Endpoint、硬件或现场环境；
@@ -286,4 +287,4 @@ CRLF，SHA-256由`3e8097698e579119fc83578c610d008858501e5f281b07392ab72c2b71f1fb
 - 未模拟断电、进程强杀、文件系统缓存持久化或真实磁盘故障；
 - 当前公开Synthetic请求/响应只能支持Engine PoC（引擎概念验证），不能升级
   `PROTOCOL_GOLDEN_PASS`；
-- 当前变更尚未Stage、Commit或Push。
+- 实现及夹具修复已提交推送至`a418ac9`；本次人工验收文档更新尚未Stage、Commit或Push。

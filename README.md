@@ -17,6 +17,7 @@ PAE 的目标是通过严格配置完成工业二进制协议的有方向 Decode
 - 已建立两条`SYNTHETIC_REVIEWED / INDEPENDENT_ENGINEERING_REVIEWED（人工构造 / 独立工程复核）`Engine Vector（引擎向量），其Frame、Decode期望和Encode输入均为独立文件并受SHA-256门禁保护；它们不是正式协议Golden Vector（黄金测试向量）；
 - 已实现仅Testing构建的`Protocol Conformance Runner（协议一致性验证运行器）`，覆盖配置与语料绑定、Frame SHA-256、精确双向编解码、重复编码确定性和失败关闭；公开Synthetic CTest及仓库外私有协议语料的Engine PoC（引擎概念验证）已有Windows Release/Debug执行证据，但正式协议Golden门禁仍未满足；
 - 已实现并加固`PAE Protocol Lab（PAE协议实验与复现工具）`：独立CLI提供`inspect/encode/replay/compare`和Windows `udp-exchange`，支持严格类型化Values、收发前原始Frame记录、V0.2阶段事件与RX来源Metadata、显式UDP Replay模式、历史Transport/当前执行分离、可校验Evidence Bundle和差异分类；Windows UDP通过内部Winsock Adapter完成同步有界单次请求/响应，自动化仅在Loopback（本机回环）执行；
+- 已完成2026-09-06 NetAssist人工Loopback收发、字段核对和关闭工具或端口后的离线回放；本次模拟场景Lab门禁通过，不升级真实协议Golden或硬件结论，详见[人工验收报告](docs/windows-protocol-lab-manual-loopback-acceptance-20260906.md)；
 - 尚未形成稳定公共 API、完整 ProtocolPlan、完整 Decode/Encode Runtime（运行时）或生产可用协议引擎；
 - Linux门禁按当前Windows-first（Windows优先）顺序暂缓；正式 Core 性能、协议Golden Vector、目标板、硬件或现场验证尚未完成；
 - 当前仓库不得直接替换任何生产协议代码。

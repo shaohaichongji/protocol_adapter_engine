@@ -16,3 +16,4 @@
 - [PAE Protocol Lab Contract V0.1 Draft](protocol_lab_contract_v0.1.md)
 - [Protocol Lab Offline Slice Windows验证报告](windows-msvc-2026-protocol-lab-offline-slice.md)
 - [Protocol Lab Windows UDP Exchange验证报告](windows-msvc-2026-protocol-lab-udp-exchange-slice.md)
+- [Protocol Lab 人工Loopback验收报告（2026-09-06）](windows-protocol-lab-manual-loopback-acceptance-20260906.md)

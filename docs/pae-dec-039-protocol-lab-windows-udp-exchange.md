@@ -186,6 +186,7 @@ Windows实现位于`tools/protocol_lab/udp_exchange.*`，由内部`IUdpExchangeA
 Linux实现、Runtime、Session、Route、公共C ABI（C应用二进制接口）、真实设备、硬件、现场验证
 或Golden Candidate自动升级。
 
-文档、源码、Stage、Commit和Push继续分别授权。当前源码、测试和Windows自动化已完成，但尚未
-Stage、Commit或Push；外部网络调试工具人工Loopback门禁尚未执行，因而
-`LAB_EXCHANGE_PASS=NOT_EVALUATED`。
+文档、源码、Stage、Commit和Push继续分别授权。此前实现检查点的人工门禁为未评估；
+2026-09-06更新：实现及夹具修复已提交推送至`a418ac9`，NetAssist人工Loopback门禁已完成。
+报告层记录本次场景`LAB_EXCHANGE_PASS=PASS`，原始机器证据不改写，Golden不升级。
+详见[人工验收报告](windows-protocol-lab-manual-loopback-acceptance-20260906.md)。

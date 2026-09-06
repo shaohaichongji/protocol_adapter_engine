@@ -98,8 +98,10 @@ Metadata和实际Frame，不能通过只重算文件清单绕过内部一致性�
 
 `udp-exchange`默认本地Endpoint（端点）为`127.0.0.1:0`，只接受数字IPv4且拒绝组播、广播和
 未指定远端。没有`--send`不会触发网络操作；任一本地或远端地址不是Loopback时，必须同时提供
-`--send --allow-non-loopback`。当前自动化执行证据仅覆盖Loopback，尚未执行外部网络调试工具
-人工门禁，因此`LAB_EXCHANGE_PASS`仍为`NOT_EVALUATED（未评估）`。
+`--send --allow-non-loopback`。当前自动化执行证据仅覆盖Loopback。2026-09-06已完成
+NetAssist人工Loopback门禁，报告层记录本次场景`LAB_EXCHANGE_PASS=PASS`；原始机器证据中的
+`NOT_EVALUATED（未评估）`保持不变，协议Golden结论不升级。范围和待诊断项见
+[人工验收报告](../../docs/windows-protocol-lab-manual-loopback-acceptance-20260906.md)。
 
 完整契约、Values示例、退出码和证据边界见
 [Protocol Lab Contract V0.1](../../docs/protocol_lab_contract_v0.1.md)和
