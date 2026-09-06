@@ -13,6 +13,8 @@ add_library(
     result_format.h
     sha256.cpp
     sha256.h
+    udp_exchange.cpp
+    udp_exchange.h
 )
 
 target_include_directories(
@@ -33,6 +35,10 @@ target_link_libraries(
         pae::project_options
         pae::yyjson_candidate
 )
+
+if(WIN32)
+    target_link_libraries(pae_protocol_lab_internal PRIVATE ws2_32)
+endif()
 
 set_target_properties(
     pae_protocol_lab_internal

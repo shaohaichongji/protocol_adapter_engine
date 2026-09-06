@@ -7,7 +7,8 @@
 
 当前状态：`CONFIRMED / PARTIALLY VERIFIED（已确认、部分验证）`。离线
 `inspect/encode/replay/compare`与Evidence Bundle（证据包）已经实现并取得Windows执行证据；
-UDP（User Datagram Protocol，用户数据报协议）Exchange仍未实现。
+`PAE-DEC-039`的UDP（User Datagram Protocol，用户数据报协议）Exchange Windows源码和
+Loopback自动化证据也已形成。由于外部网络调试工具人工门禁尚未执行，整体仍保持部分验证。
 
 Protocol Lab用于：
 
@@ -18,9 +19,10 @@ Protocol Lab用于：
 - 离线Replay（重放）历史记录并比较当前结果；
 - 为生产问题复现准备与Transport无关的记录格式。
 
-本文冻结`PAE-DEC-037`首个内部Contract Slice（契约切片），并按`PAE-DEC-038`完成离线实现
-加固，但不是稳定公共API或跨版本文件格式兼容承诺。离线实现尚未Commit或Push，UDP实现仍需
-另行授权。
+本文冻结`PAE-DEC-037`首个内部Contract Slice（契约切片），按`PAE-DEC-038`完成离线实现加固，
+并按`PAE-DEC-039`实现Windows UDP Exchange，但不是稳定公共API或跨版本文件格式兼容承诺。
+离线实现已作为`35ecbccc9e5554fbd8607535e0aa84e59057ef50`提交并Push；本轮UDP实现和验证
+文档尚未Stage、Commit或Push。
 
 ## 2. 永久边界
 
@@ -181,6 +183,10 @@ Transport模式时才允许把字节交给Socket。
 
 读取一个既有Evidence Bundle，默认使用其中内嵌配置重新执行，并把当前结果与历史结果比较。
 允许显式指定新配置，但必须标记`cross_config_replay=true`，生成新的Run且不得覆盖旧Bundle。
+对`ENCODE_TX`，Replay Result的`frame_*`及`REPLAY FRAME`表示本次实际Encode输出；`tx_frame_*`
+保留源UDP历史TX检查点。Cross-config产生不同字节是合法的`DIFFERENT`，不得按证据损坏拒绝。
+再次Replay该差异Bundle时，当前执行与上一份Replay的确定性指纹比较，而历史TX检查点继续保持
+不变。Encode失败允许本次`frame_*`为空，但必须保留真实失败状态、诊断和历史TX，不能伪造成功。
 
 ### 5.4 `compare`
 
@@ -216,12 +222,12 @@ Run差异通过`comparison_categories`区分`OPERATION_KIND`、`CONFIG`、`WIRE_
 pae_protocol_lab udp-exchange \
   --config <file> \
   --values <file> \
-  --local <ipv4:port> \
+  [--local <ipv4:port>] \
   --remote <ipv4:port> \
   --receive-pipeline <id> \
-  --timeout-ms <value> \
+  [--timeout-ms <value>] \
   --record-root <directory> \
-  --send
+  [--send [--allow-non-loopback]]
 ```
 
 - 显式配置本地和远端Endpoint；
@@ -234,7 +240,9 @@ pae_protocol_lab udp-exchange \
 
 第一版只接受数字IPv4地址，不执行DNS。本地地址默认`127.0.0.1:0`，远端必须显式填写；没有
 `--send`时不得创建Socket，只执行配置、Encode和安全预览。非Loopback地址必须同时提供
-`--send --allow-non-loopback`。不允许广播、组播、自动扫描或后台持续接收。
+`--send --allow-non-loopback`。远端端口不得为`0`；拒绝广播、组播、未指定远端和远端
+`0.0.0.0`，不允许自动扫描或后台持续接收。首个Windows切片固定发送一次并至多接收一个
+Datagram（数据报），不自动重试。
 
 首阶段不实现TCP、串口、CAN、原始网卡监听、自动设备扫描、压力发生器或GUI。
 
@@ -246,10 +254,15 @@ UDP首切片采用工具层同步阻塞等待或等价事件等待，并配置�
 Windows Adapter可使用系统Winsock；未来Linux Adapter使用POSIX Socket。平台代码必须位于
 工具Adapter边界，不得进入ProtocolPlan、Codec或公共Core头文件。
 
+Windows实现通过内部、不可安装且不可导出的`IUdpExchangeAdapter`边界隔离。生产实现使用RAII
+（资源获取即初始化）管理Winsock启动、Socket和清理；测试可注入受控Adapter，但真实Loopback
+自动化必须实际经过Winsock。产品路径不创建常驻线程；测试专用对端线程必须具有明确的就绪、
+停止、超时和回收边界。
+
 第一版不为了统一Socket API引入Qt、Boost或其他大型框架。若未来选择轻量第三方库，必须单独
 记录版本、License、源码范围和引入理由。
 
-## 7. Evidence Bundle V0.1草案
+## 7. Evidence Bundle V0.1/V0.2
 
 每次Lab执行产生一个独立且不可原地覆盖的Run目录：
 
@@ -263,29 +276,72 @@ run_<utc-time>_<run-id>/
 │   ├── 000001_tx.hex
 │   ├── 000002_rx.bin
 │   └── 000002_rx.hex
-├── run_record_v0.1.json
-├── events_v0.1.jsonl
-├── result_summary_v0.1.json
+├── run_record_v0.2.json
+├── events_v0.2.jsonl
+├── result_summary_v0.2.json
 ├── SHA256SUMS
 └── COMPLETE
 ```
 
 在线证据型运行中，最终TX字节必须在Socket发送前成功写入Run记录，RX原始字节必须在
-PAE Decode前成功写入Run记录。若记录失败，对应Frame不得标记为可复现证据；是否继续进行
-非证据型诊断由显式运行参数决定。
+PAE Decode前成功写入Run记录。TX记录失败时不得发送，RX记录失败时不得Decode；首个Windows
+UDP切片不提供绕过该失败关闭语义的非证据型诊断参数。
+
+上述目录展示UDP V0.2；RX同时包含`frames/000002_rx.meta.json`，绑定事件编号、来源Endpoint、
+方向、字节长度和SHA-256。既有离线`inspect/encode/replay/compare`继续写入并读取V0.1；读取器
+只接受明确支持的V0.1/V0.2。旧UDP V0.1草案记录不能证明应重放TX Encode还是RX Decode，必须
+以`PAE_LAB_REPLAY_EVIDENCE_INSUFFICIENT`拒绝，不允许猜测；未知格式版本同样失败关闭。
 
 默认复制本次实际使用的配置和Values文件，保证离线Replay。Bundle按以下流程完成：
 
 1. 创建`run_<id>.inprogress/`；
 2. 单个文件先写临时文件，关闭后重新读取并核对长度与SHA-256，再重命名为正式文件；
-3. TX固定执行`Encode → 保存并复核TX → SEND_INTENT → Socket发送 → SEND_RESULT`；
-4. RX固定执行`Socket接收 → 保存并复核RX → PAE Decode → 记录结果`；
+3. TX固定执行`Encode → 保存并复核TX → Socket就绪 → SEND_INTENT → Socket发送 → SEND_RESULT`；
+4. RX固定执行`Socket接收 → 保存并复核RX字节和来源Metadata → Peer检查 → PAE Decode → 记录结果`；
 5. 全部文件关闭并复核后生成`SHA256SUMS`和`COMPLETE`；
 6. 最后把`.inprogress`目录重命名为正式Run目录。
+
+`COMPLETE`只表示Evidence Bundle事务完整，不表示网络交换或协议操作成功。超时、Socket错误、
+未知Message或Decode失败只要被完整记录，仍可发布带失败终态的正式Run；Evidence Bundle记录
+失败或进程中断才保留`.inprogress`。
 
 失败或崩溃留下`.inprogress`目录，不自动删除；没有`COMPLETE`的目录只能用于人工恢复分析，
 不能作为完整Evidence Bundle。V0.1不承诺断电级持久化，也不要求每个文件调用系统级
 `fsync`或`FlushFileBuffers`。
+
+V0.2 Event在事件实际发生处即时采集，全部使用同一Run单调时钟原点并保持非递减；
+`Complete()`只序列化已采集事件。启动、Socket创建或绑定失败没有`SEND_INTENT/SEND_RESULT`；
+`SEND_RESULT`只记录发送调用本身的成功或稳定诊断，不携带后续接收终态。
+
+UDP V0.2 Replay显式采用下列一种模式：
+
+| 模式 | 当前执行 | 比较语义 |
+| --- | --- | --- |
+| `ENCODE_TX` | 使用记录Values重新Encode TX | 与历史可复现协议结果比较 |
+| `DECODE_RX` | 使用绑定的Receive Pipeline重新Decode完整RX | 与历史可复现协议结果比较 |
+| `NO_CODEC_REEXECUTION` | 只验证证据完整性，不调用Codec | `comparison_equal=null`、`NOT_EVALUATED` |
+
+历史Endpoint、超时、发送/接收状态及Transport诊断只进入`historical_transport`；当前Codec执行
+状态、稳定诊断和比较结论使用独立字段，离线Replay绝不重新打开Socket。
+
+离线Replay顶层`response_received=false`表示本次没有执行网络接收，不覆盖历史值；
+`response_decoded`只表示本次是否实际成功Decode RX。保存的TX/RX字节及当前重放主体由显式模式
+和主体字段绑定，不能再以顶层网络状态推断，因此Replay产物自身必须可继续Replay。对成功、错误
+响应、Peer不匹配、超长、截断和零长度响应，至少验证“原始Run→Replay A→Replay B”。
+
+Bundle读取必须同时执行三层一致性校验：
+
+1. `SHA256SUMS`要求同版本Result、Event、Run Record、配置、Frame和`COMPLETE`完整出现；
+2. Run Record按V0.1/V0.2严格解析对象、必需字段、字段类型和`recorded_payload_files`，并与
+   Result的Command、终态、Transport、收发状态及V0.2模式、主体、Receive Pipeline和当前执行/
+   比较状态对照。真正的旧离线V0.1只要求其发布时已有字段；后加Endpoint、发送结果和响应状态
+   字段允许缺失，存在时仍严格校验类型和一致性，不据缺失字段补造历史事实；
+3. V0.2 Event按事件种类严格校验结构和时序。原始UDP的TX/RX Event绑定Result、Metadata和实际
+   字节，发送结果不得先于意图；离线Replay只记录一个绑定本次`frame_*`实际输出的
+   `REPLAY FRAME`。历史TX/RX仍作为独立比较参考，不冒充本次输出。
+
+缺失Record、非法JSON、未知Record版本、Record/Result矛盾，或Event跨文件关联字段不一致时，
+即使各文件Hash和清单已被同步重算，也必须失败关闭。
 
 `SHA256SUMS`不包含自身，但包含空`COMPLETE`标记；它使用小写Hex、两个ASCII空格和以`/`
 表示的相对路径，条目按路径升序排列。Replay和Run Compare在读取结果前重新核对完整清单；
@@ -328,7 +384,8 @@ pae.lab.result/0.1
 
 结果至少包含`format_version`、Command、Operation Status、Exit Code、配置SHA-256、Protocol、
 Pipeline、Message、Direction、输入Frame长度与SHA-256、类型化字段、Encode输出、稳定诊断、
-Evidence Bundle路径、`send_attempted`、`send_succeeded`和三层Gate状态。
+Evidence Bundle路径、Transport、实际/配置Endpoint、TX/RX字节与Hash、超时、
+`send_attempted`、`send_succeeded`、`response_received`、`response_decoded`和三层Gate状态。
 
 进程退出码冻结为：
 
@@ -351,6 +408,22 @@ Evidence Bundle路径、`send_attempted`、`send_succeeded`和三层Gate状态�
 
 若Evidence Bundle记录失败，机器结果必须先把状态、稳定诊断、Evidence Bundle路径和退出码
 更新到失败终态，再重新计算确定性指纹并输出；不得保留记录失败前的成功状态指纹。
+
+Windows UDP切片冻结以下稳定诊断标识：
+
+- `UDP_STARTUP_FAILED`；
+- `UDP_SOCKET_CREATE_FAILED`；
+- `UDP_BIND_FAILED`；
+- `UDP_SEND_FAILED`；
+- `UDP_RECEIVE_FAILED`；
+- `UDP_RESPONSE_TIMEOUT`；
+- `UDP_PEER_MISMATCH`；
+- `UDP_DATAGRAM_TOO_LARGE`；
+- `UDP_DATAGRAM_TRUNCATED`；
+- `UDP_PLATFORM_UNSUPPORTED`。
+
+前五项、Peer不匹配、超长、截断和平台不支持映射退出码`8`；响应超时映射`9`。UDP交换完成后
+的Decode或期望状态失败仍映射`5`，Evidence Bundle自身失败仍映射`7`。
 
 ## 9. 来源标签和证据语义
 
@@ -380,6 +453,11 @@ Frame Origin与证据等级正交，不增加新的证据等级。
 - PAE生成请求后由真实设备返回的响应可成为`OBSERVED_CAPTURE`候选，但仍需来源确认和独立复核；
 - 从既有生产发送边界独立捕获的请求可成为`OBSERVED_CAPTURE`候选；
 - Lab不得自动修改Corpus的`authority_level`或`review_status`。
+
+在线UDP响应必须记录实际来源IPv4和端口。首个Datagram来源与配置远端不一致时，先保存完整
+原始字节和来源，再以`UDP_PEER_MISMATCH`失败；不得静默丢弃并继续等待。接收缓冲区必须覆盖
+合法IPv4 UDP Payload，完整接收后再执行ProtocolPlan长度限制。超长、截断或无法证明完整的
+Datagram不得进入Decode。
 
 ## 10. 三层验收门禁
 
@@ -435,19 +513,23 @@ Protocol Lab引入后，三个门禁必须分别报告：
 | 响应超时 | `2000 ms` | `60000 ms` |
 | 单Run最大Event数 | `64` | `256` |
 | 单Run原始Frame总字节 | `1 MiB` | `16 MiB` |
-| 单Frame | 当前Plan Profile上限 | Plan与UDP Adapter两者较小上限 |
+| IPv4 UDP Payload | Plan与UDP Adapter两者较小上限 | `65507 bytes`且不超过Plan Profile |
 
 所有上限必须在分配、创建目标文件或发送前检查；乘加采用受检运算。超限时不得发送，也不得
 生成`COMPLETE`。CLI不能关闭Hard Limit；未来压力测试工具不得复用本模式静默扩大资源。
+
+首个Windows UDP切片固定至多接收一条响应。表中的`16`条接收Hard Limit只作为未来经单独拍板
+的多接收模式上界，当前CLI不可达。
 
 ## 14. 分阶段实施
 
 1. `Contract Slice（契约切片）`：本文冻结CLI、记录Schema、来源标签、错误和安全边界；
 2. `Offline Replay Slice（离线重放切片）`：已实现CLI基础、`inspect/encode/replay/compare`、
    Evidence Bundle、模块拆分和文件系统故障注入测试；
-3. 已完成Windows Debug/Release构建与测试；Lab专用均`3/3 PASS`、全切片共存均`29/29 PASS`；
+3. 已完成Windows Debug/Release构建与测试；Lab专用均`4/4 PASS`、全切片共存均`30/30 PASS`；
    审查、Commit和Push保持独立步骤；
-4. `UDP Exchange Slice（UDP实验切片）`：另行实现Windows单次收发和原始记录；
+4. `UDP Exchange Slice（UDP实验切片）`：`PAE-DEC-039` Windows单次收发、原始记录和
+   Loopback自动化已实现；
 5. 使用外部网络调试工具执行人工`LAB_EXCHANGE_PASS`；
 6. `Golden Candidate Export Slice（黄金候选导出切片）`：只生成待人工复核候选，不自动升级证据；
 7. TCP、串口、GUI、压力工具和生产Trace分别另行拍板。
@@ -469,9 +551,10 @@ Offline Replay Slice的CTest至少覆盖：
 - Product-only构建不生成Lab；
 - 现有CTest不回退。
 
-UDP Exchange Slice另行覆盖：默认无`--send`不创建Socket、Loopback单次收发、超时、非Loopback
-双确认、数量/Event/总字节超限和解析前原始记录。自动化测试可使用测试专用阻塞Peer，但不把
-它作为协议权威。
+UDP Exchange Slice按`PAE-DEC-039`覆盖：默认无`--send`不创建Socket、真实Winsock Loopback
+单次收发、TX/RX记录顺序、超时、Transport各阶段错误、非Loopback双确认、非法Endpoint、Peer
+不匹配、超长/截断、数量/Event/总字节超限和解析前原始记录。自动化测试可使用测试专用阻塞
+Peer或注入Adapter，但测试线程必须有界，且不能把测试设施作为协议权威。
 
 人工门禁使用外部网络调试工具接收Lab请求、逐字节核对、发送人工响应，再关闭在线工具执行
 离线Replay。自动化和人工门禁均通过后才允许声明`LAB_EXCHANGE_PASS=PASS`；该结论仍不得升级
@@ -479,8 +562,9 @@ UDP Exchange Slice另行覆盖：默认无`--send`不创建Socket、Loopback单�
 
 ## 16. 首个源码切片排除项
 
-Offline Replay Slice明确不实现UDP、TCP、串口、CAN、GUI、生产Trace、Golden自动升级、Runtime、
-Session、C ABI、Linux、安装导出或正式性能Benchmark。任何扩张必须单独拍板。
+最初的Offline Replay Slice没有实现UDP；后续仅按`PAE-DEC-039`增加Windows UDP单次Exchange。
+TCP、串口、CAN、GUI、生产Trace、Golden自动升级、Runtime、Session、C ABI、Linux、安装导出
+或正式性能Benchmark仍未实现。任何扩张必须单独拍板。
 
 ### 16.1 `PAE-DEC-038`离线加固边界
 
@@ -495,13 +579,38 @@ Run目录创建确认、第N次写入、关闭、重读、长度/内容/Hash复�
 并在目录已经创建的前提下保留`.inprogress`。若操作系统从一开始就禁止创建目录，则没有物理
 目录可保留，但仍必须失败关闭且不得伪造完整Run。
 
+### 16.2 `PAE-DEC-039` Windows UDP Exchange实现边界
+
+第二十三轮确认UDP只属于Protocol Lab工具层。内部`IUdpExchangeAdapter`表达打开、绑定、发送、
+有限等待、接收和关闭，Windows生产实现使用Winsock；接口和实现均不安装、不导出。PAE Core、
+ProtocolPlan和Codec不感知Socket、Endpoint或Windows类型。
+
+`udp-exchange`采用一次同步、有界操作，不忙轮询、不创建产品级常驻线程。无`--send`只执行
+配置、Encode、预览和记录，不能初始化Winsock或创建Socket；非Loopback主动收发必须具备
+`--send --allow-non-loopback`双确认。接收第一个Datagram后先记录原始字节及来源，再检查Peer
+并Decode；来源不一致、超长、截断或无法证明完整均失败关闭。
+
+Windows Debug/Release自动化至少覆盖无`--send`零Socket操作、真实Winsock Loopback单次收发、
+TX/RX逐字节结果和记录顺序、超时、Transport各阶段错误、非Loopback双确认、非法Endpoint、
+Peer不匹配、超长/截断、错误响应的完整证据、记录失败、Product-only和既有CTest不回退。测试
+专用对端线程必须有有界生命周期，且不构成协议权威。
+
+人工验收使用外部网络调试工具完成Loopback请求、逐字节核对、响应、Evidence Bundle复核和
+离线Replay。自动化与人工门禁都通过后才允许报告`LAB_EXCHANGE_PASS=PASS`；Peer仍标记为
+`LAB_SIMULATED_PEER`，不得据此升级`PROTOCOL_GOLDEN_PASS`。
+
+本Decision当前状态为`IMPLEMENTED / WINDOWS_AUTOMATED_VERIFIED（已实现、Windows自动化已
+验证）`。TCP、串口、CAN、持续监听、重试、多客户端、压力测试、GUI、生产Trace、Linux实现、
+Runtime、Session、Route、公共C ABI、真实设备、硬件、现场验证和Golden Candidate自动升级
+均不在本切片。
+
 ## 17. 当前未验证范围
 
 - CLI名称和JSON字段已有内部实现，但尚未形成公共兼容性承诺；
-- 已执行Windows离线记录、Hash复核和Replay自动化测试，尚未执行Windows UDP、Loopback或
-  超时测试；
-- 退出码`8/9`属于未来Transport切片，当前离线切片没有对应运行路径；未分类异常的退出码
-  `10`已在`main()`边界实现，但没有故意制造未定义异常的自动化用例；
+- 已执行Windows离线记录、Hash复核、Replay以及UDP Loopback请求/响应和超时自动化；外部网络
+  调试工具人工Loopback门禁尚未执行，因此`LAB_EXCHANGE_PASS=NOT_EVALUATED`；
+- 退出码`8/9`和UDP稳定诊断已有自动化运行路径；未分类异常的退出码`10`已在`main()`边界实现，
+  但没有故意制造未定义异常的自动化用例；
 - `.inprogress`保留和失败关闭语义已由8类文件系统故障注入覆盖；尚未覆盖断电、进程强杀、
   文件系统缓存持久化或真实磁盘故障；
 - 未测量记录开销、磁盘失败、峰值内存或长时间稳定性；

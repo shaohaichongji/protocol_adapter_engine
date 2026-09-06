@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <chrono>
+#include <climits>
 #include <ctime>
 #include <fstream>
 #include <iomanip>
@@ -22,6 +23,8 @@ namespace {
 std::string UtcTimestamp() {
   const auto now = std::chrono::system_clock::now();
   const std::time_t time = std::chrono::system_clock::to_time_t(now);
+  const auto milliseconds =
+      std::chrono::duration_cast<std::chrono::milliseconds>(now.time_since_epoch()) % 1000;
   std::tm utc{};
 #if defined(_WIN32)
   gmtime_s(&utc, &time);
@@ -29,7 +32,8 @@ std::string UtcTimestamp() {
   gmtime_r(&time, &utc);
 #endif
   std::ostringstream output;
-  output << std::put_time(&utc, "%Y%m%dT%H%M%SZ");
+  output << std::put_time(&utc, "%Y%m%dT%H%M%S") << '.' << std::setfill('0') << std::setw(3)
+         << milliseconds.count() << 'Z';
   return output.str();
 }
 
@@ -92,28 +96,55 @@ bool WriteVerified(RecordFileSystem& file_system, const std::filesystem::path& r
 
 std::string SerializeRunRecord(const OperationResult& result, std::string_view run_id,
                                std::string_view timestamp, const std::vector<RecordedFile>& files) {
+  const std::string_view record_format =
+      result.operation_kind == "udp-exchange" ? kRecordFormat : kRecordFormatV1;
+  const std::string_view tool_version =
+      record_format == kRecordFormatV1 ? "0.1.0-udp-exchange-slice" : kToolVersion;
   std::ostringstream output;
   output << "{\n"
-         << "  \"format_version\":" << Quoted(kRecordFormat) << ",\n"
+         << "  \"format_version\":" << Quoted(record_format) << ",\n"
          << "  \"run_id\":" << Quoted(run_id) << ",\n"
-         << "  \"tool_version\":" << Quoted(kToolVersion) << ",\n"
+         << "  \"tool_version\":" << Quoted(tool_version) << ",\n"
          << "  \"pae_version\":\"0.1.0-internal\",\n"
          << "  \"source_revision\":\"NOT_EMBEDDED\",\n"
          << "  \"command\":" << Quoted(result.command) << ",\n"
          << "  \"started_utc\":" << Quoted(timestamp) << ",\n"
          << "  \"end_status\":" << Quoted(result.status) << ",\n"
-         << "  \"transport\":\"OFFLINE\",\n"
+         << "  \"transport\":" << Quoted(result.transport) << ",\n"
+         << "  \"local_endpoint\":" << Quoted(result.local_endpoint) << ",\n"
+         << "  \"remote_endpoint\":" << Quoted(result.remote_endpoint) << ",\n"
+         << "  \"received_from\":" << Quoted(result.received_from) << ",\n"
          << "  \"frame_origin\":"
-         << Quoted(result.command == "encode"
-                       ? "PAE_GENERATED"
-                       : (result.command == "replay" ? "REPLAYED" : "MANUAL_SYNTHETIC"))
+         << Quoted(result.command == "udp-exchange"
+                       ? (result.frame_file == "frames/000002_rx.bin" ? "MANUAL_SYNTHETIC"
+                                                                      : "PAE_GENERATED")
+                       : (result.command == "encode"
+                              ? "PAE_GENERATED"
+                              : (result.command == "replay" ? "REPLAYED" : "MANUAL_SYNTHETIC")))
          << ",\n"
-         << "  \"peer_kind\":\"OFFLINE_FILE\",\n"
+         << "  \"peer_kind\":"
+         << Quoted(result.command == "udp-exchange" ? "LAB_SIMULATED_PEER" : "OFFLINE_FILE")
+         << ",\n"
          << "  \"authority_level\":\"OPEN\",\n"
          << "  \"sensitivity\":\"USER_REVIEW_REQUIRED\",\n"
-         << "  \"send_attempted\":false,\n"
-         << "  \"limits\":{\"max_frame_bytes\":16777216,\"max_receive_frames\":0,"
-            "\"timeout_ms\":0,\"max_send_count\":0,\"max_events\":256,"
+         << "  \"send_attempted\":" << (result.send_attempted ? "true" : "false") << ",\n"
+         << "  \"send_succeeded\":" << (result.send_succeeded ? "true" : "false") << ",\n"
+         << "  \"response_received\":" << (result.response_received ? "true" : "false") << ",\n"
+         << "  \"response_decoded\":" << (result.response_decoded ? "true" : "false");
+  if (record_format == kRecordFormat) {
+    output << ",\n"
+           << "  \"receive_pipeline_id\":" << Quoted(result.receive_pipeline_id) << ",\n"
+           << "  \"replay_mode\":" << Quoted(result.replay_mode) << ",\n"
+           << "  \"replay_subject\":" << Quoted(result.replay_subject) << ",\n"
+           << "  \"current_execution_status\":" << Quoted(result.current_execution_status) << ",\n"
+           << "  \"comparison_status\":" << Quoted(result.comparison_status);
+  }
+  output << ",\n"
+         << "  \"limits\":{\"max_frame_bytes\":" << result.max_frame_bytes
+         << ",\"max_receive_frames\":" << (result.command == "udp-exchange" ? 1 : 0) << ","
+         << "\"timeout_ms\":" << result.timeout_ms
+         << ",\"max_send_count\":" << (result.command == "udp-exchange" ? 1 : 0)
+         << ",\"max_events\":256,"
             "\"max_raw_bytes\":16777216},\n"
          << "  \"hash_manifest\":\"SHA256SUMS\",\n"
          << "  \"hash_manifest_excludes_self\":true,\n"
@@ -128,23 +159,52 @@ std::string SerializeRunRecord(const OperationResult& result, std::string_view r
   return output.str();
 }
 
-std::string SerializeEvent(const OperationResult& result, std::string_view timestamp) {
+std::string SerializeEvent(const LabEvent& event) {
   std::ostringstream output;
-  output << "{\"format_version\":\"pae.lab.event/0.1\",\"event_id\":1,\"direction\":"
-         << Quoted(result.command == "encode" ? "TX"
-                                              : (result.command == "replay" ? "REPLAY" : "RX"))
-         << ",\"frame_file\":\"frames/000001_frame.bin\",\"frame_length\":" << result.frame.size()
-         << ",\"frame_sha256\":" << Quoted(HashBytes(result.frame)) << ",\"frame_origin\":"
-         << Quoted(result.command == "encode"
-                       ? "PAE_GENERATED"
-                       : (result.command == "replay" ? "REPLAYED" : "MANUAL_SYNTHETIC"))
-         << ",\"peer_kind\":\"OFFLINE_FILE\",\"pipeline_id\":" << Quoted(result.pipeline_id)
-         << ",\"message_id\":" << Quoted(result.message_id)
-         << ",\"direction_id\":" << Quoted(result.direction_id)
-         << ",\"status\":" << Quoted(result.status)
-         << ",\"fields\":" << SerializeFieldsCompact(result.fields)
-         << ",\"diagnostic_id\":" << Quoted(result.diagnostic_id)
-         << ",\"wall_clock_utc\":" << Quoted(timestamp) << ",\"monotonic_offset_ns\":0}\n";
+  output << "{\"format_version\":" << Quoted(kEventFormat) << ",\"event_id\":" << event.event_id
+         << ",\"event_kind\":" << Quoted(event.event_kind)
+         << ",\"direction\":" << Quoted(event.direction)
+         << ",\"frame_file\":" << Quoted(event.frame_file)
+         << ",\"frame_length\":" << event.frame_length
+         << ",\"frame_sha256\":" << Quoted(event.frame_sha256)
+         << ",\"frame_origin\":" << Quoted(event.frame_origin)
+         << ",\"peer_kind\":" << Quoted(event.peer_kind)
+         << ",\"remote_endpoint\":" << Quoted(event.remote_endpoint)
+         << ",\"received_from\":" << Quoted(event.received_from)
+         << ",\"succeeded\":" << (event.succeeded ? "true" : "false")
+         << ",\"diagnostic_id\":" << Quoted(event.diagnostic_id)
+         << ",\"wall_clock_utc\":" << Quoted(event.wall_clock_utc)
+         << ",\"monotonic_offset_ns\":" << event.monotonic_offset_ns << "}\n";
+  return output.str();
+}
+
+std::string SerializeEvents(const OperationResult& result) {
+  if (result.operation_kind != "udp-exchange") {
+    const std::string direction =
+        result.command == "encode" ? "TX" : (result.command == "replay" ? "REPLAY" : "RX");
+    const std::string origin = result.command == "encode"
+                                   ? "PAE_GENERATED"
+                                   : (result.command == "replay" ? "REPLAYED" : "MANUAL_SYNTHETIC");
+    std::ostringstream legacy;
+    legacy << "{\"format_version\":\"pae.lab.event/0.1\",\"event_id\":1,"
+              "\"event_kind\":\"FRAME\",\"direction\":"
+           << Quoted(direction) << ",\"frame_file\":\"frames/000001_frame.bin\","
+           << "\"frame_length\":" << result.frame.size()
+           << ",\"frame_sha256\":" << Quoted(HashBytes(result.frame))
+           << ",\"frame_origin\":" << Quoted(origin)
+           << ",\"peer_kind\":\"OFFLINE_FILE\",\"pipeline_id\":" << Quoted(result.pipeline_id)
+           << ",\"message_id\":" << Quoted(result.message_id)
+           << ",\"direction_id\":" << Quoted(result.direction_id)
+           << ",\"status\":" << Quoted(result.status)
+           << ",\"fields\":" << SerializeFieldsCompact(result.fields)
+           << ",\"diagnostic_id\":" << Quoted(result.diagnostic_id)
+           << ",\"wall_clock_utc\":" << Quoted(UtcTimestamp()) << ",\"monotonic_offset_ns\":0}\n";
+    return legacy.str();
+  }
+  std::ostringstream output;
+  for (const LabEvent& event : result.events) {
+    output << SerializeEvent(event);
+  }
   return output.str();
 }
 
@@ -160,6 +220,609 @@ bool IsSafeRelativePath(const std::filesystem::path& path) {
   return true;
 }
 
+bool ReadJsonBool(yyjson_val* object, const char* name, bool& output, std::string& error) {
+  yyjson_val* value = yyjson_obj_get(object, name);
+  if (!yyjson_is_bool(value)) {
+    error = std::string{name} + " must be boolean";
+    return false;
+  }
+  output = yyjson_get_bool(value);
+  return true;
+}
+
+bool ReadJsonSize(yyjson_val* object, const char* name, std::size_t& output, std::string& error) {
+  yyjson_val* value = yyjson_obj_get(object, name);
+  if (!yyjson_is_uint(value) || yyjson_get_uint(value) > SIZE_MAX) {
+    error = std::string{name} + " must be an in-range unsigned integer";
+    return false;
+  }
+  output = static_cast<std::size_t>(yyjson_get_uint(value));
+  return true;
+}
+
+bool ReadJsonNonnegativeInt(yyjson_val* object, const char* name, int& output, std::string& error) {
+  yyjson_val* value = yyjson_obj_get(object, name);
+  if (!yyjson_is_uint(value) || yyjson_get_uint(value) > INT_MAX) {
+    error = std::string{name} + " must be a nonnegative in-range integer";
+    return false;
+  }
+  output = static_cast<int>(yyjson_get_uint(value));
+  return true;
+}
+
+bool VerifyRxMetadata(const std::filesystem::path& bundle, const StoredRun& run,
+                      std::string& error) {
+  const std::filesystem::path metadata_path = bundle / "frames/000002_rx.meta.json";
+  if (!std::filesystem::is_regular_file(metadata_path)) {
+    error = "V0.2 UDP Run with a received response has no RX metadata";
+    return false;
+  }
+  std::string metadata_text;
+  if (!ReadText(metadata_path, metadata_text, error)) {
+    return false;
+  }
+  DocumentPtr metadata_document;
+  if (!ParseDocument(metadata_text, metadata_document, error)) {
+    return false;
+  }
+  yyjson_val* metadata = yyjson_doc_get_root(metadata_document.get());
+  const std::set<std::string_view> keys{"format_version", "event_id",     "frame_file",
+                                        "frame_length",   "frame_sha256", "received_from",
+                                        "direction"};
+  if (!ValidateObject(metadata, keys, keys, "rx_metadata", error)) {
+    return false;
+  }
+  std::string format;
+  std::string frame_file;
+  std::string frame_sha256;
+  std::string received_from;
+  std::string direction;
+  std::size_t frame_length = 0U;
+  std::size_t event_id = 0U;
+  if (!ReadJsonString(metadata, "format_version", format, error) ||
+      !ReadJsonSize(metadata, "event_id", event_id, error) ||
+      !ReadJsonString(metadata, "frame_file", frame_file, error) ||
+      !ReadJsonSize(metadata, "frame_length", frame_length, error) ||
+      !ReadJsonString(metadata, "frame_sha256", frame_sha256, error) ||
+      !ReadJsonString(metadata, "received_from", received_from, error) ||
+      !ReadJsonString(metadata, "direction", direction, error)) {
+    return false;
+  }
+  std::vector<std::uint8_t> frame;
+  if (format != "pae.lab.rx-meta/0.2" || event_id == 0U || frame_file != "frames/000002_rx.bin" ||
+      direction != "RX" || received_from != run.received_from ||
+      !ReadFile(bundle / frame_file, frame, error) || frame_length != frame.size() ||
+      frame_sha256 != HashBytes(frame) || HexUpper(frame) != run.rx_frame_hex) {
+    if (error.empty()) {
+      error = "RX metadata does not match the recorded frame or source endpoint";
+    }
+    return false;
+  }
+
+  std::string events_text;
+  if (!ReadText(bundle / "events_v0.2.jsonl", events_text, error)) {
+    return false;
+  }
+  std::istringstream event_lines{events_text};
+  std::string event_text;
+  bool matched = false;
+  while (std::getline(event_lines, event_text)) {
+    if (event_text.empty()) {
+      continue;
+    }
+    DocumentPtr event_document;
+    if (!ParseDocument(event_text, event_document, error)) {
+      return false;
+    }
+    yyjson_val* event = yyjson_doc_get_root(event_document.get());
+    yyjson_val* id = yyjson_obj_get(event, "event_id");
+    if (!yyjson_is_uint(id) || yyjson_get_uint(id) != event_id) {
+      continue;
+    }
+    std::string kind;
+    std::string event_direction;
+    std::string event_frame;
+    std::string event_frame_sha256;
+    std::string event_source;
+    std::size_t event_frame_length = 0U;
+    if (!ReadJsonString(event, "event_kind", kind, error) ||
+        !ReadJsonString(event, "direction", event_direction, error) ||
+        !ReadJsonString(event, "frame_file", event_frame, error) ||
+        !ReadJsonSize(event, "frame_length", event_frame_length, error) ||
+        !ReadJsonString(event, "frame_sha256", event_frame_sha256, error) ||
+        !ReadJsonString(event, "received_from", event_source, error)) {
+      return false;
+    }
+    matched = kind == "FRAME" && event_direction == "RX" && event_frame == frame_file &&
+              event_frame_length == frame_length && event_frame_sha256 == frame_sha256 &&
+              event_source == received_from;
+    break;
+  }
+  if (!matched) {
+    error = "RX metadata does not bind to the corresponding RX event";
+  }
+  return matched;
+}
+
+bool ReadEventV2(yyjson_val* event, LabEvent& output, std::string& error) {
+  const std::set<std::string_view> keys{
+      "format_version", "event_id",     "event_kind",    "direction",      "frame_file",
+      "frame_length",   "frame_sha256", "frame_origin",  "peer_kind",      "remote_endpoint",
+      "received_from",  "succeeded",    "diagnostic_id", "wall_clock_utc", "monotonic_offset_ns"};
+  if (!ValidateObject(event, keys, keys, "V0.2 event", error)) {
+    return false;
+  }
+  std::string format;
+  std::size_t offset = 0U;
+  if (!ReadJsonString(event, "format_version", format, error) || format != kEventFormat ||
+      !ReadJsonSize(event, "event_id", output.event_id, error) ||
+      !ReadJsonString(event, "event_kind", output.event_kind, error) ||
+      !ReadJsonString(event, "direction", output.direction, error) ||
+      !ReadJsonString(event, "frame_file", output.frame_file, error) ||
+      !ReadJsonSize(event, "frame_length", output.frame_length, error) ||
+      !ReadJsonString(event, "frame_sha256", output.frame_sha256, error) ||
+      !ReadJsonString(event, "frame_origin", output.frame_origin, error) ||
+      !ReadJsonString(event, "peer_kind", output.peer_kind, error) ||
+      !ReadJsonString(event, "remote_endpoint", output.remote_endpoint, error) ||
+      !ReadJsonString(event, "received_from", output.received_from, error) ||
+      !ReadJsonBool(event, "succeeded", output.succeeded, error) ||
+      !ReadJsonString(event, "diagnostic_id", output.diagnostic_id, error) ||
+      !ReadJsonString(event, "wall_clock_utc", output.wall_clock_utc, error) ||
+      !ReadJsonSize(event, "monotonic_offset_ns", offset, error)) {
+    if (error.empty()) {
+      error = "unsupported V0.2 event format_version";
+    }
+    return false;
+  }
+  output.monotonic_offset_ns = static_cast<std::uint64_t>(offset);
+
+  const bool empty_frame = output.frame_file.empty() && output.frame_length == 0U &&
+                           output.frame_sha256.empty() && output.frame_origin.empty() &&
+                           output.peer_kind.empty() && output.received_from.empty();
+  if (output.event_kind == "FRAME") {
+    if ((output.direction != "TX" && output.direction != "RX" && output.direction != "REPLAY") ||
+        !IsSafeRelativePath(output.frame_file) || output.frame_sha256.size() != 64U ||
+        output.frame_origin.empty() || output.peer_kind.empty() || !output.succeeded ||
+        (output.direction != "REPLAY" && !output.diagnostic_id.empty()) ||
+        (output.direction == "RX") != !output.received_from.empty() ||
+        !output.remote_endpoint.empty()) {
+      error = "V0.2 FRAME event fields are inconsistent";
+      return false;
+    }
+  } else if (output.event_kind == "SEND_INTENT") {
+    if (output.direction != "TX" || !empty_frame || output.remote_endpoint.empty() ||
+        !output.succeeded || !output.diagnostic_id.empty()) {
+      error = "V0.2 SEND_INTENT event fields are inconsistent";
+      return false;
+    }
+  } else if (output.event_kind == "SEND_RESULT") {
+    if (output.direction != "TX" || !empty_frame || !output.remote_endpoint.empty() ||
+        (output.succeeded ? !output.diagnostic_id.empty()
+                          : output.diagnostic_id != "UDP_SEND_FAILED")) {
+      error = "V0.2 SEND_RESULT event fields are inconsistent";
+      return false;
+    }
+  } else {
+    error = "V0.2 event has an unsupported event_kind";
+    return false;
+  }
+  return true;
+}
+
+bool VerifyFrameShape(std::string_view label, std::string_view hex, std::size_t length,
+                      std::string_view sha256, std::vector<std::uint8_t>& bytes,
+                      std::string& error) {
+  bytes.clear();
+  const bool parsed = hex.empty() ? true : ParseFrameHex(hex, bytes, error);
+  if (!parsed || HexUpper(bytes) != hex || bytes.size() != length || HashBytes(bytes) != sha256) {
+    if (error.empty()) {
+      error = std::string{label} + " summary length, Hash, or Hex is inconsistent";
+    }
+    return false;
+  }
+  return true;
+}
+
+bool EventBindsFrame(const std::filesystem::path& bundle, const LabEvent& event,
+                     std::string_view expected_file, const std::vector<std::uint8_t>& expected,
+                     std::string& error) {
+  std::vector<std::uint8_t> recorded;
+  if (event.frame_file != expected_file || event.frame_length != expected.size() ||
+      event.frame_sha256 != HashBytes(expected) ||
+      !ReadFile(bundle / event.frame_file, recorded, error) || recorded != expected) {
+    if (error.empty()) {
+      error = "V0.2 FRAME event does not bind to its summary and byte file";
+    }
+    return false;
+  }
+  return true;
+}
+
+bool VerifyEventLogV2(const std::filesystem::path& bundle, const StoredRun& run,
+                      std::string& error) {
+  std::string events_text;
+  if (!ReadText(bundle / "events_v0.2.jsonl", events_text, error)) {
+    return false;
+  }
+  std::istringstream lines{events_text};
+  std::string line;
+  std::size_t expected_id = 1U;
+  std::uint64_t previous_offset = 0U;
+  std::vector<LabEvent> events;
+  while (std::getline(lines, line)) {
+    if (line.empty()) {
+      error = "V0.2 event log contains an empty line";
+      return false;
+    }
+    DocumentPtr document;
+    if (!ParseDocument(line, document, error)) {
+      return false;
+    }
+    yyjson_val* event = yyjson_doc_get_root(document.get());
+    LabEvent parsed;
+    if (!ReadEventV2(event, parsed, error) || parsed.event_id != expected_id ||
+        (expected_id > 1U && parsed.monotonic_offset_ns < previous_offset)) {
+      if (error.empty()) {
+        error = "V0.2 event ids, version, or monotonic offsets are invalid";
+      }
+      return false;
+    }
+    previous_offset = parsed.monotonic_offset_ns;
+    events.push_back(std::move(parsed));
+    ++expected_id;
+    if (expected_id > 257U) {
+      error = "V0.2 event log exceeds the configured event limit";
+      return false;
+    }
+  }
+  if (expected_id == 1U) {
+    error = "V0.2 event log is empty";
+    return false;
+  }
+
+  std::vector<std::uint8_t> frame;
+  std::vector<std::uint8_t> tx;
+  std::vector<std::uint8_t> rx;
+  if (!VerifyFrameShape("frame", run.frame_hex, run.frame_length, run.frame_sha256, frame, error) ||
+      !VerifyFrameShape("TX frame", run.tx_frame_hex, run.tx_frame_length, run.tx_frame_sha256, tx,
+                        error) ||
+      !VerifyFrameShape("RX frame", run.rx_frame_hex, run.rx_frame_length, run.rx_frame_sha256, rx,
+                        error)) {
+    return false;
+  }
+
+  std::size_t tx_frames = 0U;
+  std::size_t rx_frames = 0U;
+  std::size_t replay_frames = 0U;
+  std::size_t intents = 0U;
+  std::size_t send_results = 0U;
+  std::size_t intent_index = 0U;
+  std::size_t send_result_index = 0U;
+  bool send_result_succeeded = false;
+  for (std::size_t index = 0U; index < events.size(); ++index) {
+    const LabEvent& event = events[index];
+    if (event.event_kind == "SEND_INTENT") {
+      ++intents;
+      intent_index = index;
+    } else if (event.event_kind == "SEND_RESULT") {
+      ++send_results;
+      send_result_index = index;
+      send_result_succeeded = event.succeeded;
+    } else if (event.direction == "TX") {
+      ++tx_frames;
+      if (!EventBindsFrame(bundle, event, run.tx_frame_file, tx, error)) {
+        return false;
+      }
+    } else if (event.direction == "RX") {
+      ++rx_frames;
+      if (!EventBindsFrame(bundle, event, run.rx_frame_file, rx, error)) {
+        return false;
+      }
+    } else {
+      ++replay_frames;
+      if (!EventBindsFrame(bundle, event, run.frame_file, frame, error)) {
+        return false;
+      }
+    }
+  }
+
+  if (run.command == "udp-exchange") {
+    const bool main_frame_bound =
+        (run.frame_file == run.tx_frame_file && frame == tx) ||
+        (!run.rx_frame_file.empty() && run.frame_file == run.rx_frame_file && frame == rx);
+    if (tx_frames != 1U || replay_frames != 0U || run.tx_frame_file != "frames/000001_tx.bin" ||
+        !main_frame_bound || run.send_succeeded > run.send_attempted ||
+        (run.send_attempted
+             ? (intents != 1U || send_results != 1U || intent_index >= send_result_index ||
+                send_result_succeeded != run.send_succeeded)
+             : (intents != 0U || send_results != 0U)) ||
+        (run.response_received ? (rx_frames != 1U || run.rx_frame_file.empty())
+                               : (rx_frames != 0U || !run.rx_frame_file.empty())) ||
+        (run.response_decoded && (!run.response_received || run.replay_mode != "DECODE_RX" ||
+                                  run.current_execution_status != "OK"))) {
+      error = "V0.2 UDP source event sequence conflicts with the result summary";
+      return false;
+    }
+  } else if (run.command == "replay") {
+    const bool rx_subject = run.replay_subject == "RX" || run.replay_subject == "RX_INCOMPLETE";
+    if (replay_frames != 1U || tx_frames != 0U || rx_frames != 0U || intents != 0U ||
+        send_results != 0U || run.send_attempted || run.send_succeeded || run.response_received ||
+        !run.tx_frame_file.empty() || !run.rx_frame_file.empty() ||
+        (run.replay_mode == "ENCODE_TX" ? run.replay_subject != "TX" : !rx_subject) ||
+        (run.replay_mode != "ENCODE_TX" && frame != rx) ||
+        !EventBindsFrame(bundle, events.front(), run.frame_file, frame, error)) {
+      if (error.empty()) {
+        error = "V0.2 Replay event sequence conflicts with the result summary";
+      }
+      return false;
+    }
+  } else {
+    error = "V0.2 UDP evidence has an unsupported command";
+    return false;
+  }
+  return true;
+}
+
+bool VerifyRunRecord(const std::filesystem::path& bundle, const StoredRun& run, bool v2,
+                     std::string& error) {
+  const std::filesystem::path record_path =
+      bundle / (v2 ? "run_record_v0.2.json" : "run_record_v0.1.json");
+  std::string text;
+  if (!ReadText(record_path, text, error)) {
+    return false;
+  }
+  DocumentPtr document;
+  if (!ParseDocument(text, document, error)) {
+    error = "Run Record is not valid JSON: " + error;
+    return false;
+  }
+  yyjson_val* record = yyjson_doc_get_root(document.get());
+  const std::set<std::string_view> base_keys{"format_version",
+                                             "run_id",
+                                             "tool_version",
+                                             "pae_version",
+                                             "source_revision",
+                                             "command",
+                                             "started_utc",
+                                             "end_status",
+                                             "transport",
+                                             "local_endpoint",
+                                             "remote_endpoint",
+                                             "received_from",
+                                             "frame_origin",
+                                             "peer_kind",
+                                             "authority_level",
+                                             "sensitivity",
+                                             "send_attempted",
+                                             "send_succeeded",
+                                             "response_received",
+                                             "response_decoded",
+                                             "limits",
+                                             "hash_manifest",
+                                             "hash_manifest_excludes_self",
+                                             "recorded_payload_files"};
+  std::set<std::string_view> allowed = base_keys;
+  if (v2) {
+    allowed.insert("receive_pipeline_id");
+    allowed.insert("replay_mode");
+    allowed.insert("replay_subject");
+    allowed.insert("current_execution_status");
+    allowed.insert("comparison_status");
+  }
+  const std::set<std::string_view> required_v1{"format_version",
+                                               "run_id",
+                                               "tool_version",
+                                               "pae_version",
+                                               "source_revision",
+                                               "command",
+                                               "started_utc",
+                                               "end_status",
+                                               "transport",
+                                               "frame_origin",
+                                               "peer_kind",
+                                               "authority_level",
+                                               "sensitivity",
+                                               "send_attempted",
+                                               "limits",
+                                               "hash_manifest",
+                                               "hash_manifest_excludes_self",
+                                               "recorded_payload_files"};
+  if (!ValidateObject(record, allowed, v2 ? allowed : required_v1, "Run Record", error)) {
+    return false;
+  }
+
+  std::string format;
+  std::string run_id;
+  std::string ignored;
+  std::string command;
+  std::string end_status;
+  std::string transport;
+  std::string local_endpoint;
+  std::string remote_endpoint;
+  std::string received_from;
+  std::string hash_manifest;
+  bool send_attempted = false;
+  bool send_succeeded = false;
+  bool response_received = false;
+  bool response_decoded = false;
+  bool manifest_excludes_self = false;
+  if (!ReadJsonString(record, "format_version", format, error) ||
+      !ReadJsonString(record, "run_id", run_id, error) || run_id.empty() ||
+      !ReadJsonString(record, "tool_version", ignored, error) ||
+      !ReadJsonString(record, "pae_version", ignored, error) ||
+      !ReadJsonString(record, "source_revision", ignored, error) ||
+      !ReadJsonString(record, "command", command, error) ||
+      !ReadJsonString(record, "started_utc", ignored, error) ||
+      !ReadJsonString(record, "end_status", end_status, error) ||
+      !ReadJsonString(record, "transport", transport, error) ||
+      !ReadJsonString(record, "frame_origin", ignored, error) ||
+      !ReadJsonString(record, "peer_kind", ignored, error) ||
+      !ReadJsonString(record, "authority_level", ignored, error) ||
+      !ReadJsonString(record, "sensitivity", ignored, error) ||
+      !ReadJsonBool(record, "send_attempted", send_attempted, error) ||
+      !ReadJsonString(record, "hash_manifest", hash_manifest, error) ||
+      !ReadJsonBool(record, "hash_manifest_excludes_self", manifest_excludes_self, error)) {
+    return false;
+  }
+  auto read_optional_string = [&](const char* name, std::string& value, bool& present) {
+    present = yyjson_obj_get(record, name) != nullptr;
+    return !present || ReadJsonString(record, name, value, error);
+  };
+  auto read_optional_bool = [&](const char* name, bool& value, bool& present) {
+    present = yyjson_obj_get(record, name) != nullptr;
+    return !present || ReadJsonBool(record, name, value, error);
+  };
+  bool has_local_endpoint = false;
+  bool has_remote_endpoint = false;
+  bool has_received_from = false;
+  bool has_send_succeeded = false;
+  bool has_response_received = false;
+  bool has_response_decoded = false;
+  if (!read_optional_string("local_endpoint", local_endpoint, has_local_endpoint) ||
+      !read_optional_string("remote_endpoint", remote_endpoint, has_remote_endpoint) ||
+      !read_optional_string("received_from", received_from, has_received_from) ||
+      !read_optional_bool("send_succeeded", send_succeeded, has_send_succeeded) ||
+      !read_optional_bool("response_received", response_received, has_response_received) ||
+      !read_optional_bool("response_decoded", response_decoded, has_response_decoded)) {
+    return false;
+  }
+  const std::string expected_format =
+      v2 ? std::string{kRecordFormat} : std::string{kRecordFormatV1};
+  if (format != expected_format || hash_manifest != "SHA256SUMS" || !manifest_excludes_self) {
+    error = "Run Record version or manifest contract is unsupported";
+    return false;
+  }
+
+  std::string receive_pipeline;
+  std::string replay_mode;
+  std::string replay_subject;
+  std::string current_status;
+  std::string comparison_status;
+  if (v2 && (!ReadJsonString(record, "receive_pipeline_id", receive_pipeline, error) ||
+             !ReadJsonString(record, "replay_mode", replay_mode, error) ||
+             !ReadJsonString(record, "replay_subject", replay_subject, error) ||
+             !ReadJsonString(record, "current_execution_status", current_status, error) ||
+             !ReadJsonString(record, "comparison_status", comparison_status, error))) {
+    return false;
+  }
+  if (command != run.command || end_status != run.operation_status ||
+      ((v2 || !run.transport.empty()) && transport != run.transport) ||
+      send_attempted != run.send_attempted ||
+      (has_local_endpoint && local_endpoint != run.local_endpoint) ||
+      (has_remote_endpoint && remote_endpoint != run.remote_endpoint) ||
+      (has_received_from && received_from != run.received_from) ||
+      (has_send_succeeded && send_succeeded != run.send_succeeded) ||
+      (has_response_received && response_received != run.response_received) ||
+      (has_response_decoded && response_decoded != run.response_decoded) ||
+      (v2 &&
+       (receive_pipeline != run.receive_pipeline_id || replay_mode != run.replay_mode ||
+        replay_subject != run.replay_subject || current_status != run.current_execution_status ||
+        comparison_status != run.comparison_status))) {
+    error = "Run Record conflicts with the result summary";
+    return false;
+  }
+
+  yyjson_val* limits = yyjson_obj_get(record, "limits");
+  const std::set<std::string_view> limit_keys{"max_frame_bytes", "max_receive_frames",
+                                              "timeout_ms",      "max_send_count",
+                                              "max_events",      "max_raw_bytes"};
+  if (!ValidateObject(limits, limit_keys, limit_keys, "Run Record limits", error)) {
+    return false;
+  }
+  std::size_t ignored_limit = 0U;
+  for (const char* name :
+       {"max_frame_bytes", "max_receive_frames", "max_send_count", "max_events", "max_raw_bytes"}) {
+    if (!ReadJsonSize(limits, name, ignored_limit, error)) {
+      return false;
+    }
+  }
+  std::size_t timeout_ms = 0U;
+  if (!ReadJsonSize(limits, "timeout_ms", timeout_ms, error) || timeout_ms != run.timeout_ms) {
+    if (error.empty()) {
+      error = "Run Record timeout conflicts with the result summary";
+    }
+    return false;
+  }
+
+  yyjson_val* payloads = yyjson_obj_get(record, "recorded_payload_files");
+  if (!yyjson_is_arr(payloads) || yyjson_arr_size(payloads) == 0U) {
+    error = "Run Record recorded_payload_files must be a nonempty array";
+    return false;
+  }
+  std::set<std::string> payload_paths;
+  yyjson_arr_iter iterator;
+  yyjson_arr_iter_init(payloads, &iterator);
+  while (yyjson_val* payload = yyjson_arr_iter_next(&iterator)) {
+    const std::set<std::string_view> payload_keys{"path", "size", "sha256"};
+    if (!ValidateObject(payload, payload_keys, payload_keys, "Run Record payload", error)) {
+      return false;
+    }
+    std::string path;
+    std::string sha256;
+    std::size_t size = 0U;
+    if (!ReadJsonString(payload, "path", path, error) ||
+        !ReadJsonSize(payload, "size", size, error) ||
+        !ReadJsonString(payload, "sha256", sha256, error) || !IsSafeRelativePath(path) ||
+        !payload_paths.insert(path).second) {
+      if (error.empty()) {
+        error = "Run Record payload path is unsafe or duplicated";
+      }
+      return false;
+    }
+    std::vector<std::uint8_t> bytes;
+    if (!ReadFile(bundle / path, bytes, error) || bytes.size() != size ||
+        HashBytes(bytes) != sha256) {
+      if (error.empty()) {
+        error = "Run Record payload does not match the recorded file";
+      }
+      return false;
+    }
+  }
+  const std::string result_name = v2 ? "result_summary_v0.2.json" : "result_summary_v0.1.json";
+  const std::string events_name = v2 ? "events_v0.2.jsonl" : "events_v0.1.jsonl";
+  auto requires_payload = [&](const std::string& path) {
+    return path.empty() || payload_paths.find(path) != payload_paths.end();
+  };
+  auto hex_path = [](const std::string& binary) {
+    std::filesystem::path path{binary};
+    path.replace_extension(".hex");
+    return path.generic_string();
+  };
+  if (payload_paths.find("inputs/protocol.pae.json") == payload_paths.end() ||
+      payload_paths.find(result_name) == payload_paths.end() ||
+      payload_paths.find(events_name) == payload_paths.end() ||
+      !requires_payload(run.values_file) || !requires_payload(run.frame_file) ||
+      !requires_payload(hex_path(run.frame_file)) || !requires_payload(run.tx_frame_file) ||
+      (!run.tx_frame_file.empty() && !requires_payload(hex_path(run.tx_frame_file))) ||
+      !requires_payload(run.rx_frame_file) ||
+      (!run.rx_frame_file.empty() &&
+       (!requires_payload(hex_path(run.rx_frame_file)) ||
+        payload_paths.find("frames/000002_rx.meta.json") == payload_paths.end()))) {
+    error = "Run Record omits a required recorded payload";
+    return false;
+  }
+  std::error_code traversal_error;
+  for (std::filesystem::recursive_directory_iterator file_iterator{bundle, traversal_error}, end;
+       file_iterator != end && !traversal_error; file_iterator.increment(traversal_error)) {
+    if (!file_iterator->is_regular_file(traversal_error)) {
+      continue;
+    }
+    const std::string relative =
+        std::filesystem::relative(file_iterator->path(), bundle, traversal_error).generic_string();
+    if (relative != "SHA256SUMS" && relative != "COMPLETE" &&
+        relative != record_path.filename().generic_string() &&
+        payload_paths.find(relative) == payload_paths.end()) {
+      error = "Run Record omits recorded file " + relative;
+      return false;
+    }
+  }
+  if (traversal_error) {
+    error = "Run Record payload traversal failed: " + traversal_error.message();
+    return false;
+  }
+  return true;
+}
+
 bool VerifyBundleHashes(const std::filesystem::path& bundle, std::string& error) {
   std::string sums;
   if (!ReadText(bundle / "SHA256SUMS", sums, error)) {
@@ -169,7 +832,12 @@ bool VerifyBundleHashes(const std::filesystem::path& bundle, std::string& error)
   std::string line;
   std::string previous_path;
   bool saw_complete = false;
-  bool saw_result = false;
+  bool saw_result_v1 = false;
+  bool saw_result_v2 = false;
+  bool saw_record_v1 = false;
+  bool saw_record_v2 = false;
+  bool saw_events_v1 = false;
+  bool saw_events_v2 = false;
   bool saw_config = false;
   bool saw_frame = false;
   std::size_t entry_count = 0U;
@@ -214,12 +882,23 @@ bool VerifyBundleHashes(const std::filesystem::path& bundle, std::string& error)
     previous_path = relative_text;
     listed_paths.insert(relative_text);
     saw_complete = saw_complete || relative_text == "COMPLETE";
-    saw_result = saw_result || relative_text == "result_summary_v0.1.json";
+    saw_result_v1 = saw_result_v1 || relative_text == "result_summary_v0.1.json";
+    saw_result_v2 = saw_result_v2 || relative_text == "result_summary_v0.2.json";
+    saw_record_v1 = saw_record_v1 || relative_text == "run_record_v0.1.json";
+    saw_record_v2 = saw_record_v2 || relative_text == "run_record_v0.2.json";
+    saw_events_v1 = saw_events_v1 || relative_text == "events_v0.1.jsonl";
+    saw_events_v2 = saw_events_v2 || relative_text == "events_v0.2.jsonl";
     saw_config = saw_config || relative_text == "inputs/protocol.pae.json";
-    saw_frame = saw_frame || relative_text == "frames/000001_frame.bin";
+    saw_frame = saw_frame || relative_text == "frames/000001_frame.bin" ||
+                relative_text == "frames/000001_tx.bin" || relative_text == "frames/000002_rx.bin";
     ++entry_count;
   }
-  if (entry_count == 0U || !saw_complete || !saw_result || !saw_config || !saw_frame) {
+  const bool complete_v1 = saw_result_v1 && saw_record_v1 && saw_events_v1 && !saw_result_v2 &&
+                           !saw_record_v2 && !saw_events_v2;
+  const bool complete_v2 = saw_result_v2 && saw_record_v2 && saw_events_v2 && !saw_result_v1 &&
+                           !saw_record_v1 && !saw_events_v1;
+  if (entry_count == 0U || !saw_complete || !saw_config || !saw_frame ||
+      (!complete_v1 && !complete_v2)) {
     error = "SHA256SUMS omits a required Evidence Bundle file";
     return false;
   }
@@ -340,79 +1019,223 @@ bool StandardRecordFileSystem::Rename(const std::filesystem::path& from,
   return true;
 }
 
-bool CreateEvidenceBundle(const std::filesystem::path& record_root, std::string_view config,
-                          const std::optional<std::string>& values, OperationResult& result,
-                          RecordFileSystem& file_system, std::string& error) {
-  if (!file_system.EnsureDirectory(record_root, error)) {
+EvidenceBundleTransaction::EvidenceBundleTransaction(RecordFileSystem& file_system)
+    : file_system_(file_system) {}
+
+bool EvidenceBundleTransaction::Begin(const std::filesystem::path& record_root,
+                                      std::string_view config,
+                                      const std::optional<std::string>& values,
+                                      OperationResult& result, std::string& error) {
+  if (begun_ || completed_) {
+    error = "Evidence Bundle transaction has already been used";
     return false;
   }
-  const std::string timestamp = UtcTimestamp();
-  std::string run_id;
-  std::filesystem::path in_progress;
-  std::filesystem::path final;
+  if (!file_system_.EnsureDirectory(record_root, error)) {
+    return false;
+  }
+  timestamp_ = UtcTimestamp();
+  monotonic_start_ = std::chrono::steady_clock::now();
   for (std::size_t attempt = 0U; attempt < 32U; ++attempt) {
-    run_id = RandomRunId();
-    const std::string base = "run_" + timestamp + "_" + run_id;
-    final = record_root / base;
-    in_progress = record_root / (base + ".inprogress");
+    run_id_ = RandomRunId();
+    const std::string base = "run_" + timestamp_ + "_" + run_id_;
+    final_ = record_root / base;
+    in_progress_ = record_root / (base + ".inprogress");
     bool final_exists = false;
     bool in_progress_exists = false;
-    if (!file_system.Exists(final, final_exists, error) ||
-        !file_system.Exists(in_progress, in_progress_exists, error)) {
+    if (!file_system_.Exists(final_, final_exists, error) ||
+        !file_system_.Exists(in_progress_, in_progress_exists, error)) {
       return false;
     }
     if (!final_exists && !in_progress_exists) {
       break;
     }
-    final.clear();
+    final_.clear();
+    in_progress_.clear();
   }
-  if (final.empty()) {
+  if (final_.empty()) {
     error = "cannot allocate a unique Run directory";
     return false;
   }
-  if (!file_system.CreateDirectory(in_progress, error)) {
+  if (!file_system_.CreateDirectory(in_progress_, error)) {
     return false;
   }
 
-  result.evidence_bundle = final.generic_u8string();
-  std::vector<RecordedFile> files;
-  const std::string frame_hex = HexUpper(result.frame) + "\n";
-  const std::string result_json = SerializeResult(result);
-  if (!WriteVerified(file_system, in_progress, "inputs/protocol.pae.json", config, files, error) ||
-      (values.has_value() && !WriteVerified(file_system, in_progress, "inputs/values.pae-lab.json",
-                                            *values, files, error)) ||
-      !WriteVerified(file_system, in_progress, "frames/000001_frame.bin", result.frame.data(),
-                     result.frame.size(), files, error) ||
-      !WriteVerified(file_system, in_progress, "frames/000001_frame.hex", frame_hex, files,
+  result.evidence_bundle = final_.generic_u8string();
+  begun_ = true;
+  if (!WriteVerified(file_system_, in_progress_, "inputs/protocol.pae.json", config, files_,
                      error) ||
-      !WriteVerified(file_system, in_progress, "result_summary_v0.1.json", result_json, files,
-                     error) ||
-      !WriteVerified(file_system, in_progress, "events_v0.1.jsonl",
-                     SerializeEvent(result, timestamp), files, error)) {
-    return false;
-  }
-  const std::string run_record = SerializeRunRecord(result, run_id, timestamp, files);
-  if (!WriteVerified(file_system, in_progress, "run_record_v0.1.json", run_record, files, error) ||
-      !WriteVerified(file_system, in_progress, "COMPLETE", std::string_view{}, files, error)) {
-    return false;
-  }
-  std::sort(files.begin(), files.end(), [](const RecordedFile& left, const RecordedFile& right) {
-    return left.relative_path < right.relative_path;
-  });
-  std::ostringstream hashes;
-  for (const RecordedFile& file : files) {
-    hashes << file.sha256 << "  " << file.relative_path << '\n';
-  }
-  if (!WriteVerified(file_system, in_progress, "SHA256SUMS", hashes.str(), files, error)) {
-    return false;
-  }
-  if (!file_system.Rename(in_progress, final, error)) {
+      (values.has_value() &&
+       !WriteVerified(file_system_, in_progress_, "inputs/values.pae-lab.json", *values, files_,
+                      error))) {
     return false;
   }
   return true;
 }
 
+bool EvidenceBundleTransaction::RecordFrame(const std::filesystem::path& relative_stem,
+                                            const std::vector<std::uint8_t>& frame,
+                                            std::string& error) {
+  if (!begun_ || completed_ || relative_stem.empty() || relative_stem.extension() != "") {
+    error = "invalid Evidence Bundle frame transaction state";
+    return false;
+  }
+  std::filesystem::path binary = relative_stem;
+  binary += ".bin";
+  std::filesystem::path hex = relative_stem;
+  hex += ".hex";
+  const std::string frame_hex = HexUpper(frame) + "\n";
+  return WriteVerified(file_system_, in_progress_, binary, frame.data(), frame.size(), files_,
+                       error) &&
+         WriteVerified(file_system_, in_progress_, hex, frame_hex, files_, error);
+}
+
+LabEvent EvidenceBundleTransaction::NewEvent(std::string_view event_kind,
+                                             std::string_view direction) {
+  LabEvent event;
+  event.event_id = events_.size() + 1U;
+  event.event_kind.assign(event_kind.data(), event_kind.size());
+  event.direction.assign(direction.data(), direction.size());
+  event.wall_clock_utc = UtcTimestamp();
+  const auto elapsed = std::chrono::steady_clock::now() - monotonic_start_;
+  event.monotonic_offset_ns = static_cast<std::uint64_t>(
+      std::chrono::duration_cast<std::chrono::nanoseconds>(elapsed).count());
+  return event;
+}
+
+void EvidenceBundleTransaction::CaptureTxFrame(const std::vector<std::uint8_t>& frame) {
+  LabEvent event = NewEvent("FRAME", "TX");
+  event.frame_file = "frames/000001_tx.bin";
+  event.frame_length = frame.size();
+  event.frame_sha256 = HashBytes(frame);
+  event.frame_origin = "PAE_GENERATED";
+  event.peer_kind = "LAB_SIMULATED_PEER";
+  event.succeeded = true;
+  events_.push_back(std::move(event));
+}
+
+void EvidenceBundleTransaction::CaptureOfflineFrame(const OperationResult& result) {
+  const std::string direction =
+      result.command == "encode" ? "TX" : (result.command == "replay" ? "REPLAY" : "RX");
+  LabEvent event = NewEvent("FRAME", direction);
+  event.frame_file = "frames/000001_frame.bin";
+  event.frame_length = result.frame.size();
+  event.frame_sha256 = HashBytes(result.frame);
+  event.frame_origin = result.command == "encode"
+                           ? "PAE_GENERATED"
+                           : (result.command == "replay" ? "REPLAYED" : "MANUAL_SYNTHETIC");
+  event.peer_kind = "OFFLINE_FILE";
+  event.succeeded = true;
+  event.diagnostic_id = result.diagnostic_id;
+  events_.push_back(std::move(event));
+}
+
+void EvidenceBundleTransaction::CaptureSendIntent(std::string_view remote_endpoint) {
+  LabEvent event = NewEvent("SEND_INTENT", "TX");
+  event.remote_endpoint.assign(remote_endpoint.data(), remote_endpoint.size());
+  event.succeeded = true;
+  events_.push_back(std::move(event));
+}
+
+void EvidenceBundleTransaction::CaptureSendResult(bool succeeded, std::string_view diagnostic_id) {
+  LabEvent event = NewEvent("SEND_RESULT", "TX");
+  event.succeeded = succeeded;
+  event.diagnostic_id.assign(diagnostic_id.data(), diagnostic_id.size());
+  events_.push_back(std::move(event));
+}
+
+bool EvidenceBundleTransaction::RecordReceivedFrame(const std::filesystem::path& relative_stem,
+                                                    const std::vector<std::uint8_t>& frame,
+                                                    std::string_view received_from,
+                                                    std::string& error) {
+  if (!RecordFrame(relative_stem, frame, error)) {
+    return false;
+  }
+  LabEvent event = NewEvent("FRAME", "RX");
+  event.frame_file = (relative_stem.generic_string() + ".bin");
+  event.frame_length = frame.size();
+  event.frame_sha256 = HashBytes(frame);
+  event.frame_origin = "MANUAL_SYNTHETIC";
+  event.peer_kind = "LAB_SIMULATED_PEER";
+  event.received_from.assign(received_from.data(), received_from.size());
+  event.succeeded = true;
+
+  std::ostringstream metadata;
+  metadata << "{\n"
+           << "  \"format_version\":\"pae.lab.rx-meta/0.2\",\n"
+           << "  \"event_id\":" << event.event_id << ",\n"
+           << "  \"frame_file\":" << Quoted(event.frame_file) << ",\n"
+           << "  \"frame_length\":" << event.frame_length << ",\n"
+           << "  \"frame_sha256\":" << Quoted(event.frame_sha256) << ",\n"
+           << "  \"received_from\":" << Quoted(event.received_from) << ",\n"
+           << "  \"direction\":\"RX\"\n"
+           << "}\n";
+  std::filesystem::path metadata_path = relative_stem;
+  metadata_path += ".meta.json";
+  if (!WriteVerified(file_system_, in_progress_, metadata_path, metadata.str(), files_, error)) {
+    return false;
+  }
+  events_.push_back(std::move(event));
+  return true;
+}
+
+bool EvidenceBundleTransaction::Complete(OperationResult& result, std::string& error) {
+  if (!begun_ || completed_) {
+    error = "invalid Evidence Bundle completion state";
+    return false;
+  }
+  if (events_.empty() || events_.size() > 256U) {
+    error = "Evidence Bundle event count is outside the configured limit";
+    return false;
+  }
+  result.events = events_;
+  const std::string result_json = SerializeResult(result);
+  const bool udp_v2 = result.operation_kind == "udp-exchange";
+  const std::filesystem::path result_name =
+      udp_v2 ? "result_summary_v0.2.json" : "result_summary_v0.1.json";
+  const std::filesystem::path events_name = udp_v2 ? "events_v0.2.jsonl" : "events_v0.1.jsonl";
+  const std::filesystem::path record_name =
+      udp_v2 ? "run_record_v0.2.json" : "run_record_v0.1.json";
+  if (!WriteVerified(file_system_, in_progress_, result_name, result_json, files_, error) ||
+      !WriteVerified(file_system_, in_progress_, events_name, SerializeEvents(result), files_,
+                     error)) {
+    return false;
+  }
+  const std::string run_record = SerializeRunRecord(result, run_id_, timestamp_, files_);
+  if (!WriteVerified(file_system_, in_progress_, record_name, run_record, files_, error) ||
+      !WriteVerified(file_system_, in_progress_, "COMPLETE", std::string_view{}, files_, error)) {
+    return false;
+  }
+  std::sort(files_.begin(), files_.end(), [](const RecordedFile& left, const RecordedFile& right) {
+    return left.relative_path < right.relative_path;
+  });
+  std::ostringstream hashes;
+  for (const RecordedFile& file : files_) {
+    hashes << file.sha256 << "  " << file.relative_path << '\n';
+  }
+  if (!WriteVerified(file_system_, in_progress_, "SHA256SUMS", hashes.str(), files_, error)) {
+    return false;
+  }
+  if (!file_system_.Rename(in_progress_, final_, error)) {
+    return false;
+  }
+  completed_ = true;
+  return true;
+}
+
+bool CreateEvidenceBundle(const std::filesystem::path& record_root, std::string_view config,
+                          const std::optional<std::string>& values, OperationResult& result,
+                          RecordFileSystem& file_system, std::string& error) {
+  EvidenceBundleTransaction transaction{file_system};
+  if (!transaction.Begin(record_root, config, values, result, error)) {
+    return false;
+  }
+  result.frame_file = "frames/000001_frame.bin";
+  return transaction.RecordFrame("frames/000001_frame", result.frame, error) &&
+         (transaction.CaptureOfflineFrame(result), true) && transaction.Complete(result, error);
+}
+
 bool LoadStoredRun(const std::filesystem::path& bundle, StoredRun& output, std::string& error) {
+  output = StoredRun{};
   if (!std::filesystem::is_regular_file(bundle / "COMPLETE")) {
     error = "Run has no COMPLETE marker";
     return false;
@@ -420,8 +1243,16 @@ bool LoadStoredRun(const std::filesystem::path& bundle, StoredRun& output, std::
   if (!VerifyBundleHashes(bundle, error)) {
     return false;
   }
+  const bool has_v2 = std::filesystem::is_regular_file(bundle / "result_summary_v0.2.json");
+  const bool has_v1 = std::filesystem::is_regular_file(bundle / "result_summary_v0.1.json");
+  if (has_v1 == has_v2) {
+    error = "Run must contain exactly one supported result summary";
+    return false;
+  }
+  const std::filesystem::path result_path =
+      bundle / (has_v2 ? "result_summary_v0.2.json" : "result_summary_v0.1.json");
   std::string text;
-  if (!ReadText(bundle / "result_summary_v0.1.json", text, error)) {
+  if (!ReadText(result_path, text, error)) {
     return false;
   }
   DocumentPtr document;
@@ -429,49 +1260,173 @@ bool LoadStoredRun(const std::filesystem::path& bundle, StoredRun& output, std::
     return false;
   }
   yyjson_val* root = yyjson_doc_get_root(document.get());
-  const std::set<std::string_view> allowed{"format_version",
-                                           "command",
-                                           "operation_kind",
-                                           "operation_status",
-                                           "exit_code",
-                                           "config_sha256",
-                                           "protocol_id",
-                                           "pipeline_id",
-                                           "message_id",
-                                           "direction_id",
-                                           "frame_length",
-                                           "frame_sha256",
-                                           "frame_hex",
-                                           "frame_file",
-                                           "values_file",
-                                           "fields",
-                                           "diagnostic",
-                                           "deterministic_fingerprint",
-                                           "cross_config_replay",
-                                           "comparison_equal",
-                                           "comparison_categories",
-                                           "evidence_bundle",
-                                           "send_attempted",
-                                           "send_succeeded",
-                                           "gates"};
-  const std::set<std::string_view> required = allowed;
+  std::string format;
+  if (!ReadJsonString(root, "format_version", format, error) ||
+      (format != kResultFormatV1 && format != kResultFormat)) {
+    if (error.empty()) {
+      error = "unsupported result format_version";
+    }
+    return false;
+  }
+  if ((format == kResultFormat) != has_v2) {
+    error = "result filename and format_version do not agree";
+    return false;
+  }
+  output.format_version = format;
+
+  const std::set<std::string_view> allowed_v1{"format_version",
+                                              "command",
+                                              "operation_kind",
+                                              "operation_status",
+                                              "exit_code",
+                                              "config_sha256",
+                                              "protocol_id",
+                                              "pipeline_id",
+                                              "message_id",
+                                              "direction_id",
+                                              "frame_length",
+                                              "frame_sha256",
+                                              "frame_hex",
+                                              "frame_file",
+                                              "tx_frame_length",
+                                              "tx_frame_sha256",
+                                              "tx_frame_hex",
+                                              "tx_frame_file",
+                                              "rx_frame_length",
+                                              "rx_frame_sha256",
+                                              "rx_frame_hex",
+                                              "rx_frame_file",
+                                              "values_file",
+                                              "fields",
+                                              "diagnostic",
+                                              "deterministic_fingerprint",
+                                              "cross_config_replay",
+                                              "comparison_equal",
+                                              "comparison_categories",
+                                              "evidence_bundle",
+                                              "transport",
+                                              "local_endpoint",
+                                              "remote_endpoint",
+                                              "received_from",
+                                              "timeout_ms",
+                                              "send_attempted",
+                                              "send_succeeded",
+                                              "response_received",
+                                              "response_decoded",
+                                              "gates"};
+  std::set<std::string_view> allowed = allowed_v1;
+  if (has_v2) {
+    allowed.insert("replay_mode");
+    allowed.insert("replay_subject");
+    allowed.insert("current_execution_status");
+    allowed.insert("current_execution_diagnostic_id");
+    allowed.insert("comparison_status");
+    allowed.insert("comparison_reason");
+    allowed.insert("historical_transport");
+    allowed.insert("receive_pipeline_id");
+  }
+  std::set<std::string_view> required{"format_version",
+                                      "command",
+                                      "operation_kind",
+                                      "operation_status",
+                                      "exit_code",
+                                      "config_sha256",
+                                      "protocol_id",
+                                      "pipeline_id",
+                                      "message_id",
+                                      "direction_id",
+                                      "frame_length",
+                                      "frame_sha256",
+                                      "frame_hex",
+                                      "frame_file",
+                                      "values_file",
+                                      "fields",
+                                      "diagnostic",
+                                      "deterministic_fingerprint",
+                                      "cross_config_replay",
+                                      "comparison_equal",
+                                      "comparison_categories",
+                                      "evidence_bundle",
+                                      "send_attempted",
+                                      "send_succeeded",
+                                      "gates"};
+  if (has_v2) {
+    required.insert("tx_frame_length");
+    required.insert("tx_frame_sha256");
+    required.insert("tx_frame_hex");
+    required.insert("tx_frame_file");
+    required.insert("rx_frame_length");
+    required.insert("rx_frame_sha256");
+    required.insert("rx_frame_hex");
+    required.insert("rx_frame_file");
+    required.insert("transport");
+    required.insert("local_endpoint");
+    required.insert("remote_endpoint");
+    required.insert("received_from");
+    required.insert("response_received");
+    required.insert("response_decoded");
+    required.insert("replay_mode");
+    required.insert("replay_subject");
+    required.insert("current_execution_status");
+    required.insert("current_execution_diagnostic_id");
+    required.insert("comparison_status");
+    required.insert("comparison_reason");
+    required.insert("historical_transport");
+    required.insert("receive_pipeline_id");
+  }
   if (!ValidateObject(root, allowed, required, "result_summary", error)) {
     return false;
   }
-  std::string format;
-  if (!ReadJsonString(root, "format_version", format, error) || format != kResultFormat ||
+  if (!ReadJsonString(root, "command", output.command, error) ||
       !ReadJsonString(root, "operation_kind", output.operation_kind, error) ||
       !ReadJsonString(root, "operation_status", output.operation_status, error) ||
+      !ReadJsonNonnegativeInt(root, "exit_code", output.exit_code, error) ||
       !ReadJsonString(root, "config_sha256", output.config_sha256, error) ||
       !ReadJsonString(root, "pipeline_id", output.pipeline_id, error) ||
       !ReadJsonString(root, "message_id", output.message_id, error) ||
       !ReadJsonString(root, "direction_id", output.direction_id, error) ||
+      !ReadJsonSize(root, "frame_length", output.frame_length, error) ||
+      !ReadJsonString(root, "frame_sha256", output.frame_sha256, error) ||
       !ReadJsonString(root, "frame_hex", output.frame_hex, error) ||
       !ReadJsonString(root, "frame_file", output.frame_file, error) ||
       !ReadJsonString(root, "deterministic_fingerprint", output.deterministic_fingerprint, error)) {
     if (error.empty()) {
       error = "unsupported result format_version";
     }
+    return false;
+  }
+  auto read_nullable_string = [&](const char* name, std::string& destination) {
+    yyjson_val* value = yyjson_obj_get(root, name);
+    if (yyjson_is_null(value)) {
+      destination.clear();
+      return true;
+    }
+    return ReadJsonString(root, name, destination, error);
+  };
+  yyjson_val* tx_frame_hex = yyjson_obj_get(root, "tx_frame_hex");
+  if (tx_frame_hex != nullptr) {
+    if (!yyjson_is_str(tx_frame_hex)) {
+      error = "tx_frame_hex must be a string";
+      return false;
+    }
+    output.tx_frame_hex.assign(yyjson_get_str(tx_frame_hex), yyjson_get_len(tx_frame_hex));
+  }
+  if (has_v2 && (!ReadJsonSize(root, "tx_frame_length", output.tx_frame_length, error) ||
+                 !ReadJsonString(root, "tx_frame_sha256", output.tx_frame_sha256, error) ||
+                 !read_nullable_string("tx_frame_file", output.tx_frame_file))) {
+    return false;
+  }
+  yyjson_val* rx_frame_hex = yyjson_obj_get(root, "rx_frame_hex");
+  if (rx_frame_hex != nullptr) {
+    if (!yyjson_is_str(rx_frame_hex)) {
+      error = "rx_frame_hex must be a string";
+      return false;
+    }
+    output.rx_frame_hex.assign(yyjson_get_str(rx_frame_hex), yyjson_get_len(rx_frame_hex));
+  }
+  if (has_v2 && (!ReadJsonSize(root, "rx_frame_length", output.rx_frame_length, error) ||
+                 !ReadJsonString(root, "rx_frame_sha256", output.rx_frame_sha256, error) ||
+                 !read_nullable_string("rx_frame_file", output.rx_frame_file))) {
     return false;
   }
   yyjson_val* fields = yyjson_obj_get(root, "fields");
@@ -519,9 +1474,160 @@ bool LoadStoredRun(const std::filesystem::path& bundle, StoredRun& output, std::
     error = "values_file must be string or null";
     return false;
   }
+
+  auto read_optional_string = [&](const char* name, std::string& destination) {
+    yyjson_val* value = yyjson_obj_get(root, name);
+    if (value == nullptr) {
+      return true;
+    }
+    return ReadJsonString(root, name, destination, error);
+  };
+  auto read_optional_bool = [&](const char* name, bool& destination) {
+    yyjson_val* value = yyjson_obj_get(root, name);
+    if (value == nullptr) {
+      return true;
+    }
+    return ReadJsonBool(root, name, destination, error);
+  };
+  auto read_optional_u32 = [&](const char* name, std::uint32_t& destination) {
+    yyjson_val* value = yyjson_obj_get(root, name);
+    if (value == nullptr) {
+      return true;
+    }
+    std::size_t parsed = 0U;
+    if (!ReadJsonSize(root, name, parsed, error) || parsed > UINT32_MAX) {
+      if (error.empty()) {
+        error = std::string{name} + " exceeds uint32 range";
+      }
+      return false;
+    }
+    destination = static_cast<std::uint32_t>(parsed);
+    return true;
+  };
+  if (!read_optional_string("transport", output.transport) ||
+      !read_optional_u32("timeout_ms", output.timeout_ms) ||
+      !read_optional_string("local_endpoint", output.local_endpoint) ||
+      !read_optional_string("remote_endpoint", output.remote_endpoint) ||
+      !read_optional_string("received_from", output.received_from) ||
+      !read_optional_string("receive_pipeline_id", output.receive_pipeline_id) ||
+      !read_optional_bool("cross_config_replay", output.cross_config_replay) ||
+      !read_optional_bool("send_attempted", output.send_attempted) ||
+      !read_optional_bool("send_succeeded", output.send_succeeded) ||
+      !read_optional_bool("response_received", output.response_received) ||
+      !read_optional_bool("response_decoded", output.response_decoded)) {
+    return false;
+  }
+  if (has_v2 &&
+      (!ReadJsonString(root, "replay_mode", output.replay_mode, error) ||
+       !ReadJsonString(root, "replay_subject", output.replay_subject, error) ||
+       !ReadJsonString(root, "current_execution_status", output.current_execution_status, error) ||
+       !ReadJsonString(root, "current_execution_diagnostic_id",
+                       output.current_execution_diagnostic_id, error) ||
+       !ReadJsonString(root, "comparison_status", output.comparison_status, error) ||
+       !ReadJsonString(root, "comparison_reason", output.comparison_reason, error))) {
+    return false;
+  }
+  yyjson_val* comparison_equal = yyjson_obj_get(root, "comparison_equal");
+  if (yyjson_is_bool(comparison_equal)) {
+    output.comparison_equal = yyjson_get_bool(comparison_equal);
+  } else if (!yyjson_is_null(comparison_equal)) {
+    error = "comparison_equal must be boolean or null";
+    return false;
+  }
+
+  yyjson_val* historical = yyjson_obj_get(root, "historical_transport");
+  if (has_v2 && yyjson_is_obj(historical)) {
+    const std::set<std::string_view> historical_keys{
+        "transport",      "timeout_ms",        "status",          "diagnostic_id",
+        "local_endpoint", "remote_endpoint",   "received_from",   "send_attempted",
+        "send_succeeded", "response_received", "response_decoded"};
+    if (!ValidateObject(historical, historical_keys, historical_keys, "historical_transport",
+                        error)) {
+      return false;
+    }
+    output.historical_transport.present = true;
+    std::size_t historical_timeout_ms = 0U;
+    if (!ReadJsonString(historical, "transport", output.historical_transport.transport, error) ||
+        !ReadJsonSize(historical, "timeout_ms", historical_timeout_ms, error) ||
+        historical_timeout_ms > UINT32_MAX ||
+        !ReadJsonString(historical, "status", output.historical_transport.status, error) ||
+        !ReadJsonString(historical, "diagnostic_id", output.historical_transport.diagnostic_id,
+                        error) ||
+        !ReadJsonString(historical, "local_endpoint", output.historical_transport.local_endpoint,
+                        error) ||
+        !ReadJsonString(historical, "remote_endpoint", output.historical_transport.remote_endpoint,
+                        error) ||
+        !ReadJsonString(historical, "received_from", output.historical_transport.received_from,
+                        error) ||
+        !ReadJsonBool(historical, "send_attempted", output.historical_transport.send_attempted,
+                      error) ||
+        !ReadJsonBool(historical, "send_succeeded", output.historical_transport.send_succeeded,
+                      error) ||
+        !ReadJsonBool(historical, "response_received",
+                      output.historical_transport.response_received, error) ||
+        !ReadJsonBool(historical, "response_decoded", output.historical_transport.response_decoded,
+                      error)) {
+      return false;
+    }
+    output.historical_transport.timeout_ms = static_cast<std::uint32_t>(historical_timeout_ms);
+  } else if (has_v2 && !yyjson_is_null(historical)) {
+    error = "historical_transport must be an object or null";
+    return false;
+  }
+  if (has_v2 && output.operation_kind == "udp-exchange") {
+    if (!output.historical_transport.present ||
+        (output.historical_transport.send_succeeded &&
+         !output.historical_transport.send_attempted) ||
+        (output.historical_transport.response_decoded &&
+         !output.historical_transport.response_received)) {
+      error = "V0.2 UDP historical_transport is missing or internally inconsistent";
+      return false;
+    }
+    if ((output.replay_mode == "ENCODE_TX" && output.replay_subject != "TX") ||
+        (output.replay_mode == "DECODE_RX" && output.replay_subject != "RX") ||
+        (output.replay_mode == "NO_CODEC_REEXECUTION" && output.replay_subject != "RX" &&
+         output.replay_subject != "RX_INCOMPLETE")) {
+      error = "V0.2 UDP replay mode and subject are inconsistent";
+      return false;
+    }
+    if (output.command == "replay" &&
+        (output.send_attempted || output.send_succeeded || output.response_received ||
+         (output.response_decoded !=
+          (output.replay_mode == "DECODE_RX" && output.current_execution_status == "OK")) ||
+         (output.replay_mode == "NO_CODEC_REEXECUTION" &&
+          (output.current_execution_status != "NOT_EVALUATED" ||
+           output.comparison_status != "NOT_EVALUATED" || output.comparison_equal.has_value())))) {
+      error = "V0.2 Replay current execution state is inconsistent";
+      return false;
+    }
+  }
   if (!IsSafeRelativePath(output.frame_file) ||
-      (!output.values_file.empty() && !IsSafeRelativePath(output.values_file))) {
+      (!output.values_file.empty() && !IsSafeRelativePath(output.values_file)) ||
+      (!output.tx_frame_file.empty() && !IsSafeRelativePath(output.tx_frame_file)) ||
+      (!output.rx_frame_file.empty() && !IsSafeRelativePath(output.rx_frame_file))) {
     error = "stored Run contains an unsafe relative path";
+    return false;
+  }
+  if (has_v2 && output.command == "udp-exchange" && output.response_received &&
+      !std::filesystem::is_regular_file(bundle / "frames/000002_rx.meta.json")) {
+    error = "V0.2 UDP Run with a received response has no RX metadata";
+    return false;
+  }
+  if (!VerifyRunRecord(bundle, output, has_v2, error)) {
+    return false;
+  }
+  if (has_v2 && output.command == "udp-exchange") {
+    if (output.replay_mode != "ENCODE_TX" && output.replay_mode != "DECODE_RX" &&
+        output.replay_mode != "NO_CODEC_REEXECUTION") {
+      error = "V0.2 UDP Run has an invalid replay_mode";
+      return false;
+    }
+    if (!VerifyEventLogV2(bundle, output, error) ||
+        (output.response_received && !VerifyRxMetadata(bundle, output, error))) {
+      return false;
+    }
+  } else if (has_v2 && output.operation_kind == "udp-exchange" &&
+             !VerifyEventLogV2(bundle, output, error)) {
     return false;
   }
   return true;

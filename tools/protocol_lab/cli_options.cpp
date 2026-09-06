@@ -1,8 +1,10 @@
 #include "cli_options.h"
 
+#include <charconv>
 #include <iostream>
 #include <set>
 #include <string_view>
+#include <system_error>
 
 namespace pae::protocol_lab {
 namespace {
@@ -23,6 +25,28 @@ bool SetString(std::string& target, const char* value, std::string_view default_
   return !target.empty();
 }
 
+bool SetTimeout(std::uint32_t& target, const char* value) {
+  if (target != kDefaultUdpTimeoutMs) {
+    return false;
+  }
+  const std::string_view text{value};
+  std::uint32_t parsed = 0U;
+  const auto result = std::from_chars(text.data(), text.data() + text.size(), parsed);
+  if (result.ec != std::errc{} || result.ptr != text.data() + text.size() || parsed == 0U ||
+      parsed > kMaximumUdpTimeoutMs) {
+    return false;
+  }
+  target = parsed;
+  return true;
+}
+
+bool HasUdpOnlyOptions(const Arguments& arguments) {
+  return !arguments.remote_endpoint.empty() || !arguments.receive_pipeline.empty() ||
+         arguments.local_endpoint != "127.0.0.1:0" ||
+         arguments.timeout_ms != kDefaultUdpTimeoutMs || arguments.send ||
+         arguments.allow_non_loopback;
+}
+
 }  // namespace
 
 std::string CommandName(Command command) {
@@ -35,6 +59,8 @@ std::string CommandName(Command command) {
       return "replay";
     case Command::COMPARE:
       return "compare";
+    case Command::UDP_EXCHANGE:
+      return "udp-exchange";
   }
   return "unknown";
 }
@@ -46,6 +72,10 @@ void PrintUsage() {
       << "  pae_protocol_lab encode --config <file> --values <file>\n"
       << "  pae_protocol_lab replay --bundle <run-directory> [--config <file>]\n"
       << "  pae_protocol_lab compare (--left-run <run> --right-run <run> | frame pair)\n"
+      << "  pae_protocol_lab udp-exchange --config <file> --values <file>\n"
+      << "      --remote <ipv4:port> --receive-pipeline <id> --record-root <dir>\n"
+      << "      [--local <ipv4:port>] [--timeout-ms <1..60000>]\n"
+      << "      [--send [--allow-non-loopback]]\n"
       << "common: [--output text|json] [--record-root <dir>] [--expect-status <status>]\n";
 }
 
@@ -73,6 +103,8 @@ bool ParseArguments(int argc, char** argv, Arguments& output, bool& early_succes
     output.command = Command::REPLAY;
   } else if (command == "compare") {
     output.command = Command::COMPARE;
+  } else if (command == "udp-exchange") {
+    output.command = Command::UDP_EXCHANGE;
   } else {
     return false;
   }
@@ -93,7 +125,18 @@ bool ParseArguments(int argc, char** argv, Arguments& output, bool& early_succes
       early_success = true;
       return true;
     }
-    if (!seen_options.insert(name).second || index + 1 >= argc) {
+    if (!seen_options.insert(name).second) {
+      return false;
+    }
+    if (name == "--send") {
+      output.send = true;
+      continue;
+    }
+    if (name == "--allow-non-loopback") {
+      output.allow_non_loopback = true;
+      continue;
+    }
+    if (index + 1 >= argc) {
       return false;
     }
     const char* value = argv[++index];
@@ -126,6 +169,14 @@ bool ParseArguments(int argc, char** argv, Arguments& output, bool& early_succes
       accepted = SetPath(output.left_frame_hex, value);
     } else if (name == "--right-frame-hex") {
       accepted = SetPath(output.right_frame_hex, value);
+    } else if (name == "--local") {
+      accepted = SetString(output.local_endpoint, value, "127.0.0.1:0");
+    } else if (name == "--remote") {
+      accepted = SetString(output.remote_endpoint, value);
+    } else if (name == "--receive-pipeline") {
+      accepted = SetString(output.receive_pipeline, value);
+    } else if (name == "--timeout-ms") {
+      accepted = SetTimeout(output.timeout_ms, value);
     }
     if (!accepted) {
       return false;
@@ -139,23 +190,33 @@ bool ParseArguments(int argc, char** argv, Arguments& output, bool& early_succes
            output.values.empty() && output.bundle.empty() && output.left_run.empty() &&
            output.right_run.empty() && output.left_frame_binary.empty() &&
            output.right_frame_binary.empty() && output.left_frame_hex.empty() &&
-           output.right_frame_hex.empty();
+           output.right_frame_hex.empty() && !HasUdpOnlyOptions(output);
   }
   if (output.command == Command::ENCODE) {
     return !output.config.empty() && !output.values.empty() && output.frame_binary.empty() &&
            output.frame_hex.empty() && output.bundle.empty() && output.left_run.empty() &&
            output.right_run.empty() && output.left_frame_binary.empty() &&
            output.right_frame_binary.empty() && output.left_frame_hex.empty() &&
-           output.right_frame_hex.empty();
+           output.right_frame_hex.empty() && !HasUdpOnlyOptions(output);
   }
   if (output.command == Command::REPLAY) {
     return !output.bundle.empty() && output.values.empty() && output.frame_binary.empty() &&
            output.frame_hex.empty() && output.left_run.empty() && output.right_run.empty() &&
            output.left_frame_binary.empty() && output.right_frame_binary.empty() &&
-           output.left_frame_hex.empty() && output.right_frame_hex.empty();
+           output.left_frame_hex.empty() && output.right_frame_hex.empty() &&
+           !HasUdpOnlyOptions(output);
+  }
+  if (output.command == Command::UDP_EXCHANGE) {
+    return !output.config.empty() && !output.values.empty() && !output.remote_endpoint.empty() &&
+           !output.receive_pipeline.empty() && !output.record_root.empty() &&
+           output.frame_binary.empty() && output.frame_hex.empty() && output.bundle.empty() &&
+           output.left_run.empty() && output.right_run.empty() &&
+           output.left_frame_binary.empty() && output.right_frame_binary.empty() &&
+           output.left_frame_hex.empty() && output.right_frame_hex.empty() &&
+           (!output.allow_non_loopback || output.send);
   }
   if (!output.config.empty() || !output.values.empty() || !output.bundle.empty() ||
-      !output.record_root.empty() || !output.expect_status.empty()) {
+      !output.record_root.empty() || !output.expect_status.empty() || HasUdpOnlyOptions(output)) {
     return false;
   }
   const bool run_pair = !output.left_run.empty() && !output.right_run.empty() &&

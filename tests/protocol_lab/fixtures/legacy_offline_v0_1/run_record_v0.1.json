@@ -1,0 +1,26 @@
+{
+  "format_version":"pae.lab.record/0.1",
+  "run_id":"b0023c1efb4e175f",
+  "tool_version":"0.1.0-offline-slice",
+  "pae_version":"0.1.0-internal",
+  "source_revision":"NOT_EMBEDDED",
+  "command":"inspect",
+  "started_utc":"20260904T174137Z",
+  "end_status":"OK",
+  "transport":"OFFLINE",
+  "frame_origin":"MANUAL_SYNTHETIC",
+  "peer_kind":"OFFLINE_FILE",
+  "authority_level":"OPEN",
+  "sensitivity":"USER_REVIEW_REQUIRED",
+  "send_attempted":false,
+  "limits":{"max_frame_bytes":16777216,"max_receive_frames":0,"timeout_ms":0,"max_send_count":0,"max_events":256,"max_raw_bytes":16777216},
+  "hash_manifest":"SHA256SUMS",
+  "hash_manifest_excludes_self":true,
+  "recorded_payload_files":[
+    {"path":"inputs/protocol.pae.json","size":9029,"sha256":"cd209d543a29ab71dcda286f2bf4adf14b1b5603f3c11961239d7200d0e85566"},
+    {"path":"frames/000001_frame.bin","size":13,"sha256":"7d2b2f59d9f0bddb0bd1a95fdab34260e26230a7fa4dd136483771010d8546d8"},
+    {"path":"frames/000001_frame.hex","size":27,"sha256":"bbe534f04a15d798da031875d8842d6d95d1fdb41e6aa4178e0e53f6ef535732"},
+    {"path":"result_summary_v0.1.json","size":1552,"sha256":"99b965763d68568805bcb3bec699acf6d79bbe33fbb9d37ed16fe5e50a7213a5"},
+    {"path":"events_v0.1.jsonl","size":978,"sha256":"3e8097698e579119fc83578c610d008858501e5f281b07392ab72c2b71f1fb99"}
+  ]
+}

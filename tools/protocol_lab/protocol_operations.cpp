@@ -405,6 +405,40 @@ OperationResult InspectFrame(const PlanBundle& plan, const std::vector<std::uint
   return result;
 }
 
+OperationResult InspectFrameInPipeline(const PlanBundle& plan, std::string_view pipeline_id,
+                                       const std::vector<std::uint8_t>& frame) {
+  OperationResult result;
+  result.operation_kind = "inspect";
+  result.protocol_id.assign(plan.ProtocolId().data(), plan.ProtocolId().size());
+  result.pipeline_id.assign(pipeline_id.data(), pipeline_id.size());
+  result.frame = frame;
+
+  const std::size_t pipeline_index = FindPipeline(plan, pipeline_id);
+  if (pipeline_index == kInvalidIndex) {
+    result.status = "INVALID_ARGUMENT";
+    result.diagnostic_id = "PAE_LAB_UNKNOWN_RECEIVE_PIPELINE";
+    result.diagnostic_detail = "receive pipeline id is unknown";
+    return result;
+  }
+
+  std::vector<DecodedFieldSlot> slots(plan.GetExecutionResourceLayout().max_fields_per_message);
+  ExecutionWorkspace workspace{plan};
+  const auto decoded =
+      DecodeCompleteRecord(plan, workspace, pipeline_index, ByteView{frame.data(), frame.size()},
+                           slots.data(), slots.size());
+  result.status = CodecStatusName(decoded.status);
+  if (decoded.status == CodecStatus::OK) {
+    const auto& message = plan.Messages()[decoded.message_index];
+    result.message_id.assign(message.id.data(), message.id.size());
+    result.direction_id.assign(message.direction_id.data(), message.direction_id.size());
+    CopyDecodedFields(plan, decoded.message_index, slots, decoded.field_count, result.fields);
+  } else {
+    result.diagnostic_id = "PAE_LAB_CODEC_" + result.status;
+    result.diagnostic_detail = "frame failed in the selected receive Pipeline";
+  }
+  return result;
+}
+
 OperationResult EncodeValues(const PlanBundle& plan, const ParsedValues& parsed,
                              std::string& error) {
   OperationResult result;

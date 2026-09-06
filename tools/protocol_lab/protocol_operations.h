@@ -31,6 +31,9 @@ bool ReadJsonString(yyjson_val* object, const char* name, std::string& output, s
 bool ParseValues(std::string& text, ParsedValues& output, std::string& error);
 OperationResult InspectFrame(const protocol_plan::PlanBundle& plan,
                              const std::vector<std::uint8_t>& frame);
+OperationResult InspectFrameInPipeline(const protocol_plan::PlanBundle& plan,
+                                       std::string_view pipeline_id,
+                                       const std::vector<std::uint8_t>& frame);
 OperationResult EncodeValues(const protocol_plan::PlanBundle& plan, const ParsedValues& parsed,
                              std::string& error);
 bool LoadFrameArgument(const std::filesystem::path& binary, const std::filesystem::path& hex,

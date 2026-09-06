@@ -1,0 +1,33 @@
+{
+  "format_version":"pae.lab.result/0.1",
+  "command":"inspect",
+  "operation_kind":"inspect",
+  "operation_status":"OK",
+  "exit_code":0,
+  "config_sha256":"cd209d543a29ab71dcda286f2bf4adf14b1b5603f3c11961239d7200d0e85566",
+  "protocol_id":"synthetic_lab_exchange",
+  "pipeline_id":"host_to_fixture",
+  "message_id":"lab_command",
+  "direction_id":"host_to_fixture",
+  "frame_length":13,
+  "frame_sha256":"7d2b2f59d9f0bddb0bd1a95fdab34260e26230a7fa4dd136483771010d8546d8",
+  "frame_hex":"0D00A731563412DEADBEEF0200",
+  "frame_file":"frames/000001_frame.bin",
+  "values_file":null,
+  "fields":[
+    {"id":"record_length","kind":"UINT64","raw_value":"13","logical_value":"13","enum_known":false},
+    {"id":"operation_code","kind":"UINT64","raw_value":"12711","logical_value":"12711","enum_known":false},
+    {"id":"transaction_id","kind":"UINT64","raw_value":"1193046","logical_value":"1193046","enum_known":false},
+    {"id":"payload_tag","kind":"BYTES","raw_value":"DEADBEEF","logical_value":"DEADBEEF","enum_known":false},
+    {"id":"operating_mode","kind":"ENUM","raw_value":"2","logical_value":"mode_active","enum_known":true}
+  ],
+  "diagnostic":{"id":"","detail":""},
+  "deterministic_fingerprint":"21bcfd6c8c5f61a25c2a57cdc5cff9e118efc387ab5446c9ea6f7c5edb5d58db",
+  "cross_config_replay":false,
+  "comparison_equal":null,
+  "comparison_categories":[],
+  "evidence_bundle":"",
+  "send_attempted":false,
+  "send_succeeded":false,
+  "gates":{"ENGINE_POC_PASS":"PASS","LAB_EXCHANGE_PASS":"NOT_EVALUATED","PROTOCOL_GOLDEN_PASS":"NOT_EVALUATED"}
+}

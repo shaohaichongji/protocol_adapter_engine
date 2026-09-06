@@ -1,5 +1,6 @@
 #include "result_format.h"
 
+#include <algorithm>
 #include <iomanip>
 #include <sstream>
 
@@ -114,14 +115,27 @@ namespace {
 std::string DeterministicPayload(const OperationResult& result) {
   std::ostringstream output;
   output << "operation=" << result.operation_kind << '\n';
-  output << "status=" << result.status << '\n';
+  if (result.operation_kind == "udp-exchange") {
+    output << "replay_mode=" << result.replay_mode << '\n';
+    output << "replay_subject=" << result.replay_subject << '\n';
+    output << "current_execution_status=" << result.current_execution_status << '\n';
+    output << "current_execution_diagnostic=" << result.current_execution_diagnostic_id << '\n';
+  } else {
+    output << "status=" << result.status << '\n';
+  }
   output << "config=" << result.config_sha256 << '\n';
   output << "protocol=" << result.protocol_id << '\n';
   output << "pipeline=" << result.pipeline_id << '\n';
   output << "message=" << result.message_id << '\n';
   output << "direction=" << result.direction_id << '\n';
   output << "frame=" << HexUpper(result.frame) << '\n';
-  output << "diagnostic=" << result.diagnostic_id << '\n';
+  if (result.operation_kind == "udp-exchange") {
+    output << "tx_frame=" << HexUpper(result.tx_frame) << '\n';
+    output << "rx_frame=" << HexUpper(result.rx_frame) << '\n';
+  }
+  if (result.operation_kind != "udp-exchange") {
+    output << "diagnostic=" << result.diagnostic_id << '\n';
+  }
   for (const FieldResult& field : result.fields) {
     output << "field=" << field.id << '|' << field.kind << '|' << field.raw_value << '|'
            << field.logical_value << '|' << (field.enum_known ? "known" : "not-enum-or-unknown")
@@ -190,10 +204,14 @@ std::string SerializeFieldsCompact(const std::vector<FieldResult>& fields) {
 }
 
 std::string SerializeResult(const OperationResult& result) {
+  const std::string_view result_format =
+      result.operation_kind == "udp-exchange" ? kResultFormat : kResultFormatV1;
   const std::string frame_hex = HexUpper(result.frame);
+  const std::string frame_file =
+      result.frame_file.empty() ? "frames/000001_frame.bin" : result.frame_file;
   std::ostringstream output;
   output << "{\n"
-         << "  \"format_version\":" << Quoted(kResultFormat) << ",\n"
+         << "  \"format_version\":" << Quoted(result_format) << ",\n"
          << "  \"command\":" << Quoted(result.command) << ",\n"
          << "  \"operation_kind\":" << Quoted(result.operation_kind) << ",\n"
          << "  \"operation_status\":" << Quoted(result.status) << ",\n"
@@ -206,9 +224,28 @@ std::string SerializeResult(const OperationResult& result) {
          << "  \"frame_length\":" << result.frame.size() << ",\n"
          << "  \"frame_sha256\":" << Quoted(HashBytes(result.frame)) << ",\n"
          << "  \"frame_hex\":" << Quoted(frame_hex) << ",\n"
-         << "  \"frame_file\":\"frames/000001_frame.bin\",\n"
+         << "  \"frame_file\":" << Quoted(frame_file) << ",\n"
+         << "  \"tx_frame_length\":" << result.tx_frame.size() << ",\n"
+         << "  \"tx_frame_sha256\":" << Quoted(HashBytes(result.tx_frame)) << ",\n"
+         << "  \"tx_frame_hex\":" << Quoted(HexUpper(result.tx_frame)) << ",\n"
+         << "  \"tx_frame_file\":"
+         << (result.command == "udp-exchange" && !result.tx_frame.empty()
+                 ? "\"frames/000001_tx.bin\""
+                 : "null")
+         << ",\n"
+         << "  \"rx_frame_length\":" << result.rx_frame.size() << ",\n"
+         << "  \"rx_frame_sha256\":" << Quoted(HashBytes(result.rx_frame)) << ",\n"
+         << "  \"rx_frame_hex\":" << Quoted(HexUpper(result.rx_frame)) << ",\n"
+         << "  \"rx_frame_file\":"
+         << (result.command == "udp-exchange" && result.response_received
+                 ? "\"frames/000002_rx.bin\""
+                 : "null")
+         << ",\n"
          << "  \"values_file\":"
-         << (result.operation_kind == "encode" ? "\"inputs/values.pae-lab.json\"" : "null") << ",\n"
+         << (result.operation_kind == "encode" || result.operation_kind == "udp-exchange"
+                 ? "\"inputs/values.pae-lab.json\""
+                 : "null")
+         << ",\n"
          << "  \"fields\":" << SerializeFields(result.fields, 2) << ",\n"
          << "  \"diagnostic\":{\"id\":" << Quoted(result.diagnostic_id)
          << ",\"detail\":" << Quoted(result.diagnostic_detail) << "},\n"
@@ -220,15 +257,66 @@ std::string SerializeResult(const OperationResult& result) {
   } else {
     output << "null";
   }
-  const std::string engine_gate = result.operation_kind == "compare"
-                                      ? "NOT_EVALUATED"
-                                      : (result.status == "OK" ? "PASS" : "FAIL");
+  const std::string engine_gate =
+      result.operation_kind == "compare" || result.replay_mode == "NO_CODEC_REEXECUTION"
+          ? "NOT_EVALUATED"
+          : (result.status == "OK" ? "PASS" : "FAIL");
   output << ",\n"
          << "  \"comparison_categories\":" << SerializeStringArray(result.comparison_categories)
          << ",\n"
          << "  \"evidence_bundle\":" << Quoted(result.evidence_bundle) << ",\n"
-         << "  \"send_attempted\":false,\n"
-         << "  \"send_succeeded\":false,\n"
+         << "  \"transport\":" << Quoted(result.transport) << ",\n"
+         << "  \"local_endpoint\":" << Quoted(result.local_endpoint) << ",\n"
+         << "  \"remote_endpoint\":" << Quoted(result.remote_endpoint) << ",\n"
+         << "  \"received_from\":" << Quoted(result.received_from) << ",\n"
+         << "  \"timeout_ms\":" << result.timeout_ms << ",\n"
+         << "  \"send_attempted\":" << (result.send_attempted ? "true" : "false") << ",\n"
+         << "  \"send_succeeded\":" << (result.send_succeeded ? "true" : "false") << ",\n"
+         << "  \"response_received\":" << (result.response_received ? "true" : "false") << ",\n"
+         << "  \"response_decoded\":" << (result.response_decoded ? "true" : "false");
+  if (result_format == kResultFormat) {
+    output << ",\n"
+           << "  \"receive_pipeline_id\":" << Quoted(result.receive_pipeline_id) << ",\n"
+           << "  \"replay_mode\":" << Quoted(result.replay_mode) << ",\n"
+           << "  \"replay_subject\":" << Quoted(result.replay_subject) << ",\n"
+           << "  \"current_execution_status\":" << Quoted(result.current_execution_status) << ",\n"
+           << "  \"current_execution_diagnostic_id\":"
+           << Quoted(result.current_execution_diagnostic_id) << ",\n"
+           << "  \"comparison_status\":" << Quoted(result.comparison_status) << ",\n"
+           << "  \"comparison_reason\":" << Quoted(result.comparison_reason) << ",\n"
+           << "  \"historical_transport\":";
+    const bool source_udp = result.command == "udp-exchange";
+    if (!source_udp && !result.historical_transport.present) {
+      output << "null";
+    } else {
+      const HistoricalTransportFacts& historical = result.historical_transport;
+      output << "{\"transport\":" << Quoted(source_udp ? result.transport : historical.transport)
+             << ",\"timeout_ms\":" << (source_udp ? result.timeout_ms : historical.timeout_ms)
+             << ",\"status\":" << Quoted(source_udp ? result.status : historical.status)
+             << ",\"diagnostic_id\":"
+             << Quoted(source_udp ? result.diagnostic_id : historical.diagnostic_id)
+             << ",\"local_endpoint\":"
+             << Quoted(source_udp ? result.local_endpoint : historical.local_endpoint)
+             << ",\"remote_endpoint\":"
+             << Quoted(source_udp ? result.remote_endpoint : historical.remote_endpoint)
+             << ",\"received_from\":"
+             << Quoted(source_udp ? result.received_from : historical.received_from)
+             << ",\"send_attempted\":"
+             << ((source_udp ? result.send_attempted : historical.send_attempted) ? "true"
+                                                                                  : "false")
+             << ",\"send_succeeded\":"
+             << ((source_udp ? result.send_succeeded : historical.send_succeeded) ? "true"
+                                                                                  : "false")
+             << ",\"response_received\":"
+             << ((source_udp ? result.response_received : historical.response_received) ? "true"
+                                                                                        : "false")
+             << ",\"response_decoded\":"
+             << ((source_udp ? result.response_decoded : historical.response_decoded) ? "true"
+                                                                                      : "false")
+             << '}';
+    }
+  }
+  output << ",\n"
          << "  \"gates\":{\"ENGINE_POC_PASS\":" << Quoted(engine_gate)
          << ",\"LAB_EXCHANGE_PASS\":\"NOT_EVALUATED\","
             "\"PROTOCOL_GOLDEN_PASS\":\"NOT_EVALUATED\"}\n"
@@ -247,6 +335,9 @@ std::string FieldsCanonical(const OperationResult& result) {
 
 std::vector<std::string> CompareStoredRuns(const StoredRun& left, const StoredRun& right) {
   std::vector<std::string> categories;
+  const bool udp_v2 = left.operation_kind == "udp-exchange" &&
+                      right.operation_kind == "udp-exchange" &&
+                      left.format_version == kResultFormat && right.format_version == kResultFormat;
   if (left.operation_kind != right.operation_kind) {
     categories.emplace_back("OPERATION_KIND");
   }
@@ -256,17 +347,24 @@ std::vector<std::string> CompareStoredRuns(const StoredRun& left, const StoredRu
   if (left.frame_hex != right.frame_hex) {
     categories.emplace_back("WIRE_BYTES");
   }
+  if (left.tx_frame_hex != right.tx_frame_hex || left.rx_frame_hex != right.rx_frame_hex) {
+    if (std::find(categories.begin(), categories.end(), "WIRE_BYTES") == categories.end()) {
+      categories.emplace_back("WIRE_BYTES");
+    }
+  }
   if (left.pipeline_id != right.pipeline_id || left.message_id != right.message_id ||
       left.direction_id != right.direction_id) {
     categories.emplace_back("MESSAGE_MATCH");
   }
-  if (left.operation_status != right.operation_status) {
+  if ((udp_v2 ? left.current_execution_status != right.current_execution_status
+              : left.operation_status != right.operation_status)) {
     categories.emplace_back("STATUS");
   }
   if (left.fields_canonical != right.fields_canonical) {
     categories.emplace_back("TYPED_FIELDS");
   }
-  if (left.diagnostic_id != right.diagnostic_id) {
+  if ((udp_v2 ? left.current_execution_diagnostic_id != right.current_execution_diagnostic_id
+              : left.diagnostic_id != right.diagnostic_id)) {
     categories.emplace_back("STABLE_DIAGNOSTIC");
   }
   if (categories.empty() && left.deterministic_fingerprint != right.deterministic_fingerprint) {
@@ -277,16 +375,44 @@ std::vector<std::string> CompareStoredRuns(const StoredRun& left, const StoredRu
 
 StoredRun ToStoredRun(const OperationResult& result) {
   StoredRun stored;
+  stored.format_version = result.operation_kind == "udp-exchange" ? std::string{kResultFormat}
+                                                                  : std::string{kResultFormatV1};
+  stored.command = result.command;
   stored.operation_kind = result.operation_kind;
   stored.operation_status = result.status;
+  stored.exit_code = result.exit_code;
   stored.config_sha256 = result.config_sha256;
   stored.pipeline_id = result.pipeline_id;
   stored.message_id = result.message_id;
   stored.direction_id = result.direction_id;
   stored.frame_hex = HexUpper(result.frame);
+  stored.frame_length = result.frame.size();
+  stored.frame_sha256 = HashBytes(result.frame);
+  stored.tx_frame_hex = HexUpper(result.tx_frame);
+  stored.tx_frame_length = result.tx_frame.size();
+  stored.tx_frame_sha256 = HashBytes(result.tx_frame);
+  stored.rx_frame_hex = HexUpper(result.rx_frame);
+  stored.rx_frame_length = result.rx_frame.size();
+  stored.rx_frame_sha256 = HashBytes(result.rx_frame);
   stored.fields_canonical = FieldsCanonical(result);
   stored.diagnostic_id = result.diagnostic_id;
   stored.deterministic_fingerprint = result.deterministic_fingerprint;
+  stored.replay_mode = result.replay_mode;
+  stored.replay_subject = result.replay_subject;
+  stored.current_execution_status = result.current_execution_status;
+  stored.current_execution_diagnostic_id = result.current_execution_diagnostic_id;
+  stored.comparison_status = result.comparison_status;
+  stored.comparison_reason = result.comparison_reason;
+  stored.comparison_equal = result.comparison_equal;
+  stored.cross_config_replay = result.cross_config_replay;
+  stored.send_attempted = result.send_attempted;
+  stored.send_succeeded = result.send_succeeded;
+  stored.response_received = result.response_received;
+  stored.response_decoded = result.response_decoded;
+  stored.local_endpoint = result.local_endpoint;
+  stored.remote_endpoint = result.remote_endpoint;
+  stored.received_from = result.received_from;
+  stored.receive_pipeline_id = result.receive_pipeline_id;
   return stored;
 }
 
