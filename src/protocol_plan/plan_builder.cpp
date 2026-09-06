@@ -102,6 +102,20 @@ bool FitsUnsignedBits(std::uint64_t value, std::size_t width) noexcept {
                           value < (std::uint64_t{1U} << static_cast<unsigned>(width)));
 }
 
+bool FitsSignedWidth(std::int64_t value, std::size_t width) noexcept {
+  if (width == 0U || width > 8U) {
+    return false;
+  }
+  if (width == 8U) {
+    return true;
+  }
+  const unsigned magnitude_bits = static_cast<unsigned>(width * 8U - 1U);
+  const std::int64_t minimum = -static_cast<std::int64_t>(std::uint64_t{1U} << magnitude_bits);
+  const std::int64_t maximum =
+      static_cast<std::int64_t>((std::uint64_t{1U} << magnitude_bits) - 1U);
+  return value >= minimum && value <= maximum;
+}
+
 bool IsIntegerByteOrderValid(ByteOrder byte_order, std::size_t width) noexcept {
   if (width == 1U) {
     return byte_order == ByteOrder::NOT_APPLICABLE || byte_order == ByteOrder::BIG ||
@@ -370,7 +384,7 @@ BudgetedPlanDraft::~BudgetedPlanDraft() = default;
 PlanBuildResult PlanBuilder::FreezeImpl(detail::PlanDraftData draft) {
   const ResourceProfileLimits* limits = GetResourceProfileLimits(draft.resource_profile);
   if ((draft.schema_version != "0.1" && draft.schema_version != "0.2" &&
-       draft.schema_version != "0.3") ||
+       draft.schema_version != "0.3" && draft.schema_version != "0.4") ||
       !IsStableId(draft.protocol_id) || draft.protocol_version.empty() || limits == nullptr ||
       draft.framing_profiles.empty() || draft.pipelines.empty() || draft.messages.empty()) {
     return Reject(PlanBuildError::INVALID_METADATA);
@@ -457,7 +471,8 @@ PlanBuildResult PlanBuilder::FreezeImpl(detail::PlanDraftData draft) {
       std::size_t range_length = 0U;
       std::size_t storage_offset = 0U;
       const IntegrityPlan& integrity = *message.integrity;
-      if (draft.schema_version != "0.3" || integrity.algorithm != IntegrityAlgorithm::SUM8 ||
+      if ((draft.schema_version != "0.3" && draft.schema_version != "0.4") ||
+          integrity.algorithm != IntegrityAlgorithm::SUM8 ||
           !ToSize(integrity.range_offset, range_offset) ||
           !ToSize(integrity.range_length, range_length) ||
           !ToSize(integrity.storage_offset, storage_offset) || range_length == 0U ||
@@ -527,19 +542,30 @@ PlanBuildResult PlanBuilder::FreezeImpl(detail::PlanDraftData draft) {
           field.value_type == ValueType::UINT64 &&
           field.wire_codec == WireCodec::UNSIGNED_INTEGER && width <= 8U &&
           IsIntegerByteOrderValid(field.byte_order, width) && field.enum_entries.empty() &&
+          !field.signed_constant_value.has_value() &&
           ((field.encode_source == EncodeSource::INPUT && !field.constant_value.has_value()) ||
            (field.encode_source == EncodeSource::CONSTANT && field.constant_value.has_value() &&
             FitsUnsignedWidth(*field.constant_value, width)));
-      const bool bytes_valid = field.value_type == ValueType::BYTES &&
-                               field.wire_codec == WireCodec::BYTES &&
-                               field.byte_order == ByteOrder::NOT_APPLICABLE &&
-                               field.encode_source == EncodeSource::INPUT &&
-                               !field.constant_value.has_value() && field.enum_entries.empty();
+      const bool int64_valid = draft.schema_version == "0.4" &&
+                               field.value_type == ValueType::INT64 &&
+                               field.wire_codec == WireCodec::UNSIGNED_INTEGER && width <= 8U &&
+                               IsIntegerByteOrderValid(field.byte_order, width) &&
+                               field.enum_entries.empty() && !field.constant_value.has_value() &&
+                               ((field.encode_source == EncodeSource::INPUT &&
+                                 !field.signed_constant_value.has_value()) ||
+                                (field.encode_source == EncodeSource::CONSTANT &&
+                                 field.signed_constant_value.has_value() &&
+                                 FitsSignedWidth(*field.signed_constant_value, width)));
+      const bool bytes_valid =
+          field.value_type == ValueType::BYTES && field.wire_codec == WireCodec::BYTES &&
+          field.byte_order == ByteOrder::NOT_APPLICABLE &&
+          field.encode_source == EncodeSource::INPUT && !field.constant_value.has_value() &&
+          !field.signed_constant_value.has_value() && field.enum_entries.empty();
       const bool enum_shape_valid =
           field.value_type == ValueType::ENUM && field.wire_codec == WireCodec::UNSIGNED_INTEGER &&
           width <= 8U && IsIntegerByteOrderValid(field.byte_order, width) &&
           field.encode_source == EncodeSource::INPUT && !field.constant_value.has_value() &&
-          !field.enum_entries.empty() &&
+          !field.signed_constant_value.has_value() && !field.enum_entries.empty() &&
           (field.unknown_enum_policy == UnknownEnumPolicy::REJECT ||
            field.unknown_enum_policy == UnknownEnumPolicy::PRESERVE);
       const std::size_t container_bits = bitfield ? width * 8U : 0U;
@@ -552,12 +578,13 @@ PlanBuildResult PlanBuilder::FreezeImpl(detail::PlanDraftData draft) {
            field.value_type == ValueType::ENUM) &&
           (field.value_type != ValueType::BOOL || field.bit_width == 1U);
       const bool bit_encode_valid =
-          bitfield && bit_type_valid &&
+          bitfield && bit_type_valid && !field.signed_constant_value.has_value() &&
           ((field.encode_source == EncodeSource::INPUT && !field.constant_value.has_value()) ||
            (field.value_type == ValueType::UINT64 &&
             field.encode_source == EncodeSource::CONSTANT && field.constant_value.has_value() &&
+            !field.signed_constant_value.has_value() &&
             FitsUnsignedBits(*field.constant_value, static_cast<std::size_t>(field.bit_width))));
-      if ((!bitfield && !uint64_valid && !bytes_valid && !enum_shape_valid) ||
+      if ((!bitfield && !uint64_valid && !int64_valid && !bytes_valid && !enum_shape_valid) ||
           (bitfield && (!bit_encode_valid ||
                         (field.value_type == ValueType::ENUM && field.enum_entries.empty())))) {
         return Reject(PlanBuildError::INVALID_FIELD_PLAN, kInvalidPlanBuildIndex,
@@ -573,8 +600,10 @@ PlanBuildResult PlanBuilder::FreezeImpl(detail::PlanDraftData draft) {
       field_execution.value_type = field.value_type;
       field_execution.byte_order = field.byte_order;
       field_execution.encode_source = field.encode_source;
-      field_execution.has_constant = field.constant_value.has_value();
+      field_execution.has_constant =
+          field.constant_value.has_value() || field.signed_constant_value.has_value();
       field_execution.constant_value = field.constant_value.value_or(0U);
+      field_execution.signed_constant_value = field.signed_constant_value.value_or(0);
       field_execution.unknown_enum_policy = field.value_type == ValueType::ENUM
                                                 ? field.unknown_enum_policy
                                                 : UnknownEnumPolicy::REJECT;
@@ -751,17 +780,21 @@ PlanBuildResult PlanBuilder::FreezeImpl(detail::PlanDraftData draft) {
       if (field.wire_codec == WireCodec::BITFIELD) {
         continue;
       }
-      if (field.value_type != ValueType::UINT64 || field.encode_source != EncodeSource::CONSTANT ||
-          !field.constant_value.has_value()) {
+      if ((field.value_type != ValueType::UINT64 && field.value_type != ValueType::INT64) ||
+          field.encode_source != EncodeSource::CONSTANT ||
+          (!field.constant_value.has_value() && !field.signed_constant_value.has_value())) {
         continue;
       }
+      const std::uint64_t encoded = field.value_type == ValueType::INT64
+                                        ? static_cast<std::uint64_t>(*field.signed_constant_value)
+                                        : *field.constant_value;
       const std::size_t offset = static_cast<std::size_t>(field.byte_offset);
       const std::size_t width = static_cast<std::size_t>(field.byte_width);
       for (std::size_t byte_index = 0U; byte_index < width; ++byte_index) {
         const auto matcher_byte = fixed_bytes.find(offset + byte_index);
         if (matcher_byte != fixed_bytes.end() &&
             matcher_byte->second !=
-                EncodeUnsignedByte(*field.constant_value, width, field.byte_order, byte_index)) {
+                EncodeUnsignedByte(encoded, width, field.byte_order, byte_index)) {
           return Reject(PlanBuildError::INVALID_MATCHER_PLAN, kInvalidPlanBuildIndex,
                         kInvalidPlanBuildIndex, message_index);
         }
@@ -970,6 +1003,7 @@ PlanBuildResult PlanBuilder::FreezeImpl(detail::PlanDraftData draft) {
                   field.byte_order = field_source.byte_order;
                   field.encode_source = field_source.encode_source;
                   field.constant_value = field_source.constant_value;
+                  field.signed_constant_value = field_source.signed_constant_value;
                   field.unknown_enum_policy = field_source.unknown_enum_policy;
                   field.bit_container_index = field_source.bit_container_index;
                   field.bit_offset = field_source.bit_offset;

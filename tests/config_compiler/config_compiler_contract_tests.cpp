@@ -198,7 +198,7 @@ std::string_view ToString(CompileError value) noexcept {
 
 class TestRunner final {
  public:
-  static constexpr std::size_t kExpectedCaseCount = 36U;
+  static constexpr std::size_t kExpectedCaseCount = 47U;
 
   void Pass(std::string_view case_id) {
     ++passed_;
@@ -562,6 +562,91 @@ void RunPlanBuilderIntegrityDefenseCases(TestRunner& runner) {
          pae::test_support::MakeIntegrityDraftWithSelfIncludedStorage());
   reject("sum8_builder_field_storage_conflict_defense",
          pae::test_support::MakeIntegrityDraftWithFieldStorageConflict());
+}
+
+void RunPlanBuilderInt64DefenseCase(TestRunner& runner) {
+  const auto make_draft = [&runner](ValueType type) -> std::unique_ptr<BudgetedPlanDraft> {
+    auto schema = MakeCapabilityContractSchema();
+    schema.schema_version = "0.4";
+    auto& field = schema.messages[0].fields[1];
+    field.value_type = type;
+    if (type != ValueType::INT64) {
+      pae::config_compiler::BitContainerIr container;
+      container.id = "flags";
+      container.byte_offset = 1U;
+      container.byte_width = 1U;
+      schema.messages[0].bit_containers.push_back(container);
+      field.wire = WireIr{};
+      field.wire.codec = WireCodec::BITFIELD;
+      field.wire.container_id = "flags";
+      field.wire.bit_width = 1U;
+      if (type == ValueType::ENUM) {
+        pae::config_compiler::EnumEntryIr entry;
+        entry.id = "zero";
+        entry.display_name = "Zero";
+        field.enum_entries.push_back(entry);
+      }
+    }
+    auto validated = DomainValidator::Validate(std::move(schema));
+    if (!validated.Succeeded()) {
+      runner.Fail("int64_defense_fixture", "valid fixture failed domain validation");
+      return nullptr;
+    }
+    auto budgeted = ResourceBudgetValidator::Validate(std::move(validated).TakeCapability());
+    if (!budgeted.Succeeded()) {
+      runner.Fail("int64_defense_fixture", "valid fixture failed budget validation");
+      return nullptr;
+    }
+    auto assembled = PlanDraftAssembler::Assemble(std::move(budgeted).TakeCapability());
+    if (!assembled.Succeeded()) {
+      runner.Fail("int64_defense_fixture", "valid fixture failed assembly");
+      return nullptr;
+    }
+    return std::make_unique<BudgetedPlanDraft>(std::move(assembled).TakeCapability());
+  };
+  const auto reject = [&runner](const std::string& id, BudgetedPlanDraft draft) {
+    const auto rejected = PlanBuilder::Freeze(std::move(draft));
+    if (rejected.Succeeded() || rejected.Diagnostic() == nullptr ||
+        rejected.Diagnostic()->code != PlanBuildError::INVALID_FIELD_PLAN ||
+        rejected.Diagnostic()->message_index != 0U || rejected.Diagnostic()->field_index != 1U) {
+      runner.Fail(id, rejected.Succeeded() ? "Freeze published the corrupted legal-budget Draft"
+                                           : "Draft rejected at the wrong diagnostic");
+    } else {
+      runner.Pass(id);
+    }
+  };
+  for (const auto type : {ValueType::INT64, ValueType::UINT64, ValueType::BOOL, ValueType::ENUM}) {
+    auto control = make_draft(type);
+    if (!control) continue;
+    if (!PlanBuilder::Freeze(std::move(*control)).Succeeded()) {
+      runner.Fail("int64_defense_control", "uncorrupted budgeted Draft must publish");
+      continue;
+    }
+    runner.Pass("int64_defense_control");
+    if (type == ValueType::INT64) {
+      for (const char* version : {"0.1", "0.2", "0.3"}) {
+        auto draft = make_draft(type);
+        if (draft)
+          reject(std::string("int64_builder_schema_") + version,
+                 pae::test_support::SetDraftSchemaVersion(std::move(*draft), version));
+      }
+    } else {
+      auto draft = make_draft(type);
+      if (draft)
+        reject("bit_input_signed_constant_" + std::to_string(static_cast<int>(type)),
+               pae::test_support::InjectSignedConstant(std::move(*draft)));
+    }
+  }
+  const auto result =
+      PlanBuilder::Freeze(pae::test_support::MakeInt64DraftWithOutOfRangeConstant());
+  if (result.Succeeded() || result.Diagnostic() == nullptr ||
+      result.Diagnostic()->code != PlanBuildError::INVALID_FIELD_PLAN ||
+      result.Diagnostic()->message_index != 0U || result.Diagnostic()->field_index != 0U) {
+    runner.Fail("int64_builder_wire_range_defense",
+                "PlanBuilder accepted an out-of-range signed constant in a corrupted Draft");
+  } else {
+    runner.Pass("int64_builder_wire_range_defense");
+  }
 }
 
 bool ReadBinaryFile(const std::filesystem::path& path, std::string& output, std::string& error) {
@@ -968,6 +1053,7 @@ int main(int argc, char** argv) {
   RunCorruptedBudgetedDraftCase(runner);
   RunPlanBuilderBitfieldDefenseCases(runner);
   RunPlanBuilderIntegrityDefenseCases(runner);
+  RunPlanBuilderInt64DefenseCase(runner);
   RunPlanMemoryContractCases(runner);
 
   const std::filesystem::path data_root{argv[1]};

@@ -234,6 +234,25 @@ CompileResult BuildSum8Plan() {
         "encode":{"source":"input"}}]}]})json");
 }
 
+CompileResult BuildInt64Plan() {
+  return pae::config_compiler::CompileJsonToPlan(R"json({
+    "schema_version":"0.4","protocol_id":"allocation_int64","protocol_version":"1",
+    "display_name":"Synthetic","description":"","source_ref":"SYNTHETIC_FROM_SCRATCH:allocation",
+    "resource_profile":"desktop",
+    "framing_profiles":[{"id":"complete_record","display_name":"Synthetic","description":"",
+      "source_ref":"SYNTHETIC_FROM_SCRATCH:allocation","input_kind":"complete_record"}],
+    "pipelines":[{"id":"signed_pipe","display_name":"Synthetic","description":"",
+      "source_ref":"SYNTHETIC_FROM_SCRATCH:allocation","direction_id":"signed_direction",
+      "input_framing_profile_id":"complete_record","message_ids":["signed_message"]}],
+    "messages":[{"id":"signed_message","display_name":"Synthetic","description":"",
+      "source_ref":"SYNTHETIC_FROM_SCRATCH:allocation","direction_id":"signed_direction",
+      "frame_length_bytes":3,"matcher":{"all":[{"kind":"frame_length_equals","length_bytes":3}]},
+      "fields":[{"id":"value","display_name":"Synthetic","description":"",
+        "source_ref":"SYNTHETIC_FROM_SCRATCH:allocation","value_type":"INT64",
+        "wire":{"codec":"unsigned_integer","byte_offset":0,"byte_width":3,"byte_order":"big_endian"},
+        "encode":{"source":"input"}}]}]})json");
+}
+
 bool CounterProbe() {
   const std::size_t before = g_allocation_count.load(std::memory_order_relaxed);
   void* memory = ::operator new(17U);
@@ -327,6 +346,31 @@ bool RunFirstSum8Calls() {
          slots[0].uint64_value == 0x11U && before == after;
 }
 
+bool RunFirstInt64Calls() {
+  CompileResult frozen = BuildInt64Plan();
+  if (!frozen.Succeeded()) return false;
+  ExecutionWorkspace workspace{*frozen.Plan()};
+  EncodeFieldValue value;
+  value.field = FieldRef{frozen.Plan(), 0U, 0U};
+  value.value_kind = LogicalValueKind::INT64;
+  value.int64_value = -2;
+  std::array<std::uint8_t, 3U> output{0xCCU, 0xCCU, 0xCCU};
+  std::size_t before = g_allocation_count.load(std::memory_order_relaxed);
+  const auto encoded = EncodeCompleteRecord(*frozen.Plan(), workspace, 0U, 0U, &value, 1U,
+                                            {output.data(), output.size()});
+  std::size_t after = g_allocation_count.load(std::memory_order_relaxed);
+  if (encoded.status != CodecStatus::OK ||
+      output != std::array<std::uint8_t, 3U>{0xFFU, 0xFFU, 0xFEU} || before != after)
+    return false;
+  DecodedFieldSlot slot;
+  before = g_allocation_count.load(std::memory_order_relaxed);
+  const auto decoded = DecodeCompleteRecord(*frozen.Plan(), workspace, 0U,
+                                            {output.data(), output.size()}, &slot, 1U);
+  after = g_allocation_count.load(std::memory_order_relaxed);
+  return decoded.status == CodecStatus::OK && decoded.field_count == 1U &&
+         slot.value_kind == LogicalValueKind::INT64 && slot.int64_value == -2 && before == after;
+}
+
 }  // namespace
 
 int main(int argc, char** argv) {
@@ -339,6 +383,7 @@ int main(int argc, char** argv) {
                       : mode == "--first-encode"   ? RunFirstEncode()
                       : mode == "--first-bitfield" ? RunFirstBitfieldCalls()
                       : mode == "--first-sum8"     ? RunFirstSum8Calls()
+                      : mode == "--first-int64"    ? RunFirstInt64Calls()
                                                    : false;
   const std::string_view case_id =
       mode == "--first-decode"
@@ -347,7 +392,9 @@ int main(int argc, char** argv) {
                  ? "first_encode_zero_replaceable_new_allocation"
                  : (mode == "--first-bitfield"
                         ? "first_bitfield_calls_zero_replaceable_new_allocation"
-                        : "first_sum8_calls_zero_replaceable_new_allocation"));
+                        : (mode == "--first-sum8"
+                               ? "first_sum8_calls_zero_replaceable_new_allocation"
+                               : "first_int64_calls_zero_replaceable_new_allocation")));
   std::cout << (passed ? "PASS" : "FAIL") << " case=" << case_id << '\n';
   std::cout << "FIRST_CALL_ALLOCATION_TEST_SUMMARY passed=" << (passed ? 1 : 0)
             << " failed=" << (passed ? 0 : 1) << " expected=1 gate=" << (passed ? "PASS" : "FAIL")

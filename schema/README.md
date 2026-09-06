@@ -2,7 +2,7 @@
 
 PAE V0.1 将使用 JSON Schema Draft 2020-12 描述基础结构，并使用独立的 ProtocolPlan Execution Semantics（协议执行计划语义规范）描述跨字段、跨引用、资源和执行语义。
 
-当前已经建立首个`V0.1 DRAFT SLICE / INCOMPLETE（V0.1 草案切片 / 不完整）`，用于从零设计的 COMPLETE_RECORD 人工实验协议 Loader/Compiler 垂直切片。它只覆盖固定长度/固定字节 Matcher、UINT64/BYTES/ENUM，以及`input`和 UINT64 `constant` Encode Source，不能宣称为完整 PAE V0.1 Schema。
+当前Schema 0.1～0.4内部切片覆盖COMPLETE_RECORD固定Matcher、UINT64/INT64/BYTES/ENUM、位容器BOOL和SUM8；Schema 0.4新增1～8字节补码INT64。它仍不是完整PAE V0.1 Schema。
 
 - [PAE V0.1 Draft Slice JSON Schema](pae.schema.json)：Draft 2020-12结构草案；
 - [ProtocolPlan Execution Semantics V0.1 — Draft Slice](protocol_plan_execution_semantics_v0.1.md)：首切片跨引用、布局、Matcher、Encode Source和Plan语义；

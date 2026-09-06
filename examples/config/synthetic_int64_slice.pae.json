@@ -1,0 +1,33 @@
+{
+  "schema_version": "0.4",
+  "protocol_id": "synthetic_int64_slice",
+  "protocol_version": "0.1-synthetic",
+  "display_name": "Synthetic INT64 slice",
+  "description": "Independent public vector for byte-aligned two's-complement INT64.",
+  "source_ref": "SYNTHETIC_FROM_SCRATCH:DEC042A",
+  "resource_profile": "desktop",
+  "framing_profiles": [
+    {"id":"record","display_name":"Record","description":"","source_ref":"SYNTHETIC_FROM_SCRATCH:DEC042A","input_kind":"complete_record"}
+  ],
+  "pipelines": [
+    {"id":"sample_pipeline","display_name":"Sample","description":"","source_ref":"SYNTHETIC_FROM_SCRATCH:DEC042A","direction_id":"sample_direction","input_framing_profile_id":"record","message_ids":["sample"]}
+  ],
+  "messages": [
+    {
+      "id":"sample","display_name":"Sample","description":"","source_ref":"SYNTHETIC_FROM_SCRATCH:DEC042A","direction_id":"sample_direction","frame_length_bytes":25,
+      "matcher":{"all":[{"kind":"frame_length_equals","length_bytes":25}]},
+      "bit_containers":[{"id":"flags","container_offset":20,"container_width":1,"bit_numbering":"lsb0","base_value":160}],
+      "integrity":{"algorithm":"sum8","range":{"byte_offset":0,"byte_length":24},"storage":{"byte_offset":24}},
+      "fields":[
+        {"id":"signed_be24","display_name":"Signed BE24","description":"","source_ref":"SYNTHETIC_FROM_SCRATCH:DEC042A","value_type":"INT64","wire":{"codec":"unsigned_integer","byte_offset":0,"byte_width":3,"byte_order":"big_endian"},"encode":{"source":"input"}},
+        {"id":"signed_le24","display_name":"Signed LE24","description":"","source_ref":"SYNTHETIC_FROM_SCRATCH:DEC042A","value_type":"INT64","wire":{"codec":"unsigned_integer","byte_offset":3,"byte_width":3,"byte_order":"little_endian"},"encode":{"source":"input"}},
+        {"id":"signed_constant","display_name":"Signed constant","description":"","source_ref":"SYNTHETIC_FROM_SCRATCH:DEC042A","value_type":"INT64","wire":{"codec":"unsigned_integer","byte_offset":6,"byte_width":5,"byte_order":"big_endian"},"encode":{"source":"constant","value":-2}},
+        {"id":"signed_min","display_name":"Signed minimum","description":"","source_ref":"SYNTHETIC_FROM_SCRATCH:DEC042A","value_type":"INT64","wire":{"codec":"unsigned_integer","byte_offset":11,"byte_width":8,"byte_order":"big_endian"},"encode":{"source":"input"}},
+        {"id":"unsigned_value","display_name":"Unsigned","description":"","source_ref":"SYNTHETIC_FROM_SCRATCH:DEC042A","value_type":"UINT64","wire":{"codec":"unsigned_integer","byte_offset":19,"byte_width":1},"encode":{"source":"input"}},
+        {"id":"enabled","display_name":"Enabled","description":"","source_ref":"SYNTHETIC_FROM_SCRATCH:DEC042A","value_type":"BOOL","wire":{"codec":"bitfield","container_id":"flags","bit_offset":0,"bit_width":1},"encode":{"source":"input"}},
+        {"id":"payload","display_name":"Payload","description":"","source_ref":"SYNTHETIC_FROM_SCRATCH:DEC042A","value_type":"BYTES","wire":{"codec":"bytes","byte_offset":21,"byte_length":2},"encode":{"source":"input"}},
+        {"id":"mode","display_name":"Mode","description":"","source_ref":"SYNTHETIC_FROM_SCRATCH:DEC042A","value_type":"ENUM","wire":{"codec":"unsigned_integer","byte_offset":23,"byte_width":1},"encode":{"source":"input"},"unknown_enum_policy":"reject","enum_entries":[{"id":"active","display_name":"Active","raw_value":2}]}
+      ]
+    }
+  ]
+}

@@ -477,7 +477,8 @@ bool ReplayOnceAndCheck(const std::filesystem::path& source_run,
   const bool comparison_equal = comparison_status == "EQUAL";
   const bool comparison_not_evaluated = comparison_status == "NOT_EVALUATED";
   const std::string_view version_suffix =
-      replay.format_version == pae::protocol_lab::kResultFormatV4
+      replay.format_version == pae::protocol_lab::kResultFormatV5 ? "0.5"
+      : replay.format_version == pae::protocol_lab::kResultFormatV4
           ? "0.4"
           : (replay.format_version == pae::protocol_lab::kResultFormatV3 ? "0.3" : "0.2");
   const bool history_matches = source.operation_kind == "udp-exchange"
@@ -1373,6 +1374,64 @@ bool TestSum8V4Loopback(const std::filesystem::path& root, const std::vector<std
          !mismatch_stored.response_decoded && no_codec_replayed;
 }
 
+bool TestInt64V5Loopback(const std::filesystem::path& root,
+                         const std::vector<std::uint8_t>& frame) {
+  LoopbackPeer peer{frame};
+  if (!peer.Start()) return false;
+  pae::protocol_lab::StandardRecordFileSystem file_system;
+  std::unique_ptr<IUdpExchangeAdapter> adapter =
+      pae::protocol_lab::CreatePlatformUdpExchangeAdapter();
+  std::string output;
+  auto arguments = UdpArguments(
+      root, "127.0.0.1:" + std::to_string(peer.Port()), true, "data/synthetic_int64_slice.pae.json",
+      "data/synthetic_int64_slice.values.pae-lab.json", "sample_pipeline");
+  arguments.insert(arguments.end(), {"--timeout-ms", "2000"});
+  const int exit_code = RunCaptured(std::move(arguments), file_system, *adapter, output);
+  peer.Join();
+  const std::filesystem::path run = OnlyCompletedRun(root);
+  pae::protocol_lab::StoredRun stored;
+  std::string error;
+  std::string metadata;
+  const bool loaded = !run.empty() && pae::protocol_lab::LoadStoredRun(run, stored, error);
+  const bool replayed = loaded && ReplayAndCheck(run, root / "replay", "DECODE_RX", "RX",
+                                                 "DECODE_RX", 0, true, "EQUAL");
+
+  FakeUdpAdapter mismatch;
+  mismatch.response.status = UdpExchangeStatus::OK;
+  mismatch.response.send_attempted = true;
+  mismatch.response.send_succeeded = true;
+  mismatch.response.response_received = true;
+  mismatch.response.payload = frame;
+  mismatch.response.peer = UdpEndpoint{{127U, 0U, 0U, 1U}, 23459U};
+  std::string mismatch_output;
+  const std::filesystem::path mismatch_root = root.parent_path() / "v5-no-codec";
+  const int mismatch_exit = RunCaptured(
+      UdpArguments(mismatch_root, "127.0.0.1:23456", true, "data/synthetic_int64_slice.pae.json",
+                   "data/synthetic_int64_slice.values.pae-lab.json", "sample_pipeline"),
+      file_system, mismatch, mismatch_output);
+  const std::filesystem::path mismatch_run = OnlyCompletedRun(mismatch_root);
+  pae::protocol_lab::StoredRun mismatch_stored;
+  const bool mismatch_loaded = !mismatch_run.empty() && pae::protocol_lab::LoadStoredRun(
+                                                            mismatch_run, mismatch_stored, error);
+  const bool no_codec_replayed =
+      mismatch_loaded &&
+      ReplayAndCheck(mismatch_run, mismatch_root / "replay", "NO_CODEC_REEXECUTION", "RX", "", 0,
+                     false, "NOT_EVALUATED");
+  return exit_code == 0 && peer.Captured() == frame && peer.Error().empty() && loaded &&
+         stored.format_version == pae::protocol_lab::kResultFormatV5 &&
+         stored.operation_status == "OK" &&
+         stored.fields_canonical.find("signed_min|INT64|-9223372036854775808|") !=
+             std::string::npos &&
+         std::filesystem::is_regular_file(run / "result_summary_v0.5.json") &&
+         std::filesystem::is_regular_file(run / "run_record_v0.5.json") &&
+         std::filesystem::is_regular_file(run / "events_v0.5.jsonl") &&
+         LoadTextFile(run / "frames/000002_rx.meta.json", metadata) &&
+         Contains(metadata, "pae.lab.rx-meta/0.2") && replayed && mismatch_exit == 8 &&
+         mismatch.call_count == 1 && Contains(mismatch_output, "UDP_PEER_MISMATCH") &&
+         mismatch_loaded && mismatch_stored.format_version == pae::protocol_lab::kResultFormatV5 &&
+         !mismatch_stored.response_decoded && no_codec_replayed;
+}
+
 bool TestBitfieldV3PreparationFailuresUseNoSocket(const std::filesystem::path& root) {
   pae::protocol_lab::StandardRecordFileSystem file_system;
   FakeUdpAdapter adapter;
@@ -1919,10 +1978,12 @@ int main(int argc, char* argv[]) {
   std::vector<std::uint8_t> response;
   std::vector<std::uint8_t> bitfield_frame;
   std::vector<std::uint8_t> sum8_frame;
+  std::vector<std::uint8_t> int64_frame;
   if (!LoadHexFile("data/lab_command_001.frame.hex", request) ||
       !LoadHexFile("data/lab_report_001.frame.hex", response) ||
       !LoadHexFile("data/bitfield_record_001.frame.hex", bitfield_frame) ||
-      !LoadHexFile("data/sum8_record_001.frame.hex", sum8_frame)) {
+      !LoadHexFile("data/sum8_record_001.frame.hex", sum8_frame) ||
+      !LoadHexFile("data/int64_record_001.frame.hex", int64_frame)) {
     std::cerr << "could not load UDP test vectors\n";
     return 1;
   }
@@ -1946,6 +2007,9 @@ int main(int argc, char* argv[]) {
   passed =
       run_case("sum8-v0.4-loopback", TestSum8V4Loopback(root / "sum8-v0.4-loopback", sum8_frame)) &&
       passed;
+  passed = run_case("int64-v0.5-loopback",
+                    TestInt64V5Loopback(root / "int64-v0.5-loopback", int64_frame)) &&
+           passed;
   passed = run_case("bitfield-v0.3-preparation-failures",
                     TestBitfieldV3PreparationFailuresUseNoSocket(root / "bitfield-v0.3-early")) &&
            passed;

@@ -116,7 +116,9 @@ namespace {
 
 std::string DeterministicPayload(const OperationResult& result) {
   std::ostringstream output;
-  if (result.schema_version == "0.3") {
+  if (result.schema_version == "0.4") {
+    output << "fingerprint_domain=pae.lab.fingerprint/0.5\n";
+  } else if (result.schema_version == "0.3") {
     output << "fingerprint_domain=pae.lab.fingerprint/0.4\n";
   } else if (result.schema_version == "0.2") {
     output << "fingerprint_domain=pae.lab.fingerprint/0.3\n";
@@ -212,7 +214,8 @@ std::string SerializeFieldsCompact(const std::vector<FieldResult>& fields) {
 
 std::string SerializeResult(const OperationResult& result) {
   const std::string_view result_format =
-      result.schema_version == "0.3"
+      result.schema_version == "0.4" ? kResultFormatV5
+      : result.schema_version == "0.3"
           ? kResultFormatV4
           : (result.schema_version == "0.2"
                  ? kResultFormatV3
@@ -286,7 +289,7 @@ std::string SerializeResult(const OperationResult& result) {
          << "  \"response_received\":" << (result.response_received ? "true" : "false") << ",\n"
          << "  \"response_decoded\":" << (result.response_decoded ? "true" : "false");
   if (result_format == kResultFormat || result_format == kResultFormatV3 ||
-      result_format == kResultFormatV4) {
+      result_format == kResultFormatV4 || result_format == kResultFormatV5) {
     output << ",\n"
            << "  \"receive_pipeline_id\":" << Quoted(result.receive_pipeline_id) << ",\n"
            << "  \"replay_mode\":" << Quoted(result.replay_mode) << ",\n"
@@ -348,6 +351,7 @@ std::string FieldsCanonical(const OperationResult& result) {
 std::vector<std::string> CompareStoredRuns(const StoredRun& left, const StoredRun& right) {
   std::vector<std::string> categories;
   const bool modern =
+      (left.format_version == kResultFormatV5 && right.format_version == kResultFormatV5) ||
       (left.format_version == kResultFormatV4 && right.format_version == kResultFormatV4) ||
       (left.format_version == kResultFormatV3 && right.format_version == kResultFormatV3) ||
       (left.operation_kind == "udp-exchange" && right.operation_kind == "udp-exchange" &&
@@ -390,7 +394,8 @@ std::vector<std::string> CompareStoredRuns(const StoredRun& left, const StoredRu
 StoredRun ToStoredRun(const OperationResult& result) {
   StoredRun stored;
   stored.format_version =
-      result.schema_version == "0.3" ? std::string{kResultFormatV4}
+      result.schema_version == "0.4"   ? std::string{kResultFormatV5}
+      : result.schema_version == "0.3" ? std::string{kResultFormatV4}
       : result.schema_version == "0.2"
           ? std::string{kResultFormatV3}
           : (result.operation_kind == "udp-exchange" ? std::string{kResultFormat}

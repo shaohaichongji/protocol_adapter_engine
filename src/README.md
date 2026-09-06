@@ -14,7 +14,7 @@ pae_config_compiler ──→ pae_protocol_plan ←── pae_protocol_core_slic
          └──→ yyjson（仅配置加载私有依赖）
 ```
 
-`pae_protocol_core_slice`的入口使用`PlanBundle + ExecutionWorkspace（执行工作区）+ pipeline_index`选择有向Pipeline（管线）。当前只支持确定性Matcher（匹配器）、`UINT64`、固定长度`BYTES`、`ENUM`的`reject/preserve`未知值策略、Big Endian（大端）/Little Endian（小端）、动态`input`和`UINT64 constant`。Decode（解码）先按Frame Length（帧长度）进入冻结候选组；Encode（编码）把输入一次归一化为稠密索引和存在位图。字段和Enum引用都绑定原`PlanBundle`作用域，BYTES只借用输入帧区间；完成输入预检、完整写入、Matcher及字段最终复核后才把`bytes_written`设为非零。
+`pae_protocol_core_slice`的入口使用`PlanBundle + ExecutionWorkspace（执行工作区）+ pipeline_index`选择有向Pipeline（管线）。当前支持确定性Matcher、`UINT64`、字节对齐补码`INT64`、固定长度`BYTES`、`ENUM`和位成员`BOOL`，以及整数`input/constant`。INT64使用独立类型和`std::int64_t`，不与UINT64隐式转换。字段和Enum引用绑定原Plan作用域；完成输入预检、写入、完整性及最终复核后才交付结果。
 
 当前Codec入口声明为`noexcept`，逐帧调用不创建或扩容容器；Plan和Workspace内存由初始化阶段提前建立，输出槽位和输出Buffer由宿主提供。Workspace永久绑定并借用一个Plan，Plan必须比Workspace存活更久；每个并发或重入调用必须独占一个Workspace，复用正在使用的Workspace会返回`WORKSPACE_BUSY`。失败时Decode不交付部分字段，Encode的`bytes_written`保持为零；若错误发生在最终复核阶段，调用方仍必须把输出Buffer内容视为不可交付数据。
 

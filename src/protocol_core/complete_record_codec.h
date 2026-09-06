@@ -39,6 +39,7 @@ enum class CodecStatus {
 
 enum class LogicalValueKind {
   UINT64,
+  INT64,
   BYTES,
   ENUM,
   BOOL,
@@ -77,6 +78,7 @@ struct DecodedFieldSlot {
   FieldRef field;
   LogicalValueKind value_kind = LogicalValueKind::UINT64;
   std::uint64_t uint64_value = 0U;
+  std::int64_t int64_value = 0;
   bool bool_value = false;
   ByteView bytes_value;
   DecodedEnumValue enum_value;
@@ -86,6 +88,7 @@ struct EncodeFieldValue {
   FieldRef field;
   LogicalValueKind value_kind = LogicalValueKind::UINT64;
   std::uint64_t uint64_value = 0U;
+  std::int64_t int64_value = 0;
   bool bool_value = false;
   ByteView bytes_value;
   EnumValueRef enum_value;

@@ -388,6 +388,16 @@ SUM8验证协议Frame覆盖范围，两者职责互不替代。
 同代Replay保留三种模式、历史Transport隔离、跨配置差异和链式再次Replay。未知版本、Result/
 Record/Event混合代际或内部关联不一致，即使Hash清单自洽也必须失败关闭。
 
+### 7.3 Schema 0.4与Lab 0.5
+
+Schema 0.4统一产生Result/Record/Event 0.5并进入独立`pae.lab.fingerprint/0.5`域，即使消息没有
+INT64。Values 0.3新增`INT64`规范十进制字符串；它只可配Schema 0.4，Schema 0.4仍可使用旧Values
+表达旧类型，BOOL至少需要Values 0.2。INT64结果的raw/logical必须相同、规范且在INT64范围内；
+Evidence读取在文件长度和Hash自洽后仍严格拒绝未知kind及非法INT64元组。RX Metadata保持0.2。
+
+跨代Run Compare和替换配置Replay继续在协议差异前拒绝；同代链式Replay、跨配置差异、失败执行
+状态和历史Transport隔离沿用既有语义。旧Result/Record/Event及指纹算法不迁移、不重算。
+
 `run_record_v0.1.json`至少记录：
 
 - Record格式版本和Run ID；

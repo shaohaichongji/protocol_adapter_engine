@@ -6,7 +6,7 @@
 | --- | --- |
 | 当前状态 | `V0.1 DRAFT SLICE / INCOMPLETE（V0.1 草案切片 / 不完整）` |
 | 对应 Schema | [`pae.schema.json`](pae.schema.json) |
-| 当前切片 | 严格配置编译、yyjson-free（不依赖yyjson）的Frozen Execution Plan（冻结执行计划）、显式ExecutionWorkspace、COMPLETE_RECORD内部Decode/Encode、固定长度/固定字节Matcher、UINT64/BYTES/ENUM，Schema 0.2中的BOOL与位容器，以及Schema 0.3中的单段SUM8完整记录校验；`input`与UINT64 `constant` Encode Source |
+| 当前切片 | 严格配置编译、yyjson-free（不依赖yyjson）的Frozen Execution Plan（冻结执行计划）、显式ExecutionWorkspace、COMPLETE_RECORD内部Decode/Encode、固定长度/固定字节Matcher、UINT64/INT64/BYTES/ENUM，Schema 0.2中的BOOL与位容器、Schema 0.3中的SUM8，以及Schema 0.4中的字节对齐INT64；`input`与整数`constant` Encode Source |
 | 不覆盖 | STREAM_CHUNK流式Framing、CRC及其他Integrity算法、Receive Gate、Mapping、Session、Runtime注册、公共API及完整V0.1字段类型 |
 
 本文描述PAE（Protocol Adapter Engine，协议适配引擎）首个Loader/Compiler（加载器/编译器）垂直切片及其后的`COMPLETE_RECORD（完整记录）`Codec（编解码器）内部切片。它没有完成《PAE V0.1 技术细节拍板方案》中`PAE-DEC-027`要求的完整Schema V0.1语义覆盖，也没有冻结公共API（Application Programming Interface，应用程序接口），不能作为完整V0.1配置语言或生产协议正确性声明。
@@ -87,8 +87,8 @@ PlanBundle + bound ExecutionWorkspace + pipeline_index + message_index + typed i
 
 `DRAFT SLICE RULE`：
 
-- `schema_version`接受字符串`"0.1"`、`"0.2"`或`"0.3"`；0.1保持原属性与类型集合，0.2允许
-  `bit_containers`、`bitfield` Wire和BOOL，0.3在此基础上允许Message的单对象`integrity`；
+- `schema_version`接受字符串`"0.1"`至`"0.4"`；0.1保持原属性与类型集合，0.2允许
+  `bit_containers`、`bitfield` Wire和BOOL，0.3增加Message的单对象`integrity`，0.4增加字节对齐INT64；
 - stable ID匹配`^[a-z][a-z0-9_]*$`，本草案切片最多128个字符；
 - `resource_profile`只接受`desktop`和`constrained`；
 - 根对象及所有子对象的未知属性必须拒绝。
@@ -213,7 +213,7 @@ encode
 { "source": "input" }
 ```
 
-以及仅适用于 UINT64 的：
+以及适用于 UINT64/INT64 的：
 
 ```json
 { "source": "constant", "value": 1 }
@@ -354,12 +354,22 @@ SUM8成败消除结构歧义。Encode先写既有字段、常量、固定字节�
 Encode生成和复算为2N；这是操作上界证据，不是性能结论。公开向量和Windows验证见
 [`windows-msvc-2026-dec041-sum8-slice.md`](../docs/windows-msvc-2026-dec041-sum8-slice.md)。
 
+### 11.5 Schema 0.4字节对齐INT64规则
+
+`PAE-DEC-042A`在COMPLETE_RECORD字段链增加1～8字节二进制补码INT64，多字节沿用显式大小端，
+位字段INT64不在本切片。配置常量由原始JSON整数Token精确解析，signed `-0`归一为0；常量与
+动态输入都必须位于实际Wire宽度的有符号范围。Builder冻结独立signed constant并在发布前复核。
+
+Core使用`LogicalValueKind::INT64`和`std::int64_t`。Decode先以uint64_t逐字节累积，再通过掩码和
+无符号幅值安全解释符号；Encode先检查范围，再按标准无符号转换提取低位。UINT64和INT64不可
+隐式互换。Schema 0.4统一选择Lab 0.5代际，旧Schema、旧指纹与历史证据保持原行为。
+
 ## 12. 当前不覆盖的完整 V0.1 能力
 
 完成本切片不能宣称完成完整Schema V0.1。至少仍缺少：
 
 - STREAM_CHUNK及`fixed_length`、`sync_fixed_length`、`sync_length_field`；
-- INT64、REAL64、DECIMAL64、STRING/ASCII和Packed BCD；BOOL当前仅存在于Schema 0.2位成员；
+- REAL64、DECIMAL64、STRING/ASCII和Packed BCD；有符号位字段仍未实现；
 - 位字段之外的scale/bias、raw/value constraints；
 - `default`和`computed`正式作者格式；
 - 长度字段正式语义；
@@ -390,6 +400,7 @@ Encode生成和复算为2N；这是操作上界证据，不是性能结论。公
 
 | 文档版本 | 日期 | 说明 |
 | --- | --- | --- |
+| 0.1.8 | 2026-09-06 | 同步PAE-DEC-042A Schema 0.4字节对齐INT64、独立Core类型、安全补码算法及Lab 0.5版本边界 |
 | 0.1.6 | 2026-09-06 | 同步PAE-DEC-040 Schema 0.2位容器、BOOL、冻结布局、Workspace计费及Windows验证边界；Schema 0.1保持原能力 |
 | 0.1.5 | 2026-09-02 | 同步PAE-DEC-033A单Storage Block、Frozen Storage、PlanOwner、精确ResourceBudget准入、报告复核和Windows部分验证；033B仍未实现 |
 | 0.1.4 | 2026-09-02 | 同步PAE-DEC-032已实现能力链、第十七轮PAE-DEC-033A/033B计量合同和033A推荐实施方案；保持033A/033B源码与测试为UNVERIFIED |

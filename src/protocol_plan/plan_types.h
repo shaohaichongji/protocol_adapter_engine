@@ -54,6 +54,7 @@ enum class MatcherKind {
 
 enum class ValueType {
   UINT64,
+  INT64,
   BYTES,
   ENUM,
   BOOL,

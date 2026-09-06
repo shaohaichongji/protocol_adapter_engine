@@ -22,3 +22,5 @@
 - [DEC-040 后续推进路线与当前状态](post-dec040-roadmap.md)
 - [PAE-DEC-041 SUM8完整记录校验确认契约](pae-dec-041-sum8-contract.md)
 - [PAE-DEC-041 SUM8最小切片Windows验证报告](windows-msvc-2026-dec041-sum8-slice.md)
+- [PAE-DEC-042 数值转换范围与DEC-042A INT64确认契约](pae-dec-042-numeric-conversion-contract-draft.md)
+- [PAE-DEC-042A 字节对齐INT64 Windows验证报告](windows-msvc-2026-dec042a-int64-slice.md)

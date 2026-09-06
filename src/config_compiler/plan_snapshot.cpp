@@ -89,6 +89,8 @@ std::string_view ToString(ValueType value) noexcept {
   switch (value) {
     case ValueType::UINT64:
       return "UINT64";
+    case ValueType::INT64:
+      return "INT64";
     case ValueType::BYTES:
       return "BYTES";
     case ValueType::ENUM:
@@ -183,11 +185,13 @@ std::string MakeDeterministicPlanSnapshot(const PlanBundle& plan) {
   output.push_back('{');
   const bool v02 = plan.SchemaVersion() == "0.2";
   const bool v03 = plan.SchemaVersion() == "0.3";
-  AppendStringProperty(
-      "snapshot_format",
-      v03 ? "pae_plan_bundle_v0.3_sum8_slice"
-          : (v02 ? "pae_plan_bundle_v0.2_bitfield_slice" : "pae_plan_bundle_v0.1_draft_slice"),
-      output);
+  const bool v04 = plan.SchemaVersion() == "0.4";
+  AppendStringProperty("snapshot_format",
+                       v04 ? "pae_plan_bundle_v0.4_int64_slice"
+                           : (v03 ? "pae_plan_bundle_v0.3_sum8_slice"
+                                  : (v02 ? "pae_plan_bundle_v0.2_bitfield_slice"
+                                         : "pae_plan_bundle_v0.1_draft_slice")),
+                       output);
   output.push_back(',');
   AppendStringProperty("schema_version", plan.SchemaVersion(), output);
   output.push_back(',');
@@ -212,12 +216,12 @@ std::string MakeDeterministicPlanSnapshot(const PlanBundle& plan) {
   AppendIntegerProperty("total_matcher_count", requirements.total_matcher_count, output);
   output.push_back(',');
   AppendIntegerProperty("total_enum_entry_count", requirements.total_enum_entry_count, output);
-  if (v02 || v03) {
+  if (v02 || v03 || v04) {
     output.push_back(',');
     AppendIntegerProperty("total_bit_container_count", requirements.total_bit_container_count,
                           output);
   }
-  if (v03) {
+  if (v03 || v04) {
     output.push_back(',');
     AppendIntegerProperty("total_integrity_rule_count", requirements.total_integrity_rule_count,
                           output);
@@ -299,7 +303,7 @@ std::string MakeDeterministicPlanSnapshot(const PlanBundle& plan) {
     }
     output.push_back(']');
 
-    if (v02 || v03) {
+    if (v02 || v03 || v04) {
       output.append(",\"bit_containers\":[");
       for (std::size_t index = 0U; index < message.bit_containers.size(); ++index) {
         if (index != 0U) output.push_back(',');
@@ -321,7 +325,7 @@ std::string MakeDeterministicPlanSnapshot(const PlanBundle& plan) {
       output.push_back(']');
     }
 
-    if (v03) {
+    if (v03 || v04) {
       output.append(",\"integrity\":");
       if (!message.integrity.has_value()) {
         output.append("null");
@@ -369,6 +373,10 @@ std::string MakeDeterministicPlanSnapshot(const PlanBundle& plan) {
       if (field.constant_value.has_value()) {
         output.push_back(',');
         AppendIntegerProperty("constant_value", *field.constant_value, output);
+      }
+      if (field.signed_constant_value.has_value()) {
+        output.push_back(',');
+        AppendIntegerProperty("constant_value", *field.signed_constant_value, output);
       }
       if (field.value_type == ValueType::ENUM) {
         output.push_back(',');

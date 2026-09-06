@@ -27,6 +27,21 @@ configure_file(
     COPYONLY
 )
 configure_file(
+    "${PROJECT_SOURCE_DIR}/examples/config/synthetic_int64_slice.pae.json"
+    "${pae_protocol_lab_test_data_dir}/synthetic_int64_slice.pae.json"
+    COPYONLY
+)
+configure_file(
+    "${PROJECT_SOURCE_DIR}/examples/config/synthetic_int64_slice.values.pae-lab.json"
+    "${pae_protocol_lab_test_data_dir}/synthetic_int64_slice.values.pae-lab.json"
+    COPYONLY
+)
+configure_file(
+    "${PROJECT_SOURCE_DIR}/tests/protocol_core/golden/synthetic_int64/int64_record_001.frame.hex"
+    "${pae_protocol_lab_test_data_dir}/int64_record_001.frame.hex"
+    COPYONLY
+)
+configure_file(
     "${PROJECT_SOURCE_DIR}/tests/protocol_core/golden/synthetic_sum8/sum8_record_001.frame.hex"
     "${pae_protocol_lab_test_data_dir}/sum8_record_001.frame.hex"
     COPYONLY
@@ -101,6 +116,20 @@ add_test(
         "-DPAE_LAB_DATA_DIR=${pae_protocol_lab_test_data_dir}"
         "-DPAE_LAB_RUN_ROOT=${CMAKE_CURRENT_BINARY_DIR}/sum8-runs-$<CONFIG>"
         -P "${CMAKE_CURRENT_SOURCE_DIR}/verify_sum8_generation_contract.cmake"
+)
+add_test(
+    NAME pae.tools.protocol_lab.int64_generation_contract
+    COMMAND
+        "${CMAKE_COMMAND}"
+        "-DPAE_LAB_EXECUTABLE=$<TARGET_FILE:pae_protocol_lab>"
+        "-DPAE_LAB_DATA_DIR=${pae_protocol_lab_test_data_dir}"
+        "-DPAE_LAB_RUN_ROOT=${CMAKE_CURRENT_BINARY_DIR}/int64-runs-$<CONFIG>"
+        -P "${CMAKE_CURRENT_SOURCE_DIR}/verify_int64_generation_contract.cmake"
+)
+set_tests_properties(
+    pae.tools.protocol_lab.int64_generation_contract
+    PROPERTIES LABELS "tools;protocol_lab;offline;int64;dec042a" TIMEOUT 180
+               WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
 )
 set_tests_properties(
     pae.tools.protocol_lab.sum8_generation_contract
@@ -185,6 +214,23 @@ if(WIN32)
             -ConfigPath "${pae_protocol_lab_test_data_dir}/synthetic_sum8_slice.pae.json"
             -ValuesPath "${pae_protocol_lab_test_data_dir}/synthetic_sum8_slice.values.pae-lab.json"
             -TestRoot "${CMAKE_CURRENT_BINARY_DIR}/sum8-schema-$<CONFIG>"
+    )
+    add_test(
+        NAME pae.tools.protocol_lab.int64_schema_contract
+        COMMAND
+            "${pae_powershell_executable}"
+            -NoProfile
+            -File "${CMAKE_CURRENT_SOURCE_DIR}/verify_int64_schema_contract.ps1"
+            -LabExecutable "$<TARGET_FILE:pae_protocol_lab>"
+            -SchemaPath "${PROJECT_SOURCE_DIR}/schema/pae.schema.json"
+            -ConfigPath "${pae_protocol_lab_test_data_dir}/synthetic_int64_slice.pae.json"
+            -ValuesPath "${pae_protocol_lab_test_data_dir}/synthetic_int64_slice.values.pae-lab.json"
+            -TestRoot "${CMAKE_CURRENT_BINARY_DIR}/int64-schema-$<CONFIG>"
+    )
+    set_tests_properties(
+        pae.tools.protocol_lab.int64_schema_contract
+        PROPERTIES LABELS "tools;protocol_lab;offline;int64;dec042a;schema" TIMEOUT 180
+                   WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
     )
     set_tests_properties(
         pae.tools.protocol_lab.sum8_schema_contract

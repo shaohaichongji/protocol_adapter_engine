@@ -15,6 +15,10 @@ protocol_plan::BudgetedPlanDraft MakeBitfieldDraftWithTooManyTotalContainers();
 protocol_plan::BudgetedPlanDraft MakeIntegrityDraftWithUnknownAlgorithm();
 protocol_plan::BudgetedPlanDraft MakeIntegrityDraftWithSelfIncludedStorage();
 protocol_plan::BudgetedPlanDraft MakeIntegrityDraftWithFieldStorageConflict();
+protocol_plan::BudgetedPlanDraft MakeInt64DraftWithOutOfRangeConstant();
+protocol_plan::BudgetedPlanDraft SetDraftSchemaVersion(protocol_plan::BudgetedPlanDraft draft,
+                                                       const char* version);
+protocol_plan::BudgetedPlanDraft InjectSignedConstant(protocol_plan::BudgetedPlanDraft draft);
 
 protocol_plan::BudgetedPlanDraft ConfigurePlanMemoryFailure(
     protocol_plan::BudgetedPlanDraft draft, std::size_t fail_at_allocation,

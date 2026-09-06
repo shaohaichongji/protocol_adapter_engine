@@ -97,6 +97,41 @@ bool FitsUnsignedBits(std::uint64_t value, std::size_t bit_width) noexcept {
                               value < (std::uint64_t{1U} << static_cast<unsigned>(bit_width)));
 }
 
+bool FitsSignedWidth(std::int64_t value, std::size_t byte_width) noexcept {
+  if (byte_width == 0U || byte_width > 8U) {
+    return false;
+  }
+  if (byte_width == 8U) {
+    return true;
+  }
+  const unsigned magnitude_bits = static_cast<unsigned>(byte_width * 8U - 1U);
+  const std::int64_t minimum = -static_cast<std::int64_t>(std::uint64_t{1U} << magnitude_bits);
+  const std::int64_t maximum =
+      static_cast<std::int64_t>((std::uint64_t{1U} << magnitude_bits) - 1U);
+  return value >= minimum && value <= maximum;
+}
+
+bool InterpretSigned(std::uint64_t raw, std::size_t byte_width, std::int64_t& value) noexcept {
+  if (byte_width == 0U || byte_width > 8U) {
+    return false;
+  }
+  const unsigned bits = static_cast<unsigned>(byte_width * 8U);
+  const std::uint64_t sign = std::uint64_t{1U} << (bits - 1U);
+  if ((raw & sign) == 0U) {
+    value = static_cast<std::int64_t>(raw);
+    return true;
+  }
+  const std::uint64_t mask =
+      bits == 64U ? (std::numeric_limits<std::uint64_t>::max)() : (std::uint64_t{1U} << bits) - 1U;
+  const std::uint64_t magnitude = ((~raw) & mask) + 1U;
+  if (magnitude == (std::uint64_t{1U} << 63U)) {
+    value = (std::numeric_limits<std::int64_t>::min)();
+  } else {
+    value = -static_cast<std::int64_t>(magnitude);
+  }
+  return true;
+}
+
 std::uint64_t ExtractBitfield(std::uint64_t container, const FieldExecutionPlan& field) noexcept {
   return (container & field.bit_mask) >> field.bit_shift;
 }
@@ -276,6 +311,8 @@ LogicalValueKind GetLogicalValueKind(ValueType value_type) noexcept {
   switch (value_type) {
     case ValueType::UINT64:
       return LogicalValueKind::UINT64;
+    case ValueType::INT64:
+      return LogicalValueKind::INT64;
     case ValueType::BYTES:
       return LogicalValueKind::BYTES;
     case ValueType::ENUM:
@@ -348,6 +385,10 @@ CodecStatus PrepareEncodeInputs(const PlanBundle& plan, const MessageExecutionPl
                 : FitsUnsignedWidth(value.uint64_value, field.width))) {
         return CodecStatus::VALUE_NOT_REPRESENTABLE;
       }
+    } else if (field.value_type == ValueType::INT64) {
+      if (!FitsSignedWidth(value.int64_value, field.width)) {
+        return CodecStatus::VALUE_NOT_REPRESENTABLE;
+      }
     } else if (field.value_type == ValueType::BYTES) {
       if (value.bytes_value.size != field.width) {
         return CodecStatus::BYTES_LENGTH_MISMATCH;
@@ -386,6 +427,16 @@ CodecStatus PrepareEncodeInputs(const PlanBundle& plan, const MessageExecutionPl
 std::uint64_t GetEncodeRawValue(const MessageExecutionPlan& message,
                                 const FieldExecutionPlan& field, const EncodeFieldValue* values,
                                 const std::vector<std::size_t>& value_indices) noexcept {
+  if (field.value_type == ValueType::INT64) {
+    const std::int64_t signed_value = field.encode_source == EncodeSource::CONSTANT
+                                          ? field.signed_constant_value
+                                          : values[value_indices[field.input_ordinal]].int64_value;
+    std::uint64_t raw = static_cast<std::uint64_t>(signed_value);
+    if (field.width < 8U) {
+      raw &= (std::uint64_t{1U} << static_cast<unsigned>(field.width * 8U)) - 1U;
+    }
+    return raw;
+  }
   if (field.encode_source == EncodeSource::CONSTANT) {
     return field.constant_value;
   }
@@ -479,7 +530,18 @@ bool VerifyFields(const MessageExecutionPlan& message, const EncodeFieldValue* v
       failed_field_index = field_index;
       return false;
     }
-    if (actual != expected) {
+    if (field.value_type == ValueType::INT64) {
+      std::int64_t signed_actual = 0;
+      const std::int64_t signed_expected =
+          field.encode_source == EncodeSource::CONSTANT
+              ? field.signed_constant_value
+              : values[value_indices[field.input_ordinal]].int64_value;
+      if (!InterpretSigned(actual, field.width, signed_actual) ||
+          signed_actual != signed_expected) {
+        failed_field_index = field_index;
+        return false;
+      }
+    } else if (actual != expected) {
       failed_field_index = field_index;
       return false;
     }
@@ -686,6 +748,12 @@ DecodeResult DecodeCompleteRecord(const PlanBundle& plan, ExecutionWorkspace& wo
       }
       if (field.value_type == ValueType::UINT64) {
         slot.uint64_value = raw_value;
+      } else if (field.value_type == ValueType::INT64) {
+        if (!InterpretSigned(raw_value, field.width, slot.int64_value)) {
+          result.status = CodecStatus::INVALID_PLAN;
+          result.failed_field_index = field_index;
+          return result;
+        }
       } else if (field.value_type == ValueType::BOOL) {
         slot.bool_value = raw_value != 0U;
       } else {

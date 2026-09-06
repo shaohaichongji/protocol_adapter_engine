@@ -8,8 +8,8 @@
 
 - `inspect`：从Binary或严格Hex文件读取一条完整Frame，跨配置内Pipeline执行唯一Message匹配
   和类型化Decode；
-- `encode`：从严格`pae.lab.values/0.1`或`0.2`文件读取类型化业务值；0.2增加原生JSON
-  `BOOL`，执行fail-closed（失败关闭）Encode并输出规范Hex；
+- `encode`：从严格`pae.lab.values/0.1`、`0.2`或`0.3`文件读取类型化业务值；0.2增加原生JSON
+  `BOOL`，0.3增加规范十进制字符串`INT64`且仅配Schema 0.4；执行fail-closed（失败关闭）Encode；
 - `replay`：校验既有Evidence Bundle的`COMPLETE`和`SHA256SUMS`后，使用内嵌配置或显式新
   配置重新执行，并生成一个不可覆盖的新Run；
 - `compare`：比较两个Frame或两个Run；Run比较排除时间、绝对路径和Run ID，并报告

@@ -48,6 +48,7 @@ struct FieldPlan {
   std::size_t bit_container_index = static_cast<std::size_t>(-1);
   std::uint64_t bit_offset = 0U;
   std::uint64_t bit_width = 0U;
+  std::optional<std::int64_t> signed_constant_value;
 };
 
 struct BitContainerPlan {
@@ -114,6 +115,7 @@ struct FrozenFieldPlan {
   std::size_t bit_container_index = static_cast<std::size_t>(-1);
   std::uint64_t bit_offset = 0U;
   std::uint64_t bit_width = 0U;
+  std::optional<std::int64_t> signed_constant_value;
 };
 
 struct FrozenBitContainerPlan {
@@ -184,6 +186,7 @@ struct FieldExecutionPlan {
   std::uint64_t bit_mask = 0U;
   std::uint8_t bit_shift = 0U;
   std::uint8_t bit_width = 0U;
+  std::int64_t signed_constant_value = 0;
 };
 
 struct MessageExecutionPlan {

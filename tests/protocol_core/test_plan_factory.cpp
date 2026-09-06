@@ -106,6 +106,8 @@ void AppendField(std::ostringstream& output, const FieldPlan& field) {
   output << ",\"value_type\":\"";
   if (field.value_type == ValueType::UINT64) {
     output << "UINT64";
+  } else if (field.value_type == ValueType::INT64) {
+    output << "INT64";
   } else if (field.value_type == ValueType::BYTES) {
     output << "BYTES";
   } else {
@@ -115,7 +117,12 @@ void AppendField(std::ostringstream& output, const FieldPlan& field) {
   AppendWire(output, field);
   output << ",\"encode\":{\"source\":\"";
   if (field.encode_source == EncodeSource::CONSTANT) {
-    output << "constant\",\"value\":" << field.constant_value.value_or(0U);
+    output << "constant\",\"value\":";
+    if (field.value_type == ValueType::INT64) {
+      output << field.signed_constant_value.value_or(0);
+    } else {
+      output << field.constant_value.value_or(0U);
+    }
   } else {
     output << "input\"";
   }
@@ -293,6 +300,7 @@ std::vector<protocol_plan::MessagePlan> CloneMutableMessages(
       field.byte_order = frozen_field.byte_order;
       field.encode_source = frozen_field.encode_source;
       field.constant_value = frozen_field.constant_value;
+      field.signed_constant_value = frozen_field.signed_constant_value;
       field.unknown_enum_policy = frozen_field.unknown_enum_policy;
       field.enum_entries.reserve(frozen_field.enum_entries.size());
       for (const protocol_plan::FrozenEnumEntryPlan& frozen_entry : frozen_field.enum_entries) {

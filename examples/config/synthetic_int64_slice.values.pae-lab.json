@@ -1,0 +1,14 @@
+{
+  "format_version": "pae.lab.values/0.3",
+  "pipeline_id": "sample_pipeline",
+  "message_id": "sample",
+  "fields": [
+    {"id":"signed_be24","kind":"INT64","int64":"-2"},
+    {"id":"signed_le24","kind":"INT64","int64":"-8388608"},
+    {"id":"signed_min","kind":"INT64","int64":"-9223372036854775808"},
+    {"id":"unsigned_value","kind":"UINT64","uint64":"255"},
+    {"id":"enabled","kind":"BOOL","bool":true},
+    {"id":"payload","kind":"BYTES","hex":"CAFE"},
+    {"id":"mode","kind":"ENUM","entry_id":"active"}
+  ]
+}

@@ -133,6 +133,36 @@ configure_file(
     "${pae_protocol_core_test_data_dir}/sum8_record_001.frame.hex"
     COPYONLY
 )
+configure_file(
+    "${PROJECT_SOURCE_DIR}/examples/config/synthetic_int64_slice.pae.json"
+    "${pae_protocol_core_test_data_dir}/synthetic_int64_slice.pae.json"
+    COPYONLY
+)
+configure_file(
+    "${CMAKE_CURRENT_SOURCE_DIR}/golden/synthetic_int64/int64_record_001.frame.hex"
+    "${pae_protocol_core_test_data_dir}/int64_record_001.frame.hex"
+    COPYONLY
+)
+
+add_executable(pae_int64_contract_tests int64_contract_tests.cpp)
+target_include_directories(
+    pae_int64_contract_tests
+    PRIVATE
+        "${PROJECT_SOURCE_DIR}/src/config_compiler"
+        "${PROJECT_SOURCE_DIR}/src/protocol_core"
+)
+target_link_libraries(
+    pae_int64_contract_tests
+    PRIVATE pae_config_compiler pae_protocol_core_slice_instrumented pae::protocol_plan pae::project_options
+)
+add_test(
+    NAME pae.protocol_core.int64.contract
+    COMMAND pae_int64_contract_tests "${pae_protocol_core_test_data_dir}"
+)
+set_tests_properties(
+    pae.protocol_core.int64.contract
+    PROPERTIES LABELS "protocol_core;int64;dec042a" TIMEOUT 180
+)
 
 add_executable(pae_bitfield_contract_tests bitfield_contract_tests.cpp)
 target_include_directories(
@@ -304,12 +334,17 @@ add_test(
     NAME pae.protocol_core.complete_record_codec.first_sum8_allocation
     COMMAND pae_complete_record_first_call_allocation_tests --first-sum8
 )
+add_test(
+    NAME pae.protocol_core.complete_record_codec.first_int64_allocation
+    COMMAND pae_complete_record_first_call_allocation_tests --first-int64
+)
 
 set_tests_properties(
     pae.protocol_core.complete_record_codec.first_decode_allocation
     pae.protocol_core.complete_record_codec.first_encode_allocation
     pae.protocol_core.complete_record_codec.first_bitfield_allocation
     pae.protocol_core.complete_record_codec.first_sum8_allocation
+    pae.protocol_core.complete_record_codec.first_int64_allocation
     PROPERTIES
         LABELS "protocol_core;complete_record_codec;allocation"
         TIMEOUT 180

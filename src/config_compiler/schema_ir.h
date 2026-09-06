@@ -92,6 +92,7 @@ struct EncodeIr {
   EncodeSource source = EncodeSource::INPUT;
   std::optional<std::uint64_t> constant_value;
   ConfigOrigin origin;
+  std::optional<std::int64_t> signed_constant_value;
 };
 
 struct EnumEntryIr {

@@ -83,6 +83,39 @@ bool ParseUint64(std::string_view text, std::uint64_t& output) noexcept {
   return true;
 }
 
+bool ParseInt64(std::string_view text, std::int64_t& output) noexcept {
+  if (text.empty() || text.front() == '+' || text == "-0") {
+    return false;
+  }
+  const bool negative = text.front() == '-';
+  const std::string_view digits = negative ? text.substr(1U) : text;
+  if (digits.empty() || (digits.size() > 1U && digits.front() == '0')) {
+    return false;
+  }
+  const std::uint64_t limit =
+      negative ? std::uint64_t{1U} << 63U
+               : static_cast<std::uint64_t>((std::numeric_limits<std::int64_t>::max)());
+  std::uint64_t magnitude = 0U;
+  for (const char character : digits) {
+    if (character < '0' || character > '9') {
+      return false;
+    }
+    const std::uint64_t digit = static_cast<std::uint64_t>(character - '0');
+    if (magnitude > (limit - digit) / 10U) {
+      return false;
+    }
+    magnitude = magnitude * 10U + digit;
+  }
+  if (!negative) {
+    output = static_cast<std::int64_t>(magnitude);
+  } else if (magnitude == (std::uint64_t{1U} << 63U)) {
+    output = (std::numeric_limits<std::int64_t>::min)();
+  } else {
+    output = -static_cast<std::int64_t>(magnitude);
+  }
+  return true;
+}
+
 bool TextEquals(std::string_view left, std::string_view right) noexcept {
   return left.size() == right.size() && std::equal(left.begin(), left.end(), right.begin());
 }
@@ -139,6 +172,10 @@ void CopyDecodedFields(const PlanBundle& plan, std::size_t message_index,
     if (slot.value_kind == LogicalValueKind::UINT64) {
       item.kind = "UINT64";
       item.raw_value = std::to_string(slot.uint64_value);
+      item.logical_value = item.raw_value;
+    } else if (slot.value_kind == LogicalValueKind::INT64) {
+      item.kind = "INT64";
+      item.raw_value = std::to_string(slot.int64_value);
       item.logical_value = item.raw_value;
     } else if (slot.value_kind == LogicalValueKind::BYTES) {
       item.kind = "BYTES";
@@ -297,7 +334,7 @@ bool ParseValues(std::string& text, ParsedValues& output, std::string& error) {
   }
   std::string format;
   if (!ReadJsonString(root, "format_version", format, error) ||
-      (format != kValuesFormat && format != kValuesFormatV2) ||
+      (format != kValuesFormat && format != kValuesFormatV2 && format != kValuesFormatV3) ||
       !ReadJsonString(root, "pipeline_id", output.pipeline_id, error) ||
       !ReadJsonString(root, "message_id", output.message_id, error)) {
     if (error.empty()) {
@@ -317,7 +354,8 @@ bool ParseValues(std::string& text, ParsedValues& output, std::string& error) {
   yyjson_arr_iter_init(fields, &iterator);
   while (yyjson_val* value = yyjson_arr_iter_next(&iterator)) {
     const std::string pointer = "fields[" + std::to_string(ordinal) + "]";
-    const std::set<std::string_view> allowed{"id", "kind", "uint64", "hex", "entry_id", "bool"};
+    const std::set<std::string_view> allowed{"id",  "kind",     "uint64", "int64",
+                                             "hex", "entry_id", "bool"};
     const std::set<std::string_view> required{"id", "kind"};
     if (!ValidateObject(value, allowed, required, pointer, error)) {
       return false;
@@ -342,6 +380,17 @@ bool ParseValues(std::string& text, ParsedValues& output, std::string& error) {
         }
         return false;
       }
+    } else if (parsed.kind == "INT64") {
+      const std::set<std::string_view> exact{"id", "kind", "int64"};
+      std::string decimal;
+      if (format != kValuesFormatV3 || !ValidateObject(value, exact, exact, pointer, error) ||
+          !ReadJsonString(value, "int64", decimal, error) ||
+          !ParseInt64(decimal, parsed.int64_value)) {
+        if (error.empty()) {
+          error = pointer + ".int64 is not canonical INT64 decimal in Values 0.3";
+        }
+        return false;
+      }
     } else if (parsed.kind == "BYTES") {
       const std::set<std::string_view> exact{"id", "kind", "hex"};
       std::string hex;
@@ -358,8 +407,8 @@ bool ParseValues(std::string& text, ParsedValues& output, std::string& error) {
     } else if (parsed.kind == "BOOL") {
       const std::set<std::string_view> exact{"id", "kind", "bool"};
       yyjson_val* boolean = yyjson_obj_get(value, "bool");
-      if (format != kValuesFormatV2 || !ValidateObject(value, exact, exact, pointer, error) ||
-          !yyjson_is_bool(boolean)) {
+      if ((format != kValuesFormatV2 && format != kValuesFormatV3) ||
+          !ValidateObject(value, exact, exact, pointer, error) || !yyjson_is_bool(boolean)) {
         if (error.empty()) error = pointer + ".bool must be a native JSON boolean in Values 0.2";
         return false;
       }
@@ -384,7 +433,7 @@ OperationResult InspectFrame(const PlanBundle& plan, const std::vector<std::uint
   result.operation_kind = "inspect";
   result.protocol_id.assign(plan.ProtocolId().data(), plan.ProtocolId().size());
   result.frame = frame;
-  const bool integrity_generation = plan.SchemaVersion() == "0.3";
+  const bool integrity_generation = plan.SchemaVersion() == "0.3" || plan.SchemaVersion() == "0.4";
   if (integrity_generation) {
     std::size_t selected_pipeline_index = kInvalidIndex;
     std::size_t selected_message_index = kInvalidIndex;
@@ -543,6 +592,14 @@ OperationResult EncodeValues(const PlanBundle& plan, const ParsedValues& parsed,
   result.protocol_id.assign(plan.ProtocolId().data(), plan.ProtocolId().size());
   result.pipeline_id = parsed.pipeline_id;
   result.message_id = parsed.message_id;
+  if ((parsed.format_version == kValuesFormatV3 && plan.SchemaVersion() != "0.4") ||
+      (plan.SchemaVersion() == "0.4" && parsed.format_version != kValuesFormat &&
+       parsed.format_version != kValuesFormatV2 && parsed.format_version != kValuesFormatV3)) {
+    result.status = "VALUES_INVALID";
+    result.diagnostic_id = "PAE_LAB_VALUES_VERSION_MISMATCH";
+    result.diagnostic_detail = "Values format is not compatible with the compiled Schema";
+    return result;
+  }
   const std::size_t pipeline_index = FindPipeline(plan, parsed.pipeline_id);
   const std::size_t message_index = FindMessage(plan, parsed.message_id);
   if (pipeline_index == kInvalidIndex || message_index == kInvalidIndex) {
@@ -577,6 +634,9 @@ OperationResult EncodeValues(const PlanBundle& plan, const ParsedValues& parsed,
     if (input.kind == "UINT64" && field.value_type == ValueType::UINT64) {
       value.value_kind = LogicalValueKind::UINT64;
       value.uint64_value = input.uint64_value;
+    } else if (input.kind == "INT64" && field.value_type == ValueType::INT64) {
+      value.value_kind = LogicalValueKind::INT64;
+      value.int64_value = input.int64_value;
     } else if (input.kind == "BYTES" && field.value_type == ValueType::BYTES) {
       byte_storage.push_back(input.bytes);
       value.value_kind = LogicalValueKind::BYTES;

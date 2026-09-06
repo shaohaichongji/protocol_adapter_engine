@@ -9,6 +9,14 @@ namespace pae::protocol_plan::test_only {
 
 class PlanBuilderTestPeer final {
  public:
+  static BudgetedPlanDraft SetDraftSchemaVersion(BudgetedPlanDraft draft, const char* version) {
+    draft.draft_->schema_version = version;
+    return draft;
+  }
+  static BudgetedPlanDraft InjectSignedConstant(BudgetedPlanDraft draft) {
+    draft.draft_->messages[0].fields[1].signed_constant_value = -1;
+    return draft;
+  }
   static BudgetedPlanDraft MakeCorruptedBudgetedPlanDraft() {
     auto draft = std::make_unique<detail::PlanDraftData>();
     draft->schema_version = "0.1";
@@ -141,6 +149,18 @@ class PlanBuilderTestPeer final {
     return draft;
   }
 
+  static BudgetedPlanDraft MakeInt64DraftWithOutOfRangeConstant() {
+    auto draft = MakeIntegrityDraft();
+    draft.draft_->schema_version = "0.4";
+    auto& field = draft.draft_->messages[0].fields[0];
+    field.value_type = ValueType::INT64;
+    field.encode_source = EncodeSource::CONSTANT;
+    field.signed_constant_value = 128;
+    draft.draft_->messages[0].integrity.reset();
+    draft.draft_->resource_requirements.total_integrity_rule_count = 0U;
+    return draft;
+  }
+
   static BudgetedPlanDraft ConfigurePlanMemoryFailure(BudgetedPlanDraft draft,
                                                       std::size_t fail_at_allocation,
                                                       test_only::PlanMemoryTestProbe* probe) {
@@ -162,6 +182,15 @@ class PlanBuilderTestPeer final {
 }  // namespace pae::protocol_plan::test_only
 
 namespace pae::test_support {
+
+protocol_plan::BudgetedPlanDraft SetDraftSchemaVersion(protocol_plan::BudgetedPlanDraft draft,
+                                                       const char* version) {
+  return protocol_plan::test_only::PlanBuilderTestPeer::SetDraftSchemaVersion(std::move(draft),
+                                                                              version);
+}
+protocol_plan::BudgetedPlanDraft InjectSignedConstant(protocol_plan::BudgetedPlanDraft draft) {
+  return protocol_plan::test_only::PlanBuilderTestPeer::InjectSignedConstant(std::move(draft));
+}
 
 protocol_plan::BudgetedPlanDraft MakeCorruptedBudgetedPlanDraft() {
   return protocol_plan::test_only::PlanBuilderTestPeer::MakeCorruptedBudgetedPlanDraft();
@@ -203,6 +232,10 @@ protocol_plan::BudgetedPlanDraft MakeIntegrityDraftWithSelfIncludedStorage() {
 protocol_plan::BudgetedPlanDraft MakeIntegrityDraftWithFieldStorageConflict() {
   return protocol_plan::test_only::PlanBuilderTestPeer::
       MakeIntegrityDraftWithFieldStorageConflict();
+}
+
+protocol_plan::BudgetedPlanDraft MakeInt64DraftWithOutOfRangeConstant() {
+  return protocol_plan::test_only::PlanBuilderTestPeer::MakeInt64DraftWithOutOfRangeConstant();
 }
 
 protocol_plan::BudgetedPlanDraft ConfigurePlanMemoryFailure(

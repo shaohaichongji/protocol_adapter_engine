@@ -534,11 +534,14 @@ int RunReplay(const Arguments& arguments, OperationResult& result, std::string& 
     result.replay_subject = stored.replay_subject;
   }
   PreserveHistoricalTransport(stored, result);
-  const unsigned stored_generation = stored.format_version == kResultFormatV4
+  const unsigned stored_generation = stored.format_version == kResultFormatV5 ? 5U
+                                     : stored.format_version == kResultFormatV4
                                          ? 4U
                                          : (stored.format_version == kResultFormatV3 ? 3U : 2U);
   const unsigned plan_generation =
-      plan->SchemaVersion() == "0.3" ? 4U : (plan->SchemaVersion() == "0.2" ? 3U : 2U);
+      plan->SchemaVersion() == "0.4"
+          ? 5U
+          : (plan->SchemaVersion() == "0.3" ? 4U : (plan->SchemaVersion() == "0.2" ? 3U : 2U));
   if (stored_generation != plan_generation) {
     result.status = "INPUT_ERROR";
     result.diagnostic_id = "PAE_LAB_CROSS_SCHEMA_REPLAY_UNSUPPORTED";
@@ -589,7 +592,8 @@ int RunReplay(const Arguments& arguments, OperationResult& result, std::string& 
     }
   } else if (stored.operation_kind == "udp-exchange" &&
              (stored.format_version == kResultFormat || stored.format_version == kResultFormatV3 ||
-              stored.format_version == kResultFormatV4)) {
+              stored.format_version == kResultFormatV4 ||
+              stored.format_version == kResultFormatV5)) {
     std::vector<std::uint8_t> tx_frame;
     std::vector<std::uint8_t> rx_frame;
     const bool replay_uses_rx =
@@ -748,7 +752,9 @@ int RunCompare(const Arguments& arguments, OperationResult& result) {
       return 3;
     }
     const auto generation = [](std::string_view format) {
-      return format == kResultFormatV4 ? 4U : (format == kResultFormatV3 ? 3U : 2U);
+      return format == kResultFormatV5
+                 ? 5U
+                 : (format == kResultFormatV4 ? 4U : (format == kResultFormatV3 ? 3U : 2U));
     };
     if (generation(left.format_version) != generation(right.format_version)) {
       result.status = "INPUT_ERROR";

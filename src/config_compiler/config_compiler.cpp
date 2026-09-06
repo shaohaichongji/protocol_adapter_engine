@@ -495,6 +495,49 @@ bool ReadExactUint64(yyjson_val* value, std::string_view pointer, std::uint64_t&
   return true;
 }
 
+bool ReadExactInt64(yyjson_val* value, std::string_view pointer, std::int64_t& output,
+                    CompileDiagnostic& diagnostic) {
+  if (!yyjson_is_raw(value)) {
+    return SetDiagnostic(diagnostic, CompileStage::STRUCTURAL, CompileError::TYPE_MISMATCH,
+                         std::string(pointer), "expected a signed integer JSON token");
+  }
+  const std::string_view token{yyjson_get_raw(value), yyjson_get_len(value)};
+  if (token.empty()) {
+    return SetDiagnostic(diagnostic, CompileStage::INTERNAL,
+                         CompileError::INTERNAL_CONTRACT_VIOLATION, std::string(pointer),
+                         "yyjson returned an empty raw number token");
+  }
+  const bool negative = token.front() == '-';
+  const std::string_view digits = negative ? token.substr(1U) : token;
+  if (digits.empty() || !std::all_of(digits.begin(), digits.end(), [](char character) {
+        return character >= '0' && character <= '9';
+      })) {
+    return SetDiagnostic(diagnostic, CompileStage::STRUCTURAL, CompileError::INTEGER_NOT_EXACT,
+                         std::string(pointer),
+                         "fraction and exponent forms are not accepted for integer properties");
+  }
+  const std::uint64_t limit =
+      negative ? std::uint64_t{1U} << 63U
+               : static_cast<std::uint64_t>((std::numeric_limits<std::int64_t>::max)());
+  std::uint64_t magnitude = 0U;
+  for (const char character : digits) {
+    const std::uint64_t digit = static_cast<std::uint64_t>(character - '0');
+    if (magnitude > (limit - digit) / 10U) {
+      return SetDiagnostic(diagnostic, CompileStage::STRUCTURAL, CompileError::INTEGER_OUT_OF_RANGE,
+                           std::string(pointer), "signed integer token is outside INT64 range");
+    }
+    magnitude = magnitude * 10U + digit;
+  }
+  if (!negative || magnitude == 0U) {
+    output = static_cast<std::int64_t>(magnitude);
+  } else if (magnitude == (std::uint64_t{1U} << 63U)) {
+    output = (std::numeric_limits<std::int64_t>::min)();
+  } else {
+    output = -static_cast<std::int64_t>(magnitude);
+  }
+  return true;
+}
+
 bool ReadRequiredString(yyjson_val* object, std::string_view key, std::string_view pointer,
                         std::size_t min_length, std::size_t max_length, std::string& output,
                         CompileDiagnostic& diagnostic) {
@@ -931,20 +974,32 @@ bool ParseEncode(yyjson_val* value, std::string_view pointer, ValueType value_ty
                          ChildPointer(pointer, "source"),
                          "encode source must be input or constant in this draft slice");
   }
-  if (value_type != ValueType::UINT64) {
+  if (value_type != ValueType::UINT64 && value_type != ValueType::INT64) {
     return SetDiagnostic(diagnostic, CompileStage::STRUCTURAL, CompileError::UNSUPPORTED_FEATURE,
                          ChildPointer(pointer, "source"),
-                         "constant encode source is currently supported only for UINT64");
+                         "constant encode source is supported only for UINT64 and INT64");
   }
   if (!ValidateObjectProperties(value, pointer, {"source", "value"}, diagnostic)) {
     return false;
   }
-  std::uint64_t constant_value = 0U;
-  if (!ReadRequiredUint64(value, "value", pointer, constant_value, diagnostic)) {
+  output.source = EncodeSource::CONSTANT;
+  yyjson_val* constant = RequiredProperty(value, "value", pointer, diagnostic);
+  if (constant == nullptr) {
     return false;
   }
-  output.source = EncodeSource::CONSTANT;
-  output.constant_value = constant_value;
+  if (value_type == ValueType::INT64) {
+    std::int64_t parsed = 0;
+    if (!ReadExactInt64(constant, ChildPointer(pointer, "value"), parsed, diagnostic)) {
+      return false;
+    }
+    output.signed_constant_value = parsed;
+  } else {
+    std::uint64_t parsed = 0U;
+    if (!ReadExactUint64(constant, ChildPointer(pointer, "value"), parsed, diagnostic)) {
+      return false;
+    }
+    output.constant_value = parsed;
+  }
   output.origin.json_pointer = std::string{pointer};
   return true;
 }
@@ -988,8 +1043,8 @@ bool ParseEnumEntries(yyjson_val* value, std::string_view pointer, std::vector<E
   return true;
 }
 
-bool ParseField(yyjson_val* value, std::string_view pointer, bool schema_v02, FieldIr& output,
-                CompileDiagnostic& diagnostic) {
+bool ParseField(yyjson_val* value, std::string_view pointer, bool supports_bitfields,
+                bool supports_int64, FieldIr& output, CompileDiagnostic& diagnostic) {
   if (!yyjson_is_obj(value)) {
     return SetDiagnostic(diagnostic, CompileStage::STRUCTURAL, CompileError::TYPE_MISMATCH,
                          std::string(pointer), "field must be an object");
@@ -999,13 +1054,24 @@ bool ParseField(yyjson_val* value, std::string_view pointer, bool schema_v02, Fi
   if (value_type_value == nullptr ||
       !ReadEnumToken(
           value_type_value, ChildPointer(pointer, "value_type"),
-          schema_v02 ? std::initializer_list<std::string_view>{"UINT64", "BYTES", "ENUM", "BOOL"}
-                     : std::initializer_list<std::string_view>{"UINT64", "BYTES", "ENUM"},
+          supports_int64
+              ? std::initializer_list<std::string_view>{"UINT64", "INT64", "BYTES", "ENUM", "BOOL"}
+          : supports_bitfields
+              ? std::initializer_list<std::string_view>{"UINT64", "BYTES", "ENUM", "BOOL"}
+              : std::initializer_list<std::string_view>{"UINT64", "BYTES", "ENUM"},
           value_type, diagnostic)) {
     return false;
   }
   if (value_type == "UINT64") {
     output.value_type = ValueType::UINT64;
+    if (!ValidateObjectProperties(
+            value, pointer,
+            {"id", "display_name", "description", "source_ref", "value_type", "wire", "encode"},
+            diagnostic)) {
+      return false;
+    }
+  } else if (value_type == "INT64") {
+    output.value_type = ValueType::INT64;
     if (!ValidateObjectProperties(
             value, pointer,
             {"id", "display_name", "description", "source_ref", "value_type", "wire", "encode"},
@@ -1056,9 +1122,11 @@ bool ParseField(yyjson_val* value, std::string_view pointer, bool schema_v02, Fi
   const bool is_bitfield = codec_value != nullptr && yyjson_is_str(codec_value) &&
                            std::string_view{yyjson_get_str(codec_value)} == "bitfield";
   if (is_bitfield) {
-    if (!schema_v02 || output.value_type == ValueType::BYTES ||
+    if (!supports_bitfields || output.value_type == ValueType::BYTES ||
+        output.value_type == ValueType::INT64 ||
         !ParseBitfieldWire(wire, wire_pointer, output.wire, diagnostic)) {
-      if (!schema_v02 || output.value_type == ValueType::BYTES) {
+      if (!supports_bitfields || output.value_type == ValueType::BYTES ||
+          output.value_type == ValueType::INT64) {
         return SetDiagnostic(
             diagnostic, CompileStage::STRUCTURAL, CompileError::UNSUPPORTED_FEATURE, wire_pointer,
             "bitfield wire is available only for Schema 0.2 BOOL, UINT64, and ENUM fields");
@@ -1102,8 +1170,8 @@ bool ParseField(yyjson_val* value, std::string_view pointer, bool schema_v02, Fi
   return true;
 }
 
-bool ParseFields(yyjson_val* value, std::string_view pointer, bool schema_v02,
-                 std::vector<FieldIr>& output, CompileDiagnostic& diagnostic) {
+bool ParseFields(yyjson_val* value, std::string_view pointer, bool supports_bitfields,
+                 bool supports_int64, std::vector<FieldIr>& output, CompileDiagnostic& diagnostic) {
   if (!yyjson_is_arr(value)) {
     return SetDiagnostic(diagnostic, CompileStage::STRUCTURAL, CompileError::TYPE_MISMATCH,
                          std::string(pointer), "fields must be an array");
@@ -1119,7 +1187,8 @@ bool ParseFields(yyjson_val* value, std::string_view pointer, bool schema_v02,
   std::size_t index = 0U;
   while (yyjson_val* field_value = yyjson_arr_iter_next(&iterator)) {
     FieldIr field;
-    if (!ParseField(field_value, IndexPointer(pointer, index), schema_v02, field, diagnostic)) {
+    if (!ParseField(field_value, IndexPointer(pointer, index), supports_bitfields, supports_int64,
+                    field, diagnostic)) {
       return false;
     }
     output.push_back(std::move(field));
@@ -1205,7 +1274,8 @@ bool ParseIntegrity(yyjson_val* value, std::string_view pointer, IntegrityIr& ou
 }
 
 bool ParseMessage(yyjson_val* value, std::string_view pointer, bool supports_bitfields,
-                  bool supports_integrity, MessageIr& output, CompileDiagnostic& diagnostic) {
+                  bool supports_integrity, bool supports_int64, MessageIr& output,
+                  CompileDiagnostic& diagnostic) {
   if (!yyjson_is_obj(value)) {
     return SetDiagnostic(diagnostic, CompileStage::STRUCTURAL, CompileError::TYPE_MISMATCH,
                          std::string(pointer), "message must be an object");
@@ -1249,8 +1319,8 @@ bool ParseMessage(yyjson_val* value, std::string_view pointer, bool supports_bit
   if (matcher == nullptr || fields == nullptr ||
       !ParseMatcher(matcher, ChildPointer(pointer, "matcher"), output.matcher_clauses,
                     diagnostic) ||
-      !ParseFields(fields, ChildPointer(pointer, "fields"), supports_bitfields, output.fields,
-                   diagnostic)) {
+      !ParseFields(fields, ChildPointer(pointer, "fields"), supports_bitfields, supports_int64,
+                   output.fields, diagnostic)) {
     return false;
   }
   if (supports_bitfields) {
@@ -1323,10 +1393,10 @@ bool BuildSchemaIr(yyjson_val* root, SchemaIr& output, CompileDiagnostic& diagno
     return false;
   }
   if (output.schema_version != "0.1" && output.schema_version != "0.2" &&
-      output.schema_version != "0.3") {
+      output.schema_version != "0.3" && output.schema_version != "0.4") {
     return SetDiagnostic(diagnostic, CompileStage::STRUCTURAL, CompileError::INVALID_ENUM_VALUE,
                          "/schema_version",
-                         "supported schema_version values are 0.1, 0.2, and 0.3");
+                         "supported schema_version values are 0.1, 0.2, 0.3, and 0.4");
   }
 
   if (yyjson_val* description = yyjson_obj_get(root, "description")) {
@@ -1358,7 +1428,8 @@ bool BuildSchemaIr(yyjson_val* root, SchemaIr& output, CompileDiagnostic& diagno
              [&output](yyjson_val* value, std::string_view pointer, MessageIr& message,
                        CompileDiagnostic& item_diagnostic) {
                return ParseMessage(value, pointer, output.schema_version != "0.1",
-                                   output.schema_version == "0.3", message, item_diagnostic);
+                                   output.schema_version == "0.3" || output.schema_version == "0.4",
+                                   output.schema_version == "0.4", message, item_diagnostic);
              },
              diagnostic);
 }
@@ -1400,6 +1471,20 @@ bool FitsUnsignedWidth(std::uint64_t value, std::uint64_t byte_width) noexcept {
 bool FitsUnsignedBits(std::uint64_t value, std::uint64_t bit_width) noexcept {
   return bit_width == 64U || (bit_width != 0U && bit_width < 64U &&
                               value < (std::uint64_t{1U} << static_cast<unsigned>(bit_width)));
+}
+
+bool FitsSignedWidth(std::int64_t value, std::uint64_t byte_width) noexcept {
+  if (byte_width == 0U || byte_width > 8U) {
+    return false;
+  }
+  if (byte_width == 8U) {
+    return true;
+  }
+  const unsigned magnitude_bits = static_cast<unsigned>(byte_width * 8U - 1U);
+  const std::int64_t minimum = -static_cast<std::int64_t>(std::uint64_t{1U} << magnitude_bits);
+  const std::int64_t maximum =
+      static_cast<std::int64_t>((std::uint64_t{1U} << magnitude_bits) - 1U);
+  return value >= minimum && value <= maximum;
 }
 
 std::uint8_t EncodeUnsignedConstantByte(std::uint64_t value, std::uint64_t byte_width,
@@ -1558,6 +1643,13 @@ bool ValidateMessageDomain(MessageIr& message, ResourceRequirements& requirement
                            ChildPointer(field.encode.origin.json_pointer, "value"),
                            "constant value does not fit the configured wire width");
     }
+    if (field.encode.signed_constant_value.has_value() &&
+        !FitsSignedWidth(*field.encode.signed_constant_value, field.wire.byte_width)) {
+      return SetDiagnostic(diagnostic, CompileStage::DOMAIN_VALIDATION,
+                           CompileError::VALUE_NOT_REPRESENTABLE,
+                           ChildPointer(field.encode.origin.json_pointer, "value"),
+                           "signed constant value does not fit the configured wire width");
+    }
 
     if (field.value_type == ValueType::ENUM) {
       if (!AddSizeChecked(field.enum_entries.size(), requirements.total_enum_entry_count)) {
@@ -1685,22 +1777,28 @@ bool ValidateMessageDomain(MessageIr& message, ResourceRequirements& requirement
   }
 
   for (const FieldIr& field : message.fields) {
-    if (field.wire.codec == WireCodec::BITFIELD || field.value_type != ValueType::UINT64 ||
-        !field.encode.constant_value.has_value()) {
+    if (field.wire.codec == WireCodec::BITFIELD ||
+        (field.value_type != ValueType::UINT64 && field.value_type != ValueType::INT64) ||
+        (!field.encode.constant_value.has_value() &&
+         !field.encode.signed_constant_value.has_value())) {
       continue;
     }
+    const std::uint64_t encoded =
+        field.value_type == ValueType::INT64
+            ? static_cast<std::uint64_t>(*field.encode.signed_constant_value)
+            : *field.encode.constant_value;
     for (std::uint64_t byte_index = 0U; byte_index < field.wire.byte_width; ++byte_index) {
       const auto matcher_byte = fixed_matcher_bytes.find(field.wire.byte_offset + byte_index);
       if (matcher_byte == fixed_matcher_bytes.end()) {
         continue;
       }
       const std::uint8_t encoded_byte = EncodeUnsignedConstantByte(
-          *field.encode.constant_value, field.wire.byte_width, field.wire.byte_order, byte_index);
+          encoded, field.wire.byte_width, field.wire.byte_order, byte_index);
       if (matcher_byte->second != encoded_byte) {
         return SetDiagnostic(
             diagnostic, CompileStage::DOMAIN_VALIDATION, CompileError::MATCHER_CONFLICT,
             ChildPointer(field.encode.origin.json_pointer, "value"),
-            "fixed byte matcher conflicts with the encoded UINT64 constant field bytes");
+            "fixed byte matcher conflicts with the encoded integer constant field bytes");
       }
     }
   }
@@ -2226,6 +2324,7 @@ PlanDraftAssemblyResult PlanDraftAssembler::Assemble(BudgetedSchemaIr budgeted) 
       field_plan.byte_order = field.wire.byte_order;
       field_plan.encode_source = field.encode.source;
       field_plan.constant_value = field.encode.constant_value;
+      field_plan.signed_constant_value = field.encode.signed_constant_value;
       field_plan.unknown_enum_policy = field.unknown_enum_policy;
       field_plan.enum_entries.reserve(field.enum_entries.size());
       field_plan.bit_container_index = field.wire.bit_container_index;
