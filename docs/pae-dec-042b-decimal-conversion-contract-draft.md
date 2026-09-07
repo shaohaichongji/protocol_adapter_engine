@@ -3,8 +3,9 @@
 创建日期：2026-09-06。确认更新：2026-09-07。第1节十项决策及第3～6节四组补充方案
 均为CONFIRMED（已确认）。用户随后授权隔离算术验证，固定256位候选已完成Windows
 Debug/Release隔离测试；只读审查未发现明确实现缺陷，已补齐P2测试证据缺口。
-Core双向转换第二段已实现并完成限定Windows验证，不Stage/Commit/Push。
-Values及Lab新版本仍是目标契约，不是当前可执行能力。
+Core双向转换第二段已完成审查及限定Windows验证，随`90c5165`提交并Push。
+Lab第三段六项补充决策已确认，见第10节；A纯格式模块随后已获授权并完成限定实现，B/C仍未开始。
+Values 0.4仅由隔离测试解析，普通Lab及0.6证据仍不是当前可执行能力。
 文件名保留draft以维持链接稳定；生产接入A1～D4共16项已确认，见第8节。
 2026-09-07追加确认首段实施临时隔离门：本轮仅接入Schema、SchemaIr、编译冻结、
 PlanBuilder防御复核与资源计费，当时不接入Core或Protocol Lab执行路径。首段已完成
@@ -57,7 +58,7 @@ PlanBuilder防御复核与资源计费，当时不接入Core或Protocol Lab执�
 
 DEC-042A及审查修复已随`7807b9a`提交并Push；DEC-041文档收口为`97da00e`，亦已Push。
 缺省构建仍只支持Schema 0.1～0.4；DEC-042B隔离算术与编译首段已分别随`8fd2019`、`4d26d42`
-提交并Push。当前工作树已接入专用开关下的DECIMAL64 Core双向转换，第二段尚未提交。
+提交并Push。专用开关下的DECIMAL64 Core双向转换第二段已随`90c5165`提交并Push。
 第二段限定Windows合成向量证据见Core报告；它不证明完整输入域、性能或Lab证据链正确性。
 真实Golden、Linux、硬件及现场仍未验证。
 本文不扩展Runtime、C ABI、传输、线程、业务派生、有符号位字段或完整constraints能力。
@@ -160,11 +161,11 @@ Result字段名称、允许属性及Reader合法组合按第8节C组执行。
 四组补充方案已确认；固定256位候选及中间上界已有隔离测试、书面推导和只读审查，
 不是完整B或生产Core验收结论。
 若算术验证不通过，须回到契约讨论，不得静默缩小已确认的参数接受范围。
-生产接入A1～D4已确认，实施必须遵循第8节；不代表新Schema、Core或Lab已实现。
+生产接入A1～D4已确认，实施必须遵循第8节；不代表普通Lab 0.6运行链已实现。
 独立高精度Oracle的具体工具亦需单独批准，不因本轮确认而允许引入或执行。
 该次审查的P2测试缺口已补齐；三段实施中的首段编译冻结与计费、第二段Core双向转换均已实现
 并完成限定Windows验证；首段已审查提交，第二段raw诊断失败调用生命周期补测已完成，详见
-Core报告。Lab证据段仍未开始。
+Core报告。Lab证据段仅完成A纯格式模块，B证据读写和C运行链仍未开始。
 算术验证、完整实现、Stage、Commit、Push分别授权。Linux、Golden、硬件、现场和性能不升级。
 
 ## 8. 生产接入四组拍板（A1～D4，CONFIRMED）
@@ -301,3 +302,167 @@ Builder防御证据；专用Loader构建的Windows Debug/Release合同Runner各8
 
 过程边界：初次实施曾未经具体工具授权一次性使用宿主`System.Numerics.BigInteger`核算两组固定
 测试常数，磁盘无可追溯命令日志；本轮未再次运行，不追认为已授权Oracle或完整交叉验证证据。
+
+## 10. Lab第三段六项补充拍板（CONFIRMED / UNIMPLEMENTED）
+
+2026-09-07用户确认以下六项，随后仅授权Markdown同步。它们细化第8节C1～C4，
+不表示Values 0.4或Result/Record/Event 0.6已经实现，不改变旧代文件和指纹。
+
+### 10.1 转换错误与诊断ID
+
+`conversion_error`仅允许`DECIMAL_SCALE_OUT_OF_RANGE`、`RAW_NOT_INTEGRAL`、
+`RAW_OUT_OF_RANGE`、`LOGICAL_OUT_OF_RANGE`或JSON `null`。沿用`PAE_LAB_CODEC_<STATUS>`
+诊断ID，不为每种转换原因再建立一套ID。内部故障、最终复核失败、未执行Codec时原因均为null。
+Reader必须联合检查状态与原因：非法scale对应INVALID_ARGUMENT，其他三种数值原因对应
+VALUE_NOT_REPRESENTABLE；不得只校验原因字符串属于枚举集合。沿用Core实际失败，不猜测原因。
+
+### 10.2 Result 0.6失败字段身份
+
+| 字段 | 类型和空值规则 |
+| --- | --- |
+| `failed_field_id` | 字符串或null；仅能在已确定Message中定位字段时填写 |
+| `failed_field_index` | 非负整数或null；配置字段索引 |
+| `failed_value_index` | 非负整数或null；仅适用于已定位的Encode输入项 |
+
+成功或相应身份无法确定时使用null，不输出内部无效索引哨兵值。身份来自实际失败结果，
+不根据输入猜测。Reader校验同一已确定Message下ID/索引关联；失败字段列表仍为空。
+
+### 10.3 Result、Record、Event的信息归属
+
+Result负责转换结果和失败细节。Record通过既有文件长度、Hash及关联检查绑定Result，
+不重复上述新增转换字段或失败身份。Event继续表达阶段事件，不新增逐字段转换明细，
+使用0.6并遵守合法版本组合；RX Metadata仍为0.2。
+完整同代三件套为`result_summary_v0.6.json`、`run_record_v0.6.json`、`events_v0.6.jsonl`；
+不得忽略未知文件或借用旧文件名绕过原子读写门禁。
+
+### 10.4 指纹0.6规范化规则
+
+使用独立`pae.lab.fingerprint/0.6`域。保留配置身份、方向、消息、操作、报文和既有确定性执行信息；
+Decimal使用规范化coefficient/scale，并绑定raw类型及原始值。转换原因、失败字段身份参与指纹，
+即使失败没有输出字段也不能丢失。原始Values文件原样保存并校验Hash，不把该文件Hash作为
+新代执行等价比较依据；不得改变旧代Hash或指纹算法。时间、历史网络端点及超时等非确定性信息
+不混入执行指纹。
+Canonical payload（规范化指纹输入）的固定顺序、null及字符串编码已追加确认，见第12节；
+第12～13节均为CONFIRMED / UNIMPLEMENTED，确认不代表实施或验证完成。
+
+### 10.5 等价输入的Run Compare
+
+其余确定性条件相同、两个Bundle分别通过完整性检查、Decimal数学执行结果相同时，
+即使原始Values文本及Hash不同，Run Compare返回EQUAL。EQUAL表示执行等价而非原文件相同。
+失败结果可比较相等，但当前执行仍失败；不同配置身份不因输出相同就成为同一执行。
+跨代Run Compare继续拒绝，原始Frame比较维持既有规则。NO_CODEC_REEXECUTION不产生转换成功结论。
+
+### 10.6 差异分类
+
+不新增顶层CONVERSION_ERROR类别。转换原因或失败字段身份不同归入既有STABLE_DIAGNOSTIC；
+Decimal数学值、raw类型或raw值不同归入既有字段结果差异类别，明细指出具体字段。
+类别顺序须确定，旧代类别及行为不变。
+
+## 11. Lab第三段实施检查点（顺序已确认，实施另行授权）
+
+| 检查点 | 范围 | 放行条件 |
+| --- | --- | --- |
+| A：内存模型与纯格式 | Values 0.4、Decimal结果结构、转换错误/失败身份、规范化指纹及隔离单元测试 | 普通Lab不接通Schema 0.5，不发布0.6 Bundle |
+| B：证据读写 | 完整0.6三件套、严格Reader、跨文件绑定、长度/Hash自洽篡改负例 | 读写闭环，不向普通CLI发布半成品证据 |
+| C：运行链闭环 | Core结果复制、结构优先Inspect、Replay/Compare、版本矩阵及Windows回归 | 全链验证后才开放专用Schema 0.5 Lab构建 |
+
+A使用隔离测试验证纯格式；实际Core输出与raw绑定在C接入。Core Encode成功不发布raw诊断，
+Lab应从其单独Decode输出报文的成功结果及同一Workspace复制Decimal和raw；失败不交付部分字段。
+Inspect的Schema 0.5走结构唯一性优先路径，零/多候选不转换，唯一候选才Decode。
+保持Schema 0.5默认关闭；A/B不得提前移除现有Schema 0.5与Protocol Lab组合拒绝。
+隔离测试接入方式及指纹精确编码按第12～13节，不通过ABI不兼容混链测试绕过门禁。
+
+验收覆盖等价输入不同原文件Hash、不同数学值、无转换0.5、旧Values类型限制、宽数抵消、
+成功及失败Run→Replay→再Replay、自洽非法证据的精确拒绝与旧代固定夹具不变。
+最终Windows专项/全切片Debug及Release、两类隔离构建及必要既有Loopback回归按实施授权执行。
+不新增网络功能、不展开Runtime/Session、流式切帧、GUI或新校验算法；Oracle、Linux、
+真实Golden、硬件、现场及性能证据不升级。上述实施顺序拍板时仅同步文档，未运行构建或测试；
+后续A阶段实际实施及验证见第13节，不以该历史边界替代当前状态。
+
+## 12. 指纹0.6精确编码（已确认、A阶段已限定实现）
+
+指纹表示确定性协议执行结果，不表示原始请求文件或全部运行事实相同。不同输入若失败于同一
+字段及原因、且其他确定性结果相同，可以同指纹；原始Values与其Hash保留追溯职责。
+NO_CODEC_REEXECUTION不证明转换成功。不新增独立输入请求指纹。
+
+### 12.1 基础字节语法
+
+```text
+null       N;
+string     S<UTF-8字节数>:<原始UTF-8字节>
+integer    I<规范十进制文本字节数>:<规范十进制文本>
+boolean    B0; 或 B1;
+array      A<元素数量>:<各元素依次编码>
+```
+
+长度及数量为ASCII十进制，无正号、无前导零，零写0。字符串长度按UTF-8字节计算，
+不做Unicode归一化、去空格或换行替换。整数无小数、指数、-0、千分位或本地化格式。
+null与空串分别为`N;`和`S0:`。完整编码不添加BOM、平台换行或结束字符；SHA-256结果
+沿用大写十六进制。字符串`a|b`编码为`S3:a|b`，内容中的分隔字符没有语法作用。
+
+### 12.2 顶层固定20项数组
+
+| 顺序 | 内容 | 编码类型 |
+| --- | --- | --- |
+| 1 | 固定域pae.lab.fingerprint/0.6 | string |
+| 2 | Schema版本0.5 | string |
+| 3 | 原操作operation_kind | string |
+| 4～5 | replay_mode、replay_subject | string |
+| 6～7 | 当前执行状态、当前执行稳定诊断ID | string；无诊断为null |
+| 8 | 配置SHA-256 | string；尚无配置身份为null |
+| 9～12 | protocol、pipeline、message、direction身份 | string或null |
+| 13～15 | 主报文、TX报文、RX报文 | 大写无分隔HEX string或null |
+| 16 | conversion_error | string或null |
+| 17～19 | failed_field_id、failed_field_index、failed_value_index | string或null、integer或null、integer或null |
+| 20 | 配置字段顺序的结果 | array |
+
+无适用报文为null，实际存在的零长度报文为空字符串；未确定身份为null，不把内部空串当作有效身份。
+Replay保持被重执行的原操作类型，不用CLI命令名replay替代。离线采用当前Codec执行状态/诊断，
+UDP采用既有当前执行口径，不混入历史Transport终态。合法组合需校验，不凭空补造缺失身份。
+退出码、比较结论、Bundle路径、诊断长文本、时间、端点、超时、事件时间偏移及原始Values Hash
+不进入编码。无Codec时保留未执行语义，不制造成功状态。
+
+### 12.3 字段数组
+
+Decimal字段是固定6项数组`[id, kind, coefficient, scale, raw_kind, raw_value]`：
+id/kind/raw_kind为string，kind固定DECIMAL64；coefficient/scale/raw_value为integer，
+raw_value按raw_kind精确解释。先检查表示合法再规范化，非法scale不能因零值而通过。
+其他类型保留既有五项语义`[id, kind, raw_value, logical_value, enum_known]`，前四项为string，
+最后为boolean；只在0.6改用本节编码，不改旧代字节。字段按配置顺序，不按Encode输入顺序排列。
+失败字段数组为空，顶层失败原因及身份仍参与指纹。FieldsCanonical与指纹复用同一0.6字段编码。
+
+## 13. A阶段隔离接入（已限定实现及总控复核，待提交）
+
+新增内部纯格式模块，A阶段只由测试目标编译，B/C复用同一源码。范围为Values 0.4解析、
+Decimal及失败模型、纯结果序列化、规范化编码和指纹；不包含配置编译、Core执行、Bundle文件操作
+或UDP。不大范围抽拆旧Lab，不迁移旧Values解析及指纹函数。
+
+计划开关`PAE_BUILD_LAB_V06_FORMAT_TESTS`默认OFF；必须同时开启PAE_BUILD_TESTING，否则
+CMake配置失败。不要求Schema 0.5编译开关或完整Lab，不链接Core执行库或Winsock。
+复用现有JSON解析依赖和SHA-256，不新增第三方依赖；必要时仅最小整理CMake依赖，
+不能为了获得依赖而加载完整Compiler/Core。原Schema 0.5+Lab拒绝条件保持不变。
+A可生成内存格式样本，但不发布0.6 Bundle、不让普通CLI接受Values 0.4。
+
+2026-09-07实施补记：A已按本节落地为默认关闭的内部纯格式模块和隔离测试目标。实现覆盖
+Values 0.4严格解析、Decimal规范化结果、失败原因/身份模型、Result 0.6内存序列化样本、
+FieldsCanonical及固定20项指纹编码；Debug/Release隔离测试各1/1通过。普通Lab、Evidence
+Writer/Reader、Core结果复制、Inspect、Replay/Compare和UDP均未接入，Schema 0.5+普通Lab组合
+继续配置失败关闭。执行证据及限制见
+[A阶段Windows验证报告](windows-msvc-2026-dec042b-lab-v06-format-stage-a.md)。
+
+验收计划包括：null/空串、UTF-8与特殊字符无歧义、数量和整数极值、独立固定预期编码字节；
+Decimal等价/差异/规范零/非法表示、raw类型和值变化、字段顺序；状态原因组合、失败身份、
+内部错误无数值原因及无部分字段；默认无新增目标、Testing关闭拒绝、格式目标独立构建、
+原Lab组合门禁保留。Windows Debug/Release及旧代必要回归须在后续实施授权下执行，
+不执行网络或Oracle。A初次实现及本轮P2纠错均已取得隔离Debug/Release各1/1结果；初次实现时
+旧Lab离线回归各12/12，本轮未重复无关旧矩阵。P2纠错补充模式/主体/当前状态及失败身份的
+纯模型不变量，仍不接入B/C。
+
+### 13.1 A阶段P2纠错（2026-09-08，已总控复核）
+
+- `NO_CODEC_REEXECUTION`仅允许`RX`或`RX_INCOMPLETE`，当前执行必须`NOT_EVALUATED`，且无当前
+  诊断、转换原因、失败身份或字段结果；`ENCODE_TX/TX`、`DECODE_RX/RX`及默认`NONE/NONE`
+  分别检查主体和执行状态，未知或矛盾组合失败关闭。
+- 已知失败字段身份要求非空Message、非空字段ID，并与字段索引成对；`failed_value_index`仅用于
+  Encode路径。未知字段等输入错误仍可只保留输入索引，不强迫伪造字段身份。A无Plan依赖，
+  ID与配置索引的真实对应留待B/C联合校验。

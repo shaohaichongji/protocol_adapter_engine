@@ -2,6 +2,17 @@
 
 ## 1. 状态和目的
 
+2026-09-07当前状态补记：代码基线为`90c5165`。以下DEC-037～039实施状态与门禁文字保留
+当时记录；2026-09-06 NetAssist人工Loopback已完成，仅该模拟场景通过，见
+[人工验收报告](windows-protocol-lab-manual-loopback-acceptance-20260906.md)，不升级Golden或硬件证据。
+当前Lab支持Values至0.3、Result/Record/Event至0.5，Schema 0.5仍被构建门禁拒绝。
+DEC-042B第三段六项补充及A/B/C顺序已确认；A纯格式模块已在默认关闭的隔离测试目标中完成限定
+实现，转换格式、错误身份、指纹和版本规则以
+[DEC-042B契约第10～13节](pae-dec-042b-decimal-conversion-contract-draft.md)为新增语义权威。
+Result 0.6负责转换与失败细节，Record绑定Result，Event保持阶段职责，RX Metadata保持0.2。
+普通Lab须等B证据读写和C运行链及兼容验证完成才可接通新代；A不发布Evidence Bundle、不调用
+Core或网络，现有Schema 0.5与Protocol Lab组合拒绝保持生效。
+
 本文定义`PAE Protocol Lab（PAE协议实验与复现工具）`首个实现切片的职责、数据记录、
 主动发送安全边界和验收门禁。
 
@@ -25,6 +36,19 @@ Protocol Lab用于：
 文档尚未Stage、Commit或Push。
 
 ## 2. 永久边界
+
+### 配套Qt UI方向修订（已确认、未实现）
+
+保留CLI并增加独立Qt UI，两者复用Lab执行能力，不各自实现协议解析、指纹或证据规则。
+Qt仅进入可选UI目标，不进入PAE Core依赖链；不装Qt仍应能构建Core、CLI和测试。
+UI后台执行及线程由工具层管理，不改变Core被动调用边界。
+暂不复制现有Qt包，先核验来源、完整性、工具链、许可证和版本选择；当前未冻结Qt版本。
+旧文中的GUI后置不再表示没有UI目标，而是排在当前Lab第三段A/B/C闭环之后。
+随后单独开展Qt依赖验证及最小UI切片，实施另行授权。当前没有复制Qt或引入Qt依赖。
+
+Lab第三段指纹精确编码及A阶段纯格式测试入口见
+[DEC-042B契约第12～13节](pae-dec-042b-decimal-conversion-contract-draft.md)，A阶段已限定实现并完成
+总控复核；B证据读写和C运行链仍未实现。
 
 Protocol Lab是独立工具目标，不改变PAE Core的被动模型：
 

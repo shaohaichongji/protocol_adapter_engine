@@ -63,6 +63,15 @@ if(PAE_BUILD_TESTING)
 endif()
 unset(pae_build_testing_default)
 
+option(
+    PAE_BUILD_LAB_V06_FORMAT_TESTS
+    "Build the isolated Protocol Lab Result 0.6 pure-format tests"
+    OFF
+)
+if(PAE_BUILD_LAB_V06_FORMAT_TESTS AND NOT PAE_BUILD_TESTING)
+    message(FATAL_ERROR "PAE_BUILD_LAB_V06_FORMAT_TESTS requires PAE_BUILD_TESTING=ON.")
+endif()
+
 add_library(pae_project_options INTERFACE)
 add_library(pae::project_options ALIAS pae_project_options)
 target_compile_features(pae_project_options INTERFACE cxx_std_17)
@@ -125,4 +134,8 @@ if(PAE_BUILD_PROTOCOL_LAB)
     if(PAE_BUILD_TESTING)
         add_subdirectory(tests/protocol_lab)
     endif()
+endif()
+
+if(PAE_BUILD_LAB_V06_FORMAT_TESTS)
+    add_subdirectory(tests/protocol_lab_v06_format)
 endif()

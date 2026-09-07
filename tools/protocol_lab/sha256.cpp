@@ -2,9 +2,6 @@
 
 #include <algorithm>
 #include <array>
-#include <cctype>
-
-#include "result_format.h"
 
 namespace pae::protocol_lab {
 namespace {
@@ -131,9 +128,13 @@ class Sha256 final {
 };
 
 std::string HexLower(const std::array<std::uint8_t, 32U>& data) {
-  std::string output = HexUpper(data.data(), data.size());
-  std::transform(output.begin(), output.end(), output.begin(),
-                 [](unsigned char value) { return static_cast<char>(std::tolower(value)); });
+  constexpr char kDigits[] = "0123456789abcdef";
+  std::string output;
+  output.resize(data.size() * 2U);
+  for (std::size_t index = 0U; index < data.size(); ++index) {
+    output[index * 2U] = kDigits[data[index] >> 4U];
+    output[index * 2U + 1U] = kDigits[data[index] & 0x0FU];
+  }
   return output;
 }
 
