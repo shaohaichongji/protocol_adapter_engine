@@ -1,0 +1,78 @@
+{
+  "schema_version": "0.5",
+  "protocol_id": "decimal_core_contract",
+  "protocol_version": "1.0",
+  "display_name": "Decimal Core contract",
+  "description": "Public synthetic Core-only vector.",
+  "source_ref": "PAE-DEC-042B public synthetic vector",
+  "resource_profile": "desktop",
+  "framing_profiles": [
+    {"id": "record", "display_name": "Record", "description": "Complete record.", "source_ref": "PAE-DEC-042B public synthetic vector", "input_kind": "complete_record"}
+  ],
+  "pipelines": [
+    {"id": "sample_pipeline", "display_name": "Sample pipeline", "description": "Core conversion pipeline.", "source_ref": "PAE-DEC-042B public synthetic vector", "direction_id": "rx", "input_framing_profile_id": "record", "message_ids": ["sample"]}
+  ],
+  "messages": [
+    {
+      "id": "sample",
+      "display_name": "Sample",
+      "description": "Three converted numeric fields.",
+      "source_ref": "PAE-DEC-042B public synthetic vector",
+      "direction_id": "rx",
+      "frame_length_bytes": 34,
+      "matcher": {"all": [{"kind": "frame_length_equals", "length_bytes": 34}]},
+      "integrity": {"algorithm": "sum8", "range": {"byte_offset": 0, "byte_length": 33}, "storage": {"byte_offset": 33}},
+      "fields": [
+        {
+          "id": "temperature",
+          "display_name": "Temperature",
+          "description": "Signed temperature conversion.",
+          "source_ref": "PAE-DEC-042B public synthetic vector",
+          "value_type": "INT64",
+          "wire": {"codec": "unsigned_integer", "byte_offset": 0, "byte_width": 8, "byte_order": "big_endian"},
+          "encode": {"source": "input"},
+          "conversion": {"kind": "linear", "output_type": "DECIMAL64", "scale": {"numerator": 1, "denominator": 10}, "bias": {"numerator": -40, "denominator": 1}}
+        },
+        {
+          "id": "cancelled",
+          "display_name": "Cancelled",
+          "description": "Wide intermediate cancellation.",
+          "source_ref": "PAE-DEC-042B public synthetic vector",
+          "value_type": "UINT64",
+          "wire": {"codec": "unsigned_integer", "byte_offset": 8, "byte_width": 8, "byte_order": "little_endian"},
+          "encode": {"source": "input"},
+          "conversion": {"kind": "linear", "output_type": "DECIMAL64", "scale": {"numerator": 1, "denominator": 1}, "bias": {"numerator": -9223372036854775808, "denominator": 1}}
+        },
+        {
+          "id": "overflow_probe",
+          "display_name": "Overflow probe",
+          "description": "Decode logical overflow probe.",
+          "source_ref": "PAE-DEC-042B public synthetic vector",
+          "value_type": "UINT64",
+          "wire": {"codec": "unsigned_integer", "byte_offset": 16, "byte_width": 8, "byte_order": "big_endian"},
+          "encode": {"source": "input"},
+          "conversion": {"kind": "linear", "output_type": "DECIMAL64", "scale": {"numerator": 1, "denominator": 1}, "bias": {"numerator": 0, "denominator": 1}}
+        },
+        {
+          "id": "signed_identity",
+          "display_name": "Signed identity",
+          "description": "Signed extrema conversion.",
+          "source_ref": "PAE-DEC-042B public synthetic vector",
+          "value_type": "INT64",
+          "wire": {"codec": "unsigned_integer", "byte_offset": 24, "byte_width": 8, "byte_order": "big_endian"},
+          "encode": {"source": "input"},
+          "conversion": {"kind": "linear", "output_type": "DECIMAL64", "scale": {"numerator": -1, "denominator": 1}, "bias": {"numerator": -1, "denominator": 1}}
+        },
+        {
+          "id": "legacy_constant",
+          "display_name": "Legacy constant",
+          "description": "Unconverted inherited field in a mixed plan.",
+          "source_ref": "PAE-DEC-042B public synthetic vector",
+          "value_type": "UINT64",
+          "wire": {"codec": "unsigned_integer", "byte_offset": 32, "byte_width": 1},
+          "encode": {"source": "constant", "value": 165}
+        }
+      ]
+    }
+  ]
+}

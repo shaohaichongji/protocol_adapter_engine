@@ -558,6 +558,9 @@ PlanBuildResult PlanBuilder::FreezeImpl(detail::PlanDraftData draft) {
       determined_values[container_index] = container.base_value;
     }
     std::size_t input_ordinal = 0U;
+#if defined(PAE_ENABLE_SCHEMA_V05_COMPILER)
+    std::size_t conversion_slot = 0U;
+#endif
 
     for (std::size_t field_index = 0U; field_index < message.fields.size(); ++field_index) {
       const FieldPlan& field = message.fields[field_index];
@@ -664,6 +667,12 @@ PlanBuildResult PlanBuilder::FreezeImpl(detail::PlanDraftData draft) {
           field.constant_value.has_value() || field.signed_constant_value.has_value();
       field_execution.constant_value = field.constant_value.value_or(0U);
       field_execution.signed_constant_value = field.signed_constant_value.value_or(0);
+#if defined(PAE_ENABLE_SCHEMA_V05_COMPILER)
+      field_execution.conversion_index = field.conversion_index;
+      if (has_conversion) {
+        field_execution.conversion_slot = conversion_slot++;
+      }
+#endif
       field_execution.unknown_enum_policy = field.value_type == ValueType::ENUM
                                                 ? field.unknown_enum_policy
                                                 : UnknownEnumPolicy::REJECT;
@@ -763,6 +772,10 @@ PlanBuildResult PlanBuilder::FreezeImpl(detail::PlanDraftData draft) {
     execution.required_input_count = input_ordinal;
     execution_resource_layout.max_input_fields_per_message =
         (std::max)(execution_resource_layout.max_input_fields_per_message, input_ordinal);
+#if defined(PAE_ENABLE_SCHEMA_V05_COMPILER)
+    execution_resource_layout.conversion_value_count =
+        (std::max)(execution_resource_layout.conversion_value_count, conversion_slot);
+#endif
 
     std::map<std::size_t, std::uint8_t> fixed_bytes;
     for (std::size_t matcher_index = 0U; matcher_index < message.matchers.size(); ++matcher_index) {
@@ -886,14 +899,27 @@ PlanBuildResult PlanBuilder::FreezeImpl(detail::PlanDraftData draft) {
   std::size_t value_index_bytes = 0U;
   std::size_t presence_word_bytes = 0U;
   std::size_t bit_container_bytes = 0U;
+#if defined(PAE_ENABLE_SCHEMA_V05_COMPILER)
+  std::size_t conversion_workspace_bytes = 0U;
+  constexpr std::size_t kConversionWorkspaceBytesPerSlot =
+      sizeof(std::int64_t) + sizeof(std::int32_t) + sizeof(std::uint64_t) + sizeof(ValueType) +
+      sizeof(std::size_t) + sizeof(std::uint64_t);
+#endif
   if (!MultiplySizeChecked(execution_resource_layout.encode_value_index_count, sizeof(std::size_t),
                            value_index_bytes) ||
       !MultiplySizeChecked(execution_resource_layout.encode_presence_word_count,
                            sizeof(std::uint64_t), presence_word_bytes) ||
       !MultiplySizeChecked(execution_resource_layout.bit_container_value_count,
                            sizeof(std::uint64_t), bit_container_bytes) ||
+#if defined(PAE_ENABLE_SCHEMA_V05_COMPILER)
+      !MultiplySizeChecked(execution_resource_layout.conversion_value_count,
+                           kConversionWorkspaceBytesPerSlot, conversion_workspace_bytes) ||
+#endif
       !AddSizeChecked(presence_word_bytes, value_index_bytes) ||
       !AddSizeChecked(bit_container_bytes, value_index_bytes) ||
+#if defined(PAE_ENABLE_SCHEMA_V05_COMPILER)
+      !AddSizeChecked(conversion_workspace_bytes, value_index_bytes) ||
+#endif
       value_index_bytes > limits->max_session_memory_bytes) {
     return Reject(PlanBuildError::RESOURCE_LIMIT_EXCEEDED);
   }

@@ -5,6 +5,8 @@
 #include <cstdint>
 #include <limits>
 
+#include "decimal_conversion_internal.h"
+
 namespace pae::protocol_core {
 namespace {
 
@@ -33,6 +35,11 @@ constexpr std::size_t kPresenceWordBits = 64U;
 
 #if defined(PAE_ENABLE_OPERATION_COUNTERS)
 std::atomic<bool> g_corrupt_integrity_storage_before_final_review{false};
+#if defined(PAE_ENABLE_SCHEMA_V05_COMPILER)
+std::atomic<bool> g_corrupt_decimal_field_before_final_review{false};
+std::atomic<bool> g_fail_next_decimal_conversion{false};
+std::atomic<bool> g_fail_next_decimal_final_review{false};
+#endif
 #endif
 
 std::size_t PresenceWordCount(std::size_t bit_count) noexcept {
@@ -323,6 +330,75 @@ LogicalValueKind GetLogicalValueKind(ValueType value_type) noexcept {
   return LogicalValueKind::UINT64;
 }
 
+#if defined(PAE_ENABLE_SCHEMA_V05_COMPILER)
+bool HasConversion(const FieldExecutionPlan& field) noexcept {
+  return field.conversion_index != kInvalidIndex;
+}
+
+ConversionError ToConversionError(detail::DecimalArithmeticStatus status) noexcept {
+  switch (status) {
+    case detail::DecimalArithmeticStatus::DECIMAL_SCALE_OUT_OF_RANGE:
+      return ConversionError::DECIMAL_SCALE_OUT_OF_RANGE;
+    case detail::DecimalArithmeticStatus::RAW_NOT_INTEGRAL:
+      return ConversionError::RAW_NOT_INTEGRAL;
+    case detail::DecimalArithmeticStatus::RAW_OUT_OF_RANGE:
+      return ConversionError::RAW_OUT_OF_RANGE;
+    case detail::DecimalArithmeticStatus::LOGICAL_OUT_OF_RANGE:
+      return ConversionError::LOGICAL_OUT_OF_RANGE;
+    case detail::DecimalArithmeticStatus::OK:
+    case detail::DecimalArithmeticStatus::INTERNAL_ERROR:
+      return ConversionError::NONE;
+  }
+  return ConversionError::NONE;
+}
+
+CodecStatus ToCodecStatus(detail::DecimalArithmeticStatus status) noexcept {
+  switch (status) {
+    case detail::DecimalArithmeticStatus::DECIMAL_SCALE_OUT_OF_RANGE:
+      return CodecStatus::INVALID_ARGUMENT;
+    case detail::DecimalArithmeticStatus::INTERNAL_ERROR:
+      return CodecStatus::INTERNAL_ERROR;
+    case detail::DecimalArithmeticStatus::RAW_NOT_INTEGRAL:
+    case detail::DecimalArithmeticStatus::RAW_OUT_OF_RANGE:
+    case detail::DecimalArithmeticStatus::LOGICAL_OUT_OF_RANGE:
+      return CodecStatus::VALUE_NOT_REPRESENTABLE;
+    case detail::DecimalArithmeticStatus::OK:
+      return CodecStatus::OK;
+  }
+  return CodecStatus::INTERNAL_ERROR;
+}
+
+bool ConversionPlanValid(const PlanBundle& plan, const FieldExecutionPlan& field) noexcept {
+  if (!HasConversion(field)) return true;
+  return plan.SchemaVersion() == "0.5" && field.conversion_index < plan.Conversions().size() &&
+         field.conversion_slot != kInvalidIndex && field.bit_container_index == kInvalidIndex &&
+         field.encode_source == EncodeSource::INPUT &&
+         plan.Conversions()[field.conversion_index].raw_value_type == field.value_type;
+}
+
+detail::DecimalArithmeticStatus ConvertEncode(
+    const protocol_plan::LinearConversionDescriptor& conversion, Decimal64 logical,
+    std::size_t width, std::uint64_t& raw) noexcept {
+#if defined(PAE_ENABLE_OPERATION_COUNTERS)
+  if (g_fail_next_decimal_conversion.exchange(false, std::memory_order_relaxed)) {
+    return detail::DecimalArithmeticStatus::INTERNAL_ERROR;
+  }
+#endif
+  return detail::EncodeDecimal(conversion, logical, width, raw);
+}
+
+detail::DecimalArithmeticStatus ConvertDecode(
+    const protocol_plan::LinearConversionDescriptor& conversion, std::uint64_t raw,
+    std::size_t width, Decimal64& logical) noexcept {
+#if defined(PAE_ENABLE_OPERATION_COUNTERS)
+  if (g_fail_next_decimal_conversion.exchange(false, std::memory_order_relaxed)) {
+    return detail::DecimalArithmeticStatus::INTERNAL_ERROR;
+  }
+#endif
+  return detail::DecodeDecimal(conversion, raw, width, logical);
+}
+#endif
+
 bool ValueKindMatches(LogicalValueKind value_kind, ValueType value_type) noexcept {
   return value_kind == GetLogicalValueKind(value_type);
 }
@@ -343,6 +419,9 @@ CodecStatus PrepareEncodeInputs(const PlanBundle& plan, const MessageExecutionPl
                                 std::size_t message_index, const EncodeFieldValue* values,
                                 std::size_t value_count, std::vector<std::size_t>& value_indices,
                                 std::vector<std::uint64_t>& present_words,
+#if defined(PAE_ENABLE_SCHEMA_V05_COMPILER)
+                                std::vector<std::uint64_t>& conversion_raw_values,
+#endif
                                 EncodeResult& result PAE_OPERATION_COUNTS_PARAMETER) noexcept {
   if (message.required_input_count > value_indices.size() ||
       PresenceWordCount(message.required_input_count) > present_words.size()) {
@@ -375,21 +454,22 @@ CodecStatus PrepareEncodeInputs(const PlanBundle& plan, const MessageExecutionPl
     if (IsPresent(present_words, field.input_ordinal)) {
       return CodecStatus::DUPLICATE_FIELD;
     }
-    if (!ValueKindMatches(value.value_kind, field.value_type)) {
+    const bool defer_value_validation = plan.SchemaVersion() == "0.5";
+    if (!defer_value_validation && !ValueKindMatches(value.value_kind, field.value_type)) {
       return CodecStatus::TYPE_MISMATCH;
     }
 
-    if (field.value_type == ValueType::UINT64) {
+    if (!defer_value_validation && field.value_type == ValueType::UINT64) {
       if (!(field.bit_container_index != kInvalidIndex
                 ? FitsUnsignedBits(value.uint64_value, field.bit_width)
                 : FitsUnsignedWidth(value.uint64_value, field.width))) {
         return CodecStatus::VALUE_NOT_REPRESENTABLE;
       }
-    } else if (field.value_type == ValueType::INT64) {
+    } else if (!defer_value_validation && field.value_type == ValueType::INT64) {
       if (!FitsSignedWidth(value.int64_value, field.width)) {
         return CodecStatus::VALUE_NOT_REPRESENTABLE;
       }
-    } else if (field.value_type == ValueType::BYTES) {
+    } else if (!defer_value_validation && field.value_type == ValueType::BYTES) {
       if (value.bytes_value.size != field.width) {
         return CodecStatus::BYTES_LENGTH_MISMATCH;
       }
@@ -397,12 +477,13 @@ CodecStatus PrepareEncodeInputs(const PlanBundle& plan, const MessageExecutionPl
       if (!GetAddressRange(value.bytes_value.data, value.bytes_value.size, unused)) {
         return CodecStatus::INVALID_ARGUMENT;
       }
-    } else if (field.value_type == ValueType::BOOL) {
+    } else if (!defer_value_validation && field.value_type == ValueType::BOOL) {
       // Native bool has no alternate numeric or string representation in the Core API.
-    } else if (value.enum_value.plan_scope != &plan ||
-               value.enum_value.message_index != message_index ||
-               value.enum_value.field_index != value.field.field_index ||
-               value.enum_value.entry_index >= field.enum_values_count) {
+    } else if (!defer_value_validation &&
+               (value.enum_value.plan_scope != &plan ||
+                value.enum_value.message_index != message_index ||
+                value.enum_value.field_index != value.field.field_index ||
+                value.enum_value.entry_index >= field.enum_values_count)) {
       return CodecStatus::ENUM_REFERENCE_MISMATCH;
     }
 
@@ -420,13 +501,72 @@ CodecStatus PrepareEncodeInputs(const PlanBundle& plan, const MessageExecutionPl
       return CodecStatus::MISSING_FIELD;
     }
   }
+#if defined(PAE_ENABLE_SCHEMA_V05_COMPILER)
+  if (plan.SchemaVersion() == "0.5") {
+    for (std::size_t field_index = 0U; field_index < message.fields.size(); ++field_index) {
+      const FieldExecutionPlan& field = message.fields[field_index];
+      if (field.encode_source != EncodeSource::INPUT) continue;
+      result.failed_field_index = field_index;
+      const std::size_t value_index = value_indices[field.input_ordinal];
+      result.failed_value_index = value_index;
+      const EncodeFieldValue& value = values[value_index];
+      if (!ConversionPlanValid(plan, field)) return CodecStatus::INVALID_PLAN;
+      if (HasConversion(field)) {
+        if (field.conversion_slot >= conversion_raw_values.size()) return CodecStatus::INVALID_PLAN;
+        if (value.value_kind != LogicalValueKind::DECIMAL64) return CodecStatus::TYPE_MISMATCH;
+        PAE_INCREMENT_OPERATION_COUNT(decimal_conversion_visits);
+        const detail::DecimalArithmeticStatus status =
+            ConvertEncode(plan.Conversions()[field.conversion_index], value.decimal64_value,
+                          field.width, conversion_raw_values[field.conversion_slot]);
+        if (status != detail::DecimalArithmeticStatus::OK) {
+          result.conversion_error = ToConversionError(status);
+          return ToCodecStatus(status);
+        }
+        continue;
+      }
+      if (!ValueKindMatches(value.value_kind, field.value_type)) return CodecStatus::TYPE_MISMATCH;
+      if (field.value_type == ValueType::UINT64) {
+        if (!(field.bit_container_index != kInvalidIndex
+                  ? FitsUnsignedBits(value.uint64_value, field.bit_width)
+                  : FitsUnsignedWidth(value.uint64_value, field.width))) {
+          return CodecStatus::VALUE_NOT_REPRESENTABLE;
+        }
+      } else if (field.value_type == ValueType::INT64) {
+        if (!FitsSignedWidth(value.int64_value, field.width)) {
+          return CodecStatus::VALUE_NOT_REPRESENTABLE;
+        }
+      } else if (field.value_type == ValueType::BYTES) {
+        if (value.bytes_value.size != field.width) return CodecStatus::BYTES_LENGTH_MISMATCH;
+        AddressRange unused;
+        if (!GetAddressRange(value.bytes_value.data, value.bytes_value.size, unused)) {
+          return CodecStatus::INVALID_ARGUMENT;
+        }
+      } else if (field.value_type == ValueType::ENUM &&
+                 (value.enum_value.plan_scope != &plan ||
+                  value.enum_value.message_index != message_index ||
+                  value.enum_value.field_index != field_index ||
+                  value.enum_value.entry_index >= field.enum_values_count)) {
+        return CodecStatus::ENUM_REFERENCE_MISMATCH;
+      }
+    }
+  }
+#endif
   result.failed_field_index = kInvalidIndex;
+  result.failed_value_index = kInvalidIndex;
   return CodecStatus::OK;
 }
 
 std::uint64_t GetEncodeRawValue(const MessageExecutionPlan& message,
                                 const FieldExecutionPlan& field, const EncodeFieldValue* values,
-                                const std::vector<std::size_t>& value_indices) noexcept {
+                                const std::vector<std::size_t>& value_indices
+#if defined(PAE_ENABLE_SCHEMA_V05_COMPILER)
+                                ,
+                                const std::vector<std::uint64_t>& conversion_raw_values
+#endif
+                                ) noexcept {
+#if defined(PAE_ENABLE_SCHEMA_V05_COMPILER)
+  if (HasConversion(field)) return conversion_raw_values[field.conversion_slot];
+#endif
   if (field.value_type == ValueType::INT64) {
     const std::int64_t signed_value = field.encode_source == EncodeSource::CONSTANT
                                           ? field.signed_constant_value
@@ -460,6 +600,9 @@ void WriteFixedBytes(const MessageExecutionPlan& message,
 
 bool WriteFields(const MessageExecutionPlan& message, const EncodeFieldValue* values,
                  const std::vector<std::size_t>& value_indices,
+#if defined(PAE_ENABLE_SCHEMA_V05_COMPILER)
+                 const std::vector<std::uint64_t>& conversion_raw_values,
+#endif
                  std::vector<std::uint64_t>& container_values,
                  std::uint8_t* output PAE_OPERATION_COUNTS_PARAMETER) noexcept {
   if (message.bit_containers.size() > container_values.size()) {
@@ -478,7 +621,12 @@ bool WriteFields(const MessageExecutionPlan& message, const EncodeFieldValue* va
       }
       continue;
     }
-    const std::uint64_t raw_value = GetEncodeRawValue(message, field, values, value_indices);
+    const std::uint64_t raw_value = GetEncodeRawValue(message, field, values, value_indices
+#if defined(PAE_ENABLE_SCHEMA_V05_COMPILER)
+                                                      ,
+                                                      conversion_raw_values
+#endif
+    );
     if (field.bit_container_index != kInvalidIndex) {
       std::uint64_t& container = container_values[field.bit_container_index];
       container = (container & ~field.bit_mask) | ((raw_value << field.bit_shift) & field.bit_mask);
@@ -498,9 +646,20 @@ bool WriteFields(const MessageExecutionPlan& message, const EncodeFieldValue* va
   return true;
 }
 
-bool VerifyFields(const MessageExecutionPlan& message, const EncodeFieldValue* values,
-                  const std::vector<std::size_t>& value_indices, const std::uint8_t* output,
-                  std::size_t& failed_field_index PAE_OPERATION_COUNTS_PARAMETER) noexcept {
+enum class FieldVerificationStatus {
+  MATCH,
+  MISMATCH,
+  INTERNAL_ERROR,
+};
+
+FieldVerificationStatus VerifyFields(
+    const MessageExecutionPlan& message, const EncodeFieldValue* values,
+    const std::vector<std::size_t>& value_indices,
+#if defined(PAE_ENABLE_SCHEMA_V05_COMPILER)
+    const PlanBundle& plan, const std::vector<std::uint64_t>& conversion_raw_values,
+#endif
+    const std::uint8_t* output,
+    std::size_t& failed_field_index PAE_OPERATION_COUNTS_PARAMETER) noexcept {
   for (std::size_t field_index = 0U; field_index < message.fields.size(); ++field_index) {
     PAE_INCREMENT_OPERATION_COUNT(field_verify_visits);
     const FieldExecutionPlan& field = message.fields[field_index];
@@ -510,27 +669,58 @@ bool VerifyFields(const MessageExecutionPlan& message, const EncodeFieldValue* v
         PAE_INCREMENT_OPERATION_COUNT(bytes_verify_visits);
         if (output[field.offset + index] != bytes.data[index]) {
           failed_field_index = field_index;
-          return false;
+          return FieldVerificationStatus::MISMATCH;
         }
       }
       continue;
     }
     std::uint64_t actual = 0U;
-    const std::uint64_t expected = GetEncodeRawValue(message, field, values, value_indices);
+    const std::uint64_t expected = GetEncodeRawValue(message, field, values, value_indices
+#if defined(PAE_ENABLE_SCHEMA_V05_COMPILER)
+                                                     ,
+                                                     conversion_raw_values
+#endif
+    );
     if (field.bit_container_index != kInvalidIndex) {
       const auto& container = message.bit_containers[field.bit_container_index];
       std::uint64_t container_value = 0U;
       if (!LoadUnsigned(output + container.offset, container.width, container.byte_order,
                         container_value)) {
         failed_field_index = field_index;
-        return false;
+        return FieldVerificationStatus::MISMATCH;
       }
       actual = ExtractBitfield(container_value, field);
     } else if (!LoadUnsigned(output + field.offset, field.width, field.byte_order, actual)) {
       failed_field_index = field_index;
-      return false;
+      return FieldVerificationStatus::MISMATCH;
     }
-    if (field.value_type == ValueType::INT64) {
+#if defined(PAE_ENABLE_SCHEMA_V05_COMPILER)
+    if (HasConversion(field)) {
+      Decimal64 actual_logical;
+      PAE_INCREMENT_OPERATION_COUNT(decimal_conversion_visits);
+      detail::DecimalArithmeticStatus conversion_status;
+#if defined(PAE_ENABLE_OPERATION_COUNTERS)
+      if (g_fail_next_decimal_final_review.exchange(false, std::memory_order_relaxed)) {
+        conversion_status = detail::DecimalArithmeticStatus::INTERNAL_ERROR;
+      } else
+#endif
+      {
+        conversion_status = ConvertDecode(plan.Conversions()[field.conversion_index], actual,
+                                          field.width, actual_logical);
+      }
+      if (conversion_status == detail::DecimalArithmeticStatus::INTERNAL_ERROR) {
+        failed_field_index = field_index;
+        return FieldVerificationStatus::INTERNAL_ERROR;
+      }
+      if (conversion_status != detail::DecimalArithmeticStatus::OK ||
+          !detail::DecimalEqual(actual_logical,
+                                values[value_indices[field.input_ordinal]].decimal64_value)) {
+        failed_field_index = field_index;
+        return FieldVerificationStatus::MISMATCH;
+      }
+    } else
+#endif
+        if (field.value_type == ValueType::INT64) {
       std::int64_t signed_actual = 0;
       const std::int64_t signed_expected =
           field.encode_source == EncodeSource::CONSTANT
@@ -539,22 +729,37 @@ bool VerifyFields(const MessageExecutionPlan& message, const EncodeFieldValue* v
       if (!InterpretSigned(actual, field.width, signed_actual) ||
           signed_actual != signed_expected) {
         failed_field_index = field_index;
-        return false;
+        return FieldVerificationStatus::MISMATCH;
       }
     } else if (actual != expected) {
       failed_field_index = field_index;
-      return false;
+      return FieldVerificationStatus::MISMATCH;
     }
   }
-  return true;
+  return FieldVerificationStatus::MATCH;
 }
 
 }  // namespace
+
+bool internal::SupportsCompleteRecordSchema(std::string_view schema_version) noexcept {
+  if (schema_version == "0.1" || schema_version == "0.2" || schema_version == "0.3" ||
+      schema_version == "0.4") {
+    return true;
+  }
+#if defined(PAE_ENABLE_SCHEMA_V05_COMPILER)
+  if (schema_version == "0.5") return true;
+#endif
+  return false;
+}
 
 internal::StructuralMatchResult internal::MatchCompleteRecordStructure(const PlanBundle& plan,
                                                                        std::size_t pipeline_index,
                                                                        ByteView input) noexcept {
   StructuralMatchResult result;
+  if (!SupportsCompleteRecordSchema(plan.SchemaVersion())) {
+    result.status = CodecStatus::INVALID_PLAN;
+    return result;
+  }
   if (input.data == nullptr && input.size != 0U) {
     return result;
   }
@@ -608,13 +813,62 @@ ExecutionWorkspace::ExecutionWorkspace(const PlanBundle& plan)
       encode_present_words_(plan.GetExecutionResourceLayout().encode_presence_word_count,
                             std::uint64_t{0U}),
       bit_container_values_(plan.GetExecutionResourceLayout().bit_container_value_count,
-                            std::uint64_t{0U}) {}
+                            std::uint64_t{0U})
+#if defined(PAE_ENABLE_SCHEMA_V05_COMPILER)
+      ,
+      decode_decimal_coefficients_(plan.GetExecutionResourceLayout().conversion_value_count, 0),
+      decode_decimal_scales_(plan.GetExecutionResourceLayout().conversion_value_count, 0),
+      raw_integer_bits_(plan.GetExecutionResourceLayout().conversion_value_count, 0U),
+      raw_integer_kinds_(plan.GetExecutionResourceLayout().conversion_value_count,
+                         ValueType::UINT64),
+      raw_integer_field_indices_(plan.GetExecutionResourceLayout().conversion_value_count,
+                                 kInvalidIndex),
+      encode_conversion_raw_values_(plan.GetExecutionResourceLayout().conversion_value_count, 0U)
+#endif
+{
+}
 
 CodecOperationCounts ExecutionWorkspace::LastOperationCounts() const noexcept {
 #if defined(PAE_ENABLE_OPERATION_COUNTERS)
   return operation_counts_;
 #else
   return CodecOperationCounts{};
+#endif
+}
+
+std::size_t ExecutionWorkspace::LastRawIntegerCount() const noexcept {
+#if defined(PAE_ENABLE_SCHEMA_V05_COMPILER)
+  return raw_integer_count_;
+#else
+  return 0U;
+#endif
+}
+
+bool ExecutionWorkspace::GetLastRawInteger(std::size_t index,
+                                           RawIntegerValue& output) const noexcept {
+#if defined(PAE_ENABLE_SCHEMA_V05_COMPILER)
+  if (index >= raw_integer_count_) return false;
+  const std::size_t field_index = raw_integer_field_indices_[index];
+  if (raw_integer_kinds_[index] != ValueType::UINT64 &&
+      raw_integer_kinds_[index] != ValueType::INT64) {
+    return false;
+  }
+  output = RawIntegerValue{};
+  output.field = FieldRef{plan_scope_, raw_integer_message_index_, field_index};
+  output.kind = raw_integer_kinds_[index] == ValueType::INT64 ? RawIntegerKind::INT64
+                                                              : RawIntegerKind::UINT64;
+  if (output.kind == RawIntegerKind::UINT64) {
+    output.uint64_value = raw_integer_bits_[index];
+  } else {
+    const std::size_t width =
+        plan_scope_->MessageExecutionPlans()[raw_integer_message_index_].fields[field_index].width;
+    InterpretSigned(raw_integer_bits_[index], width, output.int64_value);
+  }
+  return true;
+#else
+  static_cast<void>(index);
+  static_cast<void>(output);
+  return false;
 #endif
 }
 
@@ -628,12 +882,20 @@ DecodeResult DecodeCompleteRecord(const PlanBundle& plan, ExecutionWorkspace& wo
     result.status = CodecStatus::WORKSPACE_BUSY;
     return result;
   }
+#if defined(PAE_ENABLE_SCHEMA_V05_COMPILER)
+  workspace.raw_integer_count_ = 0U;
+  workspace.raw_integer_message_index_ = kInvalidIndex;
+#endif
 #if defined(PAE_ENABLE_OPERATION_COUNTERS)
   workspace.operation_counts_ = CodecOperationCounts{};
   CodecOperationCounts& counts = workspace.operation_counts_;
 #endif
   if (workspace.plan_scope_ != &plan) {
     result.status = CodecStatus::WORKSPACE_PLAN_MISMATCH;
+    return result;
+  }
+  if (!internal::SupportsCompleteRecordSchema(plan.SchemaVersion())) {
+    result.status = CodecStatus::INVALID_PLAN;
     return result;
   }
   if ((input.data == nullptr && input.size != 0U) ||
@@ -688,6 +950,10 @@ DecodeResult DecodeCompleteRecord(const PlanBundle& plan, ExecutionWorkspace& wo
     return result;
   }
 
+#if defined(PAE_ENABLE_SCHEMA_V05_COMPILER)
+  std::size_t converted_field_count = 0U;
+#endif
+
   if (message.bit_containers.size() > workspace.bit_container_values_.size()) {
     result.status = CodecStatus::INVALID_PLAN;
     return result;
@@ -705,6 +971,46 @@ DecodeResult DecodeCompleteRecord(const PlanBundle& plan, ExecutionWorkspace& wo
   for (std::size_t field_index = 0U; field_index < message.fields.size(); ++field_index) {
     PAE_INCREMENT_OPERATION_COUNT(field_validation_visits);
     const FieldExecutionPlan& field = message.fields[field_index];
+#if defined(PAE_ENABLE_SCHEMA_V05_COMPILER)
+    if (plan.SchemaVersion() == "0.5") {
+      if (!ConversionPlanValid(plan, field)) {
+        result.status = CodecStatus::INVALID_PLAN;
+        result.failed_field_index = field_index;
+        return result;
+      }
+      if (HasConversion(field)) {
+        if (field.conversion_slot >= workspace.decode_decimal_coefficients_.size() ||
+            converted_field_count >= workspace.raw_integer_bits_.size()) {
+          result.status = CodecStatus::INVALID_PLAN;
+          result.failed_field_index = field_index;
+          return result;
+        }
+        std::uint64_t raw_value = 0U;
+        if (!LoadUnsigned(input.data + field.offset, field.width, field.byte_order, raw_value)) {
+          result.status = CodecStatus::INVALID_PLAN;
+          result.failed_field_index = field_index;
+          return result;
+        }
+        Decimal64 logical;
+        PAE_INCREMENT_OPERATION_COUNT(decimal_conversion_visits);
+        const detail::DecimalArithmeticStatus status = ConvertDecode(
+            plan.Conversions()[field.conversion_index], raw_value, field.width, logical);
+        if (status != detail::DecimalArithmeticStatus::OK) {
+          result.status = ToCodecStatus(status);
+          result.conversion_error = ToConversionError(status);
+          result.failed_field_index = field_index;
+          return result;
+        }
+        workspace.decode_decimal_coefficients_[field.conversion_slot] = logical.coefficient;
+        workspace.decode_decimal_scales_[field.conversion_slot] = logical.scale;
+        workspace.raw_integer_bits_[converted_field_count] = raw_value;
+        workspace.raw_integer_kinds_[converted_field_count] = field.value_type;
+        workspace.raw_integer_field_indices_[converted_field_count] = field_index;
+        ++converted_field_count;
+        continue;
+      }
+    }
+#endif
     if (field.value_type != ValueType::ENUM) {
       continue;
     }
@@ -733,6 +1039,16 @@ DecodeResult DecodeCompleteRecord(const PlanBundle& plan, ExecutionWorkspace& wo
     DecodedFieldSlot slot;
     slot.field = FieldRef{&plan, match.message_index, field_index};
     slot.value_kind = GetLogicalValueKind(field.value_type);
+#if defined(PAE_ENABLE_SCHEMA_V05_COMPILER)
+    if (HasConversion(field)) {
+      slot.value_kind = LogicalValueKind::DECIMAL64;
+      slot.decimal64_value =
+          Decimal64{workspace.decode_decimal_coefficients_[field.conversion_slot],
+                    workspace.decode_decimal_scales_[field.conversion_slot]};
+      field_slots[field_index] = slot;
+      continue;
+    }
+#endif
     if (field.value_type == ValueType::BYTES) {
       slot.bytes_value = ByteView{input.data + field.offset, field.width};
     } else {
@@ -774,6 +1090,10 @@ DecodeResult DecodeCompleteRecord(const PlanBundle& plan, ExecutionWorkspace& wo
   result.field_count = message.fields.size();
   result.failed_field_index = kInvalidIndex;
   result.tainted = tainted;
+#if defined(PAE_ENABLE_SCHEMA_V05_COMPILER)
+  workspace.raw_integer_count_ = converted_field_count;
+  workspace.raw_integer_message_index_ = match.message_index;
+#endif
   return result;
 }
 
@@ -787,12 +1107,20 @@ EncodeResult EncodeCompleteRecord(const PlanBundle& plan, ExecutionWorkspace& wo
     result.status = CodecStatus::WORKSPACE_BUSY;
     return result;
   }
+#if defined(PAE_ENABLE_SCHEMA_V05_COMPILER)
+  workspace.raw_integer_count_ = 0U;
+  workspace.raw_integer_message_index_ = kInvalidIndex;
+#endif
 #if defined(PAE_ENABLE_OPERATION_COUNTERS)
   workspace.operation_counts_ = CodecOperationCounts{};
   CodecOperationCounts& counts = workspace.operation_counts_;
 #endif
   if (workspace.plan_scope_ != &plan) {
     result.status = CodecStatus::WORKSPACE_PLAN_MISMATCH;
+    return result;
+  }
+  if (!internal::SupportsCompleteRecordSchema(plan.SchemaVersion())) {
+    result.status = CodecStatus::INVALID_PLAN;
     return result;
   }
   if (values == nullptr && value_count != 0U) {
@@ -820,9 +1148,13 @@ EncodeResult EncodeCompleteRecord(const PlanBundle& plan, ExecutionWorkspace& wo
 
   const MessageExecutionPlan& message = messages[message_index];
   result.required_size = message.frame_size;
-  const CodecStatus value_status = PrepareEncodeInputs(
-      plan, message, message_index, values, value_count, workspace.encode_value_indices_,
-      workspace.encode_present_words_, result PAE_OPERATION_COUNTS_ARGUMENT);
+  const CodecStatus value_status =
+      PrepareEncodeInputs(plan, message, message_index, values, value_count,
+                          workspace.encode_value_indices_, workspace.encode_present_words_,
+#if defined(PAE_ENABLE_SCHEMA_V05_COMPILER)
+                          workspace.encode_conversion_raw_values_,
+#endif
+                          result PAE_OPERATION_COUNTS_ARGUMENT);
   if (value_status != CodecStatus::OK) {
     result.status = value_status;
     result.required_size = 0U;
@@ -870,6 +1202,9 @@ EncodeResult EncodeCompleteRecord(const PlanBundle& plan, ExecutionWorkspace& wo
 
   WriteFixedBytes(message, output.data PAE_OPERATION_COUNTS_ARGUMENT);
   if (!WriteFields(message, values, workspace.encode_value_indices_,
+#if defined(PAE_ENABLE_SCHEMA_V05_COMPILER)
+                   workspace.encode_conversion_raw_values_,
+#endif
                    workspace.bit_container_values_, output.data PAE_OPERATION_COUNTS_ARGUMENT)) {
     result.status = CodecStatus::FINAL_REVIEW_FAILED;
     return result;
@@ -896,12 +1231,35 @@ EncodeResult EncodeCompleteRecord(const PlanBundle& plan, ExecutionWorkspace& wo
     }
   }
 
+#if defined(PAE_ENABLE_OPERATION_COUNTERS) && defined(PAE_ENABLE_SCHEMA_V05_COMPILER)
+  if (g_corrupt_decimal_field_before_final_review.exchange(false, std::memory_order_relaxed)) {
+    for (const FieldExecutionPlan& field : message.fields) {
+      if (HasConversion(field)) {
+        output.data[field.offset] ^= 0x01U;
+        break;
+      }
+    }
+  }
+#endif
+
   const ByteView encoded{output.data, message.frame_size};
   const MatchOutcome final_match =
       FindPipelineMatch(pipeline, messages, encoded PAE_OPERATION_COUNTS_ARGUMENT);
-  if (final_match.match_count != 1U || final_match.message_index != message_index ||
-      !VerifyFields(message, values, workspace.encode_value_indices_, output.data,
-                    result.failed_field_index PAE_OPERATION_COUNTS_ARGUMENT)) {
+  if (final_match.match_count != 1U || final_match.message_index != message_index) {
+    result.status = CodecStatus::FINAL_REVIEW_FAILED;
+    return result;
+  }
+  const FieldVerificationStatus verification_status =
+      VerifyFields(message, values, workspace.encode_value_indices_,
+#if defined(PAE_ENABLE_SCHEMA_V05_COMPILER)
+                   plan, workspace.encode_conversion_raw_values_,
+#endif
+                   output.data, result.failed_field_index PAE_OPERATION_COUNTS_ARGUMENT);
+  if (verification_status == FieldVerificationStatus::INTERNAL_ERROR) {
+    result.status = CodecStatus::INTERNAL_ERROR;
+    return result;
+  }
+  if (verification_status == FieldVerificationStatus::MISMATCH) {
     result.status = CodecStatus::FINAL_REVIEW_FAILED;
     return result;
   }
@@ -919,6 +1277,20 @@ namespace test_only {
 void CorruptIntegrityStorageBeforeFinalReviewOnce() noexcept {
   g_corrupt_integrity_storage_before_final_review.store(true, std::memory_order_relaxed);
 }
+
+#if defined(PAE_ENABLE_SCHEMA_V05_COMPILER)
+void CorruptDecimalFieldBeforeFinalReviewOnce() noexcept {
+  g_corrupt_decimal_field_before_final_review.store(true, std::memory_order_relaxed);
+}
+
+void FailNextDecimalConversionOnce() noexcept {
+  g_fail_next_decimal_conversion.store(true, std::memory_order_relaxed);
+}
+
+void FailNextDecimalFinalReviewOnce() noexcept {
+  g_fail_next_decimal_final_review.store(true, std::memory_order_relaxed);
+}
+#endif
 
 }  // namespace test_only
 #endif

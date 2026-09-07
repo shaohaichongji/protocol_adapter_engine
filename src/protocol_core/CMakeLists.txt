@@ -2,6 +2,8 @@ set(
     pae_protocol_core_slice_sources
         complete_record_codec.cpp
         complete_record_codec.h
+        decimal_conversion_internal.cpp
+        decimal_conversion_internal.h
 )
 
 function(pae_configure_protocol_core_slice target_name)

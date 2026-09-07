@@ -2,6 +2,10 @@
 
 日期：2026-09-07。状态：首段已实现并完成限定 Windows 复核，待总控审查。
 
+后续状态：首段已通过总控审查，随`4d26d42`提交并Push；上方状态保留为报告形成时记录。
+第二段Core已实现，首段“禁止Core共存”的临时门已最小放开；本报告保留首段当时证据，
+当前边界见[Core第二段报告](windows-msvc-2026-dec042b-core-slice.md)。Protocol Lab门禁仍保留。
+
 ## 1. 范围与隔离门
 
 本轮只实现 DEC-042B 的 Schema 0.5、SchemaIr、领域校验、编译冻结、PlanBuilder

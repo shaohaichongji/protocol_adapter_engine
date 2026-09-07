@@ -33,15 +33,14 @@ option(
 )
 option(
     PAE_ENABLE_SCHEMA_V05_COMPILER
-    "Enable the internal Schema 0.5 compiler-only DEC-042B slice"
+    "Enable the internal Schema 0.5 compiler and Core DEC-042B slices"
     OFF
 )
 
-if(PAE_ENABLE_SCHEMA_V05_COMPILER AND
-   (PAE_BUILD_COMPLETE_RECORD_CODEC_SLICE OR PAE_BUILD_PROTOCOL_LAB))
+if(PAE_ENABLE_SCHEMA_V05_COMPILER AND PAE_BUILD_PROTOCOL_LAB)
     message(
         FATAL_ERROR
-        "Schema 0.5 compiler-only plans must not be linked with Core or Protocol Lab."
+        "Schema 0.5 Core plans must not be linked with Protocol Lab until the Lab evidence slice is implemented."
     )
 endif()
 if(PAE_ENABLE_SCHEMA_V05_COMPILER AND NOT PAE_BUILD_LOADER_SCHEMA_IR_SLICE)

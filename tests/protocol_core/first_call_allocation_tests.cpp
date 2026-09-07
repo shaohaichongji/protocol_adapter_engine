@@ -253,6 +253,28 @@ CompileResult BuildInt64Plan() {
         "encode":{"source":"input"}}]}]})json");
 }
 
+#if defined(PAE_ENABLE_SCHEMA_V05_COMPILER)
+CompileResult BuildDecimalPlan() {
+  return pae::config_compiler::CompileJsonToPlan(R"json({
+    "schema_version":"0.5","protocol_id":"allocation_decimal","protocol_version":"1",
+    "display_name":"Synthetic","description":"","source_ref":"SYNTHETIC_FROM_SCRATCH:allocation",
+    "resource_profile":"desktop",
+    "framing_profiles":[{"id":"complete_record","display_name":"Synthetic","description":"",
+      "source_ref":"SYNTHETIC_FROM_SCRATCH:allocation","input_kind":"complete_record"}],
+    "pipelines":[{"id":"decimal_pipe","display_name":"Synthetic","description":"",
+      "source_ref":"SYNTHETIC_FROM_SCRATCH:allocation","direction_id":"decimal_direction",
+      "input_framing_profile_id":"complete_record","message_ids":["decimal_message"]}],
+    "messages":[{"id":"decimal_message","display_name":"Synthetic","description":"",
+      "source_ref":"SYNTHETIC_FROM_SCRATCH:allocation","direction_id":"decimal_direction",
+      "frame_length_bytes":8,"matcher":{"all":[{"kind":"frame_length_equals","length_bytes":8}]},
+      "fields":[{"id":"value","display_name":"Synthetic","description":"",
+        "source_ref":"SYNTHETIC_FROM_SCRATCH:allocation","value_type":"INT64",
+        "wire":{"codec":"unsigned_integer","byte_offset":0,"byte_width":8,"byte_order":"big_endian"},
+        "encode":{"source":"input"},"conversion":{"kind":"linear","output_type":"DECIMAL64",
+        "scale":{"numerator":1,"denominator":10},"bias":{"numerator":-40,"denominator":1}}}]}]})json");
+}
+#endif
+
 bool CounterProbe() {
   const std::size_t before = g_allocation_count.load(std::memory_order_relaxed);
   void* memory = ::operator new(17U);
@@ -371,6 +393,34 @@ bool RunFirstInt64Calls() {
          slot.value_kind == LogicalValueKind::INT64 && slot.int64_value == -2 && before == after;
 }
 
+#if defined(PAE_ENABLE_SCHEMA_V05_COMPILER)
+bool RunFirstDecimalCalls() {
+  CompileResult frozen = BuildDecimalPlan();
+  if (!frozen.Succeeded()) return false;
+  ExecutionWorkspace workspace{*frozen.Plan()};
+  EncodeFieldValue value;
+  value.field = FieldRef{frozen.Plan(), 0U, 0U};
+  value.value_kind = LogicalValueKind::DECIMAL64;
+  value.decimal64_value = {123, 1};
+  std::array<std::uint8_t, 8U> output{};
+  std::size_t before = g_allocation_count.load(std::memory_order_relaxed);
+  const auto encoded = EncodeCompleteRecord(*frozen.Plan(), workspace, 0U, 0U, &value, 1U,
+                                            {output.data(), output.size()});
+  std::size_t after = g_allocation_count.load(std::memory_order_relaxed);
+  if (encoded.status != CodecStatus::OK || output[6] != 0x02U || output[7] != 0x0BU ||
+      before != after)
+    return false;
+  DecodedFieldSlot slot;
+  before = g_allocation_count.load(std::memory_order_relaxed);
+  const auto decoded = DecodeCompleteRecord(*frozen.Plan(), workspace, 0U,
+                                            {output.data(), output.size()}, &slot, 1U);
+  after = g_allocation_count.load(std::memory_order_relaxed);
+  return decoded.status == CodecStatus::OK && slot.value_kind == LogicalValueKind::DECIMAL64 &&
+         slot.decimal64_value.coefficient == 123 && slot.decimal64_value.scale == 1 &&
+         before == after;
+}
+#endif
+
 }  // namespace
 
 int main(int argc, char** argv) {
@@ -384,7 +434,10 @@ int main(int argc, char** argv) {
                       : mode == "--first-bitfield" ? RunFirstBitfieldCalls()
                       : mode == "--first-sum8"     ? RunFirstSum8Calls()
                       : mode == "--first-int64"    ? RunFirstInt64Calls()
-                                                   : false;
+#if defined(PAE_ENABLE_SCHEMA_V05_COMPILER)
+                      : mode == "--first-decimal" ? RunFirstDecimalCalls()
+#endif
+                                                  : false;
   const std::string_view case_id =
       mode == "--first-decode"
           ? "first_decode_zero_replaceable_new_allocation"
@@ -394,7 +447,9 @@ int main(int argc, char** argv) {
                         ? "first_bitfield_calls_zero_replaceable_new_allocation"
                         : (mode == "--first-sum8"
                                ? "first_sum8_calls_zero_replaceable_new_allocation"
-                               : "first_int64_calls_zero_replaceable_new_allocation")));
+                               : (mode == "--first-int64"
+                                      ? "first_int64_calls_zero_replaceable_new_allocation"
+                                      : "first_decimal_calls_zero_replaceable_new_allocation"))));
   std::cout << (passed ? "PASS" : "FAIL") << " case=" << case_id << '\n';
   std::cout << "FIRST_CALL_ALLOCATION_TEST_SUMMARY passed=" << (passed ? 1 : 0)
             << " failed=" << (passed ? 0 : 1) << " expected=1 gate=" << (passed ? "PASS" : "FAIL")

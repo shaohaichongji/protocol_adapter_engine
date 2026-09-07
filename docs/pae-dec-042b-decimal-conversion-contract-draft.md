@@ -3,13 +3,16 @@
 创建日期：2026-09-06。确认更新：2026-09-07。第1节十项决策及第3～6节四组补充方案
 均为CONFIRMED（已确认）。用户随后授权隔离算术验证，固定256位候选已完成Windows
 Debug/Release隔离测试；只读审查未发现明确实现缺陷，已补齐P2测试证据缺口。
-未接入生产Core，不Stage/Commit/Push。
-Schema及Lab新版本是目标契约，不是当前可执行能力。
+Core双向转换第二段已实现并完成限定Windows验证，不Stage/Commit/Push。
+Values及Lab新版本仍是目标契约，不是当前可执行能力。
 文件名保留draft以维持链接稳定；生产接入A1～D4共16项已确认，见第8节。
 2026-09-07追加确认首段实施临时隔离门：本轮仅接入Schema、SchemaIr、编译冻结、
-PlanBuilder防御复核与资源计费，不接入Core或Protocol Lab执行路径。首段已实现并完成
-限定Windows验证，仍待总控审查；证据见
+PlanBuilder防御复核与资源计费，当时不接入Core或Protocol Lab执行路径。首段已完成
+总控审查并随`4d26d42`提交、Push；证据见
 [首段验证报告](windows-msvc-2026-dec042b-compiler-slice.md)。
+2026-09-07续：第二段已接入Core私有256位算术、Decimal64、Workspace诊断、失败顺序及
+最终重读复核；Schema 0.5仍禁止与Protocol Lab共存，证据见
+[Core验证报告](windows-msvc-2026-dec042b-core-slice.md)。
 
 ## 1. 十项已确认决策
 
@@ -53,8 +56,10 @@ PlanBuilder防御复核与资源计费，不接入Core或Protocol Lab执行路�
 ## 2. 实现基线与证据边界
 
 DEC-042A及审查修复已随`7807b9a`提交并Push；DEC-041文档收口为`97da00e`，亦已Push。
-当前生产可执行配置为Schema 0.4，业务类型尚无DECIMAL64。B仅完成隔离算术验证及P2补测，未接入Core。
-既有Windows/合成协议/Loopback结果不证明B精度或性能；真实Golden、Linux、硬件及现场仍未验证。
+缺省构建仍只支持Schema 0.1～0.4；DEC-042B隔离算术与编译首段已分别随`8fd2019`、`4d26d42`
+提交并Push。当前工作树已接入专用开关下的DECIMAL64 Core双向转换，第二段尚未提交。
+第二段限定Windows合成向量证据见Core报告；它不证明完整输入域、性能或Lab证据链正确性。
+真实Golden、Linux、硬件及现场仍未验证。
 本文不扩展Runtime、C ABI、传输、线程、业务派生、有符号位字段或完整constraints能力。
 
 ## 3. 补充A：类型接口与作者输入（已确认）
@@ -157,8 +162,9 @@ Result字段名称、允许属性及Reader合法组合按第8节C组执行。
 若算术验证不通过，须回到契约讨论，不得静默缩小已确认的参数接受范围。
 生产接入A1～D4已确认，实施必须遵循第8节；不代表新Schema、Core或Lab已实现。
 独立高精度Oracle的具体工具亦需单独批准，不因本轮确认而允许引入或执行。
-该次审查的P2测试缺口已补齐；三段实施中的首段编译冻结与计费已经实现并完成限定Windows验证，
-Core转换和Lab证据两段仍未开始。
+该次审查的P2测试缺口已补齐；三段实施中的首段编译冻结与计费、第二段Core双向转换均已实现
+并完成限定Windows验证；首段已审查提交，第二段raw诊断失败调用生命周期补测已完成，详见
+Core报告。Lab证据段仍未开始。
 算术验证、完整实现、Stage、Commit、Push分别授权。Linux、Golden、硬件、现场和性能不升级。
 
 ## 8. 生产接入四组拍板（A1～D4，CONFIRMED）
@@ -210,7 +216,10 @@ required_size沿用清零原则，输出容量阶段报告完整报文长度。
 **B4 错误分类。** 数值原因沿用DECIMAL_SCALE_OUT_OF_RANGE、RAW_NOT_INTEGRAL、
 RAW_OUT_OF_RANGE、LOGICAL_OUT_OF_RANGE。增加内部状态INTERNAL_ERROR，专用于合法冻结Plan下
 突破算术上界等实现异常；损坏Plan描述仍为INVALID_PLAN，最终复核不一致仍为FINAL_REVIEW_FAILED。
-不得把内部故障伪装成用户值不可表示；使用测试专用故障注入验证，不扩展正常配置路径。
+不得把内部故障伪装成用户值不可表示；Decimal输入scale超出0..18属于输入表示非法，映射
+INVALID_ARGUMENT并保留DECIMAL_SCALE_OUT_OF_RANGE；该检查不因coefficient为0而省略。
+最终重读转换本身发生内部算术故障时仍返回INTERNAL_ERROR，仅实际字节或数学值不一致返回
+FINAL_REVIEW_FAILED。使用测试专用故障注入验证，不扩展正常配置路径。
 
 ### C组：证据字段与兼容矩阵
 
@@ -273,14 +282,16 @@ Lab-on/Testing-off两类隔离构建；新转换路径检查首次调用无动�
 
 1. 新增Schema 0.5编译能力开关，缺省为关闭。缺省构建中的Loader与PlanBuilder继续拒绝
    所有Schema 0.5配置，包括没有`conversion`的0.5配置，保持当前生产入口边界。
-2. 仅专用Loader-only构建可显式开启该开关。开关通过相关CMake目标的编译定义传递，
+2. 首段仅专用Loader-only构建可显式开启该开关；第二段起专用Loader+Core构建也可开启。
+   开关通过相关CMake目标的编译定义传递，
    不使用目录级或全局宏；开启时允许Schema 0.5完成结构加载、领域校验、编译冻结、
    PlanBuilder复核、快照及资源计费验证。
-3. 开关与Complete Record Core或Protocol Lab任一构建选项同时开启时，CMake必须配置失败，
-   防止首段Plan进入尚未实现DECIMAL64运行语义的执行链。相关开关组合纳入自动化或独立配置验证。
-4. 首段生成的Schema 0.5 Plan只用于编译期验证，不是可执行Plan。绕过CMake进行混合链接不属于
-   支持用法；后续Core段必须补齐运行期能力门与完整执行支持。本段不修改Core/Lab源码，
-   不实现Schema 0.6、Values 0.4或证据格式0.6。
+3. 首段曾禁止开关与Core或Protocol Lab共存；第二段Core语义实现后仅继续禁止Protocol Lab。
+   相关开关组合纳入自动化或独立配置验证。
+4. 首段生成的Plan只用于编译期验证；第二段专用Core构建现在可以执行Schema 0.5 Plan。
+   Protocol Lab混合链接仍不受支持；本段不实现Schema 0.6、Values 0.4或证据格式0.6。
+5. Core执行入口按构建能力显式拒绝未知Schema代际；0.5只有在专用开关开启时可执行。
+   不同编译选项产生的C++二进制不得混合链接，现阶段不承诺跨该开关的ABI兼容。
 
 实施结果：`PAE_ENABLE_SCHEMA_V05_COMPILER`已按上述规则落地。总控审查后补齐诊断定位和
 Builder防御证据；专用Loader构建的Windows Debug/Release合同Runner各80/80、Schema正反对照

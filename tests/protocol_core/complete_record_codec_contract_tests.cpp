@@ -210,7 +210,8 @@ constexpr std::string_view kRequestFrameSha256 =
 constexpr std::string_view kResponseFrameSha256 =
     "AB2C014349E0C673FBF38C692DC2B5F1CB70609CF00968D94449A848E3B24E31";
 
-constexpr std::array<std::string_view, 60U> kExpectedCaseIds{
+constexpr std::array<std::string_view, 61U> kExpectedCaseIds{
+    "runtime_schema_capability_gate",
     "fixture_manifest_contract",
     "frozen_execution_descriptors",
     "candidate_group_behavior",
@@ -1028,6 +1029,18 @@ bool CheckReorderedEncode(const PlanBundle& plan, const LoadedVector& fixture, s
 int main(int argc, char** argv) {
   TestRunner runner;
   try {
+    bool schema_capability_ok = pae::protocol_core::internal::SupportsCompleteRecordSchema("0.1") &&
+                                pae::protocol_core::internal::SupportsCompleteRecordSchema("0.4") &&
+                                !pae::protocol_core::internal::SupportsCompleteRecordSchema("0.6");
+#if defined(PAE_ENABLE_SCHEMA_V05_COMPILER)
+    schema_capability_ok =
+        schema_capability_ok && pae::protocol_core::internal::SupportsCompleteRecordSchema("0.5");
+#else
+    schema_capability_ok =
+        schema_capability_ok && !pae::protocol_core::internal::SupportsCompleteRecordSchema("0.5");
+#endif
+    runner.Record("runtime_schema_capability_gate", schema_capability_ok,
+                  "Core schema capability did not match the compiled feature set");
     if (argc != 2) {
       runner.Record("runner_arguments", false, "expected one relative test-data directory");
       return runner.Finish();

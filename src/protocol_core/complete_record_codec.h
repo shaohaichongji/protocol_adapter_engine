@@ -4,6 +4,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <limits>
+#include <string_view>
 #include <vector>
 
 #include "../protocol_plan/plan_bundle.h"
@@ -35,6 +36,7 @@ enum class CodecStatus {
   INPUT_OUTPUT_OVERLAP,
   BUFFER_TOO_SMALL,
   FINAL_REVIEW_FAILED,
+  INTERNAL_ERROR,
 };
 
 enum class LogicalValueKind {
@@ -43,6 +45,25 @@ enum class LogicalValueKind {
   BYTES,
   ENUM,
   BOOL,
+  DECIMAL64,
+};
+
+struct Decimal64 {
+  std::int64_t coefficient = 0;
+  std::int32_t scale = 0;
+};
+
+enum class ConversionError {
+  NONE,
+  DECIMAL_SCALE_OUT_OF_RANGE,
+  RAW_NOT_INTEGRAL,
+  RAW_OUT_OF_RANGE,
+  LOGICAL_OUT_OF_RANGE,
+};
+
+enum class RawIntegerKind {
+  UINT64,
+  INT64,
 };
 
 struct ByteView {
@@ -59,6 +80,13 @@ struct FieldRef {
   const protocol_plan::PlanBundle* plan_scope = nullptr;
   std::size_t message_index = kInvalidIndex;
   std::size_t field_index = kInvalidIndex;
+};
+
+struct RawIntegerValue {
+  FieldRef field;
+  RawIntegerKind kind = RawIntegerKind::UINT64;
+  std::uint64_t uint64_value = 0U;
+  std::int64_t int64_value = 0;
 };
 
 struct EnumValueRef {
@@ -82,6 +110,7 @@ struct DecodedFieldSlot {
   bool bool_value = false;
   ByteView bytes_value;
   DecodedEnumValue enum_value;
+  Decimal64 decimal64_value;
 };
 
 struct EncodeFieldValue {
@@ -92,6 +121,7 @@ struct EncodeFieldValue {
   bool bool_value = false;
   ByteView bytes_value;
   EnumValueRef enum_value;
+  Decimal64 decimal64_value;
 };
 
 struct DecodeResult {
@@ -101,6 +131,7 @@ struct DecodeResult {
   std::size_t required_field_count = 0U;
   std::size_t failed_field_index = kInvalidIndex;
   bool tainted = false;
+  ConversionError conversion_error = ConversionError::NONE;
 };
 
 namespace internal {
@@ -116,6 +147,8 @@ struct StructuralMatchResult {
 [[nodiscard]] StructuralMatchResult MatchCompleteRecordStructure(
     const protocol_plan::PlanBundle& plan, std::size_t pipeline_index, ByteView input) noexcept;
 
+[[nodiscard]] bool SupportsCompleteRecordSchema(std::string_view schema_version) noexcept;
+
 }  // namespace internal
 
 struct EncodeResult {
@@ -124,6 +157,7 @@ struct EncodeResult {
   std::size_t required_size = 0U;
   std::size_t failed_value_index = kInvalidIndex;
   std::size_t failed_field_index = kInvalidIndex;
+  ConversionError conversion_error = ConversionError::NONE;
 };
 
 struct CodecOperationCounts {
@@ -144,6 +178,7 @@ struct CodecOperationCounts {
   std::size_t integrity_bytes_verified = 0U;
   std::size_t enum_search_steps = 0U;
   std::size_t static_plan_validation_visits = 0U;
+  std::size_t decimal_conversion_visits = 0U;
 };
 
 #if defined(PAE_ENABLE_OPERATION_COUNTERS)
@@ -151,6 +186,11 @@ namespace test_only {
 // Test-only fault injection for the instrumented target. The production target does not expose
 // this declaration or carry the associated branch.
 void CorruptIntegrityStorageBeforeFinalReviewOnce() noexcept;
+#if defined(PAE_ENABLE_SCHEMA_V05_COMPILER)
+void CorruptDecimalFieldBeforeFinalReviewOnce() noexcept;
+void FailNextDecimalConversionOnce() noexcept;
+void FailNextDecimalFinalReviewOnce() noexcept;
+#endif
 }  // namespace test_only
 #endif
 
@@ -175,6 +215,8 @@ class ExecutionWorkspace final {
   // targets return zero without carrying or resetting counter storage; the instrumented test target
   // resets and records the visited operations.
   [[nodiscard]] CodecOperationCounts LastOperationCounts() const noexcept;
+  [[nodiscard]] std::size_t LastRawIntegerCount() const noexcept;
+  [[nodiscard]] bool GetLastRawInteger(std::size_t index, RawIntegerValue& output) const noexcept;
 
  private:
   friend class ExecutionWorkspaceLease;
@@ -190,6 +232,16 @@ class ExecutionWorkspace final {
   std::vector<std::size_t> encode_value_indices_;
   std::vector<std::uint64_t> encode_present_words_;
   std::vector<std::uint64_t> bit_container_values_;
+#if defined(PAE_ENABLE_SCHEMA_V05_COMPILER)
+  std::vector<std::int64_t> decode_decimal_coefficients_;
+  std::vector<std::int32_t> decode_decimal_scales_;
+  std::vector<std::uint64_t> raw_integer_bits_;
+  std::vector<protocol_plan::ValueType> raw_integer_kinds_;
+  std::vector<std::size_t> raw_integer_field_indices_;
+  std::vector<std::uint64_t> encode_conversion_raw_values_;
+  std::size_t raw_integer_count_ = 0U;
+  std::size_t raw_integer_message_index_ = kInvalidIndex;
+#endif
   std::atomic_flag in_use_ = ATOMIC_FLAG_INIT;
 #if defined(PAE_ENABLE_OPERATION_COUNTERS)
   CodecOperationCounts operation_counts_;

@@ -24,6 +24,7 @@
 - [PAE-DEC-041 SUM8最小切片Windows验证报告](windows-msvc-2026-dec041-sum8-slice.md)
 - [PAE-DEC-042 数值转换范围与DEC-042A INT64确认契约](pae-dec-042-numeric-conversion-contract-draft.md)
 - [PAE-DEC-042A 字节对齐INT64 Windows验证报告](windows-msvc-2026-dec042a-int64-slice.md)
-- [PAE-DEC-042B 精确比例/偏置确认契约（编译冻结首段已实现，未接入Core）](pae-dec-042b-decimal-conversion-contract-draft.md)
+- [PAE-DEC-042B 精确比例/偏置确认契约（编译冻结与Core双向转换已实现，Lab后置）](pae-dec-042b-decimal-conversion-contract-draft.md)
 - [PAE-DEC-042B 精确算术Windows隔离验证报告](windows-msvc-2026-dec042b-arithmetic-spike.md)
 - [PAE-DEC-042B 编译冻结首段Windows验证报告](windows-msvc-2026-dec042b-compiler-slice.md)
+- [PAE-DEC-042B Core双向转换第二段Windows验证报告](windows-msvc-2026-dec042b-core-slice.md)

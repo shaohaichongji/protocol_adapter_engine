@@ -113,6 +113,39 @@ configure_file(
     "${pae_protocol_core_test_data_dir}/golden/manifest_v0.1.tsv"
     COPYONLY
 )
+
+if(PAE_ENABLE_SCHEMA_V05_COMPILER)
+    set(
+        pae_decimal_core_fixture
+        "${CMAKE_CURRENT_SOURCE_DIR}/fixtures/decimal_core_contract.pae.json"
+    )
+    add_executable(
+        pae_decimal_conversion_contract_tests
+        decimal_conversion_contract_tests.cpp
+    )
+    target_include_directories(
+        pae_decimal_conversion_contract_tests
+        PRIVATE
+            "${PROJECT_SOURCE_DIR}/src/config_compiler"
+            "${PROJECT_SOURCE_DIR}/src/protocol_core"
+    )
+    target_link_libraries(
+        pae_decimal_conversion_contract_tests
+        PRIVATE
+            pae_config_compiler
+            pae_protocol_core_slice_instrumented
+            pae::protocol_plan
+            pae::project_options
+    )
+    add_test(
+        NAME pae.protocol_core.decimal_conversion.contract
+        COMMAND pae_decimal_conversion_contract_tests "${pae_decimal_core_fixture}"
+    )
+    set_tests_properties(
+        pae.protocol_core.decimal_conversion.contract
+        PROPERTIES LABELS "protocol_core;decimal;dec042b" TIMEOUT 180
+    )
+endif()
 configure_file(
     "${PROJECT_SOURCE_DIR}/examples/config/synthetic_bitfield_slice.pae.json"
     "${pae_protocol_core_test_data_dir}/synthetic_bitfield_slice.pae.json"
@@ -338,6 +371,16 @@ add_test(
     NAME pae.protocol_core.complete_record_codec.first_int64_allocation
     COMMAND pae_complete_record_first_call_allocation_tests --first-int64
 )
+if(PAE_ENABLE_SCHEMA_V05_COMPILER)
+    add_test(
+        NAME pae.protocol_core.complete_record_codec.first_decimal_allocation
+        COMMAND pae_complete_record_first_call_allocation_tests --first-decimal
+    )
+    set_tests_properties(
+        pae.protocol_core.complete_record_codec.first_decimal_allocation
+        PROPERTIES LABELS "protocol_core;complete_record_codec;allocation;decimal;dec042b" TIMEOUT 180
+    )
+endif()
 
 set_tests_properties(
     pae.protocol_core.complete_record_codec.first_decode_allocation

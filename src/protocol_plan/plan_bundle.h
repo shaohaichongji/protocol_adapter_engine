@@ -193,6 +193,10 @@ struct FieldExecutionPlan {
   std::uint8_t bit_shift = 0U;
   std::uint8_t bit_width = 0U;
   std::int64_t signed_constant_value = 0;
+#if defined(PAE_ENABLE_SCHEMA_V05_COMPILER)
+  std::size_t conversion_index = static_cast<std::size_t>(-1);
+  std::size_t conversion_slot = static_cast<std::size_t>(-1);
+#endif
 };
 
 struct MessageExecutionPlan {
@@ -223,6 +227,9 @@ struct ExecutionResourceLayout {
   std::size_t encode_value_index_count = 0U;
   std::size_t encode_presence_word_count = 0U;
   std::size_t bit_container_value_count = 0U;
+#if defined(PAE_ENABLE_SCHEMA_V05_COMPILER)
+  std::size_t conversion_value_count = 0U;
+#endif
   std::size_t estimated_workspace_bytes = 0U;
 };
 

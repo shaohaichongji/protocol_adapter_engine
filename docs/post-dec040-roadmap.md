@@ -22,8 +22,10 @@
    经只读审查与P2补测，Windows Debug/Release各78386断言通过，见[报告](windows-msvc-2026-dec042b-arithmetic-spike.md)。
    生产接入A1～D4共16项已确认并同步契约；三段实施中的编译冻结与计费首段已实现并完成限定
    Windows验证，并在总控审查后补齐诊断、Builder防御和完整Core矩阵证据，见
-   [首段报告](windows-msvc-2026-dec042b-compiler-slice.md)。下一步须独立审查后再进入
-   Core转换段，Lab证据仍后置。B尚未接入Core，无系统性高精度Oracle证据，不授权Stage/Commit/Push。
+   [首段报告](windows-msvc-2026-dec042b-compiler-slice.md)。Core双向转换第二段已实现并完成限定
+   Windows验证，见[Core报告](windows-msvc-2026-dec042b-core-slice.md)。首段已随`4d26d42`提交并Push；
+   第二段已补齐成功Decode后失败Encode/Decode使raw诊断失效的两个独立状态迁移测试，Lab证据段后置。
+   无系统性高精度Oracle证据，本轮不授权Stage/Commit/Push。
 3. 参数化CRC（循环冗余校验）、长度字段与变长能力分别评估，不合并成一次实现。
 
 本地资料支持校验需求，但不同方向算法证据不等价；公开测试只采用从零设计的向量。
