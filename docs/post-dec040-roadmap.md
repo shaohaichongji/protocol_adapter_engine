@@ -9,6 +9,7 @@
 - `263f51456f9f78012a897cdc354ea1116233a45d`：人工Lab验收文档。
 - `3b23db9ea160fbb967c6c3597461ece19117f599`：DEC-040位字段和版本化Lab证据。
 - 上述两个提交已Push；DEC-040文档收口`57743bf`和DEC-041实现`4d923e9`亦已Push。
+- DEC-041文档收口`97da00e`及DEC-042A实现/修复`7807b9a`已提交并Push；不升级既有验证边界。
 - DEC-040既有最终Windows证据：Lab Debug/Release各7/7，全切片各35/35；Product-only与
   Lab-on/Testing-off隔离构建通过。总控另复跑离线失败链各1/1。此次路线文档更新没有重新执行测试。
 
@@ -16,8 +17,13 @@
 
 1. 固定完整记录的SUM8（逐字节求和取低8位）完整性生成/验证最小切片：已实现、提交并Push。
 2. [DEC-042数值转换](pae-dec-042-numeric-conversion-contract-draft.md)：11项范围已确认；
-   先A字节对齐INT64，再B精确比例/偏置。A四组补充契约已实现并完成Windows验证，当前待总控审查；
-   B具体契约仍待单独细化，未实现且须另行授权。
+   A字节对齐INT64已审查、提交并Push；[B精确比例/偏置](pae-dec-042b-decimal-conversion-contract-draft.md)
+   十项决策及四组补充方案均已确认（2026-09-07）；固定256位候选已完成授权隔离验证，
+   经只读审查与P2补测，Windows Debug/Release各78386断言通过，见[报告](windows-msvc-2026-dec042b-arithmetic-spike.md)。
+   生产接入A1～D4共16项已确认并同步契约；三段实施中的编译冻结与计费首段已实现并完成限定
+   Windows验证，并在总控审查后补齐诊断、Builder防御和完整Core矩阵证据，见
+   [首段报告](windows-msvc-2026-dec042b-compiler-slice.md)。下一步须独立审查后再进入
+   Core转换段，Lab证据仍后置。B尚未接入Core，无系统性高精度Oracle证据，不授权Stage/Commit/Push。
 3. 参数化CRC（循环冗余校验）、长度字段与变长能力分别评估，不合并成一次实现。
 
 本地资料支持校验需求，但不同方向算法证据不等价；公开测试只采用从零设计的向量。

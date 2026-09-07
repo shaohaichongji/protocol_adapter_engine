@@ -31,6 +31,22 @@ option(
     "Build the internal offline Protocol Lab command-line tool"
     OFF
 )
+option(
+    PAE_ENABLE_SCHEMA_V05_COMPILER
+    "Enable the internal Schema 0.5 compiler-only DEC-042B slice"
+    OFF
+)
+
+if(PAE_ENABLE_SCHEMA_V05_COMPILER AND
+   (PAE_BUILD_COMPLETE_RECORD_CODEC_SLICE OR PAE_BUILD_PROTOCOL_LAB))
+    message(
+        FATAL_ERROR
+        "Schema 0.5 compiler-only plans must not be linked with Core or Protocol Lab."
+    )
+endif()
+if(PAE_ENABLE_SCHEMA_V05_COMPILER AND NOT PAE_BUILD_LOADER_SCHEMA_IR_SLICE)
+    message(FATAL_ERROR "PAE_ENABLE_SCHEMA_V05_COMPILER requires the Loader/SchemaIr slice.")
+endif()
 
 if(PROJECT_IS_TOP_LEVEL)
     include(CTest)

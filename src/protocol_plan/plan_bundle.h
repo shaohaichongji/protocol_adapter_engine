@@ -49,6 +49,9 @@ struct FieldPlan {
   std::uint64_t bit_offset = 0U;
   std::uint64_t bit_width = 0U;
   std::optional<std::int64_t> signed_constant_value;
+#if defined(PAE_ENABLE_SCHEMA_V05_COMPILER)
+  std::size_t conversion_index = static_cast<std::size_t>(-1);
+#endif
 };
 
 struct BitContainerPlan {
@@ -116,6 +119,9 @@ struct FrozenFieldPlan {
   std::uint64_t bit_offset = 0U;
   std::uint64_t bit_width = 0U;
   std::optional<std::int64_t> signed_constant_value;
+#if defined(PAE_ENABLE_SCHEMA_V05_COMPILER)
+  std::size_t conversion_index = static_cast<std::size_t>(-1);
+#endif
 };
 
 struct FrozenBitContainerPlan {
@@ -236,6 +242,9 @@ class PlanBundle final {
   const FrozenArray<FrozenFramingPlan>& FramingProfiles() const noexcept;
   const FrozenArray<FrozenPipelinePlan>& Pipelines() const noexcept;
   const FrozenArray<FrozenMessagePlan>& Messages() const noexcept;
+#if defined(PAE_ENABLE_SCHEMA_V05_COMPILER)
+  const FrozenArray<LinearConversionDescriptor>& Conversions() const noexcept;
+#endif
   const ExecutionResourceLayout& GetExecutionResourceLayout() const noexcept;
   const FrozenArray<MessageExecutionPlan>& MessageExecutionPlans() const noexcept;
   const FrozenArray<PipelineExecutionPlan>& PipelineExecutionPlans() const noexcept;
@@ -249,6 +258,9 @@ class PlanBundle final {
              ResourceProfile resource_profile, ResourceRequirements resource_requirements,
              FrozenArray<FrozenFramingPlan> framing_profiles,
              FrozenArray<FrozenPipelinePlan> pipelines, FrozenArray<FrozenMessagePlan> messages,
+#if defined(PAE_ENABLE_SCHEMA_V05_COMPILER)
+             FrozenArray<LinearConversionDescriptor> conversions,
+#endif
              ExecutionResourceLayout execution_resource_layout,
              FrozenArray<MessageExecutionPlan> message_execution_plans,
              FrozenArray<PipelineExecutionPlan> pipeline_execution_plans,
@@ -262,6 +274,9 @@ class PlanBundle final {
   FrozenArray<FrozenFramingPlan> framing_profiles_;
   FrozenArray<FrozenPipelinePlan> pipelines_;
   FrozenArray<FrozenMessagePlan> messages_;
+#if defined(PAE_ENABLE_SCHEMA_V05_COMPILER)
+  FrozenArray<LinearConversionDescriptor> conversions_;
+#endif
   ExecutionResourceLayout execution_resource_layout_;
   FrozenArray<MessageExecutionPlan> message_execution_plans_;
   FrozenArray<PipelineExecutionPlan> pipeline_execution_plans_;

@@ -16,6 +16,22 @@ protocol_plan::BudgetedPlanDraft MakeIntegrityDraftWithUnknownAlgorithm();
 protocol_plan::BudgetedPlanDraft MakeIntegrityDraftWithSelfIncludedStorage();
 protocol_plan::BudgetedPlanDraft MakeIntegrityDraftWithFieldStorageConflict();
 protocol_plan::BudgetedPlanDraft MakeInt64DraftWithOutOfRangeConstant();
+#if defined(PAE_ENABLE_SCHEMA_V05_COMPILER)
+enum class ConversionDraftMutation {
+  CORRUPTED_COEFFICIENT,
+  INVALID_INDEX,
+  RAW_TYPE_MISMATCH,
+  UNREFERENCED_DESCRIPTOR,
+  DUPLICATE_REFERENCE,
+  OLD_SCHEMA_RESIDUE,
+  BITFIELD_REFERENCE,
+  CONSTANT_REFERENCE,
+  RESOURCE_COUNT_MISMATCH,
+};
+
+protocol_plan::BudgetedPlanDraft MutateConversionDraft(protocol_plan::BudgetedPlanDraft draft,
+                                                       ConversionDraftMutation mutation);
+#endif
 protocol_plan::BudgetedPlanDraft SetDraftSchemaVersion(protocol_plan::BudgetedPlanDraft draft,
                                                        const char* version);
 protocol_plan::BudgetedPlanDraft InjectSignedConstant(protocol_plan::BudgetedPlanDraft draft);

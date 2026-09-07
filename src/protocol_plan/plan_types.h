@@ -1,5 +1,6 @@
 #pragma once
 
+#include <array>
 #include <cstddef>
 #include <cstdint>
 
@@ -101,7 +102,30 @@ struct ResourceRequirements {
   std::size_t total_enum_entry_count = 0U;
   std::size_t total_bit_container_count = 0U;
   std::size_t total_integrity_rule_count = 0U;
+#if defined(PAE_ENABLE_SCHEMA_V05_COMPILER)
+  std::size_t total_conversion_count = 0U;
+#endif
 };
+
+#if defined(PAE_ENABLE_SCHEMA_V05_COMPILER)
+inline constexpr std::size_t kDecimalCoefficientWordCount = 8U;
+
+struct SignedCoefficient256 {
+  std::array<std::uint32_t, kDecimalCoefficientWordCount> words{};
+  bool negative = false;
+};
+
+struct LinearConversionDescriptor {
+  ValueType raw_value_type = ValueType::UINT64;
+  std::int64_t scale_numerator = 0;
+  std::uint64_t scale_denominator = 1U;
+  std::int64_t bias_numerator = 0;
+  std::uint64_t bias_denominator = 1U;
+  std::uint8_t decimal_places = 0U;
+  SignedCoefficient256 scale_coefficient;
+  SignedCoefficient256 bias_coefficient;
+};
+#endif
 
 struct PlanMemoryReport {
   std::size_t object_bytes = 0U;

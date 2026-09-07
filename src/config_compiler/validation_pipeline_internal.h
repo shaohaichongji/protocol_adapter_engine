@@ -73,4 +73,9 @@ class PlanDraftAssembler final {
 
 CompileResult FreezeBudgetedPlanDraft(protocol_plan::BudgetedPlanDraft draft);
 
+#if defined(PAE_ENABLE_SCHEMA_V05_COMPILER)
+CompileResult CompileJsonToPlanWithPlanMemoryLimitForTest(std::string_view json_bytes,
+                                                          std::size_t plan_memory_limit_bytes);
+#endif
+
 }  // namespace pae::config_compiler

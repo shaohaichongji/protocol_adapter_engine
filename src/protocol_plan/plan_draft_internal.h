@@ -19,6 +19,9 @@ struct PlanDraftData {
   std::vector<FramingPlan> framing_profiles;
   std::vector<PipelinePlan> pipelines;
   std::vector<MessagePlan> messages;
+#if defined(PAE_ENABLE_SCHEMA_V05_COMPILER)
+  std::vector<LinearConversionDescriptor> conversions;
+#endif
   PlanMemoryReport approved_plan_memory;
   std::size_t plan_memory_limit_bytes = 0U;
   std::size_t test_fail_at_allocation = 0U;

@@ -1,0 +1,107 @@
+{
+  "schema_version": "0.5",
+  "protocol_id": "synthetic_decimal_compile_slice",
+  "protocol_version": "1.0",
+  "display_name": "Synthetic decimal compiler slice",
+  "description": "Public synthetic compiler-only example for DEC-042B.",
+  "source_ref": "PAE-DEC-042B public synthetic vector",
+  "resource_profile": "desktop",
+  "framing_profiles": [
+    {
+      "id": "complete_record",
+      "display_name": "Complete record",
+      "description": "A complete synthetic record.",
+      "source_ref": "PAE-DEC-042B public synthetic vector",
+      "input_kind": "complete_record"
+    }
+  ],
+  "pipelines": [
+    {
+      "id": "decimal_pipeline",
+      "display_name": "Decimal pipeline",
+      "description": "Compiler-only pipeline.",
+      "source_ref": "PAE-DEC-042B public synthetic vector",
+      "direction_id": "rx",
+      "input_framing_profile_id": "complete_record",
+      "message_ids": ["decimal_record"]
+    }
+  ],
+  "messages": [
+    {
+      "id": "decimal_record",
+      "display_name": "Decimal record",
+      "description": "Mixed inherited and converted fields.",
+      "source_ref": "PAE-DEC-042B public synthetic vector",
+      "direction_id": "rx",
+      "frame_length_bytes": 24,
+      "matcher": {"all": [{"kind": "frame_length_equals", "length_bytes": 24}]},
+      "bit_containers": [
+        {
+          "id": "flags",
+          "container_offset": 22,
+          "container_width": 1,
+          "bit_numbering": "lsb0",
+          "base_value": 0
+        }
+      ],
+      "integrity": {
+        "algorithm": "sum8",
+        "range": {"byte_offset": 0, "byte_length": 23},
+        "storage": {"byte_offset": 23}
+      },
+      "fields": [
+        {
+          "id": "signed_extreme",
+          "display_name": "Signed extreme coefficients",
+          "description": "INT64_MAX/2 scale and INT64_MIN/2 bias.",
+          "source_ref": "PAE-DEC-042B public synthetic vector",
+          "value_type": "INT64",
+          "wire": {"codec": "unsigned_integer", "byte_offset": 0, "byte_width": 8,
+                   "byte_order": "big_endian"},
+          "encode": {"source": "input"},
+          "conversion": {
+            "kind": "linear",
+            "output_type": "DECIMAL64",
+            "scale": {"numerator": 9223372036854775807, "denominator": 2},
+            "bias": {"numerator": -9223372036854775808, "denominator": 2}
+          }
+        },
+        {
+          "id": "unsigned_reduced",
+          "display_name": "Unsigned reduced rational",
+          "description": "Reduction is applied only after author limits are checked.",
+          "source_ref": "PAE-DEC-042B public synthetic vector",
+          "value_type": "UINT64",
+          "wire": {"codec": "unsigned_integer", "byte_offset": 8, "byte_width": 8,
+                   "byte_order": "little_endian"},
+          "encode": {"source": "input"},
+          "conversion": {
+            "kind": "linear",
+            "output_type": "DECIMAL64",
+            "scale": {"numerator": 3, "denominator": 6},
+            "bias": {"numerator": 0, "denominator": 1000}
+          }
+        },
+        {
+          "id": "payload",
+          "display_name": "Inherited bytes",
+          "description": "Unconverted inherited field.",
+          "source_ref": "PAE-DEC-042B public synthetic vector",
+          "value_type": "BYTES",
+          "wire": {"codec": "bytes", "byte_offset": 16, "byte_length": 6},
+          "encode": {"source": "input"}
+        },
+        {
+          "id": "enabled",
+          "display_name": "Inherited bit field",
+          "description": "Existing bitfield capability remains available.",
+          "source_ref": "PAE-DEC-042B public synthetic vector",
+          "value_type": "BOOL",
+          "wire": {"codec": "bitfield", "container_id": "flags", "bit_offset": 0,
+                   "bit_width": 1},
+          "encode": {"source": "input"}
+        }
+      ]
+    }
+  ]
+}

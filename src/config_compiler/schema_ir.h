@@ -102,6 +102,21 @@ struct EnumEntryIr {
   ConfigOrigin origin;
 };
 
+#if defined(PAE_ENABLE_SCHEMA_V05_COMPILER)
+struct RationalIr {
+  std::int64_t numerator = 0;
+  std::uint64_t denominator = 1U;
+  ConfigOrigin origin;
+};
+
+struct LinearConversionIr {
+  RationalIr scale;
+  RationalIr bias;
+  protocol_plan::LinearConversionDescriptor derived;
+  ConfigOrigin origin;
+};
+#endif
+
 struct FieldIr {
   std::string id;
   std::string display_name;
@@ -112,6 +127,9 @@ struct FieldIr {
   EncodeIr encode;
   UnknownEnumPolicy unknown_enum_policy = UnknownEnumPolicy::REJECT;
   std::vector<EnumEntryIr> enum_entries;
+#if defined(PAE_ENABLE_SCHEMA_V05_COMPILER)
+  std::optional<LinearConversionIr> conversion;
+#endif
   ConfigOrigin origin;
 };
 

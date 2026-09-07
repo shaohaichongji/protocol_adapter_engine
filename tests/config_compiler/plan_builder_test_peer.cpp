@@ -161,6 +161,44 @@ class PlanBuilderTestPeer final {
     return draft;
   }
 
+#if defined(PAE_ENABLE_SCHEMA_V05_COMPILER)
+  static BudgetedPlanDraft MutateConversionDraft(
+      BudgetedPlanDraft draft, pae::test_support::ConversionDraftMutation mutation) {
+    auto& data = *draft.draft_;
+    switch (mutation) {
+      case pae::test_support::ConversionDraftMutation::CORRUPTED_COEFFICIENT:
+        ++data.conversions[0].scale_coefficient.words[0];
+        break;
+      case pae::test_support::ConversionDraftMutation::INVALID_INDEX:
+        data.messages[0].fields[1].conversion_index = data.conversions.size();
+        break;
+      case pae::test_support::ConversionDraftMutation::RAW_TYPE_MISMATCH:
+        data.conversions[0].raw_value_type = ValueType::INT64;
+        break;
+      case pae::test_support::ConversionDraftMutation::UNREFERENCED_DESCRIPTOR:
+        data.messages[0].fields[1].conversion_index = kInvalidPlanBuildIndex;
+        break;
+      case pae::test_support::ConversionDraftMutation::DUPLICATE_REFERENCE:
+        data.messages[0].fields[2].conversion_index = 0U;
+        break;
+      case pae::test_support::ConversionDraftMutation::OLD_SCHEMA_RESIDUE:
+        data.schema_version = "0.4";
+        break;
+      case pae::test_support::ConversionDraftMutation::BITFIELD_REFERENCE:
+        data.messages[0].fields[2].conversion_index = 0U;
+        break;
+      case pae::test_support::ConversionDraftMutation::CONSTANT_REFERENCE:
+        data.messages[0].fields[1].encode_source = EncodeSource::CONSTANT;
+        data.messages[0].fields[1].constant_value = 1U;
+        break;
+      case pae::test_support::ConversionDraftMutation::RESOURCE_COUNT_MISMATCH:
+        ++data.resource_requirements.total_conversion_count;
+        break;
+    }
+    return draft;
+  }
+#endif
+
   static BudgetedPlanDraft ConfigurePlanMemoryFailure(BudgetedPlanDraft draft,
                                                       std::size_t fail_at_allocation,
                                                       test_only::PlanMemoryTestProbe* probe) {
@@ -237,6 +275,14 @@ protocol_plan::BudgetedPlanDraft MakeIntegrityDraftWithFieldStorageConflict() {
 protocol_plan::BudgetedPlanDraft MakeInt64DraftWithOutOfRangeConstant() {
   return protocol_plan::test_only::PlanBuilderTestPeer::MakeInt64DraftWithOutOfRangeConstant();
 }
+
+#if defined(PAE_ENABLE_SCHEMA_V05_COMPILER)
+protocol_plan::BudgetedPlanDraft MutateConversionDraft(protocol_plan::BudgetedPlanDraft draft,
+                                                       ConversionDraftMutation mutation) {
+  return protocol_plan::test_only::PlanBuilderTestPeer::MutateConversionDraft(std::move(draft),
+                                                                              mutation);
+}
+#endif
 
 protocol_plan::BudgetedPlanDraft ConfigurePlanMemoryFailure(
     protocol_plan::BudgetedPlanDraft draft, std::size_t fail_at_allocation,

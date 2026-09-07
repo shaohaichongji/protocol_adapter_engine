@@ -5,6 +5,8 @@ add_library(
         plan_bundle.h
         plan_builder.cpp
         plan_builder.h
+        decimal_conversion_internal.cpp
+        decimal_conversion_internal.h
         plan_draft_internal.h
         plan_memory.cpp
         plan_memory.h
@@ -26,6 +28,10 @@ target_link_libraries(
 )
 
 target_compile_features(pae_protocol_plan PUBLIC cxx_std_17)
+
+if(PAE_ENABLE_SCHEMA_V05_COMPILER)
+    target_compile_definitions(pae_protocol_plan PUBLIC PAE_ENABLE_SCHEMA_V05_COMPILER=1)
+endif()
 
 set_target_properties(
     pae_protocol_plan

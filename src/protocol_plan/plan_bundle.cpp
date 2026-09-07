@@ -10,6 +10,9 @@ PlanBundle::PlanBundle(FrozenString schema_version, FrozenString protocol_id,
                        FrozenArray<FrozenFramingPlan> framing_profiles,
                        FrozenArray<FrozenPipelinePlan> pipelines,
                        FrozenArray<FrozenMessagePlan> messages,
+#if defined(PAE_ENABLE_SCHEMA_V05_COMPILER)
+                       FrozenArray<LinearConversionDescriptor> conversions,
+#endif
                        ExecutionResourceLayout execution_resource_layout,
                        FrozenArray<MessageExecutionPlan> message_execution_plans,
                        FrozenArray<PipelineExecutionPlan> pipeline_execution_plans,
@@ -22,10 +25,14 @@ PlanBundle::PlanBundle(FrozenString schema_version, FrozenString protocol_id,
       framing_profiles_(std::move(framing_profiles)),
       pipelines_(std::move(pipelines)),
       messages_(std::move(messages)),
+#if defined(PAE_ENABLE_SCHEMA_V05_COMPILER)
+      conversions_(std::move(conversions)),
+#endif
       execution_resource_layout_(execution_resource_layout),
       message_execution_plans_(std::move(message_execution_plans)),
       pipeline_execution_plans_(std::move(pipeline_execution_plans)),
-      memory_report_(memory_report) {}
+      memory_report_(memory_report) {
+}
 
 std::string_view PlanBundle::SchemaVersion() const noexcept { return schema_version_.View(); }
 
@@ -46,6 +53,12 @@ const FrozenArray<FrozenFramingPlan>& PlanBundle::FramingProfiles() const noexce
 const FrozenArray<FrozenPipelinePlan>& PlanBundle::Pipelines() const noexcept { return pipelines_; }
 
 const FrozenArray<FrozenMessagePlan>& PlanBundle::Messages() const noexcept { return messages_; }
+
+#if defined(PAE_ENABLE_SCHEMA_V05_COMPILER)
+const FrozenArray<LinearConversionDescriptor>& PlanBundle::Conversions() const noexcept {
+  return conversions_;
+}
+#endif
 
 const ExecutionResourceLayout& PlanBundle::GetExecutionResourceLayout() const noexcept {
   return execution_resource_layout_;

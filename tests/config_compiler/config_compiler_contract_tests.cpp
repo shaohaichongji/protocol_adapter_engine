@@ -20,6 +20,7 @@
 
 namespace {
 
+using pae::config_compiler::BitContainerIr;
 using pae::config_compiler::BudgetedSchemaIr;
 using pae::config_compiler::CompileDiagnostic;
 using pae::config_compiler::CompileError;
@@ -33,6 +34,9 @@ using pae::config_compiler::FieldIr;
 using pae::config_compiler::FramingProfileIr;
 using pae::config_compiler::FreezeBudgetedPlanDraft;
 using pae::config_compiler::MakeDeterministicPlanSnapshot;
+#if defined(PAE_ENABLE_SCHEMA_V05_COMPILER)
+using pae::config_compiler::LinearConversionIr;
+#endif
 using pae::config_compiler::MatcherClauseIr;
 using pae::config_compiler::MatcherKind;
 using pae::config_compiler::MessageIr;
@@ -46,10 +50,12 @@ using pae::config_compiler::SchemaIr;
 using pae::config_compiler::ValidatedSchemaIr;
 using pae::config_compiler::ValueType;
 using pae::config_compiler::WireIr;
+using pae::protocol_plan::BitNumbering;
 using pae::protocol_plan::BudgetedPlanDraft;
 using pae::protocol_plan::ByteOrder;
 using pae::protocol_plan::EncodeSource;
 using pae::protocol_plan::InputKind;
+using pae::protocol_plan::PlanBuildDiagnostic;
 using pae::protocol_plan::PlanBuilder;
 using pae::protocol_plan::PlanBuildError;
 using pae::protocol_plan::PlanBuildResult;
@@ -198,7 +204,11 @@ std::string_view ToString(CompileError value) noexcept {
 
 class TestRunner final {
  public:
-  static constexpr std::size_t kExpectedCaseCount = 47U;
+#if defined(PAE_ENABLE_SCHEMA_V05_COMPILER)
+  static constexpr std::size_t kExpectedCaseCount = 80U;
+#else
+  static constexpr std::size_t kExpectedCaseCount = 49U;
+#endif
 
   void Pass(std::string_view case_id) {
     ++passed_;
@@ -444,7 +454,13 @@ void RunCapabilityStateCase(TestRunner& runner) {
   constexpr std::string_view kCaseId = "capability_single_consumption_internal_violation";
   auto validated = DomainValidator::Validate(MakeCapabilityContractSchema());
   if (!validated.Succeeded()) {
-    runner.Fail(kCaseId, "DomainValidator rejected the synthetic capability contract schema");
+    const auto* diagnostic = validated.Diagnostic();
+    runner.Fail(kCaseId,
+                diagnostic == nullptr
+                    ? "DomainValidator rejected the synthetic capability contract schema"
+                    : "DomainValidator rejected the synthetic capability contract schema: " +
+                          std::string(ToString(diagnostic->code)) + " at " +
+                          diagnostic->json_pointer + " " + diagnostic->detail);
     return;
   }
   ValidatedSchemaIr validated_capability = std::move(validated).TakeCapability();
@@ -505,6 +521,20 @@ void RunCorruptedBudgetedDraftCase(TestRunner& runner) {
   runner.Pass(kCaseId);
 }
 
+#if !defined(PAE_ENABLE_SCHEMA_V05_COMPILER)
+void RunDefaultBuilderV05GateCase(TestRunner& runner) {
+  auto draft = pae::test_support::SetDraftSchemaVersion(
+      pae::test_support::MakeInt64DraftWithOutOfRangeConstant(), "0.5");
+  PlanBuildResult result = PlanBuilder::Freeze(std::move(draft));
+  if (result.Succeeded() || result.Diagnostic() == nullptr ||
+      result.Diagnostic()->code != PlanBuildError::INVALID_METADATA) {
+    runner.Fail("decimal_v05_default_builder_gate", "default PlanBuilder accepted Schema 0.5");
+  } else {
+    runner.Pass("decimal_v05_default_builder_gate");
+  }
+}
+#endif
+
 void RunPlanBuilderBitfieldDefenseCases(TestRunner& runner) {
   const auto reject_invalid_field = [&runner](std::string_view case_id, BudgetedPlanDraft draft) {
     const auto result = PlanBuilder::Freeze(std::move(draft));
@@ -563,6 +593,353 @@ void RunPlanBuilderIntegrityDefenseCases(TestRunner& runner) {
   reject("sum8_builder_field_storage_conflict_defense",
          pae::test_support::MakeIntegrityDraftWithFieldStorageConflict());
 }
+
+#if defined(PAE_ENABLE_SCHEMA_V05_COMPILER)
+bool ReadBinaryFile(const std::filesystem::path& path, std::string& output, std::string& error);
+bool ReplaceOnce(std::string& value, std::string_view needle, std::string_view replacement);
+
+enum class DecimalDraftShape { SINGLE_CONVERSION, TWO_CONVERSIONS, BITFIELD_MEMBER };
+
+std::unique_ptr<BudgetedPlanDraft> AssembleDecimalDraft(DecimalDraftShape shape) {
+  SchemaIr schema = MakeCapabilityContractSchema();
+  schema.schema_version = "0.5";
+  LinearConversionIr conversion;
+  conversion.scale.numerator = 1;
+  conversion.scale.denominator = 2U;
+  conversion.scale.origin.json_pointer = "/messages/0/fields/1/conversion/scale";
+  conversion.bias.numerator = 0;
+  conversion.bias.denominator = 1U;
+  conversion.bias.origin.json_pointer = "/messages/0/fields/1/conversion/bias";
+  conversion.origin.json_pointer = "/messages/0/fields/1/conversion";
+  schema.messages[0].fields[1].conversion = conversion;
+
+  if (shape != DecimalDraftShape::SINGLE_CONVERSION) {
+    schema.messages[0].frame_length_bytes = 3U;
+    schema.messages[0].matcher_clauses[0].length_bytes = 3U;
+  }
+  if (shape == DecimalDraftShape::TWO_CONVERSIONS) {
+    FieldIr second = schema.messages[0].fields[1];
+    second.id = "second_value";
+    second.display_name = "Second value";
+    second.source_ref = "SYNTHETIC_FROM_SCRATCH:capability_contract#second_value";
+    second.wire.byte_offset = 2U;
+    second.wire.origin.json_pointer = "/messages/0/fields/2/wire";
+    second.encode.origin.json_pointer = "/messages/0/fields/2/encode";
+    second.conversion->scale.origin.json_pointer = "/messages/0/fields/2/conversion/scale";
+    second.conversion->bias.origin.json_pointer = "/messages/0/fields/2/conversion/bias";
+    second.conversion->origin.json_pointer = "/messages/0/fields/2/conversion";
+    second.origin.json_pointer = "/messages/0/fields/2";
+    schema.messages[0].fields.push_back(std::move(second));
+  } else if (shape == DecimalDraftShape::BITFIELD_MEMBER) {
+    BitContainerIr container;
+    container.id = "flags";
+    container.byte_offset = 2U;
+    container.byte_width = 1U;
+    container.bit_numbering = BitNumbering::LSB0;
+    container.origin.json_pointer = "/messages/0/bit_containers/0";
+    schema.messages[0].bit_containers.push_back(std::move(container));
+
+    FieldIr member;
+    member.id = "enabled";
+    member.display_name = "Enabled";
+    member.source_ref = "SYNTHETIC_FROM_SCRATCH:capability_contract#enabled";
+    member.value_type = ValueType::BOOL;
+    member.wire.codec = WireCodec::BITFIELD;
+    member.wire.container_id = "flags";
+    member.wire.bit_width = 1U;
+    member.wire.origin.json_pointer = "/messages/0/fields/2/wire";
+    member.encode.origin.json_pointer = "/messages/0/fields/2/encode";
+    member.origin.json_pointer = "/messages/0/fields/2";
+    schema.messages[0].fields.push_back(std::move(member));
+  }
+
+  auto validated = DomainValidator::Validate(std::move(schema));
+  if (!validated.Succeeded()) return nullptr;
+  auto budgeted = ResourceBudgetValidator::Validate(std::move(validated).TakeCapability());
+  if (!budgeted.Succeeded()) return nullptr;
+  auto assembled = PlanDraftAssembler::Assemble(std::move(budgeted).TakeCapability());
+  if (!assembled.Succeeded()) return nullptr;
+  return std::make_unique<BudgetedPlanDraft>(std::move(assembled).TakeCapability());
+}
+
+void RunDecimalCompilerCases(TestRunner& runner, const std::filesystem::path& sample_path,
+                             const std::filesystem::path& inherited_path) {
+  std::string sample;
+  std::string error;
+  if (!ReadBinaryFile(sample_path, sample, error)) {
+    runner.Fail("decimal_v05_valid_mixed", error);
+    return;
+  }
+  CompileResult valid = CompileJsonToPlan(sample);
+  if (!valid.Succeeded() || valid.Plan() == nullptr || valid.Plan()->SchemaVersion() != "0.5" ||
+      valid.Plan()->Conversions().size() != 2U ||
+      valid.Plan()->GetResourceRequirements().total_conversion_count != 2U) {
+    runner.Fail("decimal_v05_valid_mixed",
+                "valid Schema 0.5 sample did not freeze two conversions");
+    return;
+  }
+  const auto& first = valid.Plan()->Conversions()[0];
+  const auto& second = valid.Plan()->Conversions()[1];
+  const bool coefficients_ok =
+      first.decimal_places == 1U && first.scale_coefficient.words[0] == 4294967291U &&
+      first.scale_coefficient.words[1] == 2147483647U && first.scale_coefficient.words[2] == 2U &&
+      !first.scale_coefficient.negative && first.bias_coefficient.words[0] == 0U &&
+      first.bias_coefficient.words[1] == 2147483648U && first.bias_coefficient.words[2] == 2U &&
+      first.bias_coefficient.negative && second.scale_numerator == 1 &&
+      second.scale_denominator == 2U && second.bias_numerator == 0 &&
+      second.bias_denominator == 1U && second.scale_coefficient.words[0] == 5U;
+  if (!coefficients_ok) {
+    runner.Fail("decimal_v05_valid_mixed",
+                "frozen reduced rationals or wide A/B coefficients differ");
+    return;
+  }
+  const PlanMemoryReport& report = valid.Plan()->GetPlanMemoryReport();
+  if (!MemoryReportIsAccounted(report) ||
+      report.extension_bytes != sizeof(pae::protocol_plan::LinearConversionDescriptor) * 2U) {
+    runner.Fail("decimal_v05_resource_accounting", "conversion table is not exactly accounted");
+  } else {
+    runner.Pass("decimal_v05_resource_accounting");
+  }
+  CompileResult exact = pae::config_compiler::CompileJsonToPlanWithPlanMemoryLimitForTest(
+      sample, report.accounted_total_bytes);
+  CompileResult below = pae::config_compiler::CompileJsonToPlanWithPlanMemoryLimitForTest(
+      sample, report.accounted_total_bytes - 1U);
+  const CompileDiagnostic* below_diagnostic = below.Diagnostic();
+  if (!exact.Succeeded() || below.Succeeded() || below_diagnostic == nullptr ||
+      below_diagnostic->stage != CompileStage::RESOURCE_BUDGET ||
+      below_diagnostic->code != CompileError::RESOURCE_LIMIT_EXCEEDED ||
+      below_diagnostic->required_bytes != report.accounted_total_bytes ||
+      below_diagnostic->limit_bytes != report.accounted_total_bytes - 1U) {
+    runner.Fail("decimal_v05_budget_boundary", "exact and limit-minus-one admission diverged");
+  } else {
+    runner.Pass("decimal_v05_budget_boundary");
+  }
+  auto allocation_source = AssembleDecimalDraft(DecimalDraftShape::SINGLE_CONVERSION);
+  bool allocation_cleanup_ok = allocation_source != nullptr;
+  std::size_t allocation_count = 0U;
+  if (allocation_source != nullptr) {
+    PlanBuildResult frozen = PlanBuilder::Freeze(std::move(*allocation_source));
+    allocation_cleanup_ok = frozen.Succeeded();
+    if (frozen.Succeeded())
+      allocation_count = frozen.Plan()->GetPlanMemoryReport().allocation_count;
+  }
+  for (std::size_t ordinal = 1U; allocation_cleanup_ok && ordinal <= allocation_count + 1U;
+       ++ordinal) {
+    auto draft = AssembleDecimalDraft(DecimalDraftShape::SINGLE_CONVERSION);
+    pae::protocol_plan::test_only::PlanMemoryTestProbe probe;
+    if (draft == nullptr) {
+      allocation_cleanup_ok = false;
+      break;
+    }
+    PlanBuildResult injected = PlanBuilder::Freeze(
+        pae::test_support::ConfigurePlanMemoryFailure(std::move(*draft), ordinal, &probe));
+    allocation_cleanup_ok = !injected.Succeeded() && injected.Diagnostic() != nullptr &&
+                            injected.Diagnostic()->code == PlanBuildError::ALLOCATION_FAILED &&
+                            probe.LiveUpstreamBytes() == 0U &&
+                            probe.LiveUpstreamAllocations() == 0U;
+  }
+  if (allocation_cleanup_ok) {
+    runner.Pass("decimal_v05_allocation_cleanup");
+  } else {
+    runner.Fail("decimal_v05_allocation_cleanup", "conversion freeze fault injection leaked");
+  }
+  const std::string snapshot = MakeDeterministicPlanSnapshot(*valid.Plan());
+  if (snapshot.find("pae_plan_bundle_v0.5_decimal_compiler_slice") == std::string::npos ||
+      snapshot.find("\"conversion_index\":0") == std::string::npos ||
+      snapshot.find("\"total_conversion_count\":2") == std::string::npos) {
+    runner.Fail("decimal_v05_snapshot", "snapshot omitted v0.5 conversion identity or index");
+  } else {
+    runner.Pass("decimal_v05_snapshot");
+  }
+  runner.Pass("decimal_v05_valid_mixed");
+
+  const auto expect_failure = [&runner, &sample](std::string_view case_id, std::string_view from,
+                                                 std::string_view to, CompileStage stage,
+                                                 CompileError code, std::string_view pointer) {
+    std::string input = sample;
+    if (!ReplaceOnce(input, from, to)) {
+      runner.Fail(case_id, "mutation token was not found");
+      return;
+    }
+    CompileResult result = CompileJsonToPlan(input);
+    const CompileDiagnostic* diagnostic = result.Diagnostic();
+    if (result.Succeeded() || diagnostic == nullptr || diagnostic->stage != stage ||
+        diagnostic->code != code || diagnostic->json_pointer != pointer) {
+      std::ostringstream detail;
+      detail << "expected " << ToString(stage) << '/' << ToString(code) << " at " << pointer;
+      if (diagnostic == nullptr) {
+        detail << ", got no diagnostic";
+      } else {
+        detail << ", got " << ToString(diagnostic->stage) << '/' << ToString(diagnostic->code)
+               << " at " << diagnostic->json_pointer;
+      }
+      runner.Fail(case_id, detail.str());
+      return;
+    }
+    runner.Pass(case_id);
+  };
+  expect_failure("decimal_v05_old_schema_rejects_conversion", "\"schema_version\": \"0.5\"",
+                 "\"schema_version\": \"0.4\"", CompileStage::STRUCTURAL,
+                 CompileError::UNKNOWN_PROPERTY, "/messages/0/fields/0/conversion");
+  expect_failure("decimal_v05_fraction_token", "9223372036854775807", "1.5",
+                 CompileStage::STRUCTURAL, CompileError::INTEGER_NOT_EXACT,
+                 "/messages/0/fields/0/conversion/scale/numerator");
+  expect_failure("decimal_v05_author_denominator_limit", "\"denominator\": 6",
+                 "\"denominator\": 1000000000000000001", CompileStage::STRUCTURAL,
+                 CompileError::INTEGER_OUT_OF_RANGE,
+                 "/messages/0/fields/1/conversion/scale/denominator");
+  expect_failure("decimal_v05_bias_author_denominator_limit",
+                 "\"bias\": {\"numerator\": 0, \"denominator\": 1000}",
+                 "\"bias\": {\"numerator\": 1, \"denominator\": 1000000000000000001}",
+                 CompileStage::STRUCTURAL, CompileError::INTEGER_OUT_OF_RANGE,
+                 "/messages/0/fields/1/conversion/bias/denominator");
+  expect_failure("decimal_v05_scale_non_terminating", "\"denominator\": 6", "\"denominator\": 7",
+                 CompileStage::DOMAIN_VALIDATION, CompileError::VALUE_NOT_REPRESENTABLE,
+                 "/messages/0/fields/1/conversion/scale/denominator");
+  expect_failure(
+      "decimal_v05_bias_non_terminating", "\"bias\": {\"numerator\": 0, \"denominator\": 1000}",
+      "\"bias\": {\"numerator\": 1, \"denominator\": 7}", CompileStage::DOMAIN_VALIDATION,
+      CompileError::VALUE_NOT_REPRESENTABLE, "/messages/0/fields/1/conversion/bias/denominator");
+  expect_failure("decimal_v05_scale_decimal_places", "\"denominator\": 6",
+                 "\"denominator\": 576460752303423488", CompileStage::DOMAIN_VALIDATION,
+                 CompileError::VALUE_NOT_REPRESENTABLE,
+                 "/messages/0/fields/1/conversion/scale/denominator");
+  expect_failure("decimal_v05_bias_decimal_places",
+                 "\"bias\": {\"numerator\": 0, \"denominator\": 1000}",
+                 "\"bias\": {\"numerator\": 1, \"denominator\": 576460752303423488}",
+                 CompileStage::DOMAIN_VALIDATION, CompileError::VALUE_NOT_REPRESENTABLE,
+                 "/messages/0/fields/1/conversion/bias/denominator");
+  std::string both_non_terminating = sample;
+  const bool both_mutated =
+      ReplaceOnce(both_non_terminating, "\"denominator\": 6", "\"denominator\": 7") &&
+      ReplaceOnce(both_non_terminating, "\"bias\": {\"numerator\": 0, \"denominator\": 1000}",
+                  "\"bias\": {\"numerator\": 1, \"denominator\": 7}");
+  CompileResult both_result = both_mutated ? CompileJsonToPlan(both_non_terminating)
+                                           : CompileResult::Failure(CompileDiagnostic{});
+  const CompileDiagnostic* both_diagnostic = both_result.Diagnostic();
+  if (!both_mutated || both_result.Succeeded() || both_diagnostic == nullptr ||
+      both_diagnostic->stage != CompileStage::DOMAIN_VALIDATION ||
+      both_diagnostic->code != CompileError::VALUE_NOT_REPRESENTABLE ||
+      both_diagnostic->json_pointer != "/messages/0/fields/1/conversion/scale/denominator") {
+    runner.Fail("decimal_v05_scale_precedes_bias", "scale did not retain diagnostic priority");
+  } else {
+    runner.Pass("decimal_v05_scale_precedes_bias");
+  }
+  expect_failure("decimal_v05_zero_scale", "\"numerator\": 3, \"denominator\": 6",
+                 "\"numerator\": 0, \"denominator\": 6", CompileStage::DOMAIN_VALIDATION,
+                 CompileError::VALUE_NOT_REPRESENTABLE,
+                 "/messages/0/fields/1/conversion/scale/numerator");
+  expect_failure("decimal_v05_unknown_conversion_property", "\"kind\": \"linear\"",
+                 "\"kind\": \"linear\", \"unexpected\": 1", CompileStage::STRUCTURAL,
+                 CompileError::UNKNOWN_PROPERTY, "/messages/0/fields/0/conversion/unexpected");
+  expect_failure("decimal_v05_constant_conversion", "\"encode\": {\"source\": \"input\"}",
+                 "\"encode\": {\"source\": \"constant\", \"value\": 1}",
+                 CompileStage::DOMAIN_VALIDATION, CompileError::UNSUPPORTED_FEATURE,
+                 "/messages/0/fields/0/encode/source");
+  expect_failure("decimal_v05_bitfield_conversion", "\"value_type\": \"BOOL\"",
+                 "\"value_type\": \"BOOL\", \"conversion\": {\"kind\": \"linear\", "
+                 "\"output_type\": \"DECIMAL64\", \"scale\": {\"numerator\": 1, "
+                 "\"denominator\": 1}, \"bias\": {\"numerator\": 0, \"denominator\": 1}}",
+                 CompileStage::STRUCTURAL, CompileError::UNKNOWN_PROPERTY,
+                 "/messages/0/fields/3/conversion");
+
+  std::string maximum_denominator = sample;
+  if (!ReplaceOnce(maximum_denominator, "\"denominator\": 6",
+                   "\"denominator\": 1000000000000000000") ||
+      !CompileJsonToPlan(maximum_denominator).Succeeded()) {
+    runner.Fail("decimal_v05_maximum_denominator", "valid author maximum was rejected");
+  } else {
+    runner.Pass("decimal_v05_maximum_denominator");
+  }
+
+  std::string inherited;
+  if (!ReadBinaryFile(inherited_path, inherited, error) ||
+      !ReplaceOnce(inherited, "\"schema_version\": \"0.1\"", "\"schema_version\": \"0.5\"")) {
+    runner.Fail("decimal_v05_inherited_no_conversion", "could not prepare inherited v0.5 input");
+  } else {
+    CompileResult inherited_result = CompileJsonToPlan(inherited);
+    if (!inherited_result.Succeeded() || inherited_result.Plan() == nullptr ||
+        !inherited_result.Plan()->Conversions().empty()) {
+      runner.Fail("decimal_v05_inherited_no_conversion", "v0.5 inherited-only plan failed");
+    } else {
+      runner.Pass("decimal_v05_inherited_no_conversion");
+    }
+    const std::string conversion_text =
+        ", \"conversion\": {\"kind\": \"linear\", \"output_type\": \"DECIMAL64\", "
+        "\"scale\": {\"numerator\": 1, \"denominator\": 10}, "
+        "\"bias\": {\"numerator\": 0, \"denominator\": 1}}";
+    for (const std::string_view version : {"0.1", "0.2", "0.3", "0.4"}) {
+      std::string old = inherited;
+      ReplaceOnce(old, "\"schema_version\": \"0.5\"",
+                  std::string{"\"schema_version\": \""} + std::string{version} + "\"");
+      ReplaceOnce(old, "\"encode\": {\"source\": \"input\"}",
+                  std::string{"\"encode\": {\"source\": \"input\"}"} + conversion_text);
+      CompileResult old_result = CompileJsonToPlan(old);
+      const CompileDiagnostic* old_diagnostic = old_result.Diagnostic();
+      const std::string case_id = "decimal_old_schema_rejects_conversion_" + std::string{version};
+      if (old_result.Succeeded() || old_diagnostic == nullptr ||
+          old_diagnostic->stage != CompileStage::STRUCTURAL ||
+          old_diagnostic->code != CompileError::UNKNOWN_PROPERTY ||
+          old_diagnostic->json_pointer != "/messages/0/fields/0/conversion") {
+        runner.Fail(case_id, "old schema did not reject conversion at the field property");
+      } else {
+        runner.Pass(case_id);
+      }
+    }
+  }
+
+  const auto reject_corrupt = [&runner](std::string_view case_id, DecimalDraftShape shape,
+                                        pae::test_support::ConversionDraftMutation mutation,
+                                        PlanBuildError expected_code,
+                                        std::size_t expected_message_index,
+                                        std::size_t expected_field_index) {
+    auto control = AssembleDecimalDraft(shape);
+    auto source = AssembleDecimalDraft(shape);
+    if (control == nullptr || source == nullptr ||
+        !PlanBuilder::Freeze(std::move(*control)).Succeeded()) {
+      runner.Fail(case_id, "legal budgeted conversion control did not freeze");
+      return;
+    }
+    PlanBuildResult result =
+        PlanBuilder::Freeze(pae::test_support::MutateConversionDraft(std::move(*source), mutation));
+    const PlanBuildDiagnostic* diagnostic = result.Diagnostic();
+    if (result.Succeeded() || diagnostic == nullptr || diagnostic->code != expected_code ||
+        diagnostic->message_index != expected_message_index ||
+        diagnostic->field_index != expected_field_index) {
+      runner.Fail(case_id, "unexpected PlanBuilder rejection code or location");
+      return;
+    }
+    runner.Pass(case_id);
+  };
+  constexpr std::size_t invalid = pae::protocol_plan::kInvalidPlanBuildIndex;
+  using Mutation = pae::test_support::ConversionDraftMutation;
+  reject_corrupt("decimal_v05_builder_coefficient_defense", DecimalDraftShape::SINGLE_CONVERSION,
+                 Mutation::CORRUPTED_COEFFICIENT, PlanBuildError::INVALID_FIELD_PLAN, invalid,
+                 invalid);
+  reject_corrupt("decimal_v05_builder_index_defense", DecimalDraftShape::SINGLE_CONVERSION,
+                 Mutation::INVALID_INDEX, PlanBuildError::INVALID_FIELD_PLAN, 0U, 1U);
+  reject_corrupt("decimal_v05_builder_raw_type_defense", DecimalDraftShape::SINGLE_CONVERSION,
+                 Mutation::RAW_TYPE_MISMATCH, PlanBuildError::INVALID_FIELD_PLAN, 0U, 1U);
+  reject_corrupt("decimal_v05_builder_unreferenced_defense", DecimalDraftShape::SINGLE_CONVERSION,
+                 Mutation::UNREFERENCED_DESCRIPTOR, PlanBuildError::INVALID_FIELD_PLAN, invalid,
+                 invalid);
+  reject_corrupt("decimal_v05_builder_duplicate_reference_defense",
+                 DecimalDraftShape::TWO_CONVERSIONS, Mutation::DUPLICATE_REFERENCE,
+                 PlanBuildError::INVALID_FIELD_PLAN, invalid, invalid);
+  reject_corrupt("decimal_v05_builder_old_schema_residue_defense",
+                 DecimalDraftShape::SINGLE_CONVERSION, Mutation::OLD_SCHEMA_RESIDUE,
+                 PlanBuildError::INVALID_FIELD_PLAN, invalid, invalid);
+  reject_corrupt("decimal_v05_builder_bitfield_reference_defense",
+                 DecimalDraftShape::BITFIELD_MEMBER, Mutation::BITFIELD_REFERENCE,
+                 PlanBuildError::INVALID_FIELD_PLAN, 0U, 2U);
+  reject_corrupt("decimal_v05_builder_constant_reference_defense",
+                 DecimalDraftShape::SINGLE_CONVERSION, Mutation::CONSTANT_REFERENCE,
+                 PlanBuildError::INVALID_FIELD_PLAN, 0U, 1U);
+  reject_corrupt("decimal_v05_builder_resource_count_defense", DecimalDraftShape::SINGLE_CONVERSION,
+                 Mutation::RESOURCE_COUNT_MISMATCH, PlanBuildError::RESOURCE_REQUIREMENTS_MISMATCH,
+                 invalid, invalid);
+}
+#endif
 
 void RunPlanBuilderInt64DefenseCase(TestRunner& runner) {
   const auto make_draft = [&runner](ValueType type) -> std::unique_ptr<BudgetedPlanDraft> {
@@ -1051,12 +1428,19 @@ int main(int argc, char** argv) {
 
   RunCapabilityStateCase(runner);
   RunCorruptedBudgetedDraftCase(runner);
+#if !defined(PAE_ENABLE_SCHEMA_V05_COMPILER)
+  RunDefaultBuilderV05GateCase(runner);
+#endif
   RunPlanBuilderBitfieldDefenseCases(runner);
   RunPlanBuilderIntegrityDefenseCases(runner);
   RunPlanBuilderInt64DefenseCase(runner);
   RunPlanMemoryContractCases(runner);
 
   const std::filesystem::path data_root{argv[1]};
+#if defined(PAE_ENABLE_SCHEMA_V05_COMPILER)
+  RunDecimalCompilerCases(runner, data_root / "synthetic_decimal_compile_slice.pae.json",
+                          data_root / "fixtures" / "valid" / "minimal_complete_record.pae.json");
+#endif
   const std::filesystem::path fixture_root = data_root / "fixtures";
   const std::filesystem::path valid_fixture =
       fixture_root / "valid" / "minimal_complete_record.pae.json";
@@ -1069,6 +1453,16 @@ int main(int argc, char** argv) {
   if (!LoadFixtureOrFail(runner, "load_minimal_fixture", valid_fixture, minimal_json)) {
     return runner.Finish();
   }
+#if !defined(PAE_ENABLE_SCHEMA_V05_COMPILER)
+  std::string disabled_v05 = minimal_json;
+  if (!ReplaceOnce(disabled_v05, "\"schema_version\": \"0.1\"", "\"schema_version\": \"0.5\"")) {
+    runner.Fail("decimal_v05_default_gate", "schema version mutation token was not found");
+  } else {
+    RunFailureCase(runner, "decimal_v05_default_gate", disabled_v05,
+                   {CompileStage::STRUCTURAL, CompileError::INVALID_ENUM_VALUE,
+                    std::string{"/schema_version"}, std::string{"not supported"}});
+  }
+#endif
   RunUnicodeStringLengthCases(runner, minimal_json);
 
   std::string bom_json{"\xEF\xBB\xBF", 3U};

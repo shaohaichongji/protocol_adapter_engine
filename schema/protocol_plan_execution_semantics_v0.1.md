@@ -6,7 +6,7 @@
 | --- | --- |
 | 当前状态 | `V0.1 DRAFT SLICE / INCOMPLETE（V0.1 草案切片 / 不完整）` |
 | 对应 Schema | [`pae.schema.json`](pae.schema.json) |
-| 当前切片 | 严格配置编译、yyjson-free（不依赖yyjson）的Frozen Execution Plan（冻结执行计划）、显式ExecutionWorkspace、COMPLETE_RECORD内部Decode/Encode、固定长度/固定字节Matcher、UINT64/INT64/BYTES/ENUM，Schema 0.2中的BOOL与位容器、Schema 0.3中的SUM8，以及Schema 0.4中的字节对齐INT64；`input`与整数`constant` Encode Source |
+| 当前切片 | 严格配置编译、yyjson-free（不依赖yyjson）的Frozen Execution Plan（冻结执行计划）、显式ExecutionWorkspace、COMPLETE_RECORD内部Decode/Encode、固定长度/固定字节Matcher、UINT64/INT64/BYTES/ENUM，Schema 0.2中的BOOL与位容器、Schema 0.3中的SUM8、Schema 0.4中的字节对齐INT64，以及由临时门隔离的Schema 0.5比例/偏置编译冻结首段；`input`与整数`constant` Encode Source |
 | 不覆盖 | STREAM_CHUNK流式Framing、CRC及其他Integrity算法、Receive Gate、Mapping、Session、Runtime注册、公共API及完整V0.1字段类型 |
 
 本文描述PAE（Protocol Adapter Engine，协议适配引擎）首个Loader/Compiler（加载器/编译器）垂直切片及其后的`COMPLETE_RECORD（完整记录）`Codec（编解码器）内部切片。它没有完成《PAE V0.1 技术细节拍板方案》中`PAE-DEC-027`要求的完整Schema V0.1语义覆盖，也没有冻结公共API（Application Programming Interface，应用程序接口），不能作为完整V0.1配置语言或生产协议正确性声明。
@@ -87,8 +87,11 @@ PlanBundle + bound ExecutionWorkspace + pipeline_index + message_index + typed i
 
 `DRAFT SLICE RULE`：
 
-- `schema_version`接受字符串`"0.1"`至`"0.4"`；0.1保持原属性与类型集合，0.2允许
+- 缺省生产入口的`schema_version`接受字符串`"0.1"`至`"0.4"`；0.1保持原属性与类型集合，0.2允许
   `bit_containers`、`bitfield` Wire和BOOL，0.3增加Message的单对象`integrity`，0.4增加字节对齐INT64；
+- 仅当专用Loader构建显式开启`PAE_ENABLE_SCHEMA_V05_COMPILER`时，Schema 0.5才允许字节对齐、
+  `encode.source=input`的UINT64/INT64字段声明`linear`到DECIMAL64的转换并完成编译冻结；
+  该门与Core或Protocol Lab组合时配置失败，生成的Plan不是当前可执行Plan；
 - stable ID匹配`^[a-z][a-z0-9_]*$`，本草案切片最多128个字符；
 - `resource_profile`只接受`desktop`和`constrained`；
 - 根对象及所有子对象的未知属性必须拒绝。
@@ -364,13 +367,25 @@ Core使用`LogicalValueKind::INT64`和`std::int64_t`。Decode先以uint64_t逐�
 无符号幅值安全解释符号；Encode先检查范围，再按标准无符号转换提取低位。UINT64和INT64不可
 隐式互换。Schema 0.4统一选择Lab 0.5代际，旧Schema、旧指纹与历史证据保持原行为。
 
+### 11.6 Schema 0.5比例/偏置编译冻结首段
+
+`PAE-DEC-042B`首段在临时编译门下增加严格`linear`转换作者结构。比例与偏置的分子为精确
+INT64 JSON整数Token，分母为1..10^18的精确UINT64 Token；参数先约分，约分后的分母只能含
+2和5且最多需要18位十进制。比例不能为零，转换只适用于字节对齐、动态输入的UINT64/INT64字段。
+
+编译器把比例和偏置转换为公共十进制尺度下的固定256位有符号A/B，冻结在独立转换表中，字段
+只保存索引。Builder重新推导并核对描述符、索引、引用计数和原始类型，不信任损坏Draft。
+转换数量和表的实际大小/对齐进入Plan `EXTENSION`计费，ResourceBudget、Builder复算与Arena报告
+必须一致。本段不实现Decimal64业务值、Core转换、Values 0.4、Lab 0.6或证据读写；详见
+[`windows-msvc-2026-dec042b-compiler-slice.md`](../docs/windows-msvc-2026-dec042b-compiler-slice.md)。
+
 ## 12. 当前不覆盖的完整 V0.1 能力
 
 完成本切片不能宣称完成完整Schema V0.1。至少仍缺少：
 
 - STREAM_CHUNK及`fixed_length`、`sync_fixed_length`、`sync_length_field`；
-- REAL64、DECIMAL64、STRING/ASCII和Packed BCD；有符号位字段仍未实现；
-- 位字段之外的scale/bias、raw/value constraints；
+- REAL64、DECIMAL64运行期业务值、STRING/ASCII和Packed BCD；有符号位字段仍未实现；
+- 比例/偏置的Core执行与Lab证据、raw/value constraints；
 - `default`和`computed`正式作者格式；
 - 长度字段正式语义；
 - SUM、XOR、LRC、Parameterized CRC和自定义Checksum；
@@ -400,6 +415,7 @@ Core使用`LogicalValueKind::INT64`和`std::int64_t`。Decode先以uint64_t逐�
 
 | 文档版本 | 日期 | 说明 |
 | --- | --- | --- |
+| 0.1.9 | 2026-09-07 | 同步PAE-DEC-042B临时门隔离的Schema 0.5编译冻结、独立转换表、Builder复核和Plan计费首段；Core/Lab运行语义仍未实现 |
 | 0.1.8 | 2026-09-06 | 同步PAE-DEC-042A Schema 0.4字节对齐INT64、独立Core类型、安全补码算法及Lab 0.5版本边界 |
 | 0.1.6 | 2026-09-06 | 同步PAE-DEC-040 Schema 0.2位容器、BOOL、冻结布局、Workspace计费及Windows验证边界；Schema 0.1保持原能力 |
 | 0.1.5 | 2026-09-02 | 同步PAE-DEC-033A单Storage Block、Frozen Storage、PlanOwner、精确ResourceBudget准入、报告复核和Windows部分验证；033B仍未实现 |

@@ -61,6 +61,12 @@ target_link_libraries(
         pae_config_compiler
         pae::project_options
 )
+if(PAE_ENABLE_SCHEMA_V05_COMPILER)
+    target_compile_definitions(
+        pae_config_compiler_contract_tests
+        PRIVATE PAE_ENABLE_SCHEMA_V05_COMPILER=1
+    )
+endif()
 
 set(pae_config_compiler_test_data_dir ${CMAKE_CURRENT_BINARY_DIR}/data)
 file(MAKE_DIRECTORY ${pae_config_compiler_test_data_dir})
@@ -77,11 +83,39 @@ configure_file(
     ${pae_config_compiler_test_data_dir}/synthetic_lab_exchange_slice.pae.json
     COPYONLY
 )
+if(PAE_ENABLE_SCHEMA_V05_COMPILER)
+    configure_file(
+        ${PROJECT_SOURCE_DIR}/examples/config/synthetic_decimal_compile_slice.pae.json
+        ${pae_config_compiler_test_data_dir}/synthetic_decimal_compile_slice.pae.json
+        COPYONLY
+    )
+endif()
 
 add_test(
     NAME pae.config_compiler.contract
     COMMAND pae_config_compiler_contract_tests data
 )
+
+if(WIN32 AND PAE_ENABLE_SCHEMA_V05_COMPILER)
+    find_program(pae_config_compiler_powershell NAMES pwsh pwsh.exe REQUIRED)
+    add_test(
+        NAME pae.config_compiler.decimal_schema_contract
+        COMMAND
+            "${pae_config_compiler_powershell}"
+            -NoProfile
+            -ExecutionPolicy Bypass
+            -File "${CMAKE_CURRENT_SOURCE_DIR}/verify_decimal_compiler_schema_contract.ps1"
+            -SchemaPath "${PROJECT_SOURCE_DIR}/schema/pae.schema.json"
+            -SamplePath "${PROJECT_SOURCE_DIR}/examples/config/synthetic_decimal_compile_slice.pae.json"
+            -InheritedPath "${CMAKE_CURRENT_SOURCE_DIR}/fixtures/valid/minimal_complete_record.pae.json"
+    )
+    set_tests_properties(
+        pae.config_compiler.decimal_schema_contract
+        PROPERTIES
+            LABELS "config_compiler;schema;decimal_compiler"
+            TIMEOUT 60
+    )
+endif()
 
 set_tests_properties(
     pae.config_compiler.contract

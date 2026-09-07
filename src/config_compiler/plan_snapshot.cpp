@@ -1,5 +1,6 @@
 #include <array>
 #include <charconv>
+#include <limits>
 #include <string_view>
 #include <system_error>
 
@@ -186,11 +187,17 @@ std::string MakeDeterministicPlanSnapshot(const PlanBundle& plan) {
   const bool v02 = plan.SchemaVersion() == "0.2";
   const bool v03 = plan.SchemaVersion() == "0.3";
   const bool v04 = plan.SchemaVersion() == "0.4";
+#if defined(PAE_ENABLE_SCHEMA_V05_COMPILER)
+  const bool v05 = plan.SchemaVersion() == "0.5";
+#else
+  const bool v05 = false;
+#endif
   AppendStringProperty("snapshot_format",
-                       v04 ? "pae_plan_bundle_v0.4_int64_slice"
-                           : (v03 ? "pae_plan_bundle_v0.3_sum8_slice"
-                                  : (v02 ? "pae_plan_bundle_v0.2_bitfield_slice"
-                                         : "pae_plan_bundle_v0.1_draft_slice")),
+                       v05   ? "pae_plan_bundle_v0.5_decimal_compiler_slice"
+                       : v04 ? "pae_plan_bundle_v0.4_int64_slice"
+                             : (v03 ? "pae_plan_bundle_v0.3_sum8_slice"
+                                    : (v02 ? "pae_plan_bundle_v0.2_bitfield_slice"
+                                           : "pae_plan_bundle_v0.1_draft_slice")),
                        output);
   output.push_back(',');
   AppendStringProperty("schema_version", plan.SchemaVersion(), output);
@@ -216,17 +223,63 @@ std::string MakeDeterministicPlanSnapshot(const PlanBundle& plan) {
   AppendIntegerProperty("total_matcher_count", requirements.total_matcher_count, output);
   output.push_back(',');
   AppendIntegerProperty("total_enum_entry_count", requirements.total_enum_entry_count, output);
-  if (v02 || v03 || v04) {
+  if (v02 || v03 || v04 || v05) {
     output.push_back(',');
     AppendIntegerProperty("total_bit_container_count", requirements.total_bit_container_count,
                           output);
   }
-  if (v03 || v04) {
+  if (v03 || v04 || v05) {
     output.push_back(',');
     AppendIntegerProperty("total_integrity_rule_count", requirements.total_integrity_rule_count,
                           output);
   }
+#if defined(PAE_ENABLE_SCHEMA_V05_COMPILER)
+  if (v05) {
+    output.push_back(',');
+    AppendIntegerProperty("total_conversion_count", requirements.total_conversion_count, output);
+  }
+#endif
   output.push_back('}');
+
+#if defined(PAE_ENABLE_SCHEMA_V05_COMPILER)
+  if (v05) {
+    output.append(",\"conversions\":[");
+    const auto& conversions = plan.Conversions();
+    for (std::size_t index = 0U; index < conversions.size(); ++index) {
+      if (index != 0U) output.push_back(',');
+      const auto& conversion = conversions[index];
+      output.push_back('{');
+      AppendStringProperty("raw_value_type", ToString(conversion.raw_value_type), output);
+      output.push_back(',');
+      AppendIntegerProperty("scale_numerator", conversion.scale_numerator, output);
+      output.push_back(',');
+      AppendIntegerProperty("scale_denominator", conversion.scale_denominator, output);
+      output.push_back(',');
+      AppendIntegerProperty("bias_numerator", conversion.bias_numerator, output);
+      output.push_back(',');
+      AppendIntegerProperty("bias_denominator", conversion.bias_denominator, output);
+      output.push_back(',');
+      AppendIntegerProperty("decimal_places", conversion.decimal_places, output);
+      const auto append_coefficient = [&output](std::string_view name,
+                                                const protocol_plan::SignedCoefficient256& value) {
+        output.push_back(',');
+        AppendQuoted(name, output);
+        output.append(":{\"negative\":");
+        output.append(value.negative ? "true" : "false");
+        output.append(",\"words\":[");
+        for (std::size_t word = 0U; word < value.words.size(); ++word) {
+          if (word != 0U) output.push_back(',');
+          AppendInteger(value.words[word], output);
+        }
+        output.append("]}");
+      };
+      append_coefficient("scale_coefficient", conversion.scale_coefficient);
+      append_coefficient("bias_coefficient", conversion.bias_coefficient);
+      output.push_back('}');
+    }
+    output.push_back(']');
+  }
+#endif
 
   output.append(",\"framing_profiles\":[");
   const auto& framing_profiles = plan.FramingProfiles();
@@ -303,7 +356,7 @@ std::string MakeDeterministicPlanSnapshot(const PlanBundle& plan) {
     }
     output.push_back(']');
 
-    if (v02 || v03 || v04) {
+    if (v02 || v03 || v04 || v05) {
       output.append(",\"bit_containers\":[");
       for (std::size_t index = 0U; index < message.bit_containers.size(); ++index) {
         if (index != 0U) output.push_back(',');
@@ -325,7 +378,7 @@ std::string MakeDeterministicPlanSnapshot(const PlanBundle& plan) {
       output.push_back(']');
     }
 
-    if (v03 || v04) {
+    if (v03 || v04 || v05) {
       output.append(",\"integrity\":");
       if (!message.integrity.has_value()) {
         output.append("null");
@@ -370,6 +423,12 @@ std::string MakeDeterministicPlanSnapshot(const PlanBundle& plan) {
       }
       output.push_back(',');
       AppendStringProperty("encode_source", ToString(field.encode_source), output);
+#if defined(PAE_ENABLE_SCHEMA_V05_COMPILER)
+      if (v05 && field.conversion_index != (std::numeric_limits<std::size_t>::max)()) {
+        output.push_back(',');
+        AppendIntegerProperty("conversion_index", field.conversion_index, output);
+      }
+#endif
       if (field.constant_value.has_value()) {
         output.push_back(',');
         AppendIntegerProperty("constant_value", *field.constant_value, output);

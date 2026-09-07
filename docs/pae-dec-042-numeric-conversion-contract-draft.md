@@ -1,9 +1,11 @@
 # PAE-DEC-042 数值转换范围与DEC-042A确认契约
 
 日期：2026-09-06。状态：第1节11项范围及第3～6节四组补充契约均为CONFIRMED（已确认）；
-DEC-042A已实现，Windows验证证据见对应报告。Stage、Commit与Push仍未授权。
+DEC-042A已实现并完成总控复核，已随`7807b9a`提交并Push，Windows验证证据见对应报告。
 保留文件名中的draft以维持链接稳定，不代表A契约仍待拍板。
-DEC-042B的具体契约仍待单独细化与确认。
+DEC-042B十项决策及四组补充已确认，见[独立契约](pae-dec-042b-decimal-conversion-contract-draft.md)。
+固定256位候选已执行Windows隔离验证、只读审查及P2补测；生产接入A1～D4共16项已确认。
+尚未接入生产Core；本轮仅同步Markdown，生产实施及验证另行授权。
 
 ## 1. 已确认范围
 
@@ -22,7 +24,7 @@ DEC-042B的具体契约仍待单独细化与确认。
 
 ## 2. 当前实现与边界
 
-实现基线为`4d923e9`，DEC-041已提交并Push；A组文档收口为`57743bf`，亦已Push。
+DEC-042A实施前基线为`4d923e9`；当前交付基线为`7807b9a`，DEC-041文档收口为`97da00e`，均已Push。
 当前Schema 0.4增加字节对齐INT64；Core使用独立INT64标签和`std::int64_t`存储。DECIMAL64尚未实现。
 `encode.source=input`已支持每次调用传入不同的INT64值；INT64的input与constant（常量）来源
 均已实现。B不属于本轮A实施范围。

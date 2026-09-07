@@ -19,6 +19,7 @@
 #include <utility>
 #include <vector>
 
+#include "../protocol_plan/decimal_conversion_internal.h"
 #include "../protocol_plan/plan_builder.h"
 #include "../protocol_plan/plan_bundle.h"
 #include "../protocol_plan/plan_draft_internal.h"
@@ -1043,8 +1044,69 @@ bool ParseEnumEntries(yyjson_val* value, std::string_view pointer, std::vector<E
   return true;
 }
 
+#if defined(PAE_ENABLE_SCHEMA_V05_COMPILER)
+bool ParseRational(yyjson_val* value, std::string_view pointer, RationalIr& output,
+                   CompileDiagnostic& diagnostic) {
+  if (!yyjson_is_obj(value)) {
+    return SetDiagnostic(diagnostic, CompileStage::STRUCTURAL, CompileError::TYPE_MISMATCH,
+                         std::string(pointer), "rational parameter must be an object");
+  }
+  if (!ValidateObjectProperties(value, pointer, {"numerator", "denominator"}, diagnostic)) {
+    return false;
+  }
+  yyjson_val* numerator = RequiredProperty(value, "numerator", pointer, diagnostic);
+  yyjson_val* denominator = RequiredProperty(value, "denominator", pointer, diagnostic);
+  if (numerator == nullptr || denominator == nullptr ||
+      !ReadExactInt64(numerator, ChildPointer(pointer, "numerator"), output.numerator,
+                      diagnostic) ||
+      !ReadExactUint64(denominator, ChildPointer(pointer, "denominator"), output.denominator,
+                       diagnostic)) {
+    return false;
+  }
+  if (output.denominator == 0U || output.denominator > 1000000000000000000ULL) {
+    return SetDiagnostic(diagnostic, CompileStage::STRUCTURAL, CompileError::INTEGER_OUT_OF_RANGE,
+                         ChildPointer(pointer, "denominator"),
+                         "denominator must be in the author range 1..1000000000000000000");
+  }
+  output.origin.json_pointer = std::string{pointer};
+  return true;
+}
+
+bool ParseConversion(yyjson_val* value, std::string_view pointer, LinearConversionIr& output,
+                     CompileDiagnostic& diagnostic) {
+  if (!yyjson_is_obj(value)) {
+    return SetDiagnostic(diagnostic, CompileStage::STRUCTURAL, CompileError::TYPE_MISMATCH,
+                         std::string(pointer), "conversion must be an object");
+  }
+  if (!ValidateObjectProperties(value, pointer, {"kind", "output_type", "scale", "bias"},
+                                diagnostic)) {
+    return false;
+  }
+  yyjson_val* kind = RequiredProperty(value, "kind", pointer, diagnostic);
+  yyjson_val* output_type = RequiredProperty(value, "output_type", pointer, diagnostic);
+  std::string kind_token;
+  std::string output_token;
+  if (kind == nullptr || output_type == nullptr ||
+      !ReadEnumToken(kind, ChildPointer(pointer, "kind"), {"linear"}, kind_token, diagnostic) ||
+      !ReadEnumToken(output_type, ChildPointer(pointer, "output_type"), {"DECIMAL64"}, output_token,
+                     diagnostic)) {
+    return false;
+  }
+  yyjson_val* scale = RequiredProperty(value, "scale", pointer, diagnostic);
+  yyjson_val* bias = RequiredProperty(value, "bias", pointer, diagnostic);
+  if (scale == nullptr || bias == nullptr ||
+      !ParseRational(scale, ChildPointer(pointer, "scale"), output.scale, diagnostic) ||
+      !ParseRational(bias, ChildPointer(pointer, "bias"), output.bias, diagnostic)) {
+    return false;
+  }
+  output.origin.json_pointer = std::string{pointer};
+  return true;
+}
+#endif
+
 bool ParseField(yyjson_val* value, std::string_view pointer, bool supports_bitfields,
-                bool supports_int64, FieldIr& output, CompileDiagnostic& diagnostic) {
+                bool supports_int64, bool supports_conversion, FieldIr& output,
+                CompileDiagnostic& diagnostic) {
   if (!yyjson_is_obj(value)) {
     return SetDiagnostic(diagnostic, CompileStage::STRUCTURAL, CompileError::TYPE_MISMATCH,
                          std::string(pointer), "field must be an object");
@@ -1066,7 +1128,13 @@ bool ParseField(yyjson_val* value, std::string_view pointer, bool supports_bitfi
     output.value_type = ValueType::UINT64;
     if (!ValidateObjectProperties(
             value, pointer,
-            {"id", "display_name", "description", "source_ref", "value_type", "wire", "encode"},
+            supports_conversion
+                ? std::initializer_list<std::string_view>{"id", "display_name", "description",
+                                                          "source_ref", "value_type", "wire",
+                                                          "encode", "conversion"}
+                : std::initializer_list<std::string_view>{"id", "display_name", "description",
+                                                          "source_ref", "value_type", "wire",
+                                                          "encode"},
             diagnostic)) {
       return false;
     }
@@ -1074,7 +1142,13 @@ bool ParseField(yyjson_val* value, std::string_view pointer, bool supports_bitfi
     output.value_type = ValueType::INT64;
     if (!ValidateObjectProperties(
             value, pointer,
-            {"id", "display_name", "description", "source_ref", "value_type", "wire", "encode"},
+            supports_conversion
+                ? std::initializer_list<std::string_view>{"id", "display_name", "description",
+                                                          "source_ref", "value_type", "wire",
+                                                          "encode", "conversion"}
+                : std::initializer_list<std::string_view>{"id", "display_name", "description",
+                                                          "source_ref", "value_type", "wire",
+                                                          "encode"},
             diagnostic)) {
       return false;
     }
@@ -1150,6 +1224,23 @@ bool ParseField(yyjson_val* value, std::string_view pointer, bool supports_bitfi
     return false;
   }
 
+#if defined(PAE_ENABLE_SCHEMA_V05_COMPILER)
+  if (yyjson_val* conversion = yyjson_obj_get(value, "conversion")) {
+    if (!supports_conversion) {
+      return SetDiagnostic(diagnostic, CompileStage::STRUCTURAL, CompileError::UNKNOWN_PROPERTY,
+                           ChildPointer(pointer, "conversion"),
+                           "conversion is available only in Schema 0.5");
+    }
+    LinearConversionIr parsed;
+    if (!ParseConversion(conversion, ChildPointer(pointer, "conversion"), parsed, diagnostic)) {
+      return false;
+    }
+    output.conversion = std::move(parsed);
+  }
+#else
+  static_cast<void>(supports_conversion);
+#endif
+
   if (output.value_type == ValueType::ENUM) {
     yyjson_val* policy = RequiredProperty(value, "unknown_enum_policy", pointer, diagnostic);
     std::string policy_token;
@@ -1171,7 +1262,8 @@ bool ParseField(yyjson_val* value, std::string_view pointer, bool supports_bitfi
 }
 
 bool ParseFields(yyjson_val* value, std::string_view pointer, bool supports_bitfields,
-                 bool supports_int64, std::vector<FieldIr>& output, CompileDiagnostic& diagnostic) {
+                 bool supports_int64, bool supports_conversion, std::vector<FieldIr>& output,
+                 CompileDiagnostic& diagnostic) {
   if (!yyjson_is_arr(value)) {
     return SetDiagnostic(diagnostic, CompileStage::STRUCTURAL, CompileError::TYPE_MISMATCH,
                          std::string(pointer), "fields must be an array");
@@ -1188,7 +1280,7 @@ bool ParseFields(yyjson_val* value, std::string_view pointer, bool supports_bitf
   while (yyjson_val* field_value = yyjson_arr_iter_next(&iterator)) {
     FieldIr field;
     if (!ParseField(field_value, IndexPointer(pointer, index), supports_bitfields, supports_int64,
-                    field, diagnostic)) {
+                    supports_conversion, field, diagnostic)) {
       return false;
     }
     output.push_back(std::move(field));
@@ -1274,8 +1366,8 @@ bool ParseIntegrity(yyjson_val* value, std::string_view pointer, IntegrityIr& ou
 }
 
 bool ParseMessage(yyjson_val* value, std::string_view pointer, bool supports_bitfields,
-                  bool supports_integrity, bool supports_int64, MessageIr& output,
-                  CompileDiagnostic& diagnostic) {
+                  bool supports_integrity, bool supports_int64, bool supports_conversion,
+                  MessageIr& output, CompileDiagnostic& diagnostic) {
   if (!yyjson_is_obj(value)) {
     return SetDiagnostic(diagnostic, CompileStage::STRUCTURAL, CompileError::TYPE_MISMATCH,
                          std::string(pointer), "message must be an object");
@@ -1320,7 +1412,7 @@ bool ParseMessage(yyjson_val* value, std::string_view pointer, bool supports_bit
       !ParseMatcher(matcher, ChildPointer(pointer, "matcher"), output.matcher_clauses,
                     diagnostic) ||
       !ParseFields(fields, ChildPointer(pointer, "fields"), supports_bitfields, supports_int64,
-                   output.fields, diagnostic)) {
+                   supports_conversion, output.fields, diagnostic)) {
     return false;
   }
   if (supports_bitfields) {
@@ -1392,11 +1484,18 @@ bool BuildSchemaIr(yyjson_val* root, SchemaIr& output, CompileDiagnostic& diagno
       !ReadRequiredString(root, "source_ref", "", 1U, 512U, output.source_ref, diagnostic)) {
     return false;
   }
-  if (output.schema_version != "0.1" && output.schema_version != "0.2" &&
-      output.schema_version != "0.3" && output.schema_version != "0.4") {
+#if defined(PAE_ENABLE_SCHEMA_V05_COMPILER)
+  const bool supported_schema = output.schema_version == "0.1" || output.schema_version == "0.2" ||
+                                output.schema_version == "0.3" || output.schema_version == "0.4" ||
+                                output.schema_version == "0.5";
+#else
+  const bool supported_schema = output.schema_version == "0.1" || output.schema_version == "0.2" ||
+                                output.schema_version == "0.3" || output.schema_version == "0.4";
+#endif
+  if (!supported_schema) {
     return SetDiagnostic(diagnostic, CompileStage::STRUCTURAL, CompileError::INVALID_ENUM_VALUE,
                          "/schema_version",
-                         "supported schema_version values are 0.1, 0.2, 0.3, and 0.4");
+                         "schema_version is not supported by this compiler build");
   }
 
   if (yyjson_val* description = yyjson_obj_get(root, "description")) {
@@ -1428,8 +1527,11 @@ bool BuildSchemaIr(yyjson_val* root, SchemaIr& output, CompileDiagnostic& diagno
              [&output](yyjson_val* value, std::string_view pointer, MessageIr& message,
                        CompileDiagnostic& item_diagnostic) {
                return ParseMessage(value, pointer, output.schema_version != "0.1",
-                                   output.schema_version == "0.3" || output.schema_version == "0.4",
-                                   output.schema_version == "0.4", message, item_diagnostic);
+                                   output.schema_version == "0.3" ||
+                                       output.schema_version == "0.4" ||
+                                       output.schema_version == "0.5",
+                                   output.schema_version == "0.4" || output.schema_version == "0.5",
+                                   output.schema_version == "0.5", message, item_diagnostic);
              },
              diagnostic);
 }
@@ -1650,6 +1752,52 @@ bool ValidateMessageDomain(MessageIr& message, ResourceRequirements& requirement
                            ChildPointer(field.encode.origin.json_pointer, "value"),
                            "signed constant value does not fit the configured wire width");
     }
+
+#if defined(PAE_ENABLE_SCHEMA_V05_COMPILER)
+    if (field.conversion.has_value()) {
+      if (!AddSizeChecked(1U, requirements.total_conversion_count)) {
+        return SetDiagnostic(diagnostic, CompileStage::DOMAIN_VALIDATION,
+                             CompileError::INTERNAL_CONTRACT_VIOLATION,
+                             field.conversion->origin.json_pointer, "conversion count overflow");
+      }
+      if ((field.value_type != ValueType::UINT64 && field.value_type != ValueType::INT64) ||
+          field.wire.codec != WireCodec::UNSIGNED_INTEGER ||
+          field.encode.source != EncodeSource::INPUT) {
+        const std::string pointer = field.encode.source != EncodeSource::INPUT
+                                        ? ChildPointer(field.encode.origin.json_pointer, "source")
+                                        : field.conversion->origin.json_pointer;
+        return SetDiagnostic(
+            diagnostic, CompileStage::DOMAIN_VALIDATION, CompileError::UNSUPPORTED_FEATURE, pointer,
+            "linear conversion requires an input byte-aligned UINT64 or INT64 field");
+      }
+      const auto derived = protocol_plan::detail::DeriveLinearConversion(
+          field.value_type, field.conversion->scale.numerator, field.conversion->scale.denominator,
+          field.conversion->bias.numerator, field.conversion->bias.denominator,
+          field.conversion->derived);
+      if (derived != protocol_plan::detail::DecimalDescriptorError::NONE) {
+        const bool zero_scale =
+            derived == protocol_plan::detail::DecimalDescriptorError::ZERO_SCALE;
+        const bool invalid_scale =
+            derived == protocol_plan::detail::DecimalDescriptorError::NON_TERMINATING_SCALE;
+        const bool invalid_bias =
+            derived == protocol_plan::detail::DecimalDescriptorError::NON_TERMINATING_BIAS;
+        const std::string pointer =
+            zero_scale ? ChildPointer(field.conversion->scale.origin.json_pointer, "numerator")
+            : invalid_scale
+                ? ChildPointer(field.conversion->scale.origin.json_pointer, "denominator")
+            : invalid_bias ? ChildPointer(field.conversion->bias.origin.json_pointer, "denominator")
+                           : field.conversion->origin.json_pointer;
+        return SetDiagnostic(
+            diagnostic, CompileStage::DOMAIN_VALIDATION,
+            derived == protocol_plan::detail::DecimalDescriptorError::ARITHMETIC_OVERFLOW
+                ? CompileError::INTERNAL_CONTRACT_VIOLATION
+                : CompileError::VALUE_NOT_REPRESENTABLE,
+            pointer,
+            zero_scale ? "conversion scale numerator must not be zero"
+                       : "conversion rational must be an exact decimal with at most 18 places");
+      }
+    }
+#endif
 
     if (field.value_type == ValueType::ENUM) {
       if (!AddSizeChecked(field.enum_entries.size(), requirements.total_enum_entry_count)) {
@@ -2104,6 +2252,21 @@ bool EstimateSchemaPlanMemory(const SchemaIr& schema,
     }
   }
 
+#if defined(PAE_ENABLE_SCHEMA_V05_COMPILER)
+  std::size_t conversion_count = 0U;
+  for (const MessageIr& message : schema.messages) {
+    for (const FieldIr& field : message.fields) {
+      if (field.conversion.has_value() && !AddSizeChecked(1U, conversion_count)) {
+        return false;
+      }
+    }
+  }
+  if (!layout.AddArray<LinearConversionDescriptor>(conversion_count,
+                                                   PlanMemoryCategory::EXTENSION)) {
+    return false;
+  }
+#endif
+
   if (!layout.AddArray<MessageExecutionPlan>(schema.messages.size(),
                                              PlanMemoryCategory::EXECUTION_DESCRIPTOR)) {
     return false;
@@ -2226,6 +2389,13 @@ ResourceBudgetResult ResourceBudgetValidator::ValidateImpl(
                           diagnostic)) {
     return ResourceBudgetResult::Failure(std::move(diagnostic));
   }
+#if defined(PAE_ENABLE_SCHEMA_V05_COMPILER)
+  if (!CheckResourceCount(requirements.total_conversion_count, budget->max_total_fields,
+                          "/messages", "conversion count exceeds the total field limit",
+                          diagnostic)) {
+    return ResourceBudgetResult::Failure(std::move(diagnostic));
+  }
+#endif
   for (const MessageIr& message : validated.payload_->schema.messages) {
     if (!CheckResourceCount(message.fields.size(), budget->max_fields_per_message,
                             ChildPointer(message.origin.json_pointer, "fields"),
@@ -2291,6 +2461,10 @@ PlanDraftAssemblyResult PlanDraftAssembler::Assemble(BudgetedSchemaIr budgeted) 
   }
 
   std::vector<MessagePlan> message_plans;
+#if defined(PAE_ENABLE_SCHEMA_V05_COMPILER)
+  std::vector<protocol_plan::LinearConversionDescriptor> conversion_plans;
+  conversion_plans.reserve(budgeted.validated_->payload_->requirements.total_conversion_count);
+#endif
   message_plans.reserve(schema.messages.size());
   for (MessageIr& message : schema.messages) {
     MessagePlan message_plan;
@@ -2330,6 +2504,12 @@ PlanDraftAssemblyResult PlanDraftAssembler::Assemble(BudgetedSchemaIr budgeted) 
       field_plan.bit_container_index = field.wire.bit_container_index;
       field_plan.bit_offset = field.wire.bit_offset;
       field_plan.bit_width = field.wire.bit_width;
+#if defined(PAE_ENABLE_SCHEMA_V05_COMPILER)
+      if (field.conversion.has_value()) {
+        field_plan.conversion_index = conversion_plans.size();
+        conversion_plans.push_back(field.conversion->derived);
+      }
+#endif
       for (EnumEntryIr& entry : field.enum_entries) {
         field_plan.enum_entries.push_back(EnumEntryPlan{std::move(entry.id), entry.raw_value});
       }
@@ -2347,6 +2527,9 @@ PlanDraftAssemblyResult PlanDraftAssembler::Assemble(BudgetedSchemaIr budgeted) 
   draft->framing_profiles = std::move(framing_plans);
   draft->pipelines = std::move(pipeline_plans);
   draft->messages = std::move(message_plans);
+#if defined(PAE_ENABLE_SCHEMA_V05_COMPILER)
+  draft->conversions = std::move(conversion_plans);
+#endif
   draft->approved_plan_memory = budgeted.plan_memory_;
   draft->plan_memory_limit_bytes = budgeted.plan_memory_limit_bytes_;
   return PlanDraftAssemblyResult::Success(protocol_plan::BudgetedPlanDraft{std::move(draft)});
@@ -2382,7 +2565,8 @@ CompileResult FreezeBudgetedPlanDraft(protocol_plan::BudgetedPlanDraft draft) {
       "validated configuration violated the frozen plan construction contract"});
 }
 
-CompileResult CompileJsonToPlan(std::string_view json_bytes) {
+CompileResult CompileJsonToPlanImpl(std::string_view json_bytes,
+                                    std::optional<std::size_t> plan_memory_limit) {
   try {
     const JsonAuditLimits limits;
     CompileDiagnostic diagnostic;
@@ -2443,7 +2627,10 @@ CompileResult CompileJsonToPlan(std::string_view json_bytes) {
     }
 
     ResourceBudgetResult budgeted =
-        ResourceBudgetValidator::Validate(std::move(validated).TakeCapability());
+        plan_memory_limit.has_value()
+            ? ResourceBudgetValidator::ValidateForTest(std::move(validated).TakeCapability(),
+                                                       *plan_memory_limit)
+            : ResourceBudgetValidator::Validate(std::move(validated).TakeCapability());
     if (!budgeted.Succeeded()) {
       return CompileResult::Failure(std::move(budgeted).TakeDiagnostic());
     }
@@ -2462,5 +2649,16 @@ CompileResult CompileJsonToPlan(std::string_view json_bytes) {
                   "unexpected exception escaped an internal compiler stage");
   }
 }
+
+CompileResult CompileJsonToPlan(std::string_view json_bytes) {
+  return CompileJsonToPlanImpl(json_bytes, std::nullopt);
+}
+
+#if defined(PAE_ENABLE_SCHEMA_V05_COMPILER)
+CompileResult CompileJsonToPlanWithPlanMemoryLimitForTest(std::string_view json_bytes,
+                                                          std::size_t plan_memory_limit_bytes) {
+  return CompileJsonToPlanImpl(json_bytes, plan_memory_limit_bytes);
+}
+#endif
 
 }  // namespace pae::config_compiler

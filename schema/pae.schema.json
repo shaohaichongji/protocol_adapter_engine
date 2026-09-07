@@ -1,9 +1,9 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "urn:pae:schema:protocol-package:0.4:int64-slice",
-  "title": "PAE ProtocolPackage V0.1-V0.4 INT64 Slice",
-  "description": "Schema 0.4在既有能力上增加字节对齐INT64。",
-  "x-pae-status": "DEC-042A MINIMAL INT64 SLICE",
+  "$id": "urn:pae:schema:protocol-package:0.5:decimal-compiler-slice",
+  "title": "PAE ProtocolPackage V0.1-V0.5 Decimal Compiler Slice",
+  "description": "Schema 0.5在既有能力上增加精确线性DECIMAL64转换的编译期描述。",
+  "x-pae-status": "DEC-042B COMPILER-ONLY ISOLATED SLICE",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -19,7 +19,7 @@
   ],
   "properties": {
     "schema_version": {
-      "enum": ["0.1", "0.2", "0.3", "0.4"]
+      "enum": ["0.1", "0.2", "0.3", "0.4", "0.5"]
     },
     "protocol_id": {
       "$ref": "#/$defs/stable_id"
@@ -76,7 +76,11 @@
         "else": {
           "if": {"properties": {"schema_version": {"const": "0.3"}}},
           "then": {"properties": {"messages": {"items": {"$ref": "#/$defs/message_v03"}}}},
-          "else": {"properties": {"messages": {"items": {"$ref": "#/$defs/message_v04"}}}}
+          "else": {
+            "if": {"properties": {"schema_version": {"const": "0.4"}}},
+            "then": {"properties": {"messages": {"items": {"$ref": "#/$defs/message_v04"}}}},
+            "else": {"properties": {"messages": {"items": {"$ref": "#/$defs/message_v05"}}}}
+          }
         }
       }
     }
@@ -289,6 +293,30 @@
         }
       }
     },
+    "message_v05": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "display_name", "description", "source_ref", "direction_id",
+                   "frame_length_bytes", "matcher", "fields"],
+      "properties": {
+        "id": {"$ref": "#/$defs/stable_id"},
+        "display_name": {"$ref": "#/$defs/display_name"},
+        "description": {"$ref": "#/$defs/description"},
+        "source_ref": {"$ref": "#/$defs/source_ref"},
+        "direction_id": {"$ref": "#/$defs/stable_id"},
+        "frame_length_bytes": {"type": "integer", "minimum": 1, "maximum": 1048576},
+        "matcher": {"$ref": "#/$defs/matcher"},
+        "bit_containers": {
+          "type": "array", "minItems": 1, "maxItems": 4096,
+          "items": {"$ref": "#/$defs/bit_container"}
+        },
+        "integrity": {"$ref": "#/$defs/integrity_sum8"},
+        "fields": {
+          "type": "array", "minItems": 1, "maxItems": 4096,
+          "items": {"$ref": "#/$defs/field_v05"}
+        }
+      }
+    },
     "integrity_sum8": {
       "type": "object",
       "additionalProperties": false,
@@ -433,6 +461,19 @@
         {"$ref": "#/$defs/bit_bool_field"}
       ]
     },
+    "field_v05": {
+      "oneOf": [
+        {"$ref": "#/$defs/uint64_field"},
+        {"$ref": "#/$defs/int64_field"},
+        {"$ref": "#/$defs/converted_uint64_field"},
+        {"$ref": "#/$defs/converted_int64_field"},
+        {"$ref": "#/$defs/bytes_field"},
+        {"$ref": "#/$defs/enum_field"},
+        {"$ref": "#/$defs/bit_uint64_field"},
+        {"$ref": "#/$defs/bit_enum_field"},
+        {"$ref": "#/$defs/bit_bool_field"}
+      ]
+    },
     "field_common": {
       "type": "object",
       "required": [
@@ -497,6 +538,50 @@
         }
       ],
       "unevaluatedProperties": false
+    },
+    "converted_uint64_field": {
+      "allOf": [
+        {"$ref": "#/$defs/field_common"},
+        {"type": "object", "required": ["value_type", "wire", "encode", "conversion"],
+         "properties": {"value_type": {"const": "UINT64"},
+                        "wire": {"$ref": "#/$defs/wire_unsigned_integer"},
+                        "encode": {"$ref": "#/$defs/input_encode_source"},
+                        "conversion": {"$ref": "#/$defs/linear_conversion"}}}
+      ],
+      "unevaluatedProperties": false
+    },
+    "converted_int64_field": {
+      "allOf": [
+        {"$ref": "#/$defs/field_common"},
+        {"type": "object", "required": ["value_type", "wire", "encode", "conversion"],
+         "properties": {"value_type": {"const": "INT64"},
+                        "wire": {"$ref": "#/$defs/wire_unsigned_integer"},
+                        "encode": {"$ref": "#/$defs/input_encode_source"},
+                        "conversion": {"$ref": "#/$defs/linear_conversion"}}}
+      ],
+      "unevaluatedProperties": false
+    },
+    "linear_conversion": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "output_type", "scale", "bias"],
+      "properties": {
+        "kind": {"const": "linear"},
+        "output_type": {"const": "DECIMAL64"},
+        "scale": {"$ref": "#/$defs/decimal_rational"},
+        "bias": {"$ref": "#/$defs/decimal_rational"}
+      }
+    },
+    "decimal_rational": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["numerator", "denominator"],
+      "properties": {
+        "numerator": {"type": "integer", "minimum": -9223372036854775808,
+                      "maximum": 9223372036854775807},
+        "denominator": {"type": "integer", "minimum": 1,
+                        "maximum": 1000000000000000000}
+      }
     },
     "bytes_field": {
       "allOf": [
