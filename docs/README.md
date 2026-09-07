@@ -28,3 +28,4 @@
 - [PAE-DEC-042B 精确算术Windows隔离验证报告](windows-msvc-2026-dec042b-arithmetic-spike.md)
 - [PAE-DEC-042B 编译冻结首段Windows验证报告](windows-msvc-2026-dec042b-compiler-slice.md)
 - [PAE-DEC-042B Core双向转换第二段Windows验证报告](windows-msvc-2026-dec042b-core-slice.md)
+- [PAE-DEC-042B Lab 0.6纯格式A阶段Windows验证报告](windows-msvc-2026-dec042b-lab-v06-format-stage-a.md)

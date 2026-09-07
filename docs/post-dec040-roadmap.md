@@ -6,6 +6,8 @@
 
 ## 1. 已交付检查点
 
+- DEC-042B隔离算术`8fd2019`、编译冻结`4d26d42`、Core双向转换`90c5165`均已提交并Push。
+
 - `263f51456f9f78012a897cdc354ea1116233a45d`：人工Lab验收文档。
 - `3b23db9ea160fbb967c6c3597461ece19117f599`：DEC-040位字段和版本化Lab证据。
 - 上述两个提交已Push；DEC-040文档收口`57743bf`和DEC-041实现`4d923e9`亦已Push。
@@ -24,9 +26,19 @@
    Windows验证，并在总控审查后补齐诊断、Builder防御和完整Core矩阵证据，见
    [首段报告](windows-msvc-2026-dec042b-compiler-slice.md)。Core双向转换第二段已实现并完成限定
    Windows验证，见[Core报告](windows-msvc-2026-dec042b-core-slice.md)。首段已随`4d26d42`提交并Push；
-   第二段已补齐成功Decode后失败Encode/Decode使raw诊断失效的两个独立状态迁移测试，Lab证据段后置。
-   无系统性高精度Oracle证据，本轮不授权Stage/Commit/Push。
+   第二段已补齐成功Decode后失败Encode/Decode使raw诊断失效的两个独立状态迁移测试，随`90c5165`
+   提交并Push。Lab第三段六项补充已确认：转换原因、失败身份、文件职责、指纹、执行等价及差异分类。
+   指纹长度前缀编码、固定20项顺序和A隔离测试入口已确认；A纯格式模块已完成限定实现及Windows
+   Debug/Release隔离验证及总控限定复核；先收口A提交检查点，再另行授权B证据读写、C运行链闭环，详见
+   [契约第10～13节](pae-dec-042b-decimal-conversion-contract-draft.md)。A未接普通CLI或Evidence Bundle，
+   A/B保持现有Lab隔离门禁，不把纯格式通过写为运行链已实现。
+   无系统性高精度Oracle证据；提交前分组Stage已单独授权，Commit/Push仍须分别授权。
 3. 参数化CRC（循环冗余校验）、长度字段与变长能力分别评估，不合并成一次实现。
+
+配套工具方向已确认：保留CLI，增加独立Qt UI，复用Lab执行层；Qt不进入Core依赖链。
+先完成当前Lab第三段，再单独开展Qt来源/完整性/工具链及版本核验和最小UI切片。
+暂不复制现有Qt包，UI版本、依赖获取及实现另行确认授权；Qt方向拍板时仅同步Markdown，
+该历史授权边界不表示后续A纯格式模块尚未实施。
 
 本地资料支持校验需求，但不同方向算法证据不等价；公开测试只采用从零设计的向量。
 原始来源、客户文件名和未闭合字段映射仅保留在仓库外私有矩阵中。

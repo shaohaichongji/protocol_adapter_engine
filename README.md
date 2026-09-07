@@ -6,6 +6,21 @@ PAE 的目标是通过严格配置完成工业二进制协议的有方向 Decode
 
 ## 当前状态
 
+配套工具方向已确认：保留CLI并增加独立Qt UI，Qt不进入Core依赖链；UI尚未实现，
+安排在当前Lab第三段之后。暂不复制现有Qt包，先核验依赖并选择版本。
+Lab指纹0.6精确编码与A阶段纯格式隔离测试方案已完成限定实现和Windows隔离验证，见
+[DEC-042B契约第12～13节](docs/pae-dec-042b-decimal-conversion-contract-draft.md)。
+
+2026-09-07状态快照：公开代码基线为`90c5165`，DEC-042B Core第二段已审查、提交并Push。
+Schema 0.2位字段、0.3 SUM8、0.4 INT64已实现；0.5精确Decimal64比例/偏置仅在专用Loader+Core
+开关下执行，默认关闭，仍不能与Protocol Lab共存。Lab第三段A纯格式模块已在默认关闭的独立测试
+目标中实现；B证据读写和C运行链仍未实现，普通Lab仍只支持Values 0.3及Result/Record/Event 0.5，
+见[DEC-042B契约第10～13节](docs/pae-dec-042b-decimal-conversion-contract-draft.md)。
+Core纠错后Windows专用矩阵Debug/Release各16/16、旧代全切片各25/25；最后仅补raw生命周期测试，
+专项各1/1。它们是不同批次和构建组合的既有证据，本次Markdown同步没有重跑，详见
+[Core报告](docs/windows-msvc-2026-dec042b-core-slice.md)。下方早期切片叙述和30/30等数字保留为
+历史证据，不表示当前最新全量注册数。Values最高0.3、Lab结果/记录/事件最高0.5；新代仍未接通。
+
 - 已创建本地工程骨架；
 - 已完成 JSON Parser Spike（JSON 解析器技术探针）的 Windows/MSVC（Microsoft Visual C++，微软C/C++编译器）Strict JSON Profile（严格 JSON 子集规范）、Number Token（数字词法单元）、两批机器语料及三档Parser阶段资源门禁；28项文档清单、77项Token语料、10项yyjson数字诊断、48项资源边界、精确offset/Pointer、5项清单负向门禁，以及yyjson原始数字、解析期内存硬上限、故障注入和候选来源/License复核已有实测证据；
 - 已实现内部 `StrictJsonLoader → StructuralValidator / SchemaIrBuilder → DomainValidator → ResourceBudgetValidator → PlanDraftAssembler → PlanBuilder` 最小纵向切片，可把受限 `*.pae.json` 编译为不可变 `PlanBundle`；该切片不安装、不导出，不属于稳定公共 API（应用程序编程接口）；
