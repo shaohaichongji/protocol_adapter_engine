@@ -6,6 +6,11 @@ PAE 的目标是通过严格配置完成工业二进制协议的有方向 Decode
 
 ## 当前状态
 
+2026-09-08补记：A实现`8d4c7c4`、入口文档`0c4bc48`及yyjson整理`1c0617c`已提交并Push。
+B阶段已在默认关闭的隔离目标中实现Evidence 0.6事务写入与严格读取，并完成Windows
+Debug/Release限定验证，见[B阶段报告](docs/windows-msvc-2026-dec042b-lab-v06-evidence-stage-b.md)；
+尚未接入普通CLI、Core或Replay/Compare。历史生成物清理暂缓，未删除。
+
 配套工具方向已确认：保留CLI并增加独立Qt UI，Qt不进入Core依赖链；UI尚未实现，
 安排在当前Lab第三段之后。暂不复制现有Qt包，先核验依赖并选择版本。
 Lab指纹0.6精确编码与A阶段纯格式隔离测试方案已完成限定实现和Windows隔离验证，见

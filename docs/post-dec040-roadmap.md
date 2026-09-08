@@ -6,6 +6,7 @@
 
 ## 1. 已交付检查点
 
+- Lab A纯格式`8d4c7c4`、入口文档`0c4bc48`和yyjson依赖整理`1c0617c`均已提交并Push。
 - DEC-042B隔离算术`8fd2019`、编译冻结`4d26d42`、Core双向转换`90c5165`均已提交并Push。
 
 - `263f51456f9f78012a897cdc354ea1116233a45d`：人工Lab验收文档。
@@ -29,11 +30,15 @@
    第二段已补齐成功Decode后失败Encode/Decode使raw诊断失效的两个独立状态迁移测试，随`90c5165`
    提交并Push。Lab第三段六项补充已确认：转换原因、失败身份、文件职责、指纹、执行等价及差异分类。
    指纹长度前缀编码、固定20项顺序和A隔离测试入口已确认；A纯格式模块已完成限定实现及Windows
-   Debug/Release隔离验证及总控限定复核；先收口A提交检查点，再另行授权B证据读写、C运行链闭环，详见
-   [契约第10～13节](pae-dec-042b-decimal-conversion-contract-draft.md)。A未接普通CLI或Evidence Bundle，
+   Debug/Release隔离验证及总控限定复核，A提交检查点已收口。B四组补充已确认，并已完成
+   Evidence 0.6隔离读写、事务故障和严格Reader限定实现及Windows验证，详见
+   [B报告](windows-msvc-2026-dec042b-lab-v06-evidence-stage-b.md)。A/B均未接普通CLI、Core或网络，
    A/B保持现有Lab隔离门禁，不把纯格式通过写为运行链已实现。
-   无系统性高精度Oracle证据；提交前分组Stage已单独授权，Commit/Push仍须分别授权。
+   无系统性高精度Oracle证据；C运行链、Replay/Compare仍未实施，本轮不Stage/Commit/Push。
 3. 参数化CRC（循环冗余校验）、长度字段与变长能力分别评估，不合并成一次实现。
+
+生成物清理暂缓：首批9个历史中间目录已只读审核，但未批准删除；不让清理阻塞B阶段提交前检查点收口。
+下一步等待总控复核B，再单独决定C运行链；当前不派发C执行任务。
 
 配套工具方向已确认：保留CLI，增加独立Qt UI，复用Lab执行层；Qt不进入Core依赖链。
 先完成当前Lab第三段，再单独开展Qt来源/完整性/工具链及版本核验和最小UI切片。

@@ -29,4 +29,5 @@
 - [PAE-DEC-042B 编译冻结首段Windows验证报告](windows-msvc-2026-dec042b-compiler-slice.md)
 - [PAE-DEC-042B Core双向转换第二段Windows验证报告](windows-msvc-2026-dec042b-core-slice.md)
 - [PAE-DEC-042B Lab 0.6纯格式A阶段Windows验证报告](windows-msvc-2026-dec042b-lab-v06-format-stage-a.md)
+- [PAE-DEC-042B Lab Evidence 0.6 B阶段Windows验证报告](windows-msvc-2026-dec042b-lab-v06-evidence-stage-b.md)
 - [yyjson 0.12.0正式最小随仓依赖Windows验证报告](windows-msvc-2026-yyjson-vendor-dependency.md)
