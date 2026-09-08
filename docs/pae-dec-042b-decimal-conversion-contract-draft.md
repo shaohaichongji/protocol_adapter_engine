@@ -471,7 +471,10 @@ Decimal等价/差异/规范零/非法表示、raw类型和值变化、字段顺�
   Encode路径。未知字段等输入错误仍可只保留输入索引，不强迫伪造字段身份。A无Plan依赖，
   ID与配置索引的真实对应留待B/C联合校验。
 
-## 14. B阶段四组补充（已确认并完成限定实现，待总控复核）
+## 14. B阶段四组补充（已限定实现、复核、提交并Push）
+
+收口记录：实现`70cf4ff`、入口文档`761ff7f`已提交并Push。下述测试和纠错保留原批次记录，
+不作为本轮C契约同步重跑证据。
 
 用户先确认本节四组方案并同步契约，后续已单独授权B阶段实现。接管基线为`1c0617c`。
 当前已实现默认关闭的Evidence 0.6隔离读写目标；未接普通CLI、Core、Replay/Compare或网络。
@@ -538,7 +541,7 @@ B检查字段ID非空、索引成对等模型内部关系；同一冻结Plan中�
   Record长度和全部清单Hash后的Result/Event未知属性语义拒绝。Debug/Release A+B各3/3通过；旧Lab
   明确排除UDP后的离线回归各13/13通过。详细命令与边界见B阶段Windows报告。
 
-### 14.6 B阶段Reader P2纠错（2026-09-08，待总控复核）
+### 14.6 B阶段Reader P2纠错（2026-09-08，已复核并随70cf4ff交付）
 
 - 独立动态复现Reader失败后残留已读配置、Frame、Result或指纹；现改为局部候选完成全部校验，
   成功后一次性交付。早期、中途、晚期以及同一输出对象先成功后失败均检查全部可观察字段为空。
@@ -547,3 +550,213 @@ B检查字段ID非空、索引成对等模型内部关系；同一冻结Plan中�
 - Windows A+B隔离Debug/Release各3/3通过。本轮未改格式、指纹、旧代、普通CLI、Core或CMake，
   未运行网络。读前检查不承诺抵抗检查与打开之间的并发路径替换；目录联接由Windows重解析属性
   规则覆盖，本轮动态样例为文件及目录符号链接。
+
+## 15. C阶段四组十二项决策（CONFIRMED / C1 IMPLEMENTED）
+
+用户已确认以下12项。随后已单独授权C1实施和Windows验证；接管代码基线`761ff7f`。
+C1实际状态见16.8；C2/C3仍未实施，第17节事件细节仍待C2前冻结。
+
+### 15.1 分段与开放边界
+
+1. C1执行映射、C2证据复现、C3入口与回归依次实施，各段独立复核和授权。
+2. C1/C2只提供隔离测试入口；Schema 0.5与普通Lab组合拒绝继续保留。C3全链通过后才开放
+   显式启用Schema 0.5的专用Lab构建，默认开关仍关闭。
+3. 主线仅离线；不扩展UDP新代执行、持续监听、Qt UI、Runtime调度或其他协议字段。
+   旧UDP实现不变，C3是否执行既有Loopback回归须在验证授权中明确。
+
+### 15.2 执行结果与生命周期
+
+4. 按Schema分派：0.1～0.4保留旧格式、错误顺序与指纹；0.5统一0.6结果，包括无转换配置。
+   Values 0.4仅用于0.5；旧Values与0.5沿用第8节C3兼容规则。不复制整套Lab或全面重构旧链。
+5. Lab在Workspace失效前复制结果为自有数据；失败无部分字段，原因和身份来自实际结果，
+   不猜测、不解析错误文字，无法确定的身份为null。
+6. 全局Inspect先汇总结构身份：零候选未知、多候选歧义，均不Decode；唯一候选才Decode一次。
+   SUM8和数值转换的失败优先级由Core执行，不用校验或转换结果筛选消息。
+
+### 15.3 绑定与复现
+
+7. C新增Plan关联校验层，B不引入Compiler/Core依赖。检查记录配置对应的Pipeline、Message、
+   方向、字段ID/索引/类型/转换属性、结果顺序和Encode输入索引范围。身份合法不证明数值正确。
+8. ENCODE_TX按记录Values重新Encode；DECODE_RX按明确Pipeline和报文重新Decode；
+   NO_CODEC_REEXECUTION只检查证据，不执行Codec、不产生转换通过结论。不猜Pipeline或静默降级模式。
+9. 等价Decimal可执行等价，原文Hash仍保留；失败比较相等不等于成功；跨代Run Compare拒绝。
+   B合成Bundle不能冒充Core执行证据。C2前冻结合成/真实事件接受矩阵；若需改变0.6文件契约，
+   先报告拍板，不修改历史Bundle。
+
+### 15.4 验收与收口
+
+10. 覆盖等价Decimal、负比例、宽数抵消/边界、SUM8与转换错误并存、非整数与容量不足并存、
+    中途失败整体交付、自洽非法身份/类型/版本，以及Run→Replay→再Replay、失败但历史比较相等。
+11. C1专项及受影响Core、C2追加A/B与复现、C3新旧Lab/Core及隔离矩阵分层验证；Windows
+    Debug/Release实际注册清单为准。Oracle、Linux、硬件和现场另行授权，不累加历史测试数。
+12. 关闭条件为专用0.5 Lab离线转换、记录、读取、复现及比较闭环；不等于产品生产化。
+    公共接口、Session、切帧、CRC、Qt和生产接入均后置；Commit/Push另行授权。
+
+## 16. C1接口映射与验收细化（限定实现完成，待总控复核）
+
+用户同意准备失败、桥接校验职责、Encode展示复核三项收口建议；本节已据现有Core和A模型作
+静态一致性复核。C1采用内部分层结果，不强迫所有分支生成Result 0.6；完整证据状态在C2前冻结。
+本记录不是运行验证或源码实施授权。
+
+### 16.1 模块及隔离入口
+
+建议新增内部执行桥接模块，依赖Config Compiler、ProtocolPlan、Core与A格式，不依赖B文件IO、
+普通Lab整库或Winsock；不把这些依赖反向加入A/B。不新建稳定公共API。
+测试入口建议为默认关闭的`PAE_BUILD_LAB_V06_EXECUTION_TESTS`，要求Testing、Loader及Schema 0.5
+能力开关开启；具体目标名实施前核对既有命名。不修改普通Lab组合拒绝条件。
+文件内容由测试调用方提供，C1不负责读写Bundle、CLI参数、Replay或Compare。
+
+### 16.2 数据映射
+
+| 来源 | C1桥接要求 | 输出或失败边界 |
+| --- | --- | --- |
+| 原配置文本 | 编译为PlanOwner，并对原字节计算配置Hash | 不用格式化配置替代原文；编译失败不调用Codec |
+| Values版本与Schema | 先执行兼容矩阵，再调用对应解析器 | 0.4仅0.5；不得让旧入口默默接受DECIMAL64 |
+| ParsedValues的字段序列 | 保持作者输入顺序，解析Plan作用域引用 | 不预先排序/去重，以免改变Core输入索引和错误优先级 |
+| UINT64/INT64/BOOL/BYTES/ENUM | 映射相应LogicalValueKind；Bytes保持自有存储，Enum绑定同Plan | 不经浮点，不统一转字符串后再计算 |
+| DECIMAL64 | coefficient/scale逐成员复制为Core类型 | 禁止reinterpret_cast依赖两个结构布局相同 |
+| Decode成功槽 | 按冻结字段顺序复制为FieldResult | Bytes、ID和Enum文本均归Lab所有 |
+| 转换字段raw | 从成功Workspace诊断读取并核对FieldRef、raw kind | 不假定raw诊断序号就是配置字段索引，不反算伪造raw |
+| Codec失败 | status及ConversionError枚举显式映射 | NONE为null；字段数组为空，不读取失败raw |
+| failed_field_index | 检查已知Message和索引范围后取真实ID | 无效哨兵转null；越界内部关联不能猜测修补 |
+| failed_value_index | 仅Encode且Core确实定位输入时保存 | 未知字段的桥接输入错误保持来源区分，不伪装为Core诊断 |
+
+输入在Values严格解析阶段被拒绝时，记录为准备/输入错误，不能声称发生了Core执行。
+非法Decimal表示的Core映射测试可直接用类型模型测试；不能绕过严格Values解析器并声称端到端输入合法。
+C1状态对照见16.5：准备错误和Lab复核错误保存在独立内部结果中，不强行填入0.6执行结果。
+本阶段无CLI，不为内部结果新增退出码；需要生成的0.6结果仅限16.5列出的实际执行分支。
+
+### 16.3 Encode成功结果与生命周期
+
+现有旧Lab在Encode成功后用独立Workspace再次Decode实际输出，生成展示字段。建议C1沿用此编排：
+Core内部最终复核仍保留；Lab额外Decode用于生成自有字段/raw结果，不把输入Values当实际输出。
+该额外Decode须在测试调用计数中明确区分，不与“Inspect唯一候选只Decode一次”混淆。
+若额外Decode失败或Message不一致，禁止交付成功结果；INTERNAL_ERROR不得降格为普通比较不等。
+额外复核失败按16.5独立保存阶段和原因，不修改原Encode状态，也不修改Core算法来迎合展示需求。
+
+Plan必须晚于Workspace及全部FieldRef销毁；调用期间Values的Bytes存储不得移动失效。
+复制成功结果和raw后才允许复用Workspace；复用、失败调用或销毁不得改变已返回的Lab结果。
+结果映射采用局部候选，映射缺失或内部关联错误时不交付部分字段。
+Lab自有容器允许分配，不将Core已有无新增分配门禁扩大为Lab全链零分配或正式性能结论。
+
+### 16.4 C1最低验收清单（计划，非已执行）
+
+- 经真实配置编译完成0.5 Decode/Encode映射：转换/非转换混合字段、无转换0.5、INT64/UINT64边界。
+- 等价Decimal规范值、负比例、宽数抵消使用独立固定报文与预期，不仅靠Encode/Decode互证。
+- 输入顺序翻转、重复/缺失/错误类型，精确检查失败身份及输入索引。
+- 全局零候选/跨Pipeline歧义为0次Decode，唯一Inspect为1次；SUM8失败无转换执行。
+- 非整数与容量不足并存，类型化非法scale，内部故障和最终复核不一致保持不同状态。
+- 成功后Workspace复用、失败后复用及销毁，Lab自有结果不变；失败不保留旧字段。
+- Encode展示的额外Decode及失败分支可观察；不产生虚假OK结果。
+- 新旧版本拒绝矩阵、A纯格式回归、受影响Core Debug/Release；普通Lab门禁保留。
+
+### 16.5 三层结果与交付对照
+
+内部桥接结果区分准备、主Codec调用、结果物化/额外复核三个阶段；内部枚举及成员名可在授权实施时
+按项目风格确定，以下语义必须固定。保存实际Core结果时同时复制可定位身份，不能保存悬空引用。
+
+| 分支 | 内部事实 | 可选Result 0.6 | 交付及诊断 |
+| --- | --- | --- | --- |
+| 配置/Values解析、版本、绑定或引用准备失败 | 准备失败；主Codec未调用 | 无 | 保留准备诊断及可确定的作者输入索引，不填Core原因；无成功字段/输出 |
+| Inspect结构查询零候选或歧义 | 保存真实结构查询状态；Decode为0次 | C1不强制生成，留待C2统一编排语义 | 不把查询状态冒充Decode返回；不交付字段 |
+| 主Codec返回非OK | 保存原DecodeResult/EncodeResult及确定身份 | 有；operation_status=CODEC_ERROR，exit_code=5，current_execution_status为真实Core状态 | PAE_LAB_CODEC_<STATUS>；转换原因严格按Core枚举，字段为空 |
+| 主Codec成功且物化/复核成功 | 主调用及适用的复核均真实成功 | 有；operation_status=OK，exit_code=0，current_execution_status=OK | 字段按配置顺序自有复制；成功Encode仅此时交付完整输出 |
+| 主Codec成功但Lab物化/复核失败 | 原主Codec状态仍为OK；额外Decode状态单独保存（若有） | 无，不发布部分或虚假成功Result | 归属Lab复核失败；内部故障与普通不一致分开，清空交付字段和Encode输出 |
+
+有Result的Encode使用ENCODE_TX/TX，Decode使用DECODE_RX/RX；非OK结果的current诊断及外层
+diagnostic.id均对应真实Codec状态。NONE转换原因转null，非法scale及三个数值原因沿用第8/10节。
+输入Frame在Decode失败时仍可作为原始输入保留，不等于成功输出；Encode失败不交付半成品字节。
+主调用失败不得触发展示Decode；展示Decode的INTERNAL_ERROR不得变成不一致，也不得回写为原Encode
+返回的INTERNAL_ERROR。主Codec自身FINAL_REVIEW_FAILED与Lab额外复核失败始终区分来源。
+Lab物化失败中的raw缺失/错关联属于内部一致性故障，Message不一致单列；无需新增Core状态或改A模型。
+
+准备层索引仅属于内部准备诊断，不使用Result.failed_value_index绕过A的NONE模式约束。
+因此不改变A允许Encode路径保存输入索引的已有接受域，也不声称C1覆盖了完整0.6失败证据。
+C2前必须统一准备/结构查询/Lab复核失败的事件、Result及CLI退出码映射；不得默认降级NO_CODEC。
+
+### 16.6 桥接与Core校验职责
+
+准备顺序为：配置编译→Values严格解析及版本兼容→Pipeline/Message名称绑定→按作者顺序解析
+必要Field/Enum引用。此层遇到无法解析引用时返回准备失败，主Codec调用数为0。
+它不与Core内部错误共享一个全局优先级，后部未知引用可能先于前部可表示的类型错误被报告。
+
+能够构造的输入按作者kind建立LogicalValueKind，不因其与字段类型不符而提前返回；已知字段的常量
+覆盖、重复、必填、类型和数值判定交给Core。不得照搬旧EncodeValues中的常量/类型提前拒绝。
+Enum名称只有在目标具有相应Enum表时才解析；其他类型错配应使用类型不匹配输入交给Core，
+不解引用不存在的Enum表、不伪造有效Enum引用。不新增“去重后调用Core”或按配置重排输入逻辑。
+
+Core仍负责已确认的0.5顺序：输入引用/常量/重复→必填→按字段顺序类型/数值→输出容量→写入/复核。
+旧0.1～0.4路径不改；字符串引用解析所需的最小工具若需抽取，不得因此链接普通Lab或Winsock。
+
+### 16.7 收口新增断言及验证归属
+
+- 配置、Values版本/语法、未知Field/Enum准备失败：内部准备诊断准确，Codec为0次，可选Result为空。
+- 前项类型错、后项重复且引用均可解析：由Core报告重复；缺失必填与类型错误组合保持Core顺序。
+- 前项类型错、后项未知引用：明确为准备失败，不标为Core优先级回归；常量覆盖不在桥接层截断。
+- 主Encode失败为0次展示Decode；正常成功为1次Encode加1次展示Decode；唯一Inspect为1次Decode。
+- 注入展示Decode失败、Message不一致、raw关联异常：原Encode仍OK，Lab结果失败，无成功Result/字节。
+- 注入展示内部故障与普通不一致：内部失败原因不同，均不产生转换成功或比较结论。
+- 只有实际执行结果的0.6映射调用A校验并检查状态/诊断/索引/null；准备分支不调用A序列化伪造结果。
+- 非整数与容量不足的Core组合测试沿用Core测试入口；若C1自有输出始终按Plan分配完整容量，
+  不声称该桥接入口动态覆盖容量不足，不为测试擅增生产参数。
+
+C1实施授权包含上述内部结果与专项测试、CMake隔离入口及相关文档；仍不包含B文件读写、C2/C3、
+普通CLI或A模型接受域变更。实际落实及验证见16.8。
+
+### 16.8 C1实施与Windows验证记录（2026-09-08）
+
+- 新增默认关闭的`PAE_BUILD_LAB_V06_EXECUTION_TESTS`隔离入口，仅在Testing、Loader、Schema 0.5
+  Compiler和Complete Record Core同时启用时允许配置。目标只链接Compiler、Plan、带内部观察器的
+  Core、A阶段0.6格式、SHA-256及既有yyjson；不链接B Evidence、普通Lab、Winsock或网络实现。
+- C1桥接从原配置文本编译并持有Plan和两个独立Workspace。Values 0.4继续由A阶段严格解析器负责；
+  C1另以隔离版本分派严格解析0.1～0.3，且只接受各代原有类型，不通过改写版本借0.4语法解析。
+  随后绑定Pipeline、Message、Field和Enum。无法绑定的引用是准备失败且Codec调用为0；可构造输入
+  的常量、重复、必填、类型和数值顺序仍由Core决定。
+- Inspect逐Pipeline调用Core内部结构匹配，零/多候选不Decode、不生成0.6 Result；唯一候选只Decode
+  一次。Encode成功后只用第二Workspace额外Decode一次实际输出；复核或物化失败保留主Encode为OK，
+  但不交付Result或Frame。主Encode失败不触发展示Decode。
+- 成功字段按冻结顺序复制；Decimal采用规范值，转换raw通过`FieldRef`与实际Plan/Message/Field关联，
+  不按诊断序号猜字段。Result及Frame完全自有，Workspace复用和桥接销毁后仍有效。
+- 公开合成测试覆盖转换/非转换混合、新代无转换、全部继承类型、等价Decimal、负比例与宽数抵消结果、
+  SUM8优先级、逻辑/反算范围、非整数、非法scale、输入顺序、准备/Core优先级、零/多/单候选、四类
+  展示/物化失败和恢复复用。Core容量不足及首次调用无分配仍由受影响Core测试覆盖；C1自身始终按
+  Plan分配完整容量，不冒充动态覆盖该分支。
+- Windows Debug/Release专项各1/1、含Compiler/Core/A/C1的隔离矩阵各19/19通过；Product-only和
+  Lab-on/Testing-off均构建通过且注册0测试。三项错误开关组合按预期Configure失败。详细命令与日志
+  见[C1验证报告](windows-msvc-2026-dec042b-lab-v06-execution-stage-c1.md)。
+- 本阶段未读写Evidence Bundle、未实现Replay/Compare、未修改A模型接受域、未开放普通CLI、未运行
+  UDP或其他网络。C2/C3、事件语法、Linux、Oracle、Golden、硬件及现场均保持未验证。
+
+### 16.9 C1两项P2审查纠错（2026-09-08，待总控复核）
+
+- P2-1实际复现：合法Schema 0.5无转换消息配Values 0.1～0.3时，原C1直接调用仅接受0.4的A解析器，
+  三个正例均在准备阶段被拒绝且Codec为0次；旧测试还将0.3拒绝写成正向断言。修复不改变A解析器，
+  新增C1内部兼容分派，0.1支持UINT64/BYTES/ENUM，0.2增加BOOL，0.3增加INT64；各代均拒绝
+  DECIMAL64，0.1拒绝BOOL，0.2拒绝INT64，未知版本、JSON Number和重复ID继续失败关闭。
+- P2-2静态确认为测试证据缺口，未发现产品状态映射缺陷。现通过既有Core测试专用算术故障机制，
+  在主Encode返回OK之后、展示Decode之前精确安排下一次Decimal转换失败。断言展示Decode实际返回
+  INTERNAL_ERROR，区别于非法Pipeline产生的INVALID_ARGUMENT；两者均保留主Encode为OK、复核
+  Decode恰好1次且不交付Result或Frame。未修改Core产品实现或公开接口。
+- 修复后Windows Debug/Release C1专项各1/1，含Compiler/Core/A/C1的隔离矩阵各19/19。本轮未改
+  旧Lab解析器，因此没有重跑其不受影响的离线矩阵；A解析器未修改，既有A纯格式测试随19项矩阵
+  实际通过，不将有限测试扩大为完整接受域证明。链接检查不含旧Protocol Operations、B Evidence或
+  Winsock。详见更新后的C1验证报告。
+
+## 17. B合成证据与C执行证据接受矩阵（DESIGN DRAFT / 待C2前冻结）
+
+当前B固定单条Event，event_id=1，frame_origin为LAB_B_SYNTHETIC（有Frame时），
+tool_version固定为0.1.0-dec042b-lab-b。它是隔离合成数据格式，不是未来真实阶段事件的已实现接口。
+来源标记只描述内部语义，不认证来源；无Frame时origin=null也不能据此推断真实执行。
+
+| 输入类别 | B隔离Reader | C证据/Plan检查 | C Codec重执行及比较 |
+| --- | --- | --- | --- |
+| 已发布B合成Bundle | 保持现有严格读取 | 可识别为合成；Plan可编译时检查身份，不能授予执行资格 | 建议拒绝作为历史真实执行基准，不静默转NO_CODEC或给EQUAL |
+| C真实执行Bundle | 不放宽B旧接受域迁就C | 按经批准的C事件语法及版本矩阵检查，再核对Plan | 仅证据齐全且模式明确时执行；结果与比较分离 |
+| 旧代Bundle | 仍走原读取实现，不借B读取 | 保持旧代身份/版本语义 | 原Replay/Compare不变，跨代Run Compare拒绝 |
+| 未知/混搭/伪装来源 | 拒绝不合法文件关系 | 失败关闭，不信任仅改origin/tool_version的声明 | 不执行Codec、不产生等价结论 |
+
+C事件名称、字段、数量/顺序、缺失执行材料的模式表达及版本策略仍待C2前专项复核。
+不直接把LAB_B_SYNTHETIC替换为新字符串并沿用固定单事件假设；不把C执行过程塞回A模型。
+优先保持已确认0.6格式目标；若承载真实阶段信息需要改变第10节或现有文件接受域，须先提出
+精确兼容差异并取得拍板，不能以“已授权契约细化”为由自行升级/复用版本并实施。
+B向量继续留作隔离测试，C另建真实Codec执行向量，不覆盖历史文件。此矩阵不授权网络重执行。

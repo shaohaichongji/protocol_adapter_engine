@@ -1,0 +1,106 @@
+#pragma once
+
+#include <cstddef>
+#include <cstdint>
+#include <memory>
+#include <optional>
+#include <string>
+#include <string_view>
+#include <vector>
+
+#include "v06_format.h"
+
+namespace pae::protocol_lab::v06 {
+
+enum class ExecutionStage {
+  PREPARATION,
+  STRUCTURAL_QUERY,
+  CODEC,
+  MATERIALIZATION,
+};
+
+enum class MaterializationFailure {
+  NONE,
+  REVIEW_DECODE_FAILED,
+  REVIEW_MESSAGE_MISMATCH,
+  RAW_ASSOCIATION_FAILED,
+  INTERNAL_ERROR,
+};
+
+struct PreparationFailure {
+  std::string diagnostic_id;
+  std::string detail;
+  std::optional<std::size_t> value_index;
+};
+
+struct ExecutionCounts {
+  std::size_t structural_query_calls = 0U;
+  std::size_t encode_calls = 0U;
+  std::size_t decode_calls = 0U;
+  std::size_t review_decode_calls = 0U;
+};
+
+struct ExecutionOutcome {
+  ExecutionStage stage = ExecutionStage::PREPARATION;
+  PreparationFailure preparation_failure;
+  std::string structural_status;
+  bool main_codec_called = false;
+  std::string main_codec_status;
+  bool review_decode_called = false;
+  std::string review_decode_status;
+  MaterializationFailure materialization_failure = MaterializationFailure::NONE;
+  std::optional<Result> result;
+  std::vector<std::uint8_t> encoded_frame;
+  ExecutionCounts counts;
+};
+
+#if defined(PAE_ENABLE_OPERATION_COUNTERS)
+struct ExecutionTestHooks {
+  bool fail_review_decode = false;
+  bool fail_review_decimal_conversion_with_internal_error = false;
+  bool force_review_message_mismatch = false;
+  bool force_raw_association_failure = false;
+  bool force_materialization_internal_error = false;
+};
+#endif
+
+// Internal C1 bridge. It owns the frozen Plan and reusable workspaces, but all returned Result and
+// Frame data is self-owned and remains valid after reuse or destruction of this object.
+class ExecutionBridge final {
+ public:
+  static std::unique_ptr<ExecutionBridge> Prepare(std::string_view config_text,
+                                                  PreparationFailure& failure);
+
+  ExecutionBridge(const ExecutionBridge&) = delete;
+  ExecutionBridge& operator=(const ExecutionBridge&) = delete;
+  ExecutionBridge(ExecutionBridge&&) = delete;
+  ExecutionBridge& operator=(ExecutionBridge&&) = delete;
+  ~ExecutionBridge();
+
+  ExecutionOutcome Inspect(const std::vector<std::uint8_t>& frame
+#if defined(PAE_ENABLE_OPERATION_COUNTERS)
+                           ,
+                           const ExecutionTestHooks* hooks = nullptr
+#endif
+  );
+  ExecutionOutcome EncodeValuesText(std::string values_text
+#if defined(PAE_ENABLE_OPERATION_COUNTERS)
+                                    ,
+                                    const ExecutionTestHooks* hooks = nullptr
+#endif
+  );
+  ExecutionOutcome EncodeParsed(const ParsedValues& values
+#if defined(PAE_ENABLE_OPERATION_COUNTERS)
+                                ,
+                                const ExecutionTestHooks* hooks = nullptr
+#endif
+  );
+
+ private:
+  struct Impl;
+  explicit ExecutionBridge(std::unique_ptr<Impl> implementation) noexcept;
+
+  std::unique_ptr<Impl> implementation_;
+};
+
+}  // namespace pae::protocol_lab::v06

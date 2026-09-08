@@ -2,6 +2,15 @@
 
 ## 1. 状态和目的
 
+2026-09-08 C1实施补记：B已随`70cf4ff`、`761ff7f`收口并Push。C阶段12项决策已确认，
+权威见[DEC-042B第15节](pae-dec-042b-decimal-conversion-contract-draft.md)。默认关闭的C1隔离目标
+现已实现Schema 0.5严格准备、全局结构查询、单次主Codec、Result 0.6自有复制及Encode后独立
+Decode复核；准备、结构和Lab复核失败不伪装成Codec结果。B Reader仍无Core/Compiler依赖，
+审查纠错后C1按版本分派Values：0.4保持A解析器接受域，0.1～0.3仅接受各代原有类型；
+展示Decode的真实`INTERNAL_ERROR`与非法Pipeline等普通复核失败由独立状态区分。
+普通Lab及Schema 0.5组合拒绝保持。C1不开放CLI、Evidence、Replay/Compare或网络；C2/C3仍未
+实施，第17节事件契约仍待C2前冻结。详见[C1报告](windows-msvc-2026-dec042b-lab-v06-execution-stage-c1.md)。
+
 2026-09-08补记：当前接管基线`1c0617c`，A实现`8d4c7c4`及文档`0c4bc48`均已提交并Push。
 B已按[DEC-042B契约第14节](pae-dec-042b-decimal-conversion-contract-draft.md)完成默认关闭的
 Evidence 0.6隔离读写与Windows Debug/Release验证；仍不接通普通CLI、不调用Core、Replay/
