@@ -3,6 +3,10 @@
 状态：`NOT_EVALUATED（未评估）`。本清单只使用公开合成配置和本地文件，不执行网络收发，也不
 替代Golden、硬件、现场、Linux、Oracle或性能验证。
 
+2026-09-08代理执行补记：Windows CLI路径编码边界修复后，代理已使用中文及空格绝对路径完成
+本清单七项，35项精确检查全部通过；修复前失败证据仍保留。该结果不是用户人工操作，用户人工
+状态继续为NOT_EVALUATED，见[代理验收报告](agent-dec042b-c3-offline-acceptance.md)。
+
 ## 1. 准备
 
 在仓库根目录的PowerShell中执行：

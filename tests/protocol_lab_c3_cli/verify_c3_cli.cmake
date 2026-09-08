@@ -8,12 +8,24 @@ endforeach()
 
 set(config "${PAE_SOURCE_DIR}/tests/protocol_core/fixtures/decimal_core_contract.pae.json")
 set(runs "${PAE_BINARY_DIR}/runs")
+file(RELATIVE_PATH runs_cli "${PAE_SOURCE_DIR}" "${runs}")
 file(REMOVE_RECURSE "${runs}")
 file(MAKE_DIRECTORY "${runs}")
 
 function(run_json name expected_exit)
+    set(command_arguments)
+    foreach(argument IN LISTS ARGN)
+        if(IS_ABSOLUTE "${argument}")
+            file(RELATIVE_PATH relative_argument "${PAE_SOURCE_DIR}" "${argument}")
+            if(NOT relative_argument MATCHES "^\\.\\.")
+                list(APPEND command_arguments "${relative_argument}")
+                continue()
+            endif()
+        endif()
+        list(APPEND command_arguments "${argument}")
+    endforeach()
     execute_process(
-        COMMAND "${PAE_LAB_EXECUTABLE}" ${ARGN}
+        COMMAND "${PAE_LAB_EXECUTABLE}" ${command_arguments}
         WORKING_DIRECTORY "${PAE_SOURCE_DIR}"
         RESULT_VARIABLE actual_exit
         OUTPUT_VARIABLE output
@@ -35,6 +47,13 @@ function(run_json name expected_exit)
     set(${name}_OUTPUT "${output}" PARENT_SCOPE)
 endfunction()
 
+function(resolve_cli_path variable)
+    if(NOT IS_ABSOLUTE "${${variable}}")
+        get_filename_component(resolved "${${variable}}" ABSOLUTE BASE_DIR "${PAE_SOURCE_DIR}")
+        set(${variable} "${resolved}" PARENT_SCOPE)
+    endif()
+endfunction()
+
 function(json_expect json path expected)
     string(REPLACE "/" ";" parts "${path}")
     string(JSON actual ERROR_VARIABLE json_error GET "${json}" ${parts})
@@ -54,6 +73,7 @@ json_expect("${encode_OUTPUT}" "result/format_version" "pae.lab.result/0.6")
 json_expect("${encode_OUTPUT}" "result/frame_hex"
             "000000000000020BFFFFFFFFFFFFFFFF00000000000000008000000000000000A52A")
 string(JSON encode_bundle GET "${encode_OUTPUT}" published_bundle)
+resolve_cli_path(encode_bundle)
 
 run_json(
     inspect 0 inspect --config "${config}"
@@ -63,11 +83,13 @@ run_json(
 json_expect("${inspect_OUTPUT}" "result/fields/0/decimal64/coefficient" "123")
 json_expect("${inspect_OUTPUT}" "result/fields/0/decimal64/scale" "1")
 string(JSON inspect_bundle GET "${inspect_OUTPUT}" published_bundle)
+resolve_cli_path(inspect_bundle)
 
 run_json(replay_a 0 replay --bundle "${inspect_bundle}" --record-root "${runs}" --output json)
 json_expect("${replay_a_OUTPUT}" "comparison/status" "EQUAL")
 json_expect("${replay_a_OUTPUT}" "result/replay_mode" "DECODE_RX")
 string(JSON replay_a_bundle GET "${replay_a_OUTPUT}" published_bundle)
+resolve_cli_path(replay_a_bundle)
 run_json(replay_b 0 replay --bundle "${replay_a_bundle}" --record-root "${runs}" --output json)
 json_expect("${replay_b_OUTPUT}" "comparison/status" "EQUAL")
 
@@ -89,6 +111,7 @@ run_json(
     --record-root "${runs}" --output json
 )
 string(JSON equivalent_bundle GET "${equivalent_OUTPUT}" published_bundle)
+resolve_cli_path(equivalent_bundle)
 run_json(compare_equivalent 0 compare --left-run "${encode_bundle}"
          --right-run "${equivalent_bundle}" --output json)
 json_expect("${compare_equivalent_OUTPUT}" "comparison/status" "EQUAL")
@@ -99,6 +122,7 @@ run_json(
     --record-root "${runs}" --output json
 )
 string(JSON different_bundle GET "${different_OUTPUT}" published_bundle)
+resolve_cli_path(different_bundle)
 run_json(compare_different 6 compare --left-run "${encode_bundle}"
          --right-run "${different_bundle}" --output json)
 json_expect("${compare_different_OUTPUT}" "comparison/status" "DIFFERENT")
@@ -114,6 +138,7 @@ json_expect("${codec_failure_OUTPUT}" "result/current_execution_status" "VALUE_N
 json_expect("${codec_failure_OUTPUT}" "result/exit_code" "5")
 string(JSON failure_fingerprint GET "${codec_failure_OUTPUT}" result deterministic_fingerprint)
 string(JSON failure_bundle GET "${codec_failure_OUTPUT}" published_bundle)
+resolve_cli_path(failure_bundle)
 
 run_json(
     codec_failure_expected 0 encode --config "${config}"
@@ -192,6 +217,7 @@ json_expect("${invalid_values_OUTPUT}" "current_terminal_status" "PREPARATION_FA
 json_expect("${invalid_values_OUTPUT}" "diagnostic/id" "PAE_LAB_C1_VALUES_INVALID")
 json_expect("${invalid_values_OUTPUT}" "result" "")
 string(JSON invalid_values_bundle GET "${invalid_values_OUTPUT}" published_bundle)
+resolve_cli_path(invalid_values_bundle)
 if(invalid_values_bundle STREQUAL "")
     message(FATAL_ERROR "Values preparation failure did not publish its complete failure Bundle")
 endif()
@@ -253,9 +279,10 @@ if(NOT before_missing_record_count EQUAL after_missing_record_count)
 endif()
 
 execute_process(
-    COMMAND "${PAE_LAB_EXECUTABLE}" encode --config "${config}"
-            --values "${PAE_FIXTURE_DIR}/valid.values.pae-lab.json"
-            --record-root "${runs}"
+    COMMAND "${PAE_LAB_EXECUTABLE}" encode
+            --config "tests/protocol_core/fixtures/decimal_core_contract.pae.json"
+            --values "tests/protocol_lab_c3_cli/fixtures/valid.values.pae-lab.json"
+            --record-root "${runs_cli}"
     WORKING_DIRECTORY "${PAE_SOURCE_DIR}"
     RESULT_VARIABLE text_exit
     OUTPUT_VARIABLE text_output
@@ -268,9 +295,10 @@ endif()
 
 execute_process(
     COMMAND "${PAE_LAB_EXECUTABLE}" inspect
-            --config "${PAE_SOURCE_DIR}/examples/config/synthetic_int64_slice.pae.json"
-            --frame-hex "${PAE_SOURCE_DIR}/tests/protocol_core/golden/synthetic_int64/int64_record_001.frame.hex"
+            --config "examples/config/synthetic_int64_slice.pae.json"
+            --frame-hex "tests/protocol_core/golden/synthetic_int64/int64_record_001.frame.hex"
             --output json
+    WORKING_DIRECTORY "${PAE_SOURCE_DIR}"
     RESULT_VARIABLE old_exit
     OUTPUT_VARIABLE old_output
     ERROR_VARIABLE old_stderr

@@ -1,5 +1,7 @@
 add_library(
     pae_protocol_lab_internal STATIC
+    cli_path_encoding_internal.cpp
+    cli_path_encoding_internal.h
     cli_options.cpp
     cli_options.h
     evidence_bundle.cpp

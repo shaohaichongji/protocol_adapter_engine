@@ -4,7 +4,7 @@
 
 状态：`IMPLEMENTED / AUTOMATED OFFLINE VERIFIED / MANUAL NOT_EVALUATED`
 
-基线：`main` / `aa1d66393ff2aafbf8be353c8a352a8f6fd5486b`
+当前复核基线：`main` / `386a8bb7a1b0e21453f6b80faa3283e513f4a02e`
 
 ## 1. 实施结论
 
@@ -19,6 +19,19 @@
 收口自审补齐两项入口证据：显式record-root下的未知Schema版本由C3封装按配置失败/退出4处理，
 已知0.1～0.4仍走旧链；Record 0.7缺失但Event 0.7仍在的损坏Bundle继续由C3 Reader拒绝，
 退出3且不发布子Run。
+
+本次路径P2独立复现确认：修复前工具可以消费PowerShell传入的中文绝对路径并成功发布Bundle，
+但`generic_string()`把Windows本地代码页字节写入JSON stdout；严格UTF-8解码在首个中文字节失败，
+返回路径也不能作为UTF-8原样串联。原始失败证据保留在
+`out/agent-c3-acceptance-20260908-205122`，独立复现保留在
+`out/dec042b-c3-unicode-pre-fix-中文 路径/pre-fix-evidence.json`。后者同时证明按当前ACP解码可恢复
+真实存在的Bundle，因此问题位于CLI窄字符串路径边界，不是文件系统不支持中文路径。
+
+最小修复在Lab内部增加单一路径桥：输出始终采用`generic_u8string()`；Windows输入先按严格UTF-8
+解码，失败时保留CRT/PowerShell本地代码页兼容。配置、Values、Frame、record-root、Bundle及
+Compare两侧路径统一经过该桥。未改全局代码页、C3封装版本、Evidence格式、指纹、Core或网络。
+曾评估`wmain`强制UTF-8入口，但CMake 3.25子进程参数会对当前中文仓库绝对路径再次转码，导致
+既有Replay回归；该路线未保留，日志仅作为开发期排除证据。
 
 ## 2. 自动化覆盖
 
@@ -37,6 +50,9 @@
   Evidence等退出和诊断；损坏Evidence不发布子Run；
 - Schema 0.4仍输出Result 0.5，help/version仍成功。
 - 缺省text输出包含CLI 0.1终态封装及完整Result 0.6。
+- Windows专用Unicode串联测试通过PowerShell `Start-Process`传入中文及空格绝对路径，按原始字节
+  严格UTF-8解码stdout，并将返回的`published_bundle`不经转码地用于Inspect、Replay和Compare；
+  精确核对Decimal、父子Replay均EQUAL、Compare EQUAL及路径实际存在。
 
 `pae.tools.protocol_lab.c3_policy`直接覆盖纯退出策略，包括Writer 7、内部10、普通失败5、差异6、
 期望匹配0，以及Writer/内部优先级。合法命令难以触发的内部分支只有策略级证据，不伪造成
@@ -58,11 +74,12 @@ PowerShell提供MSVC环境。
 
 | 验证 | 结果 | 日志 |
 | --- | --- | --- |
-| Debug C3专项 | 2/2 PASS | `out/dec042b-c3-debug-targeted-p2-optional-final.log` |
-| Debug完整离线（`ctest -LE udp`） | 35/35 PASS | `out/dec042b-c3-debug-offline-full-p2-optional-final.log` |
-| Release C3专项 | 2/2 PASS | `out/dec042b-c3-release-msvc-targeted-p2-optional-final.log` |
-| Release完整离线（`ctest -LE udp`） | 35/35 PASS | `out/dec042b-c3-release-msvc-offline-full-p2-optional-final.log` |
-| C3 Testing-off Debug/Release | 构建PASS，各0测试 | `out/dec042b-c3-testing-off-*-build-final-current.log`及对应注册日志 |
+| Debug C3专项（当前，恢复后复跑） | 3/3 PASS | `out/dec042b-c3-debug-recovery-targeted.log` |
+| Debug Protocol Lab离线（当前，`-L protocol_lab -LE udp`） | 19/19 PASS | `out/dec042b-c3-debug-protocol-lab-offline-unicode-final.log` |
+| Release C3专项（当前，恢复后复跑） | 3/3 PASS | `out/dec042b-c3-release-msvc-recovery-targeted.log` |
+| Release Protocol Lab离线（当前，`-L protocol_lab -LE udp`） | 19/19 PASS | `out/dec042b-c3-release-msvc-protocol-lab-offline-unicode-final.log` |
+| 修复前Debug/Release完整离线历史基线 | 各35/35 PASS | `out/dec042b-c3-*-offline-full-p2-optional-final.log` |
+| C3 Testing-off Release（当前） | 构建PASS，0测试；Unicode串联PASS | `out/dec042b-c3-testing-off-release-*-unicode-final.log` |
 | Product-only Debug/Release | 构建PASS，各0测试 | `out/dec042b-c3-product-only-*-build-final*.log`及对应注册日志 |
 | 默认旧Lab Testing-off | 构建PASS，0测试 | `out/dec042b-c3-legacy-lab-default-debug-*-final.log` |
 | 缺显式C3开关、缺依赖 | 均按预期配置失败 | `out/dec042b-c3-gate-*-configure-expected-failure-final.log` |
@@ -77,8 +94,8 @@ cmake -S . -B out/dec042b-c3-<config> -G Ninja -DCMAKE_BUILD_TYPE=<Debug|Release
   -DPAE_BUILD_LAB_V06_FORMAT_TESTS=ON -DPAE_BUILD_LAB_V06_EVIDENCE_TESTS=ON `
   -DPAE_BUILD_LAB_V06_EXECUTION_TESTS=ON -DPAE_BUILD_LAB_V07_RUN_EVIDENCE_TESTS=ON
 cmake --build out/dec042b-c3-<config>
-ctest --test-dir out/dec042b-c3-<config> -R '^pae\.tools\.protocol_lab\.c3_(cli|policy)$' --output-on-failure
-ctest --test-dir out/dec042b-c3-<config> -LE udp --output-on-failure
+ctest --test-dir out/dec042b-c3-<config> -R '^pae\.tools\.protocol_lab\.c3_(cli|policy|unicode_paths)$' --output-on-failure
+ctest --test-dir out/dec042b-c3-<config> -L protocol_lab -LE udp --output-on-failure
 ```
 
 恢复后的第一次Release配置未进入编译：未初始化Developer Shell时CMake误选Strawberry Perl附带
@@ -87,8 +104,11 @@ ctest --test-dir out/dec042b-c3-<config> -LE udp --output-on-failure
 
 ## 4. 边界与待验收
 
-- 自动化离线证据不替代第22.8节七项人工离线验收；当前为`NOT_EVALUATED`，执行命令见
-  [人工验收单](manual-dec042b-c3-offline-acceptance.md)。
+- 代理已在修复后使用中文及空格绝对路径重跑七项离线验收，35项精确检查PASS，证据位于
+  `out/agent-c3-acceptance-20260908-212535`。它不替代第22.8节用户人工验收；人工状态仍为
+  `NOT_EVALUATED`，执行命令见[人工验收单](manual-dec042b-c3-offline-acceptance.md)。
+- 输入桥采用“严格UTF-8优先、否则Windows本地代码页”的有限兼容策略；已验证当前中文Windows
+  环境和ASCII路径，不宣称覆盖所有系统代码页组合或CMake对任意Unicode命令参数的行为。
 - 退出10只有纯策略和既有内部组件测试证据；非Testing工具没有故障注入入口。
 - 退出8/9继续只属于旧Transport，新离线链不使用。
 - P2后Testing-off Release可执行文件的COFF符号扫描未发现`ExecutionTestHooks`、

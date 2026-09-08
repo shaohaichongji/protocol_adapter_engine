@@ -35,3 +35,29 @@ set_tests_properties(
         LABELS "tools;protocol_lab;offline;decimal;dec042b;c3;policy;isolated"
         TIMEOUT 30
 )
+
+if(WIN32)
+    find_program(pae_protocol_lab_c3_unicode_shell NAMES pwsh powershell REQUIRED)
+    file(
+        RELATIVE_PATH
+        pae_protocol_lab_c3_binary_relative
+        "${PROJECT_SOURCE_DIR}"
+        "${PROJECT_BINARY_DIR}"
+    )
+    add_test(
+        NAME pae.tools.protocol_lab.c3_unicode_paths
+        COMMAND
+            "${pae_protocol_lab_c3_unicode_shell}"
+            -NoProfile
+            -ExecutionPolicy Bypass
+            -File tests/protocol_lab_c3_cli/verify_c3_unicode_paths.ps1
+            -BinaryDirRelative "${pae_protocol_lab_c3_binary_relative}"
+    )
+    set_tests_properties(
+        pae.tools.protocol_lab.c3_unicode_paths
+        PROPERTIES
+            WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}"
+            LABELS "tools;protocol_lab;offline;decimal;dec042b;c3;cli;unicode;windows"
+            TIMEOUT 180
+    )
+endif()

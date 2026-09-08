@@ -2,8 +2,8 @@
 
 2026-09-08当前检查点：C1实现`115db10`及入口文档`ef350d5`已提交并Push。
 C2六项方向决策及第19节修订后精确契约均已确认；CLI退出码映射延至C3实施前冻结。
-第20节第一段已获授权并完成限定实现与Windows验证。A/B/C1已形成提交检查点；第21节C2第二段
-已在未提交工作树完成限定实现与Windows验证，待总控复核；C3未实施；
+第20节第一段已获授权并完成限定实现与Windows验证。A/B/C1、C2及C3已形成提交检查点；
+当前未提交工作树完成C3 Windows中文路径往返P2限定修复及离线复核，待总控复核；
 下文早期批次记录保留其历史时点，旧建议称谓以第19节最终确认状态为准。
 
 创建日期：2026-09-06。确认更新：2026-09-07。第1节十项决策及第3～6节四组补充方案
@@ -1347,3 +1347,20 @@ Result”和“主Encode OK但Review/物化失败且无Result”，两者CLI JSO
 覆盖内部失败仍为7。Debug/Release C3专项各2/2、排除UDP的离线矩阵各35/35通过；Testing-off
 Release构建及符号扫描确认测试接缝不进入非Testing工具。人工验收单的Decimal展示改为实际六项
 `id`、`kind`、`decimal64.coefficient/scale`、`raw_kind`、`raw_value`，状态仍为NOT_EVALUATED。
+
+### 22.11 C3 Windows中文路径往返P2纠错（2026-09-08）
+
+代理七项离线验收首次使用中文绝对`record-root`时，Encode与文件发布实际成功，但CLI把
+`generic_string()`产生的Windows本地代码页字节直接写入JSON stdout，严格UTF-8解码失败，返回的
+`published_bundle`也不能作为UTF-8原样串联。原失败证据与独立复现均保留，不以相对路径通过
+回溯覆盖失败事实。
+
+修复限定在Protocol Lab内部命令行路径桥：JSON/text路径统一输出UTF-8；Windows输入兼容严格
+UTF-8窄参数及当前PowerShell/CRT本地代码页参数。所有C3路径选项和早期分派统一使用该桥，不修改
+全局代码页、CLI/Result/Record/Event版本、Evidence格式、指纹、Core或网络行为。自动化新增中文及
+空格绝对路径Encode→Inspect→Replay→Compare串联，stdout必须严格UTF-8且返回路径原样可用。
+
+Windows Debug/Release C3专项各`3/3 PASS`，受影响Protocol Lab离线矩阵各`19/19 PASS`；
+Testing-off Release构建、0测试注册及同一Unicode串联通过。修复后代理七项离线验收35项精确检查
+全部PASS，用户人工验收仍为`NOT_EVALUATED`。输入兼容策略是当前Windows环境的有限边界，不宣称
+所有系统代码页、Linux、网络、Golden、真实协议、硬件、现场、Oracle或性能已验证。

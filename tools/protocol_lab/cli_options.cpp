@@ -6,6 +6,8 @@
 #include <string_view>
 #include <system_error>
 
+#include "cli_path_encoding_internal.h"
+
 namespace pae::protocol_lab {
 namespace {
 
@@ -13,7 +15,7 @@ bool SetPath(std::filesystem::path& target, const char* value) {
   if (!target.empty()) {
     return false;
   }
-  target = value;
+  target = DecodeCommandLinePath(value);
   return !target.empty();
 }
 

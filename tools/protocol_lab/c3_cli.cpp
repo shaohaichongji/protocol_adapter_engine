@@ -13,6 +13,7 @@
 #include <vector>
 
 #include "cli_options.h"
+#include "cli_path_encoding_internal.h"
 #include "protocol_operations.h"
 #include "v06_format.h"
 #include "v07_run.h"
@@ -91,7 +92,7 @@ std::string Serialize(const Envelope& envelope) {
   if (!error.empty()) return {};
   const std::optional<std::string> bundle =
       envelope.published_bundle.has_value()
-          ? std::optional<std::string>{envelope.published_bundle->generic_string()}
+          ? std::optional<std::string>{EncodePathForCli(*envelope.published_bundle)}
           : std::nullopt;
   std::ostringstream output;
   output << "{\n"
@@ -139,7 +140,7 @@ void Print(const Envelope& envelope, std::string_view output_kind) {
     std::cout << "COMPARISON_STATUS=" << envelope.comparison->status
               << " COMPARISON_REASON=" << envelope.comparison->reason << '\n';
   std::cout << "PUBLISHED_BUNDLE="
-            << (envelope.published_bundle.has_value() ? envelope.published_bundle->generic_string()
+            << (envelope.published_bundle.has_value() ? EncodePathForCli(*envelope.published_bundle)
                                                       : "null")
             << '\n';
   if (envelope.diagnostic_id.has_value())
@@ -434,17 +435,17 @@ bool IsInvocation(int argc, char** argv) {
   if (command == "inspect" || command == "encode") {
     const auto config = OptionValue(argc, argv, "--config");
     const bool has_record_root = OptionValue(argc, argv, "--record-root").has_value();
-    return config.has_value() && IsSchemaV05(std::filesystem::path{*config}, has_record_root);
+    return config.has_value() && IsSchemaV05(DecodeCommandLinePath(*config), has_record_root);
   }
   if (command == "replay") {
     const auto bundle = OptionValue(argc, argv, "--bundle");
-    return bundle.has_value() && IsRunV07(std::filesystem::path{*bundle});
+    return bundle.has_value() && IsRunV07(DecodeCommandLinePath(*bundle));
   }
   if (command == "compare") {
     const auto left = OptionValue(argc, argv, "--left-run");
     const auto right = OptionValue(argc, argv, "--right-run");
-    return (left.has_value() && IsRunV07(std::filesystem::path{*left})) ||
-           (right.has_value() && IsRunV07(std::filesystem::path{*right}));
+    return (left.has_value() && IsRunV07(DecodeCommandLinePath(*left))) ||
+           (right.has_value() && IsRunV07(DecodeCommandLinePath(*right)));
   }
   return false;
 }
