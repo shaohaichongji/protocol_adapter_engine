@@ -2,6 +2,26 @@
 
 ## 1. 状态和目的
 
+2026-09-08 C2第一段已完成限定实现和Windows验证：C执行RUN使用Record/Event 0.7，继续绑定
+Values 0.4、Result/指纹0.6和原始输入；事件来自C1实际阶段边界，Writer完整自读后无覆盖发布，
+Reader严格校验包内结构和关联。后续Reader P2纠错补齐成功Inspect对结构`OK/ONE`的授权、
+RAW映射`OK`后`FAILED`的顺序，以及Record operation与Result mode/subject、成功/失败诊断身份的
+精确绑定。修复后Debug/Release专项各2/2、相关v06+v07离线测试各5/5通过；P2前完整离线矩阵
+各22/22仅作为历史证据，见
+[验证报告](windows-msvc-2026-dec042b-lab-v07-run-evidence-stage-c2-first.md)。第一段仍拒绝REPLAY
+及非null历史/比较字段，不授予Plan验证或重执行资格；C2第二段、C3、普通CLI和网络未实现。
+
+2026-09-08历史决策记录（C2实施授权前）：C1已随`115db10`、`ef350d5`提交并Push。C2六项方向已确认，
+以[DEC-042B第18节](pae-dec-042b-decimal-conversion-contract-draft.md)为权威：C执行Record/Event
+改为0.7，Result/指纹仍0.6，Values仍0.4，B合成0.6不变。无Result失败只读诊断、不生成执行指纹。
+第19节修订后精确字段、事件、失败映射及两段验收已确认，尚未实施或运行验证。
+定向复核后补充主Codec失败且Result映射失败、结构异常、独立终止原因与实际映射事件，
+并增加父Record/历史Result快照绑定。完整状态允许集19.8及CLI映射冻结时点19.9均已确认，
+CLI映射延至C3实施前冻结。19.10记录Reader前置拒绝与Writer事后发布失败的区别，并补Replay父子
+原始输入的长度/Hash绑定；独立Run Compare的等价原文规则不变。本轮无运行验证。
+第20节仅为《子任务推进》第一段任务范围，未派发、未授权源码实施或Windows测试。
+该修订只覆盖C执行证据；以下旧代及B历史格式规定不被追溯改写。
+
 2026-09-08 C1实施补记：B已随`70cf4ff`、`761ff7f`收口并Push。C阶段12项决策已确认，
 权威见[DEC-042B第15节](pae-dec-042b-decimal-conversion-contract-draft.md)。默认关闭的C1隔离目标
 现已实现Schema 0.5严格准备、全局结构查询、单次主Codec、Result 0.6自有复制及Encode后独立

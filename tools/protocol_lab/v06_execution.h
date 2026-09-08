@@ -27,6 +27,21 @@ enum class MaterializationFailure {
   INTERNAL_ERROR,
 };
 
+enum class ExecutionPhase {
+  PREPARATION,
+  STRUCTURAL_QUERY,
+  MAIN_CODEC,
+  REVIEW_DECODE,
+  RESULT_MAPPING,
+};
+
+class ExecutionObserver {
+ public:
+  virtual ~ExecutionObserver() = default;
+  virtual void PhaseStarted(ExecutionPhase phase) = 0;
+  virtual void PhaseFinished(ExecutionPhase phase, std::string_view status) = 0;
+};
+
 struct PreparationFailure {
   std::string diagnostic_id;
   std::string detail;
@@ -58,6 +73,8 @@ struct ExecutionOutcome {
 struct ExecutionTestHooks {
   bool fail_review_decode = false;
   bool fail_review_decimal_conversion_with_internal_error = false;
+  bool fail_structural_query = false;
+  bool force_base_result_mapping_failure = false;
   bool force_review_message_mismatch = false;
   bool force_raw_association_failure = false;
   bool force_materialization_internal_error = false;
@@ -82,19 +99,22 @@ class ExecutionBridge final {
                            ,
                            const ExecutionTestHooks* hooks = nullptr
 #endif
-  );
+                           ,
+                           ExecutionObserver* observer = nullptr);
   ExecutionOutcome EncodeValuesText(std::string values_text
 #if defined(PAE_ENABLE_OPERATION_COUNTERS)
                                     ,
                                     const ExecutionTestHooks* hooks = nullptr
 #endif
-  );
+                                    ,
+                                    ExecutionObserver* observer = nullptr);
   ExecutionOutcome EncodeParsed(const ParsedValues& values
 #if defined(PAE_ENABLE_OPERATION_COUNTERS)
                                 ,
                                 const ExecutionTestHooks* hooks = nullptr
 #endif
-  );
+                                ,
+                                ExecutionObserver* observer = nullptr);
 
  private:
   struct Impl;

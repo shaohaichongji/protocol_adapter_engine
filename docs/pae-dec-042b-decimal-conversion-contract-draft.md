@@ -1,5 +1,11 @@
 # PAE-DEC-042B 精确比例与偏置转换确认契约
 
+2026-09-08当前检查点：C1实现`115db10`及入口文档`ef350d5`已提交并Push。
+C2六项方向决策及第19节修订后精确契约均已确认；CLI退出码映射延至C3实施前冻结。
+第20节第一段已获授权并完成限定实现与Windows验证，待总控复核。A/B/C1已形成提交检查点，
+C2第二段与C3未实施；
+下文早期批次记录保留其历史时点，旧建议称谓以第19节最终确认状态为准。
+
 创建日期：2026-09-06。确认更新：2026-09-07。第1节十项决策及第3～6节四组补充方案
 均为CONFIRMED（已确认）。用户随后授权隔离算术验证，固定256位候选已完成Windows
 Debug/Release隔离测试；只读审查未发现明确实现缺陷，已补齐P2测试证据缺口。
@@ -742,7 +748,7 @@ C1实施授权包含上述内部结果与专项测试、CMake隔离入口及相�
   实际通过，不将有限测试扩大为完整接受域证明。链接检查不含旧Protocol Operations、B Evidence或
   Winsock。详见更新后的C1验证报告。
 
-## 17. B合成证据与C执行证据接受矩阵（DESIGN DRAFT / 待C2前冻结）
+## 17. B合成证据与C执行证据接受矩阵（历史草案，方向由第18节确认）
 
 当前B固定单条Event，event_id=1，frame_origin为LAB_B_SYNTHETIC（有Frame时），
 tool_version固定为0.1.0-dec042b-lab-b。它是隔离合成数据格式，不是未来真实阶段事件的已实现接口。
@@ -760,3 +766,377 @@ C事件名称、字段、数量/顺序、缺失执行材料的模式表达及版
 优先保持已确认0.6格式目标；若承载真实阶段信息需要改变第10节或现有文件接受域，须先提出
 精确兼容差异并取得拍板，不能以“已授权契约细化”为由自行升级/复用版本并实施。
 B向量继续留作隔离测试，C另建真实Codec执行向量，不覆盖历史文件。此矩阵不授权网络重执行。
+
+## 18. C2六项方向决策（CONFIRMED，第一段已限定实现）
+
+1. Values保持0.4，Result及执行指纹保持0.6；C执行Record/Event采用0.7，B合成0.6不变。
+   这是对第10/14节统一Evidence 0.6目标的显式修订，不升级Schema或产品版本。
+2. Record独立保存准备、结构查询、主Codec、额外复核和物化事实；Result按分支可缺席。
+   不伪造Codec返回，不把缺失结果自动降级为NO_CODEC。
+3. 事件在实际阶段采集，结束时集中写出；编号连续、同一单调时钟、顺序和Record相互校验。
+4. 先检查证据一致性，再执行分支适用的Plan检查。配置编译失败允许成为失败证据，
+   无Plan不授予其他分支跳过身份检查的资格。
+5. 首批重执行仅材料完整的ENCODE_TX/DECODE_RX。准备、零/多结构候选和物化失败先只读诊断，
+   不自动复现或给执行EQUAL。B合成证据无真实执行比较资格，缺失材料必须拒绝。
+6. C2分为证据写入/读取、Plan关联及Replay/Compare两个独立收口点，分别授权。
+   仍为隔离入口，不接普通CLI、C3、网络或Qt。
+
+无Result则无0.6执行指纹；文件Hash不冒充执行指纹。RUN_FINISHED只表示运行终态，
+正式目录重命名成功才表示发布成功；Bundle内不得预先记录自身发布成功。
+
+## 19. C2精确格式及验收契约（CONFIRMED，第一段已限定实现）
+
+用户已确认冻结本节修订后的完整精确契约，以及19.9的CLI映射冻结时点调整。
+本节细化第18节；确认契约不等于授权源码实施，第一段授权范围见第20节。
+
+### 19.1 文件和版本分派
+
+- 新执行文件名：`run_record_v0.7.json`、`events_v0.7.jsonl`；有Result时仍用
+  `result_summary_v0.6.json`。原配置、Values原文、Frame及SHA256SUMS继续按字节绑定。
+- Record格式为`pae.lab.record/0.7`，Event为`pae.lab.event/0.7`；不能只按tool_version或文件名判代。
+- B的0.6 Reader、Result 0.6接受域、A20指纹和旧代文件完全不放宽、不迁写。
+- C Reader只解析明确0.7执行结构；识别到B时返回合成证据不具执行资格，不猜成新代。
+  混代Record/Event、未知版本、未知/重复属性和重复文件角色一律拒绝。
+- 新离线执行无received_from，不凭空生成RX Metadata。DECODE_RX中的RX指解析输入，
+  不宣称发生网络接收；既有B RX Metadata 0.2仍只按其原关系读取。
+
+### 19.2 Record精确字段建议
+
+所有列出的属性必须出现，可选值用null，不能混用缺失、空字符串及零长度Frame。
+以下为0.7顶层允许集；未列属性拒绝。
+
+| 属性 | 类型及约束 |
+| --- | --- |
+| format_version / run_id / tool_version | 非空字符串；版本固定0.7标识；run_id与目录身份一致；tool_version只记生产者版本，不授予信任 |
+| evidence_origin | 固定`LAB_C_EXECUTION`，仅语义分类，不是来源认证 |
+| operation_kind | `encode`或`inspect`，与C1及Result逐字一致；Replay保持原种类，不将REPLAY混入指纹 |
+| invocation_kind / parent_run_id | `RUN`或`REPLAY`；原Run父身份null，Replay记录父身份但不能依赖父目录存在才能读本Bundle |
+| config_file / values_file / frame_file / tx_frame_file / rx_frame_file | 固定相对路径或null；config必须存在；Encode有原Values；Inspect有原Frame；成功Encode才有TX输出 |
+| result_file / event_file | Result路径或null；Event路径必须存在 |
+| deterministic_fingerprint | 有Result时复用0.6大写Hash，否则null |
+| requested_pipeline_id | 明确Pipeline重执行时必填；初次全局Inspect为null，不借Result倒推原请求 |
+| execution | 见下方分层对象 |
+| comparison | 原Run为null；Replay为独立比较对象，不进入0.6执行指纹 |
+| historical_baseline | 原Run为null；Replay保存19.5规定的父Record及历史Result内容绑定 |
+| hash_manifest / hash_manifest_excludes_self / recorded_payload_files | 沿用B的清单约束；清单覆盖Record和全部负载，Record的负载列表不包含自身及清单，避免循环Hash |
+
+`execution`固定属性：`terminal_stage`、`terminal_status`、`terminal_reason`、`preparation`、
+`structural_query`、`main_codec`、`review_decode`、`result_mapping`、`counts`。
+未执行阶段对象为null；终止原因独立保存，不能据原因伪造曾执行的阶段。
+
+- preparation：`status`、`diagnostic_id`、`detail`、`value_index`；索引仅为准备诊断，
+  不写入Result的failed_value_index绕过A规则。
+- structural_query：`status`、`candidate_class=ZERO|ONE|MULTIPLE|UNDETERMINED`；不记录伪精确数量。
+  MULTIPLE表示至少两个；查询异常为UNDETERMINED，不将C1提前结束时的2说成精确总数。
+- main_codec / review_decode：`status`；main另有`kind=ENCODE|DECODE`，只保存实际返回值。
+- result_mapping：`status=OK|FAILED`；包括Result基础映射、失败Result构造及成功字段复制/校验，
+  不包括Review Decode。内部多次进入按19.3分别采集，最终status为全部映射的汇总。
+- terminal_reason：`NONE|PREPARATION_REJECTED|STRUCTURAL_REJECTED|STRUCTURAL_QUERY_ERROR|`
+  `REVIEW_DECODE_FAILED|REVIEW_MESSAGE_MISMATCH|RAW_ASSOCIATION_FAILED|INTERNAL_ERROR`。
+  主Codec非OK但映射成功时原因为NONE，具体错误保留main_codec.status及Result。
+  Review失败原因独立保存，此时未执行的result_mapping仍为null。
+- counts：C1四项调用数；与事件、阶段对象、结果存在性一致。零候选和歧义的主Decode必须为0。
+- 枚举和状态关系以19.8已确认表为准，不接受任意字符串扩展状态。
+
+### 19.3 阶段事件语法建议
+
+每行固定属性：`format_version`、`run_id`、`event_id`、`offset_us`、`event_kind`、`phase`、
+`status`。编号从1连续；offset_us为非负整数、同一Run单调原点、非递减，不进入执行指纹。
+诊断及字段只保存在Record/Result；事件通过run_id和Record指定的唯一event_file关联，不重复整份结果。
+
+| event_kind | phase / status | 次数及条件 |
+| --- | --- | --- |
+| RUN_STARTED | NONE / null | 第一条且一次 |
+| PHASE_STARTED | PREPARATION、STRUCTURAL_QUERY、MAIN_CODEC、REVIEW_DECODE、RESULT_MAPPING / null | 只在实际进入阶段时采集 |
+| PHASE_FINISHED | 与对应开始一致 / 该阶段真实状态 | 每个开始恰有一个结束；阶段失败后不生成未执行阶段 |
+| RUN_FINISHED | 真实终止阶段 / 整体终态 | 最后一条且一次；不是PUBLISHED |
+
+阶段不重叠，允许路径如下，M表示RESULT_MAPPING，每个M均对应实际映射调用而非文件序列化：
+
+- 准备失败：PREPARATION后结束；结构拒绝/错误：PREPARATION→STRUCTURAL_QUERY后结束。
+- Inspect：PREPARATION→STRUCTURAL_QUERY→MAIN_CODEC→M；主成功才继续第二个M复制字段。
+- Encode主失败：PREPARATION→MAIN_CODEC→M（构造失败Result），不做Review。
+- Encode主成功：PREPARATION→MAIN_CODEC→REVIEW_DECODE→M→M；两个M分别为基础映射与字段复制。
+- 任一M失败立即结束；Review返回失败或返回OK但Message不一致时，Review结束后直接终止，
+  status仍为真实Decode返回，终止原因单独说明Message不一致，不生成M。
+
+每个开始与紧随的同phase结束配对，因此重复M无须伪造一个跨阶段计时区间。
+结构查询事件覆盖整次候选汇总，counts记录其中实际逐Pipeline调用数。
+Encode额外Review Decode与主调用明确分开；Inspect不生成Review Decode事件。
+事件上限建议256，超限拒绝发布而非截断；完成Bundle不得含未配对阶段，强杀中间状态不承诺可读。
+实现需要在C1真实调用边界增加内部观察接缝，不能只从最终Outcome反造时间和事件；不改变Core/A接受域。
+
+### 19.4 全部分支的结果及诊断映射
+
+| 运行分支 | Record事实 | Result / 指纹 | 重执行及比较 |
+| --- | --- | --- | --- |
+| 配置、Values、版本、引用准备失败 | PREPARATION_FAILED；准备诊断及适用输入索引；Codec未调用 | 无 / null | 只读诊断，NOT_EVALUATED |
+| 全局结构零候选或多候选 | STRUCTURAL_REJECTED；保留UNKNOWN_MESSAGE/AMBIGUOUS_MESSAGE | 无 / null | 只读诊断，NOT_EVALUATED |
+| 结构查询其他非OK | STRUCTURAL_ERROR；保留真实状态，candidate_class为UNDETERMINED | 无 / null | 只读诊断，NOT_EVALUATED |
+| 主Codec非OK且失败Result映射成功 | CODEC_ERROR；主返回原状态，未Review | 有 / 0.6 | 材料齐全时可重执行；同失败可EQUAL，但不是转换成功 |
+| 主Codec非OK且失败Result映射也失败 | LAB_RESULT_FAILED；主仍保留原非OK状态，映射失败原因为INTERNAL_ERROR | 无 / null | 只读诊断，NOT_EVALUATED，不覆盖原Codec错误 |
+| 主Codec与物化成功 | OK；Encode适用Review也为OK | 有 / 0.6 | 可重执行和比较 |
+| 主Codec成功但Review/物化失败 | LAB_RESULT_FAILED；主仍OK，保留实际Review和物化原因 | 无 / null | 只读诊断，NOT_EVALUATED；不发布成功字段或Encode字节 |
+| Reader路径、Hash、语义或重执行资格失败 | 重执行前拒绝，不伪造执行终态 | 不交付Bundle | 当前Codec为0，不产生EQUAL |
+| 执行后Writer写入、重读或发布失败 | Writer操作错误；保留已发生的Codec及事件事实 | 不发布正式Bundle，返回的发布路径为空 | 不自动重执行、不发布比较通过结论；不能声称先前Codec未调用 |
+
+准备失败的配置文件仍保留原字节。Reader可确认文件一致性，不因此宣称编译诊断已经独立复现。
+无Result分支不得调用A指纹器生成默认对象指纹。对16.5“C2前冻结CLI退出码”的时点已确认
+显式修订：C2仅冻结内部终态，CLI映射延至C3实施前单独冻结，见19.9。
+不由内部枚举自动推导进程退出码，也不修改Result既有exit_code。
+
+### 19.5 Plan、Replay与比较建议
+
+先完成路径门禁、Hash、严格格式及跨文件关联，再执行C层Plan检查；底层文件Reader不链接Core。
+配置无效且记录为配置准备失败时允许只读报告；声称进入结构查询/Codec的Bundle则必须可编译。
+已知身份核对Pipeline、Message、方向、Field ID/索引/类型/转换属性及顺序；Encode输入索引按
+记录Values的作者顺序检查。Plan身份合法不证明字段数值正确。
+
+重执行资格必须同时满足：C执行0.7、有效Result 0.6、明确模式、完整对应原始材料、通过Plan关联。
+ENCODE_TX使用原Values；DECODE_RX使用记录的明确Pipeline与原Frame，禁止重新全局猜测。
+初次全局Inspect唯一候选后需记录获选Pipeline供后续明确重执行，但requested_pipeline_id仍为null。
+NO_CODEC不作为本次无Result分支的替代；既有B合成NO_CODEC只能按B证据检查，不授予C执行比较资格。
+
+comparison固定建议为`status=EQUAL|DIFFERENT|NOT_EVALUATED`及`reason`，只在双方有合格执行结果
+时使用前两者。当前执行发生物化失败时比较NOT_EVALUATED，不能仅因历史成功而填EQUAL。
+不同Record来源、格式或不合格分支返回明确不支持/证据不足，不静默降级。
+historical_baseline固定属性：`parent_record_file`、`parent_record_sha256`、`result_file`、
+`result_sha256`、`fingerprint_domain`、`deterministic_fingerprint`。两个文件分别为
+`history/parent_record_v0.7.json`和`history/result_summary_v0.6.json`，逐字节复制原父Record和
+其Result；原Run不得存在这些文件。它们均进入本Bundle负载清单和Hash检查。
+Reader校验父Record.run_id等于parent_run_id、父Record绑定的Result长度/Hash匹配历史快照、
+其声明指纹与快照复算的0.6指纹一致，再据当前指纹验证comparison。历史Record中的祖先路径
+只作记录，不递归打开；快照不冒充完整父Bundle验证或来源认证。全量自洽重写仍不能靠Hash识别。
+父Record本身先按0.7严格结构解析并校验角色唯一性；不得仅提取几个字符串后忽略其非法状态。
+Replay还必须校验父子输入：当前原配置长度/Hash等于父Record对应描述符；encode当前Values
+长度/Hash等于父Values描述符；inspect当前原Frame长度/Hash等于父Frame描述符，且当前明确
+requested_pipeline_id等于父Result.pipeline_id。模式、operation_kind亦须一致。
+任何缺失或不一致均在重执行前拒绝。离线Reader读取新Replay时也检查同样的父子绑定，不能仅
+校验本Bundle自洽后接受一个替换输入的EQUAL。encode新输出不要求等于父输出，否则会误拒DIFFERENT。
+上述“相同原材料”约束仅针对Replay父子关系；两个独立Run的Compare仍允许等价Decimal的
+原Values字节/Hash不同。不把独立Run Compare的宽松原文规则搬到Replay。
+缺失或非法历史基准拒绝Replay证据，不仅将自报EQUAL改成NOT_EVALUATED后接受。
+comparison.reason限定`FINGERPRINT_EQUAL|FINGERPRINT_DIFFERENT|CURRENT_RESULT_UNAVAILABLE`，
+分别对应三种status；原Run的comparison和historical_baseline均为null。
+新Replay发布自有完整材料和当前结果，可再次Replay；父Run身份只用于追溯，不改变数学值比较。
+当前无Result的Replay可读但不可作为下一次执行基准；“可再次Replay”只适用于合格有Result分支。
+原配置Hash仍绑定执行；等价Decimal原Values Hash不同不导致执行不等，时间/父身份不进入A20。
+
+### 19.6 分段授权及最低验收
+
+第一段（C2证据）：新增默认关闭隔离入口，要求Testing；复用A和C1，自有0.7读写与事件采集，
+不放宽B Reader，不接普通Lab。验收全部19.4分支、真实事件顺序、Result缺席规则、原始材料绑定、
+同对象成功后失败清空、写闭/重读/重命名故障、链接读前拒绝、自洽语义篡改、旧B不变。
+其中“无Result/无指纹”是执行分支规定；Writer失败不能追溯抹除已经返回的内存执行结果，
+但发布结果必须失败关闭、不返回正式Bundle路径。日志只如实区分执行结果与发布结果。
+
+第二段（C2复现）：另行授权Plan关联、明确Pipeline Decode入口、Replay/Compare；验收自洽非法
+身份/顺序/输入索引、材料缺失拒绝、合成证据拒绝、等价Decimal、失败比较相等、Run→Replay→Replay，
+以及重执行内部失败不产生成功比较。不得为无Result失败链擅自新增复现算法。
+
+各段Windows Debug/Release先列实际注册清单，再执行针对性及受影响A/B/C1/Core矩阵；隔离构建
+和普通Lab拒绝门禁按依赖变化复核。没有运行即不写通过；网络一律不执行，Linux/Oracle/硬件另行授权。
+Qt、清理生成物、Stage、Commit、Push不在以上任何实现范围内。
+
+### 19.7 定向复核补充（已纳入确认契约）
+
+- terminal_stage为PREPARATION、STRUCTURAL_QUERY、MAIN_CODEC、REVIEW_DECODE、RESULT_MAPPING；
+  terminal_status为PREPARATION_FAILED、STRUCTURAL_REJECTED、STRUCTURAL_ERROR、CODEC_ERROR、
+  OK、LAB_RESULT_FAILED。终止阶段取最后实际阶段，不直接照搬C1的Outcome.stage；C1成功映射后
+  stage仍可能为CODEC，因此事件观察接缝必须独立采集真实边界。
+- preparation.status为OK/FAILED；成功诊断和value_index为null，detail为空字符串。
+  结构和Codec状态保留实际枚举，完整允许集见19.8，不因使用字符串而允许未知状态。
+- 四项counts采用C1成员名structural_query_calls、encode_calls、decode_calls、review_decode_calls；
+  后三项各为0或1；结构次数为非负整数，Plan检查阶段核对不超过Pipeline数。
+- 所有长度、索引、计数及offset_us采用严格无符号JSON整数，范围0..UINT64_MAX；禁止负数、
+  浮点和指数写法。event_id为1..256；进入本机size_t前必须检查可表示性，不能截断。
+- 原配置固定inputs/protocol.pae.json，Values固定inputs/values.pae-lab.json，主Frame固定
+  frames/000001_frame.bin。新C离线仅使用主Frame，tx_frame_file/rx_frame_file固定null；
+  Result.tx_frame_hex/rx_frame_hex亦保持C1现状null，不为了记录方向修改A20指纹。
+  Encode成功主Frame为实际输出；失败无Frame；Inspect主Frame总是原输入，含零长度输入。
+  第19.2“成功Encode才有TX输出”指逻辑方向，不要求额外TX文件。禁止一个路径同时承担多个角色。
+- Review失败不保存成功Encode字节，但保留主Codec真实状态；异常结果映射属于Lab错误。
+  系统分配异常、强杀、断电不在完整Bundle保证范围内，不虚构已完成的阶段事件。
+- 第二段验收追加：父Record/历史Result/比较声明的自洽篡改、缺失基准、无Result再Replay拒绝、
+  主非OK且映射失败、结构异常、Review失败未进入映射及Inspect两段映射的真实事件顺序。
+  第一段只生成并接受invocation_kind=RUN；comparison、historical_baseline和parent_run_id为null，
+  REPLAY证据明确拒绝，其实现和校验在第二段授权。
+
+本轮三项缺口已完成文档修订；完整状态及CLI映射时点确认结果见19.8～19.9。
+不据此自动启动C2，不声称运行验证通过。
+
+### 19.8 完整状态允许集与关联表（CONFIRMED，第一段已实现）
+
+以下按当前`complete_record_codec.h`、`CodecStatusName()`、结构查询及C1准备分支静态核对。
+允许集是可序列化的明确状态集合，不表示每个值都能由合法配置触发，也不表示已动态覆盖。
+只在C证据层收紧关系，不更改A/B现有接受域；未知字符串拒绝，不沿用内部switch的默认兜底。
+
+**准备诊断。** `preparation`必须存在；status为OK/FAILED。FAILED的diagnostic_id只允许下表；
+detail为诊断说明字符串，不解析detail决定分支或优先级。value_index约束如下：
+
+| diagnostic_id | value_index | 当前来源 |
+| --- | --- | --- |
+| PAE_LAB_C1_CONFIG_INVALID | null | CompileJsonToPlan失败 |
+| PAE_LAB_C1_SCHEMA_UNSUPPORTED | null | 配置编译成功，但不是Schema 0.5 |
+| PAE_LAB_C1_VALUES_INVALID | null | Values严格解析或版本分派失败 |
+| PAE_LAB_C1_UNKNOWN_PIPELINE | null | Values Pipeline绑定失败 |
+| PAE_LAB_C1_UNKNOWN_MESSAGE | null | Values Message绑定失败 |
+| PAE_LAB_C1_MESSAGE_NOT_ALLOWED | null | Pipeline不允许该Message |
+| PAE_LAB_C1_UNKNOWN_FIELD | 必有非负索引 | 作者顺序Field绑定失败 |
+| PAE_LAB_C1_UNKNOWN_ENUM_ENTRY | 必有非负索引 | 作者顺序Enum名称绑定失败 |
+| PAE_LAB_C1_UNSUPPORTED_VALUE_KIND | 必有非负索引 | C1类型模型防御分支，不冒充严格Values原文可达分支 |
+
+后七项仅适用于encode。第一段RUN输入必须来自原配置/Values/Frame文本或字节；直接构造
+ParsedValues的防御测试不能发布为原Values已通过严格解析的真实证据。
+第一段Reader可检查诊断/索引结构，原Values索引真实对应与诊断适用性由第二段Plan检查完成。
+未实施Plan检查前只能声明“证据格式和内部关联通过”，不能授予重执行资格。
+
+**结构查询。** status只允许以下五种；全局Inspect才有该对象，encode固定null。
+
+| status | candidate_class | 整体含义 |
+| --- | --- | --- |
+| OK | ONE | 结构唯一，可进入一次主Decode |
+| UNKNOWN_MESSAGE | ZERO | 无匹配，主Decode为0 |
+| AMBIGUOUS_MESSAGE | MULTIPLE | 至少两个身份，主Decode为0 |
+| INVALID_ARGUMENT / INVALID_PLAN | UNDETERMINED | 查询错误，主Decode为0，不伪造候选数量 |
+
+UNKNOWN_MESSAGE既可为单Pipeline结果也可为最终汇总；Record保存最终汇总状态，
+counts保存实际查询次数。第二段明确Pipeline重执行的结构查询约束必须在其实施前补充，
+不得默默沿用第一段的全局汇总事件路径；本表不授权新增该接口。
+
+**Codec状态。** 定义集合C（共同项）、D（Decode追加项）、E（Encode追加项）：
+
+- C：`OK`、`INVALID_ARGUMENT`、`INVALID_PLAN`、`WORKSPACE_PLAN_MISMATCH`、`WORKSPACE_BUSY`、
+  `INPUT_OUTPUT_OVERLAP`、`VALUE_NOT_REPRESENTABLE`、`INTERNAL_ERROR`。
+- D：`UNKNOWN_MESSAGE`、`AMBIGUOUS_MESSAGE`、`OUTPUT_SLOTS_TOO_SMALL`、`INTEGRITY_FAILED`、
+  `UNKNOWN_ENUM_VALUE`。
+- E：`MESSAGE_NOT_ALLOWED`、`FIELD_REFERENCE_MISMATCH`、`DUPLICATE_FIELD`、`MISSING_FIELD`、
+  `TYPE_MISMATCH`、`BYTES_LENGTH_MISMATCH`、`ENUM_REFERENCE_MISMATCH`、`CONSTANT_FIELD_OVERRIDE`、
+  `BUFFER_TOO_SMALL`、`FINAL_REVIEW_FAILED`。
+
+main_codec.kind=ENCODE仅接受C∪E，kind=DECODE及review_decode仅接受C∪D。
+共23个不同Core状态，数量只为文本核对，不是测试数。未调用用null对象，不写NONE或NOT_EVALUATED。
+Review只有在主Encode为OK时可存在；Inspect禁止Review。main_codec.kind与operation_kind对应。
+conversion_error不新增Record副本，仍由Result 0.6及其既有四种原因/status关联表达；
+无Result时不从诊断文字推导数值原因，不要求结果映射失败分支保留一份伪Result。
+
+**阶段、事件和终态。** RUN_STARTED.offset_us固定0；后续时间非递减。
+PHASE_FINISHED.status与该阶段对象对应；RESULT_MAPPING每次仅OK/FAILED，汇总为最后一次状态。
+同一Run的准备/结构/主/Review阶段最多各一次；映射最多两次，任一次FAILED后终止。
+Record存在阶段对象，当且仅当有对应配对事件；counts与主/Review事件次数精确相等。
+
+| terminal_status | terminal_stage | terminal_reason | Result条件 |
+| --- | --- | --- | --- |
+| PREPARATION_FAILED | PREPARATION | PREPARATION_REJECTED | 无；准备FAILED，其余阶段null |
+| STRUCTURAL_REJECTED | STRUCTURAL_QUERY | STRUCTURAL_REJECTED | 无；状态为UNKNOWN_MESSAGE或AMBIGUOUS_MESSAGE |
+| STRUCTURAL_ERROR | STRUCTURAL_QUERY | STRUCTURAL_QUERY_ERROR | 无；状态为INVALID_ARGUMENT或INVALID_PLAN |
+| CODEC_ERROR | RESULT_MAPPING | NONE | 有；main非OK，映射一次且OK，Review为null |
+| OK | RESULT_MAPPING | NONE | 有；main为OK，两个映射均OK；Encode的Review也OK |
+| LAB_RESULT_FAILED | REVIEW_DECODE | REVIEW_DECODE_FAILED | 无；main Encode OK，Review非OK，映射null |
+| LAB_RESULT_FAILED | REVIEW_DECODE | REVIEW_MESSAGE_MISMATCH | 无；main Encode及Review均OK，映射null；不将Message检查说成Decode返回错误 |
+| LAB_RESULT_FAILED | RESULT_MAPPING | INTERNAL_ERROR | 无；最后映射FAILED，main原状态保持，Review按实际保存 |
+| LAB_RESULT_FAILED | RESULT_MAPPING | RAW_ASSOCIATION_FAILED | 无；main OK，首映射OK，第二映射FAILED；Encode的Review须OK |
+
+MAIN_CODEC保留为phase允许值，但在当前正常返回路径中不直接作为完整Run终止阶段：
+非OK后仍须映射失败Result。RUN_FINISHED.phase/status必须等于Record的terminal_stage/status。
+UNKNOWN_MESSAGE等词不能出现在preparation.status；NOT_EVALUATED属于比较语义，不是实际Codec状态。
+有Result时其operation_kind、current_execution_status及配置Hash与Record/原文件逐项绑定；
+OK结果无失败身份/诊断，非OK结果operation_status=CODEC_ERROR、exit_code=5且两个diagnostic_id
+均为`PAE_LAB_CODEC_<main status>`。错误字段/raw/索引继续遵循A规则和第二段Plan校验。
+
+### 19.9 CLI冻结时点的单独拍板（CONFIRMED）
+
+用户已确认：将16.5要求的CLI退出码映射冻结后移至C3实施前，C2仅交付内部Run/Reader/Writer/
+Replay状态。原因是C2没有普通CLI，也不实现`--expect-status`、进程异常出口或Compare进程退出。
+这不更改既有CLI的0、2～10含义，也不更改C1 Result的0/5；尤其不能把新增终止枚举的序号
+当退出码，或为了进程退出10而将原主Codec OK篡改为INTERNAL_ERROR。
+
+C3前必须单独确认准备诊断分派、Reader输入错误、Writer失败、Lab复核内部错误、Compare差异、
+`--expect-status`及同时失败优先级。未冻结不得开启C3；同意本轮文档收口不等于授权C2或C3源码。
+
+### 19.10 本轮只读复核记录（2026-09-08）
+
+本轮仅对照C1/Core源码补齐推荐枚举及状态关系；另经独立只读复核，把Reader重执行前拒绝与
+Writer执行后发布失败拆开。后者不交付正式Bundle，但不能将已发生Codec次数改写为0。
+第一段失败发布验收须断言该区别，且不得为重试发布自动重新执行Codec。
+另补齐第二段父子输入的长度/Hash、模式及明确Pipeline绑定；替换输入但保持失败指纹相等的
+负例须在执行前拒绝。独立只读复核未发现其余实质冲突；该结论不是实现正确性或完整输入域证明。
+未运行构建、测试或网络；这是契约静态一致性核对，不是新机器格式已实现的证据。
+
+## 20. C2第一段执行任务范围（已授权并完成限定实现，待总控复核）
+
+执行对象为既有《子任务推进》。接管时必须重核HEAD、工作树和适用规则，保留当前全部Markdown
+变更。20.1～20.3保留实施授权前的任务草案和权限边界，第一段后续已单独授权并完成限定实施，
+证据见20.4～20.5；旧草案不代表当前仍未授权，也不授权第二段。权威为第18～19节，不另行放宽接受域。
+
+### 20.1 授权后交付范围
+
+- 仅RUN证据0.7：真实C1阶段观察、内部执行编排、Writer、严格Reader、独立测试和验证文档。
+- 允许范围拟为Lab内部源码、必要C1观察接缝、CMake、隔离测试及相关Markdown；不修改Core
+  算法/公共接口、Schema、A接受域/指纹或B旧Reader语义。通用IO复用不得将Compiler/Core反向
+  引入底层Reader。新增开关默认关闭且依赖Testing，普通Lab/Schema 0.5组合拒绝保持。
+- 第一段仅接受invocation_kind=RUN，父身份/历史基准/比较字段为null；遇REPLAY明确拒绝。
+  第19节第二段的Plan关联、明确Pipeline重执行、历史快照、Replay/Compare均不提前实现。
+- 记录Codec真实阶段和失败整体交付；不得从最终Outcome反造时间，不把Writer失败说成未执行Codec。
+  Writer发布失败不自动重跑Codec，不交付正式路径；无Result分支不生成执行指纹。
+- 如发现冻结契约无法由当前C1无语义变更地实现，先提交具体冲突与最小修订建议，暂停相关部分，
+  不静默改变版本、状态、事件路径或测试预期。
+
+### 20.2 验收及Windows验证要求
+
+1. RUN成功Encode/Inspect、无转换0.5、转换失败、准备失败、结构拒绝/异常、Review/映射失败，
+   包括主非OK且Result映射失败；逐项核对事件、调用数、原始输入和Result/指纹有无。
+2. 事务故障：写闭、重读、内容/Hash不一致、重命名失败、已有正式/中间目录拒绝覆盖；Reader
+   缺失/额外/重复/未知属性、自洽语义篡改、路径/链接门禁、成功后失败输出清空。
+3. 第一段拒绝REPLAY及非null历史/比较字段；B合成0.6和旧代不被当作C执行0.7；不授予Plan
+   验证或重执行资格。防御分支可用隔离接缝核实，不伪称合法配置和严格Values入口实际可达。
+4. Windows Debug/Release先列注册清单，再跑专项及受影响A/B/C1/Core回归；按依赖变化复核
+   Product-only、Lab-on/Testing-off和错误开关门禁。全部串行使用明确构建目录，避免共享产物污染。
+   排除UDP及任何网络测试；不能把历史成功数字当本轮重跑。
+5. 回报实际命令、日志、结果、文件清单和契约映射；未执行项明确标注。格式、敏感内容和
+   diff空白检查仅覆盖本轮候选；第三方源码不格式化，历史out不清理。
+
+### 20.3 不在授权草案中的内容
+
+C2第二段、C3、普通CLI、网络/UDP、Qt及依赖复制、生成物清理、Linux、Oracle、真实协议Golden、
+硬件和现场验证均不包含。Stage、Commit、Push、Git配置修改亦不包含。
+完成后仅报告“待总控复核”，不能自行进入第二段或提交。源码实施及Windows验证须用户另行授权。
+
+### 20.4 第一段实施与Windows验证记录（2026-09-08）
+
+本轮在默认关闭且要求Testing的`PAE_BUILD_LAB_V07_RUN_EVIDENCE_TESTS`下完成：
+
+- C1内部执行桥接增加阶段观察接缝，在准备、结构查询、主Codec、Encode Review Decode及Result
+  映射的实际边界采集事件；普通C1调用保持兼容，未修改Core公共接口或算法。
+- 新增RUN编排、Record/Event 0.7事务Writer及严格Reader；绑定原配置、Values/Frame、可选Result
+  0.6、执行指纹、文件长度/Hash和Manifest，发布前完成完整自读，正式及中间目录均不覆盖。
+- 严格Reader拒绝未知/重复属性、非法终态/事件/调用计数、REPLAY及非null父/历史/比较字段；
+  B合成0.6继续由B Reader读取，C Reader不猜代际。Inspect准备诊断适用性、主Codec对象/调用数
+  双向关系及Review必须建立在成功主Encode上的关联也已失败关闭。
+- 写闭、写后重读、重命名和目标占用失败均不返回正式路径，不抹除已发生的Encode/Review次数，
+  不自动重试执行。
+
+恢复后当前源码的Windows Debug/Release专项各`2/2 PASS`，受影响离线切片各`22/22 PASS`；
+Product-only和Lab-on/Testing-off的Debug/Release均构建成功且注册0个测试，三类错误开关按预期
+配置失败。完整命令、日志和边界见
+[第一段验证报告](windows-msvc-2026-dec042b-lab-v07-run-evidence-stage-c2-first.md)。
+
+该证据仅证明第一段格式、执行记录及包内关联；未实现或验证第二段Plan关联、Replay/Compare、
+C3普通CLI/退出码、UDP/网络、Linux、Oracle、真实协议Golden、硬件或现场。当前状态为待总控复核，
+未Stage、Commit或Push。
+
+### 20.5 第一段Reader两项P2纠错记录（2026-09-08）
+
+总控复核指出并经自洽证据变异动态确认：成功Inspect的主Decode此前没有显式绑定结构查询
+`OK/ONE`；`RAW_ASSOCIATION_FAILED`此前允许只保留一次FAILED映射。Reader现要求前者由唯一
+结构候选授权，后者严格保存`OK`后`FAILED`两次映射，避免终态与实际阶段轨迹脱节。
+
+同时补齐Record 0.7与Result 0.6的执行语义绑定：Encode只接受`ENCODE_TX/TX`，Inspect只接受
+`DECODE_RX/RX`；成功Result不得携带失败诊断，Codec失败的外层和当前执行诊断必须同时精确对应
+主Codec状态。修复只收紧既有第19.8节关系，没有改变格式字段、版本、指纹算法、Core、A接受域
+或B语义。
+
+修复前Debug专项为`1/2`，9条已同步Result指纹、payload长度/Hash、Record指纹及Manifest的
+语义变异被错误接受；修复后Windows Debug/Release专项各`2/2 PASS`，相关v06+v07离线测试各
+`5/5 PASS`。第一段P2前完整离线切片各`22/22 PASS`保留为历史证据，本次未追溯改写为修复后
+全量结果。详细命令、日志和边界见第一段验证报告；当前仍为待总控复核。

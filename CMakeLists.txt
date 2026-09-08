@@ -100,6 +100,25 @@ if(PAE_BUILD_LAB_V06_EXECUTION_TESTS)
     endif()
 endif()
 
+option(
+    PAE_BUILD_LAB_V07_RUN_EVIDENCE_TESTS
+    "Build the isolated Protocol Lab C execution Evidence 0.7 tests"
+    OFF
+)
+if(PAE_BUILD_LAB_V07_RUN_EVIDENCE_TESTS)
+    if(NOT PAE_BUILD_TESTING)
+        message(FATAL_ERROR "PAE_BUILD_LAB_V07_RUN_EVIDENCE_TESTS requires PAE_BUILD_TESTING=ON.")
+    endif()
+    if(NOT PAE_BUILD_LOADER_SCHEMA_IR_SLICE OR
+       NOT PAE_BUILD_COMPLETE_RECORD_CODEC_SLICE OR
+       NOT PAE_ENABLE_SCHEMA_V05_COMPILER)
+        message(
+            FATAL_ERROR
+            "PAE_BUILD_LAB_V07_RUN_EVIDENCE_TESTS requires the Loader, Core, and Schema 0.5 compiler slices."
+        )
+    endif()
+endif()
+
 add_library(pae_project_options INTERFACE)
 add_library(pae::project_options ALIAS pae_project_options)
 target_compile_features(pae_project_options INTERFACE cxx_std_17)
@@ -174,6 +193,10 @@ endif()
 
 if(PAE_BUILD_LAB_V06_EXECUTION_TESTS)
     add_subdirectory(tests/protocol_lab_v06_execution)
+endif()
+
+if(PAE_BUILD_LAB_V07_RUN_EVIDENCE_TESTS)
+    add_subdirectory(tests/protocol_lab_v07_run_evidence)
 endif()
 
 if(PAE_BUILD_TESTING AND TARGET pae_yyjson_vendor)
