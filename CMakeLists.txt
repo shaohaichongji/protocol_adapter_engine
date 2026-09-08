@@ -72,6 +72,15 @@ if(PAE_BUILD_LAB_V06_FORMAT_TESTS AND NOT PAE_BUILD_TESTING)
     message(FATAL_ERROR "PAE_BUILD_LAB_V06_FORMAT_TESTS requires PAE_BUILD_TESTING=ON.")
 endif()
 
+option(
+    PAE_BUILD_LAB_V06_EVIDENCE_TESTS
+    "Build the isolated Protocol Lab Evidence Bundle 0.6 tests"
+    OFF
+)
+if(PAE_BUILD_LAB_V06_EVIDENCE_TESTS AND NOT PAE_BUILD_TESTING)
+    message(FATAL_ERROR "PAE_BUILD_LAB_V06_EVIDENCE_TESTS requires PAE_BUILD_TESTING=ON.")
+endif()
+
 add_library(pae_project_options INTERFACE)
 add_library(pae::project_options ALIAS pae_project_options)
 target_compile_features(pae_project_options INTERFACE cxx_std_17)
@@ -138,6 +147,10 @@ endif()
 
 if(PAE_BUILD_LAB_V06_FORMAT_TESTS)
     add_subdirectory(tests/protocol_lab_v06_format)
+endif()
+
+if(PAE_BUILD_LAB_V06_EVIDENCE_TESTS)
+    add_subdirectory(tests/protocol_lab_v06_evidence)
 endif()
 
 if(PAE_BUILD_TESTING AND TARGET pae_yyjson_vendor)

@@ -74,6 +74,7 @@ struct Result {
 };
 
 bool ParseValues(std::string& text, ParsedValues& output, std::string& error);
+bool ParseResult(std::string& text, Result& output, std::string& error);
 Decimal64 NormalizeDecimal64(Decimal64 value) noexcept;
 bool ValidateResult(const Result& result, std::string& error);
 std::string EncodeFieldsCanonical(const std::vector<FieldResult>& fields, std::string& error);

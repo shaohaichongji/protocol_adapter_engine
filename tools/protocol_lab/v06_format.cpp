@@ -424,6 +424,191 @@ bool ParseValues(std::string& text, ParsedValues& output, std::string& error) {
   return true;
 }
 
+bool ParseResult(std::string& text, Result& output, std::string& error) {
+  output = Result{};
+  yyjson_read_err read_error{};
+  DocumentPtr document{
+      yyjson_read_opts(text.data(), text.size(), YYJSON_READ_NOFLAG, nullptr, &read_error)};
+  if (!document) {
+    error = "Result 0.6 is not valid strict JSON";
+    return false;
+  }
+  yyjson_val* root = yyjson_doc_get_root(document.get());
+  const std::set<std::string_view> keys{"format_version",
+                                        "command",
+                                        "operation_kind",
+                                        "operation_status",
+                                        "exit_code",
+                                        "config_sha256",
+                                        "protocol_id",
+                                        "pipeline_id",
+                                        "message_id",
+                                        "direction_id",
+                                        "frame_hex",
+                                        "tx_frame_hex",
+                                        "rx_frame_hex",
+                                        "fields",
+                                        "diagnostic",
+                                        "deterministic_fingerprint",
+                                        "replay_mode",
+                                        "replay_subject",
+                                        "current_execution_status",
+                                        "current_execution_diagnostic_id",
+                                        "conversion_error",
+                                        "failed_field_id",
+                                        "failed_field_index",
+                                        "failed_value_index"};
+  if (!IsObjectWithKeys(root, keys, keys, "result", error)) return false;
+
+  auto read_optional_string = [&](std::string_view key, std::optional<std::string>& value) {
+    yyjson_val* node = yyjson_obj_getn(root, key.data(), key.size());
+    if (yyjson_is_null(node)) {
+      value.reset();
+      return true;
+    }
+    if (!yyjson_is_str(node)) {
+      error = std::string{key} + " must be a string or null";
+      return false;
+    }
+    value = std::string{yyjson_get_str(node), yyjson_get_len(node)};
+    return true;
+  };
+  auto read_optional_index = [&](std::string_view key, std::optional<std::size_t>& value) {
+    yyjson_val* node = yyjson_obj_getn(root, key.data(), key.size());
+    if (yyjson_is_null(node)) {
+      value.reset();
+      return true;
+    }
+    if (!yyjson_is_uint(node) ||
+        yyjson_get_uint(node) > (std::numeric_limits<std::size_t>::max)()) {
+      error = std::string{key} + " must be a non-negative integer or null";
+      return false;
+    }
+    value = static_cast<std::size_t>(yyjson_get_uint(node));
+    return true;
+  };
+
+  std::string format;
+  std::string declared_fingerprint;
+  yyjson_val* exit_code = yyjson_obj_get(root, "exit_code");
+  if (!ReadString(root, "format_version", format, error) || format != kResultFormat) {
+    if (error.empty()) error = "unsupported Result format_version";
+    return false;
+  }
+  if (!ReadString(root, "command", output.command, error) ||
+      !ReadString(root, "operation_kind", output.operation_kind, error) ||
+      !ReadString(root, "operation_status", output.operation_status, error) ||
+      !yyjson_is_int(exit_code) || yyjson_get_sint(exit_code) < (std::numeric_limits<int>::min)() ||
+      yyjson_get_sint(exit_code) > (std::numeric_limits<int>::max)()) {
+    if (error.empty()) error = "exit_code must be an integer";
+    return false;
+  }
+  output.exit_code = static_cast<int>(yyjson_get_sint(exit_code));
+  if (!read_optional_string("config_sha256", output.config_sha256) ||
+      !read_optional_string("protocol_id", output.protocol_id) ||
+      !read_optional_string("pipeline_id", output.pipeline_id) ||
+      !read_optional_string("message_id", output.message_id) ||
+      !read_optional_string("direction_id", output.direction_id) ||
+      !read_optional_string("frame_hex", output.frame_hex) ||
+      !read_optional_string("tx_frame_hex", output.tx_frame_hex) ||
+      !read_optional_string("rx_frame_hex", output.rx_frame_hex)) {
+    return false;
+  }
+
+  yyjson_val* fields = yyjson_obj_get(root, "fields");
+  if (!yyjson_is_arr(fields)) {
+    error = "fields must be an array";
+    return false;
+  }
+  std::size_t ordinal = 0U;
+  yyjson_arr_iter field_iterator;
+  yyjson_arr_iter_init(fields, &field_iterator);
+  while (yyjson_val* node = yyjson_arr_iter_next(&field_iterator)) {
+    const std::string pointer = "fields[" + std::to_string(ordinal) + "]";
+    const std::set<std::string_view> common{"id",         "kind",      "raw_value", "logical_value",
+                                            "enum_known", "decimal64", "raw_kind"};
+    if (!IsObjectWithKeys(node, common, {"id", "kind", "raw_value"}, pointer, error)) return false;
+    FieldResult field;
+    if (!ReadString(node, "id", field.id, error) || !ReadString(node, "kind", field.kind, error) ||
+        !ReadString(node, "raw_value", field.raw_value, error)) {
+      return false;
+    }
+    if (field.kind == "DECIMAL64") {
+      const std::set<std::string_view> exact{"id", "kind", "raw_value", "decimal64", "raw_kind"};
+      if (!IsObjectWithKeys(node, exact, exact, pointer, error)) return false;
+      yyjson_val* decimal = yyjson_obj_get(node, "decimal64");
+      const std::set<std::string_view> decimal_keys{"coefficient", "scale"};
+      std::string coefficient;
+      std::string raw_kind;
+      yyjson_val* scale = yyjson_is_obj(decimal) ? yyjson_obj_get(decimal, "scale") : nullptr;
+      std::int64_t coefficient_value = 0;
+      if (!IsObjectWithKeys(decimal, decimal_keys, decimal_keys, pointer + ".decimal64", error) ||
+          !ReadString(decimal, "coefficient", coefficient, error) ||
+          !ParseInt64(coefficient, coefficient_value) || !yyjson_is_int(scale) ||
+          yyjson_get_sint(scale) < 0 || yyjson_get_sint(scale) > 18 ||
+          !ReadString(node, "raw_kind", raw_kind, error)) {
+        if (error.empty()) error = pointer + ".decimal64 is invalid";
+        return false;
+      }
+      field.decimal64 =
+          Decimal64{coefficient_value, static_cast<std::int32_t>(yyjson_get_sint(scale))};
+      field.raw_kind = std::move(raw_kind);
+    } else {
+      const std::set<std::string_view> exact{"id", "kind", "raw_value", "logical_value",
+                                             "enum_known"};
+      if (!IsObjectWithKeys(node, exact, exact, pointer, error) ||
+          !ReadString(node, "logical_value", field.logical_value, error)) {
+        return false;
+      }
+      yyjson_val* enum_known = yyjson_obj_get(node, "enum_known");
+      if (!yyjson_is_bool(enum_known)) {
+        error = pointer + ".enum_known must be a boolean";
+        return false;
+      }
+      field.enum_known = yyjson_get_bool(enum_known);
+    }
+    output.fields.push_back(std::move(field));
+    ++ordinal;
+  }
+
+  yyjson_val* diagnostic = yyjson_obj_get(root, "diagnostic");
+  const std::set<std::string_view> diagnostic_keys{"id", "detail"};
+  if (!IsObjectWithKeys(diagnostic, diagnostic_keys, diagnostic_keys, "diagnostic", error))
+    return false;
+  yyjson_val* diagnostic_id = yyjson_obj_get(diagnostic, "id");
+  if (yyjson_is_null(diagnostic_id)) {
+    output.diagnostic_id.reset();
+  } else if (yyjson_is_str(diagnostic_id)) {
+    output.diagnostic_id =
+        std::string{yyjson_get_str(diagnostic_id), yyjson_get_len(diagnostic_id)};
+  } else {
+    error = "diagnostic.id must be a string or null";
+    return false;
+  }
+  if (!ReadString(diagnostic, "detail", output.diagnostic_detail, error) ||
+      !ReadString(root, "deterministic_fingerprint", declared_fingerprint, error) ||
+      !ReadString(root, "replay_mode", output.replay_mode, error) ||
+      !ReadString(root, "replay_subject", output.replay_subject, error) ||
+      !ReadString(root, "current_execution_status", output.current_execution_status, error) ||
+      !read_optional_string("current_execution_diagnostic_id",
+                            output.current_execution_diagnostic_id) ||
+      !read_optional_string("conversion_error", output.conversion_error) ||
+      !read_optional_string("failed_field_id", output.failed_field_id) ||
+      !read_optional_index("failed_field_index", output.failed_field_index) ||
+      !read_optional_index("failed_value_index", output.failed_value_index)) {
+    return false;
+  }
+  if (!ValidateResult(output, error)) return false;
+  const std::string actual_fingerprint = FinalizeFingerprint(output, error);
+  if (!error.empty()) return false;
+  if (declared_fingerprint != actual_fingerprint) {
+    error = "Result 0.6 deterministic_fingerprint does not match canonical content";
+    return false;
+  }
+  error.clear();
+  return true;
+}
+
 bool ValidateResult(const Result& result, std::string& error) {
   if (result.operation_kind.empty() || result.operation_status.empty() ||
       result.replay_mode.empty() || result.replay_subject.empty() ||

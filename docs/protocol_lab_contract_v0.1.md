@@ -2,6 +2,14 @@
 
 ## 1. 状态和目的
 
+2026-09-08补记：当前接管基线`1c0617c`，A实现`8d4c7c4`及文档`0c4bc48`均已提交并Push。
+B已按[DEC-042B契约第14节](pae-dec-042b-decimal-conversion-contract-draft.md)完成默认关闭的
+Evidence 0.6隔离读写与Windows Debug/Release验证；仍不接通普通CLI、不调用Core、Replay/
+Compare或网络。详细边界见[B阶段报告](windows-msvc-2026-dec042b-lab-v06-evidence-stage-b.md)。
+Reader P2纠错进一步落实整体交付和读前路径门禁：失败不保留任何部分`StoredBundle`，且在读取
+清单或负载前拒绝Bundle内符号链接及Windows重解析点；不承诺抵抗检查/打开之间的并发路径替换。
+下文旧批次状态保留。
+
 2026-09-07当前状态补记：代码基线为`90c5165`。以下DEC-037～039实施状态与门禁文字保留
 当时记录；2026-09-06 NetAssist人工Loopback已完成，仅该模拟场景通过，见
 [人工验收报告](windows-protocol-lab-manual-loopback-acceptance-20260906.md)，不升级Golden或硬件证据。
