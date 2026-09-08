@@ -6,6 +6,20 @@ PAE 的目标是通过严格配置完成工业二进制协议的有方向 Decode
 
 ## 当前状态
 
+2026-09-08 C2第一段实施：默认关闭的C执行RUN Evidence 0.7隔离入口已实现真实阶段事件、
+事务Writer、严格Reader及完整失败记录；P2修复后Windows Debug/Release专项各2/2、相关离线集
+各5/5通过。完整离线切片各22/22及两类0测试隔离构建属于P2前验证批次，本次未重跑。
+详见[C2第一段报告](docs/windows-msvc-2026-dec042b-lab-v07-run-evidence-stage-c2-first.md)。
+实现及直接契约已通过总控限定复核，并随A组`d7b6e97`本地提交，尚未Push。
+本阶段未实现Replay/Compare/Plan关联、普通CLI或网络。以下记录保留其历史时点。
+
+2026-09-08历史记录（C2实施授权前）：C1实现`115db10`及入口文档`ef350d5`已提交并Push。
+C2六项方向决策已确认：C执行Record/Event使用0.7，Values 0.4、Result/指纹0.6及B合成0.6保持不变。
+完整失败记录、真实阶段事件、分层Reader与两段实施边界见
+[契约第18～19节](docs/pae-dec-042b-decimal-conversion-contract-draft.md)。修订后的精确契约已确认，C2/C3未实施。
+CLI退出码映射已确认延至C3实施前冻结；第20节已整理第一段执行范围，待单独授权后派发。
+本次仅同步Markdown，未运行测试或执行Git写操作。下列实施回报保留当时状态。
+
 2026-09-08 C1实施补记：B实现`70cf4ff`及入口文档`761ff7f`已提交并Push。
 C阶段12项决策已确认；默认关闭的Schema 0.5执行桥接C1现已完成限定实现及Windows
 Debug/Release隔离验证，见[C1报告](docs/windows-msvc-2026-dec042b-lab-v06-execution-stage-c1.md)。
