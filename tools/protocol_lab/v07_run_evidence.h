@@ -60,6 +60,20 @@ struct ExecutionFacts {
   ExecutionCounts counts;
 };
 
+struct ComparisonFacts {
+  std::string status;
+  std::string reason;
+};
+
+struct HistoricalBaseline {
+  std::string parent_record_file;
+  std::string parent_record_sha256;
+  std::string result_file;
+  std::string result_sha256;
+  std::string fingerprint_domain;
+  std::string deterministic_fingerprint;
+};
+
 struct StageEvent {
   std::uint64_t event_id = 0U;
   std::uint64_t offset_us = 0U;
@@ -72,11 +86,16 @@ struct RunRecord {
   std::string run_id;
   std::string tool_version;
   std::string operation_kind;
+  std::string invocation_kind = "RUN";
+  std::optional<std::string> parent_run_id;
   std::optional<std::string> result_file;
   std::optional<std::string> frame_file;
   std::optional<std::string> values_file;
   std::optional<std::string> deterministic_fingerprint;
+  std::optional<std::string> requested_pipeline_id;
   ExecutionFacts execution;
+  std::optional<ComparisonFacts> comparison;
+  std::optional<HistoricalBaseline> historical_baseline;
   std::vector<FileDescriptor> recorded_payload_files;
 };
 
@@ -87,6 +106,8 @@ struct RunBundleInput {
   std::optional<std::vector<std::uint8_t>> frame;
   std::optional<v06::Result> result;
   std::vector<StageEvent> events;
+  std::optional<std::string> parent_record_text;
+  std::optional<std::string> historical_result_text;
 };
 
 struct StoredRunBundle {
@@ -96,6 +117,10 @@ struct StoredRunBundle {
   std::optional<std::vector<std::uint8_t>> frame;
   std::optional<v06::Result> result;
   std::vector<StageEvent> events;
+  std::string record_text;
+  std::optional<std::string> result_text;
+  std::optional<std::string> parent_record_text;
+  std::optional<std::string> historical_result_text;
 };
 
 bool WriteRunBundle(const std::filesystem::path& record_root, const RunBundleInput& input,

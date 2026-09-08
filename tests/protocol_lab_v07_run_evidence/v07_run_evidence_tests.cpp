@@ -47,6 +47,32 @@ std::string ReplaceOne(std::string text, std::string_view before, std::string_vi
   return text;
 }
 
+bool ReplaceAll(std::string& text, std::string_view before, std::string_view after) {
+  std::size_t position = 0U;
+  std::size_t count = 0U;
+  while ((position = text.find(before, position)) != std::string::npos) {
+    text.replace(position, before.size(), after);
+    position += after.size();
+    ++count;
+  }
+  return count != 0U;
+}
+
+bool RefreshDescriptorText(std::string& record, std::string_view relative, std::string_view payload,
+                           std::string& error) {
+  const std::string marker = "{\"path\":\"" + std::string{relative} + "\",\"size\":";
+  const std::size_t begin = record.find(marker);
+  const std::size_t end = record.find('}', begin);
+  if (begin == std::string::npos || end == std::string::npos) {
+    error = "test helper could not locate payload descriptor " + std::string{relative};
+    return false;
+  }
+  const std::string replacement =
+      marker + std::to_string(payload.size()) + ",\"sha256\":\"" + HashBytes(payload) + "\"}";
+  record.replace(begin, end - begin + 1U, replacement);
+  return true;
+}
+
 void RebuildManifest(const std::filesystem::path& bundle) {
   std::vector<std::string> paths;
   for (std::filesystem::recursive_directory_iterator iterator{bundle}, end; iterator != end;
@@ -63,16 +89,136 @@ void RebuildManifest(const std::filesystem::path& bundle) {
   WriteText(bundle / "SHA256SUMS", manifest.str());
 }
 
+bool ManifestHashesMatch(const std::filesystem::path& bundle) {
+  std::istringstream input{ReadText(bundle / "SHA256SUMS")};
+  std::string line;
+  while (std::getline(input, line)) {
+    if (!line.empty() && line.back() == '\r') line.pop_back();
+    if (line.size() < 67U || line[64] != ' ' || line[65] != ' ') return false;
+    const std::string hash = line.substr(0U, 64U);
+    const std::string relative = line.substr(66U);
+    if (HashBytes(ReadText(bundle / relative)) != hash) return false;
+  }
+  return true;
+}
+
+bool RecordDescriptorMatches(const std::filesystem::path& record_path,
+                             const std::filesystem::path& bundle, std::string_view relative) {
+  const std::string payload = ReadText(bundle / std::filesystem::path{relative});
+  const std::string expected = "{\"path\":\"" + std::string{relative} +
+                               "\",\"size\":" + std::to_string(payload.size()) + ",\"sha256\":\"" +
+                               HashBytes(payload) + "\"}";
+  return ReadText(record_path).find(expected) != std::string::npos;
+}
+
+bool ReplayHistoryLinksMatch(const std::filesystem::path& bundle) {
+  const std::string parent = ReadText(bundle / "history/parent_record_v0.7.json");
+  const std::string result = ReadText(bundle / "history/result_summary_v0.6.json");
+  const std::string child = ReadText(bundle / "run_record_v0.7.json");
+  return ManifestHashesMatch(bundle) &&
+         RecordDescriptorMatches(bundle / "run_record_v0.7.json", bundle,
+                                 "history/parent_record_v0.7.json") &&
+         RecordDescriptorMatches(bundle / "run_record_v0.7.json", bundle,
+                                 "history/result_summary_v0.6.json") &&
+         child.find("\"parent_record_sha256\":\"" + HashBytes(parent) + "\"") !=
+             std::string::npos &&
+         child.find("\"result_sha256\":\"" + HashBytes(result) + "\"") != std::string::npos;
+}
+
 void RefreshPayloadDescriptor(const std::filesystem::path& bundle, std::string_view relative) {
   const std::string payload = ReadText(bundle / std::filesystem::path{relative});
   std::string record = ReadText(bundle / "run_record_v0.7.json");
-  const std::string marker = "{\"path\":\"" + std::string{relative} + "\",\"size\":";
-  const std::size_t begin = record.find(marker);
-  const std::size_t end = record.find('}', begin);
-  const std::string replacement =
-      marker + std::to_string(payload.size()) + ",\"sha256\":\"" + HashBytes(payload) + "\"}";
-  record.replace(begin, end - begin + 1U, replacement);
+  std::string error;
+  if (!RefreshDescriptorText(record, relative, payload, error)) {
+    std::cerr << "FAILED: " << error << '\n';
+    return;
+  }
   WriteText(bundle / "run_record_v0.7.json", record);
+}
+
+bool RewriteParentRecordAndRefresh(const std::filesystem::path& bundle,
+                                   const std::function<void(std::string&)>& mutate,
+                                   std::string& error) {
+  const std::filesystem::path path = bundle / "history/parent_record_v0.7.json";
+  const std::string original = ReadText(path);
+  std::string changed = original;
+  mutate(changed);
+  if (changed == original) {
+    error = "test helper parent Record mutation made no change";
+    return false;
+  }
+  WriteText(path, changed);
+  std::string child = ReadText(bundle / "run_record_v0.7.json");
+  const std::string before = "\"parent_record_sha256\":\"" + HashBytes(original) + "\"";
+  const std::string after = "\"parent_record_sha256\":\"" + HashBytes(changed) + "\"";
+  if (!ReplaceAll(child, before, after) ||
+      !RefreshDescriptorText(child, "history/parent_record_v0.7.json", changed, error)) {
+    if (error.empty()) error = "test helper could not refresh parent Record references";
+    return false;
+  }
+  WriteText(bundle / "run_record_v0.7.json", child);
+  RebuildManifest(bundle);
+  return true;
+}
+
+bool RewriteHistoricalResultAndRefresh(const std::filesystem::path& bundle,
+                                       const std::function<void(Result&)>& mutate,
+                                       std::string& error) {
+  const std::filesystem::path result_path = bundle / "history/result_summary_v0.6.json";
+  const std::filesystem::path parent_path = bundle / "history/parent_record_v0.7.json";
+  const std::string original_result = ReadText(result_path);
+  const std::string original_parent = ReadText(parent_path);
+  Result result;
+  std::string parse_text = original_result;
+  if (!pae::protocol_lab::v06::ParseResult(parse_text, result, error)) return false;
+  const std::string original_fingerprint =
+      pae::protocol_lab::v06::FinalizeFingerprint(result, error);
+  if (!error.empty()) return false;
+  mutate(result);
+  const std::string changed_fingerprint =
+      pae::protocol_lab::v06::FinalizeFingerprint(result, error);
+  const std::string changed_result = pae::protocol_lab::v06::SerializeResult(result, error);
+  if (!error.empty()) return false;
+
+  std::string changed_parent = original_parent;
+  const std::string old_fingerprint =
+      "\"deterministic_fingerprint\":\"" + original_fingerprint + "\"";
+  const std::string new_fingerprint =
+      "\"deterministic_fingerprint\":\"" + changed_fingerprint + "\"";
+  if (!ReplaceAll(changed_parent, old_fingerprint, new_fingerprint) ||
+      !RefreshDescriptorText(changed_parent, "result_summary_v0.6.json", changed_result, error)) {
+    if (error.empty()) error = "test helper could not refresh historical parent Result binding";
+    return false;
+  }
+  WriteText(result_path, changed_result);
+  WriteText(parent_path, changed_parent);
+
+  std::string child = ReadText(bundle / "run_record_v0.7.json");
+  const std::string old_result_hash = "\"result_sha256\":\"" + HashBytes(original_result) + "\"";
+  const std::string new_result_hash = "\"result_sha256\":\"" + HashBytes(changed_result) + "\"";
+  const std::string old_parent_hash =
+      "\"parent_record_sha256\":\"" + HashBytes(original_parent) + "\"";
+  const std::string new_parent_hash =
+      "\"parent_record_sha256\":\"" + HashBytes(changed_parent) + "\"";
+  const std::string old_history_fingerprint =
+      "\"fingerprint_domain\":\"pae.lab.fingerprint/0.6\",\"deterministic_fingerprint\":\"" +
+      original_fingerprint + "\"";
+  const std::string new_history_fingerprint =
+      "\"fingerprint_domain\":\"pae.lab.fingerprint/0.6\",\"deterministic_fingerprint\":\"" +
+      changed_fingerprint + "\"";
+  if (!ReplaceAll(child, old_result_hash, new_result_hash) ||
+      !ReplaceAll(child, old_parent_hash, new_parent_hash) ||
+      !ReplaceAll(child, old_history_fingerprint, new_history_fingerprint) ||
+      !ReplaceAll(child, "\"status\":\"EQUAL\",\"reason\":\"FINGERPRINT_EQUAL\"",
+                  "\"status\":\"DIFFERENT\",\"reason\":\"FINGERPRINT_DIFFERENT\"") ||
+      !RefreshDescriptorText(child, "history/parent_record_v0.7.json", changed_parent, error) ||
+      !RefreshDescriptorText(child, "history/result_summary_v0.6.json", changed_result, error)) {
+    if (error.empty()) error = "test helper could not refresh child historical references";
+    return false;
+  }
+  WriteText(bundle / "run_record_v0.7.json", child);
+  RebuildManifest(bundle);
+  return true;
 }
 
 bool RewriteResultAndRefresh(const std::filesystem::path& bundle,
@@ -173,6 +319,35 @@ std::string NoConversionConfig() {
 
 std::string LegacyUintValues() {
   return R"json({"format_version":"pae.lab.values/0.1","pipeline_id":"p","message_id":"m","fields":[{"id":"value","kind":"UINT64","uint64":"42"}]})json";
+}
+
+std::string MismatchedIntValues() {
+  return R"json({"format_version":"pae.lab.values/0.3","pipeline_id":"p","message_id":"m","fields":[{"id":"value","kind":"INT64","int64":"1"}]})json";
+}
+
+std::string SingleFieldConfig(std::string_view value_type, std::string_view wire) {
+  return std::string{
+             R"json({"schema_version":"0.5","protocol_id":"c2_failure_applicability","protocol_version":"1","display_name":"Synthetic","description":"","source_ref":"SYNTHETIC_FROM_SCRATCH:C2","resource_profile":"desktop","framing_profiles":[{"id":"record","display_name":"Synthetic","description":"","source_ref":"SYNTHETIC_FROM_SCRATCH:C2","input_kind":"complete_record"}],"pipelines":[{"id":"p","display_name":"Synthetic","description":"","source_ref":"SYNTHETIC_FROM_SCRATCH:C2","direction_id":"rx","input_framing_profile_id":"record","message_ids":["m"]}],"messages":[{"id":"m","display_name":"Synthetic","description":"","source_ref":"SYNTHETIC_FROM_SCRATCH:C2","direction_id":"rx","frame_length_bytes":2,"matcher":{"all":[{"kind":"frame_length_equals","length_bytes":2}]},"fields":[{"id":"value","display_name":"Synthetic","description":"","source_ref":"SYNTHETIC_FROM_SCRATCH:C2","value_type":")json"} +
+         std::string{value_type} + R"json(","wire":)json" + std::string{wire} +
+         R"json(,"encode":{"source":"input"}}]}]})json";
+}
+
+std::string BytesConfig() {
+  return SingleFieldConfig("BYTES", R"json({"codec":"bytes","byte_offset":0,"byte_length":2})json");
+}
+
+std::string Int64Config() {
+  return SingleFieldConfig(
+      "INT64",
+      R"json({"codec":"unsigned_integer","byte_offset":0,"byte_width":2,"byte_order":"big_endian"})json");
+}
+
+std::string WrongLengthBytesValues() {
+  return R"json({"format_version":"pae.lab.values/0.4","pipeline_id":"p","message_id":"m","fields":[{"id":"value","kind":"BYTES","hex":"AA"}]})json";
+}
+
+std::string MatchingInt64Values() {
+  return R"json({"format_version":"pae.lab.values/0.3","pipeline_id":"p","message_id":"m","fields":[{"id":"value","kind":"INT64","int64":"1"}]})json";
 }
 
 std::string AmbiguousConfig() {
@@ -563,16 +738,16 @@ bool TestStrictReader(const std::filesystem::path& root, std::string_view config
                          "duplicate property") &&
            passed;
   passed = mutate_record("run_reader_replay", "\"invocation_kind\":\"RUN\"",
-                         "\"invocation_kind\":\"REPLAY\"", "unsupported value") &&
+                         "\"invocation_kind\":\"REPLAY\"", "invocation") &&
            passed;
   passed = mutate_record("run_reader_history", "\"comparison\":null", "\"comparison\":{}",
-                         "must be null") &&
+                         "missing property reason") &&
            passed;
   passed = mutate_record("run_reader_parent", "\"parent_run_id\":null",
-                         "\"parent_run_id\":\"run_parent\"", "must be null") &&
+                         "\"parent_run_id\":\"run_parent\"", "invocation") &&
            passed;
   passed = mutate_record("run_reader_baseline_field", "\"historical_baseline\":null",
-                         "\"historical_baseline\":{}", "must be null") &&
+                         "\"historical_baseline\":{}", "missing property") &&
            passed;
   passed = mutate_record("run_reader_terminal", "\"terminal_status\":\"OK\"",
                          "\"terminal_status\":\"CODEC_ERROR\"", "inconsistent with Run Record") &&
@@ -788,6 +963,460 @@ bool TestStrictReader(const std::filesystem::path& root, std::string_view config
   return passed;
 }
 
+bool TestPlanReplayAndCompare(const std::filesystem::path& root, std::string_view config) {
+  using pae::protocol_lab::v07::CompareOutcome;
+  using pae::protocol_lab::v07::EvidenceQualificationStatus;
+  bool passed = true;
+  std::string error;
+  StandardEvidenceFileSystem file_system;
+  RunPublishOutcome encoded;
+  RunPublishOutcome inspected;
+  passed = Expect(Execute(root, EncodeRequest("run_c2_encode", config), encoded) &&
+                      Execute(root, InspectRequest("run_c2_inspect", config), inspected),
+                  "C2 qualification baselines publish") &&
+           passed;
+  const std::string inspect_parent_record =
+      ReadText(inspected.published_path / "run_record_v0.7.json");
+
+  StoredRunBundle stored;
+  EvidenceQualificationStatus qualification = EvidenceQualificationStatus::INVALID_BUNDLE;
+  passed = Expect(pae::protocol_lab::v07::LoadRunBundle(encoded.published_path, stored, error) &&
+                      pae::protocol_lab::v07::QualifyRunEvidence(stored, qualification, error) &&
+                      qualification == EvidenceQualificationStatus::OK,
+                  "valid Encode RUN passes Plan qualification: " + error) &&
+           passed;
+  passed = Expect(pae::protocol_lab::v07::LoadRunBundle(inspected.published_path, stored, error) &&
+                      pae::protocol_lab::v07::QualifyRunEvidence(stored, qualification, error),
+                  "valid Inspect RUN passes Plan qualification: " + error) &&
+           passed;
+  RunPublishOutcome type_failure;
+  passed =
+      Expect(
+          Execute(root,
+                  EncodeRequest("run_c2_type_failure", NoConversionConfig(), MismatchedIntValues()),
+                  type_failure) &&
+              pae::protocol_lab::v07::LoadRunBundle(type_failure.published_path, stored, error) &&
+              stored.result->current_execution_status == "TYPE_MISMATCH" &&
+              pae::protocol_lab::v07::QualifyRunEvidence(stored, qualification, error),
+          "genuine type-mismatch failure identity passes Plan qualification: " + error) &&
+      passed;
+
+  RunPublishOutcome replay_a;
+  RunPublishOutcome replay_b;
+  passed =
+      Expect(pae::protocol_lab::v07::ReplayRunAndWrite(
+                 root, inspected.published_path, "run_c2_inspect_replay_a", "0.1.0-test",
+                 file_system, replay_a, qualification, error) &&
+                 pae::protocol_lab::v07::LoadRunBundle(replay_a.published_path, stored, error) &&
+                 stored.record.invocation_kind == "REPLAY" &&
+                 stored.record.parent_run_id == "run_c2_inspect" &&
+                 stored.record.requested_pipeline_id == stored.result->pipeline_id &&
+                 stored.record.execution.counts.structural_query_calls == 1U &&
+                 stored.record.execution.counts.decode_calls == 1U &&
+                 stored.record.comparison->status == "EQUAL" &&
+                 stored.record.historical_baseline.has_value() &&
+                 pae::protocol_lab::v07::QualifyRunEvidence(stored, qualification, error),
+             "Inspect replay uses exactly one explicit Pipeline query and reloads: " + error) &&
+      passed;
+  passed =
+      Expect(pae::protocol_lab::v07::ReplayRunAndWrite(
+                 root, replay_a.published_path, "run_c2_inspect_replay_b", "0.1.0-test",
+                 file_system, replay_b, qualification, error) &&
+                 pae::protocol_lab::v07::LoadRunBundle(replay_b.published_path, stored, error) &&
+                 stored.record.parent_run_id == "run_c2_inspect_replay_a" &&
+                 stored.record.comparison->reason == "FINGERPRINT_EQUAL",
+             "Run to Replay A to Replay B remains readable and equal: " + error) &&
+      passed;
+  passed =
+      Expect(ReadText(inspected.published_path / "run_record_v0.7.json") == inspect_parent_record,
+             "Replay chain does not rewrite the original parent Record") &&
+      passed;
+
+  RunPublishOutcome encode_replay;
+  passed = Expect(pae::protocol_lab::v07::ReplayRunAndWrite(
+                      root, encoded.published_path, "run_c2_encode_replay", "0.1.0-test",
+                      file_system, encode_replay, qualification, error) &&
+                      pae::protocol_lab::v07::LoadRunBundle(encode_replay.published_path, stored,
+                                                            error) &&
+                      !stored.record.requested_pipeline_id.has_value() &&
+                      stored.record.execution.counts.encode_calls == 1U &&
+                      stored.record.comparison->status == "EQUAL",
+                  "Encode replay reuses Values identity without structural query: " + error) &&
+           passed;
+
+  const auto bad_history_mode =
+      CopyBundle(encode_replay.published_path, root, "run_c2_bad_history_mode");
+  passed =
+      Expect(RewriteHistoricalResultAndRefresh(
+                 bad_history_mode,
+                 [](Result& result) {
+                   result.replay_mode = "DECODE_RX";
+                   result.replay_subject = "RX";
+                 },
+                 error),
+             "A-valid historical mode mutation refreshes all hashes and fingerprints: " + error) &&
+      passed;
+  passed = Expect(ReplayHistoryLinksMatch(bad_history_mode),
+                  "historical mode mutation is length and Hash self-consistent before reading") &&
+           passed;
+  passed = Expect(!pae::protocol_lab::v07::LoadRunBundle(bad_history_mode, stored, error) &&
+                      error.find("historical Result 0.6 mode") != std::string::npos,
+                  "fully self-consistent historical Result mode mismatch reaches semantic "
+                  "rejection: " +
+                      error) &&
+           passed;
+
+  const auto bad_history_success_diagnostic =
+      CopyBundle(encode_replay.published_path, root, "run_c2_bad_history_success_diagnostic");
+  passed = Expect(RewriteHistoricalResultAndRefresh(
+                      bad_history_success_diagnostic,
+                      [](Result& result) {
+                        result.diagnostic_id = "PAE_LAB_CODEC_INTERNAL_ERROR";
+                        result.diagnostic_detail = "synthetic historical diagnostic";
+                      },
+                      error),
+                  "A-valid successful historical diagnostic mutation prepares: " + error) &&
+           passed;
+  passed = Expect(ReplayHistoryLinksMatch(bad_history_success_diagnostic),
+                  "successful diagnostic mutation is Hash self-consistent before reading") &&
+           passed;
+  passed = Expect(!pae::protocol_lab::v07::LoadRunBundle(bad_history_success_diagnostic, stored,
+                                                         error) &&
+                      error.find("successful historical Result") != std::string::npos,
+                  "successful historical Result cannot carry a Codec diagnostic: " + error) &&
+           passed;
+
+  const auto bad_parent_role =
+      CopyBundle(encode_replay.published_path, root, "run_c2_bad_parent_role");
+  passed = Expect(RewriteParentRecordAndRefresh(
+                      bad_parent_role,
+                      [](std::string& parent) {
+                        parent =
+                            ReplaceOne(parent, "\"values_file\":\"inputs/values.pae-lab.json\"",
+                                       "\"values_file\":null");
+                      },
+                      error),
+                  "parent role mutation refreshes its child Hash bindings: " + error) &&
+           passed;
+  passed = Expect(ReplayHistoryLinksMatch(bad_parent_role),
+                  "parent role mutation is length and Hash self-consistent before reading") &&
+           passed;
+  passed =
+      Expect(!pae::protocol_lab::v07::LoadRunBundle(bad_parent_role, stored, error) &&
+                 error.find("payload roles") != std::string::npos,
+             "historical parent values role is rejected by terminal role validation: " + error) &&
+      passed;
+
+  const auto bad_parent_payload_set =
+      CopyBundle(encode_replay.published_path, root, "run_c2_bad_parent_payload_set");
+  passed = Expect(RewriteParentRecordAndRefresh(
+                      bad_parent_payload_set,
+                      [](std::string& parent) {
+                        parent = ReplaceOne(parent, "\"path\":\"events_v0.7.jsonl\"",
+                                            "\"path\":\"unexpected.jsonl\"");
+                      },
+                      error),
+                  "parent payload-role mutation refreshes its child Hash bindings: " + error) &&
+           passed;
+  passed = Expect(ReplayHistoryLinksMatch(bad_parent_payload_set),
+                  "parent descriptor mutation is length and Hash self-consistent before reading") &&
+           passed;
+  passed = Expect(!pae::protocol_lab::v07::LoadRunBundle(bad_parent_payload_set, stored, error) &&
+                      error.find("historical parent payload set") != std::string::npos,
+                  "historical parent descriptor role set reaches semantic rejection: " + error) &&
+           passed;
+
+  CompareOutcome compared;
+  passed = Expect(pae::protocol_lab::v07::CompareRunEvidence(encoded.published_path,
+                                                             encode_replay.published_path, compared,
+                                                             qualification, error) &&
+                      compared.comparison.status == "EQUAL",
+                  "independent Compare is equal for matching executions: " + error) &&
+           passed;
+  passed = Expect(!pae::protocol_lab::v07::CompareRunEvidence(encoded.published_path,
+                                                              inspected.published_path, compared,
+                                                              qualification, error) &&
+                      qualification == EvidenceQualificationStatus::PLAN_MISMATCH &&
+                      error.find("matching execution operations") != std::string::npos,
+                  "independent Compare rejects unlike operation kinds before classifying a diff") &&
+           passed;
+
+  const std::string equivalent_values =
+      ReplaceOne(ValidValues(), "\"123\",\"scale\":1", "\"1230\",\"scale\":2");
+  RunPublishOutcome equivalent;
+  passed = Expect(Execute(root, EncodeRequest("run_c2_equivalent", config, equivalent_values),
+                          equivalent) &&
+                      pae::protocol_lab::v07::CompareRunEvidence(encoded.published_path,
+                                                                 equivalent.published_path,
+                                                                 compared, qualification, error) &&
+                      compared.comparison.status == "EQUAL",
+                  "independent Compare accepts mathematically equivalent Decimal Values text: " +
+                      error) &&
+           passed;
+
+  const std::string different_values =
+      ReplaceOne(ValidValues(), "\"123\",\"scale\":1", "\"124\",\"scale\":1");
+  RunPublishOutcome different;
+  passed = Expect(Execute(root, EncodeRequest("run_c2_different", config, different_values),
+                          different) &&
+                      pae::protocol_lab::v07::CompareRunEvidence(encoded.published_path,
+                                                                 different.published_path, compared,
+                                                                 qualification, error) &&
+                      compared.comparison.status == "DIFFERENT",
+                  "independent Compare reports a legitimate execution difference: " + error) &&
+           passed;
+
+  RunPublishOutcome failed;
+  RunPublishOutcome failed_replay;
+  passed = Expect(Execute(root, EncodeRequest("run_c2_failed", config, FailingValues()), failed) &&
+                      pae::protocol_lab::v07::ReplayRunAndWrite(
+                          root, failed.published_path, "run_c2_failed_replay", "0.1.0-test",
+                          file_system, failed_replay, qualification, error) &&
+                      pae::protocol_lab::v07::LoadRunBundle(failed_replay.published_path, stored,
+                                                            error) &&
+                      stored.record.execution.terminal_status == "CODEC_ERROR" &&
+                      stored.record.comparison->status == "EQUAL" &&
+                      stored.result->operation_status == "CODEC_ERROR",
+                  "matching failed replay is EQUAL without becoming execution success: " + error) &&
+           passed;
+  const auto bad_history_failure_diagnostic =
+      CopyBundle(failed_replay.published_path, root, "run_c2_bad_history_failure_diagnostic");
+  passed = Expect(RewriteHistoricalResultAndRefresh(
+                      bad_history_failure_diagnostic,
+                      [](Result& result) {
+                        result.diagnostic_id = "PAE_LAB_CODEC_TYPE_MISMATCH";
+                        result.current_execution_diagnostic_id = "PAE_LAB_CODEC_TYPE_MISMATCH";
+                      },
+                      error),
+                  "A-valid failed historical diagnostic mutation prepares: " + error) &&
+           passed;
+  passed = Expect(ReplayHistoryLinksMatch(bad_history_failure_diagnostic),
+                  "failed diagnostic mutation is Hash self-consistent before reading") &&
+           passed;
+  passed = Expect(!pae::protocol_lab::v07::LoadRunBundle(bad_history_failure_diagnostic, stored,
+                                                         error) &&
+                      error.find("historical Codec diagnostic") != std::string::npos,
+                  "historical failure diagnostic must match the parent main status: " + error) &&
+           passed;
+
+  RunPublishOutcome no_result;
+  passed = Expect(Execute(root, EncodeRequest("run_c2_no_result", config, "{}"), no_result) &&
+                      !pae::protocol_lab::v07::ReplayRunAndWrite(
+                          root, no_result.published_path, "run_c2_no_result_replay", "0.1.0-test",
+                          file_system, replay_a, qualification, error) &&
+                      qualification == EvidenceQualificationStatus::RESULT_UNAVAILABLE &&
+                      !std::filesystem::exists(root / "run_c2_no_result_replay"),
+                  "no-Result RUN remains readable but cannot become a Replay baseline") &&
+           passed;
+
+  ExecutionTestHooks structural_hook;
+  structural_hook.force_pipeline_structural_unknown = true;
+  RunPublishOutcome zero_replay;
+  passed =
+      Expect(pae::protocol_lab::v07::ReplayRunAndWrite(
+                 root, inspected.published_path, "run_c2_zero_replay", "0.1.0-test", file_system,
+                 zero_replay, qualification, error, &structural_hook) &&
+                 pae::protocol_lab::v07::LoadRunBundle(zero_replay.published_path, stored, error) &&
+                 stored.record.execution.structural_query->candidate_class == "ZERO" &&
+                 stored.record.execution.counts.structural_query_calls == 1U &&
+                 stored.record.execution.counts.decode_calls == 0U && !stored.result &&
+                 stored.record.comparison->status == "NOT_EVALUATED" &&
+                 !pae::protocol_lab::v07::ReplayRunAndWrite(
+                     root, zero_replay.published_path, "run_c2_zero_replay_again", "0.1.0-test",
+                     file_system, replay_a, qualification, error),
+             "explicit Pipeline ZERO executes no Decode and cannot be replayed again") &&
+      passed;
+  structural_hook = ExecutionTestHooks{};
+  structural_hook.force_pipeline_structural_ambiguous = true;
+  RunPublishOutcome multiple_replay;
+  passed = Expect(pae::protocol_lab::v07::ReplayRunAndWrite(
+                      root, inspected.published_path, "run_c2_multiple_replay", "0.1.0-test",
+                      file_system, multiple_replay, qualification, error, &structural_hook) &&
+                      pae::protocol_lab::v07::LoadRunBundle(multiple_replay.published_path, stored,
+                                                            error) &&
+                      stored.record.execution.structural_query->candidate_class == "MULTIPLE" &&
+                      stored.record.execution.counts.decode_calls == 0U && !stored.result,
+                  "explicit Pipeline MULTIPLE executes no Decode and remains readable") &&
+           passed;
+  structural_hook = ExecutionTestHooks{};
+  structural_hook.fail_structural_query = true;
+  RunPublishOutcome query_error_replay;
+  passed = Expect(pae::protocol_lab::v07::ReplayRunAndWrite(
+                      root, inspected.published_path, "run_c2_query_error_replay", "0.1.0-test",
+                      file_system, query_error_replay, qualification, error, &structural_hook) &&
+                      pae::protocol_lab::v07::LoadRunBundle(query_error_replay.published_path,
+                                                            stored, error) &&
+                      stored.record.execution.structural_query->candidate_class == "UNDETERMINED" &&
+                      stored.record.execution.counts.decode_calls == 0U && !stored.result,
+                  "explicit Pipeline query error executes no Decode and remains readable") &&
+           passed;
+
+  const auto bad_pipeline = CopyBundle(encoded.published_path, root, "run_c2_bad_pipeline");
+  passed = Expect(RewriteResultAndRefresh(
+                      bad_pipeline, [](Result& result) { result.pipeline_id = "missing_pipeline"; },
+                      error),
+                  "self-consistent invalid Pipeline mutation prepares: " + error) &&
+           passed;
+  passed = Expect(pae::protocol_lab::v07::LoadRunBundle(bad_pipeline, stored, error) &&
+                      !pae::protocol_lab::v07::QualifyRunEvidence(stored, qualification, error) &&
+                      qualification == EvidenceQualificationStatus::PLAN_MISMATCH,
+                  "self-consistent invalid Pipeline is rejected at Plan qualification") &&
+           passed;
+  passed = Expect(!pae::protocol_lab::v07::ReplayRunAndWrite(
+                      root, bad_pipeline, "run_c2_bad_pipeline_child", "0.1.0-test", file_system,
+                      replay_a, qualification, error) &&
+                      replay_a.published_path.empty() &&
+                      !std::filesystem::exists(root / "run_c2_bad_pipeline_child"),
+                  "Plan qualification rejection publishes no child Run") &&
+           passed;
+
+  const auto bad_fields = CopyBundle(encoded.published_path, root, "run_c2_bad_field_order");
+  passed = Expect(RewriteResultAndRefresh(
+                      bad_fields,
+                      [](Result& result) { std::swap(result.fields[0], result.fields[1]); }, error),
+                  "self-consistent field-order mutation prepares: " + error) &&
+           passed;
+  passed = Expect(pae::protocol_lab::v07::LoadRunBundle(bad_fields, stored, error) &&
+                      !pae::protocol_lab::v07::QualifyRunEvidence(stored, qualification, error) &&
+                      error.find("field order") != std::string::npos,
+                  "self-consistent field order is rejected by Plan association: " + error) &&
+           passed;
+
+  const auto bad_raw_kind = CopyBundle(encoded.published_path, root, "run_c2_bad_raw_kind");
+  passed =
+      Expect(RewriteResultAndRefresh(
+                 bad_raw_kind, [](Result& result) { result.fields[0].raw_kind = "UINT64"; }, error),
+             "self-consistent raw-kind mutation prepares: " + error) &&
+      passed;
+  passed = Expect(pae::protocol_lab::v07::LoadRunBundle(bad_raw_kind, stored, error) &&
+                      !pae::protocol_lab::v07::QualifyRunEvidence(stored, qualification, error) &&
+                      error.find("raw tag") != std::string::npos,
+                  "A-valid raw-kind mismatch is rejected by Plan association: " + error) &&
+           passed;
+
+  const auto bad_message = CopyBundle(encoded.published_path, root, "run_c2_bad_message");
+  passed =
+      Expect(RewriteResultAndRefresh(
+                 bad_message, [](Result& result) { result.message_id = "missing_message"; }, error),
+             "self-consistent invalid Message mutation prepares: " + error) &&
+      passed;
+  passed = Expect(pae::protocol_lab::v07::LoadRunBundle(bad_message, stored, error) &&
+                      !pae::protocol_lab::v07::QualifyRunEvidence(stored, qualification, error) &&
+                      error.find("Pipeline, Message") != std::string::npos,
+                  "self-consistent invalid Message is rejected by Plan association: " + error) &&
+           passed;
+
+  const auto bad_value_index = CopyBundle(failed.published_path, root, "run_c2_bad_value_index");
+  passed =
+      Expect(RewriteResultAndRefresh(
+                 bad_value_index, [](Result& result) { result.failed_value_index = 1U; }, error),
+             "self-consistent failed Values index mutation prepares: " + error) &&
+      passed;
+  passed = Expect(pae::protocol_lab::v07::LoadRunBundle(bad_value_index, stored, error) &&
+                      !pae::protocol_lab::v07::QualifyRunEvidence(stored, qualification, error) &&
+                      error.find("failed Values index") != std::string::npos,
+                  "failed Values author index must bind the failed field: " + error) &&
+           passed;
+
+  RunPublishOutcome bytes_failure;
+  passed =
+      Expect(
+          Execute(root,
+                  EncodeRequest("run_c2_bytes_failure", BytesConfig(), WrongLengthBytesValues()),
+                  bytes_failure) &&
+              pae::protocol_lab::v07::LoadRunBundle(bytes_failure.published_path, stored, error) &&
+              stored.result->current_execution_status == "BYTES_LENGTH_MISMATCH" &&
+              pae::protocol_lab::v07::QualifyRunEvidence(stored, qualification, error),
+          "genuine BYTES length failure passes Plan qualification: " + error) &&
+      passed;
+  const auto bad_bytes_applicability =
+      CopyBundle(bytes_failure.published_path, root, "run_c2_bad_bytes_applicability");
+  WriteText(bad_bytes_applicability / "inputs/protocol.pae.json", Int64Config());
+  RefreshPayloadDescriptor(bad_bytes_applicability, "inputs/protocol.pae.json");
+  WriteText(bad_bytes_applicability / "inputs/values.pae-lab.json", MatchingInt64Values());
+  RefreshPayloadDescriptor(bad_bytes_applicability, "inputs/values.pae-lab.json");
+  passed =
+      Expect(RewriteResultAndRefresh(
+                 bad_bytes_applicability,
+                 [&](Result& result) { result.config_sha256 = HashBytes(Int64Config()); }, error),
+             "self-consistent INT64/BYTES_LENGTH_MISMATCH mutation prepares: " + error) &&
+      passed;
+  passed =
+      Expect(ManifestHashesMatch(bad_bytes_applicability) &&
+                 RecordDescriptorMatches(bad_bytes_applicability / "run_record_v0.7.json",
+                                         bad_bytes_applicability, "inputs/protocol.pae.json") &&
+                 RecordDescriptorMatches(bad_bytes_applicability / "run_record_v0.7.json",
+                                         bad_bytes_applicability, "inputs/values.pae-lab.json") &&
+                 RecordDescriptorMatches(bad_bytes_applicability / "run_record_v0.7.json",
+                                         bad_bytes_applicability, "result_summary_v0.6.json"),
+             "INT64 failure mutation is length and Hash self-consistent before qualification") &&
+      passed;
+  passed =
+      Expect(
+          pae::protocol_lab::v07::LoadRunBundle(bad_bytes_applicability, stored, error) &&
+              !pae::protocol_lab::v07::QualifyRunEvidence(stored, qualification, error) &&
+              error.find("BYTES_LENGTH_MISMATCH requires a BYTES Plan field") != std::string::npos,
+          "BYTES length failure cannot be attributed to a same-kind INT64 field: " + error) &&
+      passed;
+
+  const auto child_input = CopyBundle(encode_replay.published_path, root, "run_c2_child_input");
+  WriteText(child_input / "inputs/values.pae-lab.json", equivalent_values);
+  RefreshPayloadDescriptor(child_input, "inputs/values.pae-lab.json");
+  RebuildManifest(child_input);
+  passed = Expect(!pae::protocol_lab::v07::LoadRunBundle(child_input, stored, error) &&
+                      error.find("parent material") != std::string::npos,
+                  "Replay rejects mathematically equivalent but byte-different child material") &&
+           passed;
+
+  const auto bad_comparison =
+      CopyBundle(encode_replay.published_path, root, "run_c2_bad_comparison");
+  std::string record = ReadText(bad_comparison / "run_record_v0.7.json");
+  record = ReplaceOne(record, "\"status\":\"EQUAL\",\"reason\":\"FINGERPRINT_EQUAL\"",
+                      "\"status\":\"DIFFERENT\",\"reason\":\"FINGERPRINT_DIFFERENT\"");
+  WriteText(bad_comparison / "run_record_v0.7.json", record);
+  RebuildManifest(bad_comparison);
+  passed = Expect(!pae::protocol_lab::v07::LoadRunBundle(bad_comparison, stored, error) &&
+                      error.find("comparison") != std::string::npos,
+                  "self-consistent false comparison declaration is rejected: " + error) &&
+           passed;
+
+  const auto bad_parent_identity =
+      CopyBundle(encode_replay.published_path, root, "run_c2_bad_parent_identity");
+  const std::filesystem::path parent_snapshot =
+      bad_parent_identity / "history/parent_record_v0.7.json";
+  const std::string original_parent = ReadText(parent_snapshot);
+  const std::string mutated_parent = ReplaceOne(original_parent, "\"run_id\":\"run_c2_encode\"",
+                                                "\"run_id\":\"run_c2_other_parent\"");
+  WriteText(parent_snapshot, mutated_parent);
+  RefreshPayloadDescriptor(bad_parent_identity, "history/parent_record_v0.7.json");
+  record = ReadText(bad_parent_identity / "run_record_v0.7.json");
+  record = ReplaceOne(record, HashBytes(original_parent), HashBytes(mutated_parent));
+  WriteText(bad_parent_identity / "run_record_v0.7.json", record);
+  RebuildManifest(bad_parent_identity);
+  passed = Expect(!pae::protocol_lab::v07::LoadRunBundle(bad_parent_identity, stored, error) &&
+                      error.find("parent execution") != std::string::npos,
+                  "fully rehashed parent snapshot identity mutation reaches semantic rejection: " +
+                      error) &&
+           passed;
+
+  BundleInput synthetic;
+  synthetic.config_text = encoded.bundle.config_text;
+  synthetic.values_text = encoded.bundle.values_text;
+  synthetic.frame = encoded.bundle.frame;
+  synthetic.result = *encoded.bundle.result;
+  std::filesystem::path synthetic_path;
+  passed = Expect(pae::protocol_lab::v06::WriteEvidenceBundle(root, "run_c2_b_synthetic", synthetic,
+                                                              file_system, synthetic_path, error),
+                  "B synthetic comparison input prepares: " + error) &&
+           passed;
+  passed = Expect(!pae::protocol_lab::v07::CompareRunEvidence(
+                      synthetic_path, encoded.published_path, compared, qualification, error) &&
+                      qualification == EvidenceQualificationStatus::INVALID_BUNDLE,
+                  "B synthetic Evidence is not guessed as C execution comparison input") &&
+           passed;
+  return passed;
+}
+
 }  // namespace
 
 int main(int argc, char** argv) {
@@ -803,5 +1432,6 @@ int main(int argc, char** argv) {
   passed = TestFailureRuns(root, config) && passed;
   passed = TestPublicationFailures(root, config) && passed;
   passed = TestStrictReader(root, config) && passed;
+  passed = TestPlanReplayAndCompare(root, config) && passed;
   return passed ? 0 : 1;
 }

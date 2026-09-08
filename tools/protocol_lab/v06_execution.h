@@ -78,6 +78,8 @@ struct ExecutionTestHooks {
   bool force_review_message_mismatch = false;
   bool force_raw_association_failure = false;
   bool force_materialization_internal_error = false;
+  bool force_pipeline_structural_unknown = false;
+  bool force_pipeline_structural_ambiguous = false;
 };
 #endif
 
@@ -101,6 +103,14 @@ class ExecutionBridge final {
 #endif
                            ,
                            ExecutionObserver* observer = nullptr);
+  ExecutionOutcome InspectPipeline(const std::vector<std::uint8_t>& frame,
+                                   std::string_view pipeline_id
+#if defined(PAE_ENABLE_OPERATION_COUNTERS)
+                                   ,
+                                   const ExecutionTestHooks* hooks = nullptr
+#endif
+                                   ,
+                                   ExecutionObserver* observer = nullptr);
   ExecutionOutcome EncodeValuesText(std::string values_text
 #if defined(PAE_ENABLE_OPERATION_COUNTERS)
                                     ,

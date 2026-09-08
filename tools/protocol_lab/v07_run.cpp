@@ -1,10 +1,15 @@
 #include "v07_run.h"
 
+#include <algorithm>
 #include <chrono>
 #include <limits>
 #include <utility>
 
+#include "complete_record_codec.h"
+#include "config_compiler.h"
+#include "plan_bundle.h"
 #include "sha256.h"
+#include "v06_values_compat_internal.h"
 
 namespace pae::protocol_lab::v07 {
 namespace {
@@ -132,6 +137,9 @@ RunBundleInput BuildBundle(const RunRequest& request, const v06::ExecutionOutcom
   bundle.record.run_id = request.run_id;
   bundle.record.tool_version = request.tool_version;
   bundle.record.operation_kind = request.operation_kind;
+  bundle.record.invocation_kind = request.invocation_kind;
+  bundle.record.parent_run_id = request.parent_run_id;
+  bundle.record.requested_pipeline_id = request.requested_pipeline_id;
   bundle.record.values_file = request.values_text.has_value()
                                   ? std::optional<std::string>{"inputs/values.pae-lab.json"}
                                   : std::nullopt;
@@ -183,6 +191,26 @@ RunBundleInput BuildBundle(const RunRequest& request, const v06::ExecutionOutcom
   execution.counts.decode_calls = outcome.counts.decode_calls;
   execution.counts.review_decode_calls = outcome.counts.review_decode_calls;
   SetTerminal(outcome, execution);
+  if (request.invocation_kind == "REPLAY") {
+    bundle.parent_record_text = request.parent_record_text;
+    bundle.historical_result_text = request.historical_result_text;
+    if (request.parent_record_text.has_value() && request.historical_result_text.has_value() &&
+        request.historical_fingerprint.has_value()) {
+      bundle.record.historical_baseline = HistoricalBaseline{
+          "history/parent_record_v0.7.json",    HashBytes(*request.parent_record_text),
+          "history/result_summary_v0.6.json",   HashBytes(*request.historical_result_text),
+          std::string{v06::kFingerprintDomain}, *request.historical_fingerprint};
+    }
+    if (bundle.record.deterministic_fingerprint.has_value() &&
+        request.historical_fingerprint.has_value()) {
+      const bool equal =
+          *bundle.record.deterministic_fingerprint == *request.historical_fingerprint;
+      bundle.record.comparison = ComparisonFacts{
+          equal ? "EQUAL" : "DIFFERENT", equal ? "FINGERPRINT_EQUAL" : "FINGERPRINT_DIFFERENT"};
+    } else {
+      bundle.record.comparison = ComparisonFacts{"NOT_EVALUATED", "CURRENT_RESULT_UNAVAILABLE"};
+    }
+  }
   bundle.events = collector.Events();
   return bundle;
 }
@@ -205,13 +233,21 @@ bool ExecuteRunAndWrite(const std::filesystem::path& record_root, const RunReque
   } else if (request.operation_kind == "inspect" && request.frame.has_value() &&
              !request.values_text.has_value()) {
     collector.PhaseFinished(v06::ExecutionPhase::PREPARATION, "OK");
-    execution = bridge->Inspect(*request.frame
+    execution = request.requested_pipeline_id.has_value()
+                    ? bridge->InspectPipeline(*request.frame, *request.requested_pipeline_id
 #if defined(PAE_ENABLE_OPERATION_COUNTERS)
-                                ,
-                                request.test_hooks
+                                              ,
+                                              request.test_hooks
 #endif
-                                ,
-                                &collector);
+                                              ,
+                                              &collector)
+                    : bridge->Inspect(*request.frame
+#if defined(PAE_ENABLE_OPERATION_COUNTERS)
+                                      ,
+                                      request.test_hooks
+#endif
+                                      ,
+                                      &collector);
   } else if (request.operation_kind == "encode" && request.values_text.has_value() &&
              !request.frame.has_value()) {
     execution = bridge->EncodeValuesText(*request.values_text
@@ -236,6 +272,278 @@ bool ExecuteRunAndWrite(const std::filesystem::path& record_root, const RunReque
     output.published_path.clear();
     return false;
   }
+  return true;
+}
+
+namespace {
+
+bool TextEquals(std::string_view left, std::string_view right) {
+  return left.size() == right.size() && std::equal(left.begin(), left.end(), right.begin());
+}
+
+std::size_t FindPipeline(const protocol_plan::PlanBundle& plan, std::string_view id) {
+  for (std::size_t index = 0U; index < plan.Pipelines().size(); ++index) {
+    if (TextEquals(plan.Pipelines()[index].id, id)) return index;
+  }
+  return protocol_core::kInvalidIndex;
+}
+
+std::size_t FindMessage(const protocol_plan::PlanBundle& plan, std::string_view id) {
+  for (std::size_t index = 0U; index < plan.Messages().size(); ++index) {
+    if (TextEquals(plan.Messages()[index].id, id)) return index;
+  }
+  return protocol_core::kInvalidIndex;
+}
+
+bool PipelineAllows(const protocol_plan::PlanBundle& plan, std::size_t pipeline,
+                    std::size_t message) {
+  if (pipeline >= plan.Pipelines().size()) return false;
+  const auto& indices = plan.Pipelines()[pipeline].message_indices;
+  return std::find(indices.begin(), indices.end(), message) != indices.end();
+}
+
+std::string ValueTypeName(protocol_plan::ValueType type) {
+  switch (type) {
+    case protocol_plan::ValueType::UINT64:
+      return "UINT64";
+    case protocol_plan::ValueType::INT64:
+      return "INT64";
+    case protocol_plan::ValueType::BYTES:
+      return "BYTES";
+    case protocol_plan::ValueType::ENUM:
+      return "ENUM";
+    case protocol_plan::ValueType::BOOL:
+      return "BOOL";
+  }
+  return {};
+}
+
+bool HasConversion(const protocol_plan::PlanBundle& plan, std::size_t message, std::size_t field) {
+#if defined(PAE_ENABLE_SCHEMA_V05_COMPILER)
+  return message < plan.MessageExecutionPlans().size() &&
+         field < plan.MessageExecutionPlans()[message].fields.size() &&
+         plan.MessageExecutionPlans()[message].fields[field].conversion_index !=
+             protocol_core::kInvalidIndex;
+#else
+  (void)plan;
+  (void)message;
+  (void)field;
+  return false;
+#endif
+}
+
+}  // namespace
+
+bool QualifyRunEvidence(const StoredRunBundle& bundle, EvidenceQualificationStatus& status,
+                        std::string& error) {
+  status = EvidenceQualificationStatus::PLAN_INVALID;
+  error.clear();
+  if (!bundle.result.has_value()) {
+    status = EvidenceQualificationStatus::RESULT_UNAVAILABLE;
+    error = "Run Evidence has no Result and is not eligible for execution comparison";
+    return false;
+  }
+  auto compiled = config_compiler::CompileJsonToPlan(bundle.config_text);
+  if (!compiled.Succeeded()) {
+    error = "Run Evidence configuration cannot be compiled for Plan qualification";
+    return false;
+  }
+  auto owner = std::move(compiled).TakePlan();
+  const auto& plan = *owner;
+  if (plan.SchemaVersion() != "0.5") {
+    error = "Run Evidence Plan is not Schema 0.5";
+    return false;
+  }
+  status = EvidenceQualificationStatus::PLAN_MISMATCH;
+  const auto& result = *bundle.result;
+  if (!result.protocol_id.has_value() || !TextEquals(plan.ProtocolId(), *result.protocol_id) ||
+      !result.pipeline_id.has_value() || !result.message_id.has_value()) {
+    error = "Result identity does not bind the compiled Plan";
+    return false;
+  }
+  const std::size_t pipeline = FindPipeline(plan, *result.pipeline_id);
+  const std::size_t message = FindMessage(plan, *result.message_id);
+  if (pipeline == protocol_core::kInvalidIndex || message == protocol_core::kInvalidIndex ||
+      !PipelineAllows(plan, pipeline, message) || !result.direction_id.has_value() ||
+      !TextEquals(plan.Messages()[message].direction_id, *result.direction_id)) {
+    error = "Result Pipeline, Message, or direction does not bind the compiled Plan";
+    return false;
+  }
+  if (bundle.record.invocation_kind == "REPLAY" && bundle.record.operation_kind == "inspect" &&
+      bundle.record.requested_pipeline_id != result.pipeline_id) {
+    error = "Replay requested Pipeline does not bind the current Result";
+    return false;
+  }
+  if (result.operation_status == "OK") {
+    if (result.fields.size() != plan.Messages()[message].fields.size()) {
+      error = "successful Result field count does not bind the compiled Plan";
+      return false;
+    }
+    for (std::size_t index = 0U; index < result.fields.size(); ++index) {
+      const auto& actual = result.fields[index];
+      const auto& expected = plan.Messages()[message].fields[index];
+      const std::string wire_kind = ValueTypeName(expected.value_type);
+      if (!TextEquals(expected.id, actual.id) ||
+          (HasConversion(plan, message, index)
+               ? (actual.kind != "DECIMAL64" || actual.raw_kind != wire_kind)
+               : (actual.kind != wire_kind || actual.raw_kind.has_value()))) {
+        error = "successful Result field order, type, or raw tag does not bind the Plan";
+        return false;
+      }
+    }
+  }
+  if (result.failed_field_index.has_value()) {
+    const std::size_t index = *result.failed_field_index;
+    if (index >= plan.Messages()[message].fields.size() || !result.failed_field_id.has_value() ||
+        !TextEquals(plan.Messages()[message].fields[index].id, *result.failed_field_id)) {
+      error = "failed field identity does not bind the compiled Plan";
+      return false;
+    }
+    if (result.conversion_error.has_value() &&
+        !HasConversion(plan, message, *result.failed_field_index)) {
+      error = "conversion failure identity does not bind a converted Plan field";
+      return false;
+    }
+  }
+  if (bundle.record.operation_kind == "inspect" &&
+      result.current_execution_status == "INTEGRITY_FAILED" &&
+      !plan.Messages()[message].integrity.has_value()) {
+    error = "integrity failure does not bind a Message integrity rule";
+    return false;
+  }
+  if (bundle.record.operation_kind == "inspect" &&
+      result.current_execution_status == "UNKNOWN_ENUM_VALUE" &&
+      (!result.failed_field_index.has_value() ||
+       plan.Messages()[message].fields[*result.failed_field_index].value_type !=
+           protocol_plan::ValueType::ENUM)) {
+    error = "unknown enum failure does not bind an ENUM Plan field";
+    return false;
+  }
+  if (bundle.record.operation_kind == "encode") {
+    if (!bundle.values_text.has_value()) {
+      error = "Encode Run has no Values material";
+      return false;
+    }
+    v06::ParsedValues values;
+    std::string values_text = *bundle.values_text;
+    if (!v06::internal::ParseCompatibleValues(values_text, values, error)) {
+      error = "Encode Run Values cannot be parsed during Plan qualification: " + error;
+      return false;
+    }
+    if (values.pipeline_id != *result.pipeline_id || values.message_id != *result.message_id) {
+      error = "Encode Values identity does not bind the Result and Plan";
+      return false;
+    }
+    if (result.failed_value_index.has_value()) {
+      const std::size_t index = *result.failed_value_index;
+      if (index >= values.fields.size()) {
+        error = "failed Values index is outside the recorded author order";
+        return false;
+      }
+      if (result.failed_field_id.has_value() &&
+          values.fields[index].id != *result.failed_field_id) {
+        error = "failed Values index does not bind the failed field identity";
+        return false;
+      }
+      if (result.failed_field_index.has_value()) {
+        const std::string expected_kind =
+            HasConversion(plan, message, *result.failed_field_index)
+                ? "DECIMAL64"
+                : ValueTypeName(
+                      plan.Messages()[message].fields[*result.failed_field_index].value_type);
+        const bool type_matches = values.fields[index].kind == expected_kind;
+        if (result.current_execution_status == "BYTES_LENGTH_MISMATCH" &&
+            (plan.Messages()[message].fields[*result.failed_field_index].value_type !=
+                 protocol_plan::ValueType::BYTES ||
+             !type_matches)) {
+          error = "BYTES_LENGTH_MISMATCH requires a BYTES Plan field and BYTES Values input";
+          return false;
+        }
+        if ((result.current_execution_status == "TYPE_MISMATCH" && type_matches) ||
+            (result.current_execution_status == "VALUE_NOT_REPRESENTABLE" && !type_matches)) {
+          error = "Codec failure status is not applicable to the recorded Values type";
+          return false;
+        }
+      }
+    }
+  }
+  if (bundle.record.operation_kind == "inspect") {
+    const std::uint64_t expected_queries =
+        bundle.record.invocation_kind == "REPLAY" ? 1U : plan.Pipelines().size();
+    if (bundle.record.execution.structural_query.has_value() &&
+        bundle.record.execution.counts.structural_query_calls > expected_queries) {
+      error = "structural query count exceeds the qualified Plan bound";
+      return false;
+    }
+  }
+  status = EvidenceQualificationStatus::OK;
+  return true;
+}
+
+bool ReplayRunAndWrite(const std::filesystem::path& record_root,
+                       const std::filesystem::path& parent_bundle, std::string run_id,
+                       std::string tool_version, v06::EvidenceFileSystem& file_system,
+                       RunPublishOutcome& output, EvidenceQualificationStatus& status,
+                       std::string& error
+#if defined(PAE_ENABLE_OPERATION_COUNTERS)
+                       ,
+                       const v06::ExecutionTestHooks* test_hooks
+#endif
+) {
+  output = RunPublishOutcome{};
+  StoredRunBundle parent;
+  if (!LoadRunBundleForTest(parent_bundle, parent, file_system, error)) {
+    status = EvidenceQualificationStatus::INVALID_BUNDLE;
+    return false;
+  }
+  if (!QualifyRunEvidence(parent, status, error)) return false;
+  RunRequest request;
+  request.run_id = std::move(run_id);
+  request.tool_version = std::move(tool_version);
+  request.operation_kind = parent.record.operation_kind;
+  request.config_text = parent.config_text;
+  request.values_text = parent.values_text;
+  if (request.operation_kind == "inspect") request.frame = parent.frame;
+  request.invocation_kind = "REPLAY";
+  request.parent_run_id = parent.record.run_id;
+  if (request.operation_kind == "inspect")
+    request.requested_pipeline_id = parent.result->pipeline_id;
+  request.parent_record_text = parent.record_text;
+  request.historical_result_text = parent.result_text;
+  request.historical_fingerprint = parent.record.deterministic_fingerprint;
+#if defined(PAE_ENABLE_OPERATION_COUNTERS)
+  request.test_hooks = test_hooks;
+#endif
+  if (!ExecuteRunAndWrite(record_root, request, file_system, output)) {
+    error = output.publication_error;
+    return false;
+  }
+  status = EvidenceQualificationStatus::OK;
+  return true;
+}
+
+bool CompareRunEvidence(const std::filesystem::path& left_bundle,
+                        const std::filesystem::path& right_bundle, CompareOutcome& output,
+                        EvidenceQualificationStatus& status, std::string& error) {
+  output = CompareOutcome{};
+  StoredRunBundle left;
+  StoredRunBundle right;
+  if (!LoadRunBundle(left_bundle, left, error) || !LoadRunBundle(right_bundle, right, error)) {
+    status = EvidenceQualificationStatus::INVALID_BUNDLE;
+    return false;
+  }
+  if (!QualifyRunEvidence(left, status, error) || !QualifyRunEvidence(right, status, error))
+    return false;
+  if (left.record.operation_kind != right.record.operation_kind) {
+    status = EvidenceQualificationStatus::PLAN_MISMATCH;
+    error = "independent Compare requires matching execution operations";
+    return false;
+  }
+  const bool equal =
+      left.record.deterministic_fingerprint == right.record.deterministic_fingerprint;
+  output.comparison = ComparisonFacts{equal ? "EQUAL" : "DIFFERENT",
+                                      equal ? "FINGERPRINT_EQUAL" : "FINGERPRINT_DIFFERENT"};
+  status = EvidenceQualificationStatus::OK;
   return true;
 }
 

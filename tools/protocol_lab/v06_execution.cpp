@@ -488,6 +488,100 @@ ExecutionOutcome ExecutionBridge::Inspect(const std::vector<std::uint8_t>& frame
   return outcome;
 }
 
+ExecutionOutcome ExecutionBridge::InspectPipeline(const std::vector<std::uint8_t>& frame,
+                                                  std::string_view pipeline_id
+#if defined(PAE_ENABLE_OPERATION_COUNTERS)
+                                                  ,
+                                                  const ExecutionTestHooks* hooks
+#endif
+                                                  ,
+                                                  ExecutionObserver* observer) {
+  ExecutionOutcome outcome;
+  const PlanBundle& plan = *implementation_->plan;
+  const std::size_t pipeline_index = FindPipeline(plan, pipeline_id);
+  if (observer != nullptr) observer->PhaseStarted(ExecutionPhase::STRUCTURAL_QUERY);
+  ++outcome.counts.structural_query_calls;
+#if defined(PAE_ENABLE_OPERATION_COUNTERS)
+  const std::size_t query_pipeline =
+      hooks != nullptr && hooks->fail_structural_query ? plan.Pipelines().size() : pipeline_index;
+#else
+  const std::size_t query_pipeline = pipeline_index;
+#endif
+  auto match = protocol_core::internal::MatchCompleteRecordStructure(
+      plan, query_pipeline, ByteView{frame.data(), frame.size()});
+#if defined(PAE_ENABLE_OPERATION_COUNTERS)
+  if (hooks != nullptr && hooks->force_pipeline_structural_unknown) {
+    match.status = CodecStatus::UNKNOWN_MESSAGE;
+  } else if (hooks != nullptr && hooks->force_pipeline_structural_ambiguous) {
+    match.status = CodecStatus::AMBIGUOUS_MESSAGE;
+  }
+#endif
+  if (match.status != CodecStatus::OK) {
+    outcome.stage = ExecutionStage::STRUCTURAL_QUERY;
+    outcome.structural_status = CodecStatusName(match.status);
+    if (observer != nullptr)
+      observer->PhaseFinished(ExecutionPhase::STRUCTURAL_QUERY, outcome.structural_status);
+    return outcome;
+  }
+  if (observer != nullptr) {
+    observer->PhaseFinished(ExecutionPhase::STRUCTURAL_QUERY, "OK");
+    observer->PhaseStarted(ExecutionPhase::MAIN_CODEC);
+  }
+
+  std::vector<DecodedFieldSlot> slots(plan.Messages()[match.message_index].fields.size());
+  ++outcome.counts.decode_calls;
+  outcome.main_codec_called = true;
+  const auto decoded = protocol_core::DecodeCompleteRecord(
+      plan, implementation_->main_workspace, pipeline_index, ByteView{frame.data(), frame.size()},
+      slots.data(), slots.size());
+  outcome.main_codec_status = CodecStatusName(decoded.status);
+  if (observer != nullptr)
+    observer->PhaseFinished(ExecutionPhase::MAIN_CODEC, outcome.main_codec_status);
+  outcome.stage = ExecutionStage::CODEC;
+  Result result;
+  std::string validation_error;
+#if defined(PAE_ENABLE_OPERATION_COUNTERS)
+  const bool fail_base_mapping = hooks != nullptr && hooks->force_base_result_mapping_failure;
+#else
+  const bool fail_base_mapping = false;
+#endif
+  if (observer != nullptr) observer->PhaseStarted(ExecutionPhase::RESULT_MAPPING);
+  if (fail_base_mapping ||
+      !SetCodecResult(plan, implementation_->config_hash, "inspect", pipeline_index,
+                      match.message_index, decoded, HexUpper(frame.data(), frame.size()), result,
+                      validation_error)) {
+    if (observer != nullptr) observer->PhaseFinished(ExecutionPhase::RESULT_MAPPING, "FAILED");
+    outcome.stage = ExecutionStage::MATERIALIZATION;
+    outcome.materialization_failure = MaterializationFailure::INTERNAL_ERROR;
+    return outcome;
+  }
+  if (observer != nullptr) observer->PhaseFinished(ExecutionPhase::RESULT_MAPPING, "OK");
+  if (decoded.status != CodecStatus::OK) {
+    outcome.result = std::move(result);
+    return outcome;
+  }
+  if (observer != nullptr) observer->PhaseStarted(ExecutionPhase::RESULT_MAPPING);
+  const MaterializationFailure materialized =
+      MaterializeFields(plan, implementation_->main_workspace, match.message_index, slots,
+                        decoded.field_count, result.fields
+#if defined(PAE_ENABLE_OPERATION_COUNTERS)
+                        ,
+                        hooks
+#endif
+      );
+  if (materialized != MaterializationFailure::NONE || !ValidateResult(result, validation_error)) {
+    if (observer != nullptr) observer->PhaseFinished(ExecutionPhase::RESULT_MAPPING, "FAILED");
+    outcome.stage = ExecutionStage::MATERIALIZATION;
+    outcome.materialization_failure = materialized == MaterializationFailure::NONE
+                                          ? MaterializationFailure::INTERNAL_ERROR
+                                          : materialized;
+    return outcome;
+  }
+  if (observer != nullptr) observer->PhaseFinished(ExecutionPhase::RESULT_MAPPING, "OK");
+  outcome.result = std::move(result);
+  return outcome;
+}
+
 ExecutionOutcome ExecutionBridge::EncodeValuesText(std::string values_text
 #if defined(PAE_ENABLE_OPERATION_COUNTERS)
                                                    ,

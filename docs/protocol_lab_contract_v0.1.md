@@ -2,6 +2,16 @@
 
 ## 1. 状态和目的
 
+2026-09-08 C2第二段已按确认的第21节完成限定实现：C执行层在底层0.7 Reader之后执行Plan关联，
+Inspect Replay使用父Result指定Pipeline且只查询一次；Replay保存父Record/历史Result快照及父子
+材料绑定，独立Compare只读且不调用Codec。Debug/Release专项各2/2、完整离线矩阵各22/22通过，
+详见[第二段报告](windows-msvc-2026-dec042b-lab-v07-replay-compare-stage-c2-second.md)。普通CLI、C3、
+网络及退出码仍未开放，当前待总控复核。
+
+同日总控复核纠错补齐历史父Record/Result与当前记录一致的角色集合和执行关系校验，并限定
+`BYTES_LENGTH_MISMATCH`只能归属于BYTES字段及BYTES输入。父快照仍不递归读取祖先、不执行Codec，
+也不增加签名或来源认证保证；修复后的双配置专项及完整离线矩阵结果见同一第二段报告。
+
 2026-09-08 C2第一段已完成限定实现和Windows验证：C执行RUN使用Record/Event 0.7，继续绑定
 Values 0.4、Result/指纹0.6和原始输入；事件来自C1实际阶段边界，Writer完整自读后无覆盖发布，
 Reader严格校验包内结构和关联。后续Reader P2纠错补齐成功Inspect对结构`OK/ONE`的授权、

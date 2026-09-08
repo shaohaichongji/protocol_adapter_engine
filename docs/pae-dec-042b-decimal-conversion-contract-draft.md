@@ -2,8 +2,8 @@
 
 2026-09-08当前检查点：C1实现`115db10`及入口文档`ef350d5`已提交并Push。
 C2六项方向决策及第19节修订后精确契约均已确认；CLI退出码映射延至C3实施前冻结。
-第20节第一段已获授权并完成限定实现与Windows验证，待总控复核。A/B/C1已形成提交检查点，
-C2第二段与C3未实施；
+第20节第一段已获授权并完成限定实现与Windows验证。A/B/C1已形成提交检查点；第21节C2第二段
+已在未提交工作树完成限定实现与Windows验证，待总控复核；C3未实施；
 下文早期批次记录保留其历史时点，旧建议称谓以第19节最终确认状态为准。
 
 创建日期：2026-09-06。确认更新：2026-09-07。第1节十项决策及第3～6节四组补充方案
@@ -1140,3 +1140,97 @@ C3普通CLI/退出码、UDP/网络、Linux、Oracle、真实协议Golden、硬�
 语义变异被错误接受；修复后Windows Debug/Release专项各`2/2 PASS`，相关v06+v07离线测试各
 `5/5 PASS`。第一段P2前完整离线切片各`22/22 PASS`保留为历史证据，本次未追溯改写为修复后
 全量结果。详细命令、日志和边界见第一段验证报告；当前仍为待总控复核。
+
+## 21. C2第二段集中实施契约（CONFIRMED，已授权实施）
+
+2026-09-08：用户已确认本节四组方案并授权整个C2第二段检查点连续实施。第18～19节已确认规则
+保持权威；本节指定Pipeline事件语义、检查层职责和验收组合均已生效，不回写第一段历史事实。
+推进流程见[功能检查点计划](checkpoint-delivery-plan.md)。
+
+### 21.1 Plan关联与重执行准入
+
+- 底层Reader继续无Compiler/Core/Plan依赖；完成文件、格式和跨文件校验后，由C执行层编译原配置并检查Plan关联。
+- 无Result记录保留只读能力，不授予重执行或执行等价比较资格；配置准备失败不因无法编译而失去只读诊断能力。
+- 有Result者核对Schema、配置Hash、Pipeline、Message及成员关系；方向按实际Encode/Decode能力核对，不增加配置中不存在的方向属性。
+- 成功字段按冻结Plan的实际交付集合检查数量、顺序、ID、类型和转换属性；转换字段raw标签核对原始线类型。失败字段数组仍为空，不要求失败结果伪造成功字段。
+- 已知失败字段的ID/索引必须指向同一冻结字段；Encode输入索引必须对应原Values作者顺序中的真实条目。未知字段失败允许仅有输入索引，但须核实该条目确实无法绑定。
+- 核对失败原因与相关字段/输入类型的适用性，不重新执行Codec来验证历史错误是否真实发生；Plan合法不是数值正确或来源真实的证明。
+- 文件/Plan/资格拒绝发生在任何重执行Codec调用之前：不发布子Run，不伪造阶段事件。内部诊断采用独立枚举或类型化状态，不依赖解析错误文字；CLI编码仍留给C3。
+
+### 21.2 明确Pipeline重执行与实际事件
+
+- 仅新增内部指定Pipeline Decode入口；Pipeline来自合格父Result，禁止回退到全局Inspect。
+- 指定Pipeline必须在重执行准备完成前存在且具备所需能力；无效引用由前置准入拒绝，不新增第一段准备诊断字符串。
+- Inspect重执行仍有一次STRUCTURAL_QUERY阶段，但只查询指定Pipeline一次：structural_query_calls=1。
+  允许状态沿用19.8五种组合；只有OK/ONE进入一次主Decode；零/多候选或查询故障仍走既有无Result终态。
+- 查询后的防御性Matcher复核属于主Decode内部，不额外记成结构查询调用。全局初次RUN路径及其真实计数不改变。
+- 事件保持0.7既有名称与阶段集合；RUN_STARTED/RUN_FINISHED表示一次实际执行生命周期，同样用于invocation_kind=REPLAY，不另增REPLAY_STARTED事件。
+- Encode重执行沿用原Values指定的Pipeline/Message，结构查询仍为空、计数0；Review及结果映射沿用既有真实阶段规则。
+- 前置证据/Plan核验在当前运行事件时钟开始前完成；通过后新的准备、查询、Codec、Review和映射按实际发生记录。发布失败不修改已发生调用次数。
+- 新Reader对RUN保持第一段规则，对REPLAY按本节及19.5绑定requested_pipeline_id：Inspect为父Result.pipeline_id；Encode仍为null。
+
+### 21.3 Replay、历史快照与Compare
+
+- 仅合格C执行0.7、有Result 0.6且完整材料通过准入的记录允许Replay；B合成0.6和无Result分支明确拒绝执行，不猜版本、不降级。
+- 严格复用19.5父Record/历史Result固定路径、逐字节快照、长度/Hash及父子输入绑定，不递归读取祖先Bundle。
+- 当前结果独立生成；operation_kind保持encode/inspect，不改为replay。A20编码、数学等价规范化及0.6指纹域均不改变。
+- 当前有合格Result时按既有指纹比较EQUAL/DIFFERENT；相同失败允许EQUAL，但当前Codec仍失败。
+- 当前无Result时保存真实失败阶段及NOT_EVALUATED/CURRENT_RESULT_UNAVAILABLE；该子记录可读但不可作为下一次Replay基准。
+- 独立Run Compare只读双方证据并执行适用Plan准入，不调用Codec，不发布新的执行Bundle；不适用的输入返回明确拒绝，不伪造EQUAL或DIFFERENT。
+- 独立Compare允许数学等价Decimal原Values文本/Hash不同；Replay父子仍必须满足原材料长度/Hash相同。Encode新输出允许不同，不能预先要求等于父输出。
+- 历史快照非法或比较声明与复算结果矛盾时整个Reader拒绝，不通过改写为NOT_EVALUATED来容忍损坏证据。
+
+### 21.4 一次性验收与交付边界
+
+以下作为一个检查点交付，允许实现授权范围内连续修复，不逐条拆成新的审批轮次：
+
+| 验收组 | 必须证明 |
+| --- | --- |
+| Plan身份 | 自洽非法Pipeline/Message/字段顺序、类型、raw标签及输入索引均在Codec前拒绝；合法失败身份正对照通过 |
+| 指定Pipeline | 不遍历其他Pipeline；查询计数1；OK/ONE才Decode；零/多/故障无Result；原全局RUN不变 |
+| 执行与比较 | Encode/Inspect成功；相同失败EQUAL但非成功；等价Decimal独立Compare；合法不同结果DIFFERENT |
+| 历史链 | Run→Replay→Replay；父子材料/快照/比较声明自洽篡改拒绝；无Result可读但不能再次Replay |
+| 失败边界 | 准入拒绝零Codec且无发布；执行后Review/映射失败保留真实计数；Writer失败不重执行、不返回正式路径 |
+| 回归隔离 | A/B/C1及第一段受影响离线矩阵；Reader链接隔离；普通Lab与Schema 0.5组合仍拒绝 |
+
+开发期运行受影响专项，收口对最终代码集中执行Windows Debug/Release相关离线矩阵；只有依赖或
+构建边界变化才重跑对应Product-only/Testing-off门禁。失败日志与最终日志区分，不用历史批次充数。
+测试中无法由合法Plan触发的防御分支明确标注测试接缝，不制造非法Plan冒充合法路径。
+
+不展开C3、普通CLI、网络、Qt、Core新算法、A接受域变更、生成物清理或Git写操作。
+授权前文档细化曾静态核对现有C1接口、0.7记录模型与19.5/19.8规则；该历史记录不作为本次
+实现或运行验证证据。当前检查点的实际实施与验证另行追加记录。
+
+### 21.5 C2第二段实施与Windows验证记录（2026-09-08）
+
+本轮在既有默认关闭、Testing-only的0.7目标内完成Plan关联、指定Pipeline Decode、Replay历史
+快照和独立Compare。底层Reader仍无Compiler/Core/Plan依赖；上层准入编译原配置并核对Protocol、
+Pipeline、Message、方向、字段顺序/类型/conversion raw标签及失败字段/Values作者索引，拒绝发生
+在重执行与发布之前。
+
+Inspect Replay只查询父Result指定Pipeline一次，`OK/ONE`才执行一次主Decode；ZERO、MULTIPLE及
+查询故障均记录真实0.7事件、0次Decode和无Result。Replay逐字节保存父Record/历史Result快照，
+绑定父子配置和Values/Frame；有Result按0.6指纹比较，无Result保存NOT_EVALUATED且不能成为下一
+次基准。独立Compare只读、零Codec、零发布，不同operation明确拒绝；等价Decimal原文仍按A20
+规范指纹比较。
+
+第21.4节六组验收已落入自动化。Windows Debug/Release专项各`2/2 PASS`，当前注册完整离线矩阵
+各`22/22 PASS`；Reader链接隔离复核通过。本次未修改CMake或目标依赖，未重复Product-only与
+Testing-off配置门禁。详细命令、日志和边界见
+[第二段验证报告](windows-msvc-2026-dec042b-lab-v07-replay-compare-stage-c2-second.md)。当前状态为
+待总控复核，未Stage、Commit或Push。
+
+### 21.6 C2第二段历史快照与失败适用性纠错（2026-09-08）
+
+总控复核后补齐两处P2。第一，历史父Record/Result现在复用当前记录的文件角色集合及Result执行
+关系门禁：父快照仍只作低层严格解析，不递归读取祖先路径，但必须满足operation与Replay模式、
+主体、终态、诊断的对应关系；父Record描述符集合必须与其RUN/REPLAY及Values/Frame/Result角色
+一致。历史`frame_hex`仅与父Record已有Frame描述符的字节长度和Hash绑定，不重新执行Codec。
+
+第二，Plan准入不再仅以Values kind相等判断`BYTES_LENGTH_MISMATCH`；该状态必须对应BYTES字段及
+BYTES输入。同类型INT64输入自洽声明该状态会在重执行前拒绝。修复前Debug专项动态证明历史模式、
+父descriptor集合和INT64错误状态可被放行；父`values_file=null`已由既有终态角色门禁拒绝，未将
+其误报为新产品缺陷。所有篡改用例在目标语义检查前显式断言清单、长度及Hash关联自洽。
+
+修复后Windows Debug/Release专项各`2/2 PASS`、完整离线矩阵各`22/22 PASS`。格式、A接受域、
+A20指纹、底层Reader依赖边界及C3范围均未改变，详细日志见第二段验证报告。

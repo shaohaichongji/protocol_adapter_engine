@@ -6,6 +6,7 @@
 
 int main() {
   pae::protocol_lab::v07::StoredRunBundle output;
+  if (output.record.invocation_kind != "RUN") return 2;
   output.record.run_id = "must_be_cleared";
   std::string error;
   const bool loaded = pae::protocol_lab::v07::LoadRunBundle(
