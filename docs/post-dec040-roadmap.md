@@ -6,6 +6,8 @@
 
 ## 1. 已交付检查点
 
+- Lab B隔离证据实现`70cf4ff`及入口文档`761ff7f`已复核、提交并Push。
+
 - Lab A纯格式`8d4c7c4`、入口文档`0c4bc48`和yyjson依赖整理`1c0617c`均已提交并Push。
 - DEC-042B隔离算术`8fd2019`、编译冻结`4d26d42`、Core双向转换`90c5165`均已提交并Push。
 
@@ -32,13 +34,18 @@
    指纹长度前缀编码、固定20项顺序和A隔离测试入口已确认；A纯格式模块已完成限定实现及Windows
    Debug/Release隔离验证及总控限定复核，A提交检查点已收口。B四组补充已确认，并已完成
    Evidence 0.6隔离读写、事务故障和严格Reader限定实现及Windows验证，详见
-   [B报告](windows-msvc-2026-dec042b-lab-v06-evidence-stage-b.md)。A/B均未接普通CLI、Core或网络，
-   A/B保持现有Lab隔离门禁，不把纯格式通过写为运行链已实现。
-   无系统性高精度Oracle证据；C运行链、Replay/Compare仍未实施，本轮不Stage/Commit/Push。
+   [B报告](windows-msvc-2026-dec042b-lab-v06-evidence-stage-b.md)。C1执行桥接已在默认关闭的隔离
+   目标中完成Schema 0.5准备、Core调用及Result 0.6物化，并通过Windows Debug/Release限定验证，
+   见[C1报告](windows-msvc-2026-dec042b-lab-v06-execution-stage-c1.md)。C1不接B文件IO、普通CLI、
+   Replay/Compare或网络。审查纠错已恢复旧Values到Schema 0.5的原类型兼容，并补展示Decode真实
+   INTERNAL_ERROR证据。无系统性高精度Oracle证据；C2/C3仍未实施，本轮不Stage/Commit/Push。
 3. 参数化CRC（循环冗余校验）、长度字段与变长能力分别评估，不合并成一次实现。
 
-生成物清理暂缓：首批9个历史中间目录已只读审核，但未批准删除；不让清理阻塞B阶段提交前检查点收口。
-下一步等待总控复核B，再单独决定C运行链；当前不派发C执行任务。
+生成物清理暂缓：首批9个历史中间目录已只读审核，未批准删除，不阻塞后续契约工作。
+C阶段12项决策已确认，见[契约第15～17节](pae-dec-042b-decimal-conversion-contract-draft.md)。
+第16节C1三项收口已完成限定实现和Windows复核：准备/Codec/Lab复核分层，保留Core错误顺序，
+额外复核失败不篡改Encode结果。下一步先冻结第17节及准备失败和合成/真实事件的完整证据映射，
+再单独授权实施C2；C3最后开放专用新代CLI并验收。C1变更待总控复核，未Stage、Commit或Push。
 
 配套工具方向已确认：保留CLI，增加独立Qt UI，复用Lab执行层；Qt不进入Core依赖链。
 先完成当前Lab第三段，再单独开展Qt来源/完整性/工具链及版本核验和最小UI切片。

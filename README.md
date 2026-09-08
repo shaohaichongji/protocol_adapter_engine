@@ -6,6 +6,14 @@ PAE 的目标是通过严格配置完成工业二进制协议的有方向 Decode
 
 ## 当前状态
 
+2026-09-08 C1实施补记：B实现`70cf4ff`及入口文档`761ff7f`已提交并Push。
+C阶段12项决策已确认；默认关闭的Schema 0.5执行桥接C1现已完成限定实现及Windows
+Debug/Release隔离验证，见[C1报告](docs/windows-msvc-2026-dec042b-lab-v06-execution-stage-c1.md)。
+C1审查纠错后，Schema 0.5可使用0.1～0.3 Values表达各代原有类型，0.4仍由A阶段严格解析；
+展示Decode的真实`INTERNAL_ERROR`也已通过Core测试故障接缝覆盖。
+C1不读写Evidence、不提供CLI、不执行Replay/Compare或网络；C2/C3仍未实施，事件细节仍待
+C2前冻结。当前变更待总控复核，未Stage、Commit或Push。下述早期批次状态保留。
+
 2026-09-08补记：A实现`8d4c7c4`、入口文档`0c4bc48`及yyjson整理`1c0617c`已提交并Push。
 B阶段已在默认关闭的隔离目标中实现Evidence 0.6事务写入与严格读取，并完成Windows
 Debug/Release限定验证，见[B阶段报告](docs/windows-msvc-2026-dec042b-lab-v06-evidence-stage-b.md)；
