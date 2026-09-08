@@ -1,0 +1,37 @@
+set(pae_protocol_lab_c3_fixture_dir "${CMAKE_CURRENT_SOURCE_DIR}/fixtures")
+
+add_executable(pae_protocol_lab_c3_policy_tests c3_policy_tests.cpp)
+target_compile_definitions(pae_protocol_lab_c3_policy_tests PRIVATE PAE_ENABLE_C3_BINDING_TESTS=1)
+target_include_directories(
+    pae_protocol_lab_c3_policy_tests
+    PRIVATE "${PROJECT_SOURCE_DIR}/tools/protocol_lab"
+)
+target_link_libraries(
+    pae_protocol_lab_c3_policy_tests
+    PRIVATE pae_protocol_lab_internal pae::project_options pae::yyjson
+)
+
+add_test(
+    NAME pae.tools.protocol_lab.c3_cli
+    COMMAND
+        "${CMAKE_COMMAND}"
+        "-DPAE_LAB_EXECUTABLE=$<TARGET_FILE:pae_protocol_lab>"
+        "-DPAE_SOURCE_DIR=${PROJECT_SOURCE_DIR}"
+        "-DPAE_BINARY_DIR=${CMAKE_CURRENT_BINARY_DIR}"
+        "-DPAE_FIXTURE_DIR=${pae_protocol_lab_c3_fixture_dir}"
+        -P "${CMAKE_CURRENT_SOURCE_DIR}/verify_c3_cli.cmake"
+)
+set_tests_properties(
+    pae.tools.protocol_lab.c3_cli
+    PROPERTIES
+        LABELS "tools;protocol_lab;offline;decimal;dec042b;c3;cli"
+        TIMEOUT 180
+)
+
+add_test(NAME pae.tools.protocol_lab.c3_policy COMMAND pae_protocol_lab_c3_policy_tests)
+set_tests_properties(
+    pae.tools.protocol_lab.c3_policy
+    PROPERTIES
+        LABELS "tools;protocol_lab;offline;decimal;dec042b;c3;policy;isolated"
+        TIMEOUT 30
+)

@@ -1234,3 +1234,116 @@ BYTES输入。同类型INT64输入自洽声明该状态会在重执行前拒绝�
 
 修复后Windows Debug/Release专项各`2/2 PASS`、完整离线矩阵各`22/22 PASS`。格式、A接受域、
 A20指纹、底层Reader依赖边界及C3范围均未改变，详细日志见第二段验证报告。
+
+## 22. C3命令行与人工离线验收（CONFIRMED，已实现，待人工验收）
+
+2026-09-08：用户一次确认以下8项。C2第二段已随`aa1d663`提交并Push；随后用户授权C3完整
+检查点实施、范围内修复和Windows离线验证，但未授权Git写操作。C3完成后还需一次人工离线
+验收才能关闭DEC-042B专用离线闭环，不等于生产引擎验收。
+
+### 22.1 入口与构建
+
+复用`pae_protocol_lab`，不复制整套Lab。默认Schema 0.5关闭；专用构建显式开启后按配置或Bundle
+版本分派。Schema 0.1～0.4保持旧路径、格式和指纹；0.5使用C1/C2。新链不接UDP，旧UDP不扩展。
+
+### 22.2 四个命令及范围
+
+- inspect：配置加二进制或HEX文件，初次执行仍为全局结构匹配。
+- encode：配置加Values文件，支持动态Decimal输入。
+- replay：只接受合格C执行0.7证据，使用原配置、原输入与历史指定Pipeline；拒绝替换配置或覆盖Pipeline。
+- compare：两个合格C执行0.7 Bundle的只读比较，零Codec、不发布新Bundle。
+
+新链inspect/encode/replay强制显式`--record-root`；旧链可选记录规则不变。保留`--help`、
+`--version`、`--output text|json`。不增加批处理、持续监听、配置编辑或新的原始Frame比较能力。
+
+### 22.3 命令输出与协议结果分离
+
+新链采用独立`pae.lab.cli/0.1`终端输出封装，表达命令、进程退出码、稳定诊断、当前执行终态、
+期望状态匹配情况、比较结果、正式Bundle路径或null、原Result 0.6或null。它不写入Bundle、
+不参与执行指纹；旧链输出不变。进程退出码及期望状态不得改写Result 0.6的真实状态或exit_code。
+无Result分支继续为null，不构造默认成功结果。
+
+### 22.4 新链退出码
+
+| 码 | 含义 |
+| ---: | --- |
+| 0 | 执行成功、普通期望Codec状态匹配，或Compare为EQUAL |
+| 2 | 参数错误、选项不适用、未知或不允许的期望状态 |
+| 3 | 文件读取失败、证据损坏/代际不支持、Plan关联不一致或无重执行资格 |
+| 4 | 初次执行配置编译失败或Schema不受当前入口支持 |
+| 5 | Values内容/绑定错误、结构零/多候选、普通Codec失败或期望不匹配 |
+| 6 | Compare不同，或Replay执行条件满足但与历史不同 |
+| 7 | Evidence写入、复核或正式发布失败 |
+| 8/9 | 保留旧Transport错误/超时含义，新离线链不使用 |
+| 10 | 内部错误、结构查询内部故障、Review/结果物化失败或未分类异常 |
+
+历史证据配置/Plan准入失败归3，不归初次配置错误4。主Codec的INTERNAL_ERROR或
+FINAL_REVIEW_FAILED归10，但原Result保持原状态。外部Values不合法归5；内部防御性类型模型
+故障不得伪装为正常作者输入错误。
+
+### 22.5 期望状态
+
+`--expect-status`只适用于inspect/encode/replay，且仅匹配实际主Codec状态。未调用主Codec不能匹配。
+普通失败匹配可使进程退出0，Result仍为失败。准备失败、Reader拒绝、Writer失败、内部故障不能
+被此选项转换为成功；INTERNAL_ERROR和FINAL_REVIEW_FAILED不允许作为期望状态。Compare拒绝
+此选项；Replay即使期望匹配，比较DIFFERENT仍退出6。
+
+### 22.6 同时失败优先级
+
+1. 参数或输入准入失败立即终止，不调用Codec。
+2. 未处理异常退出10，不保证完整Bundle。
+3. Writer正常返回发布失败则退出7，保留已发生的执行事实。
+4. 发布成功但执行有内部故障则退出10。
+5. 普通执行失败或期望不匹配则退出5。
+6. 执行条件满足但比较不同则退出6。
+7. 其余成功退出0。
+
+Codec失败且记录失败返回7；失败与历史相等默认仍返回5。该映射适用于新链，不追溯改变旧链。
+
+### 22.7 自动化验收
+
+开发期相关专项；最终代码集中执行Windows Debug/Release：四命令与退出码、期望状态不改变
+Result/指纹、Run→Replay→Replay、等价与失败比较、旧Schema/Bundle兼容、默认关闭与专用开启、
+Testing关闭可构建、故障接缝不进入非Testing工具、Reader/Core依赖隔离。实际注册清单和日志
+为准，不累加历史测试数。本检查点不执行UDP或任何网络测试；需要修改共享UDP行为时先报告范围冲突。
+
+### 22.8 人工离线验收与关闭条件
+
+使用公开合成配置，不依赖硬件或NetAssist。自动化通过后由执行任务交付可运行命令、预期输出
+和记录表，用户进行一次人工验收：
+
+1. 动态Decimal Encode，核对字段、raw整数和报文。
+2. Inspect输出报文，核对数学值一致。
+3. Replay再Replay，核对EQUAL和父子关系。
+4. 等价Decimal原文独立Compare为EQUAL。
+5. 改业务值后Compare为DIFFERENT、退出6。
+6. SUM8失败默认退出5；期望匹配退出0，但Result仍失败。
+7. 损坏Bundle被拒绝，不生成新的执行记录。
+
+人工执行前状态为NOT_EVALUATED，自动化不得替代人工结果。通过后关闭DEC-042B专用离线闭环；
+不升级Golden、硬件、现场、Linux、Oracle、性能或生产结论。Qt、业务Runtime和其他协议能力后置。
+
+### 22.9 C3实施与自动化复核记录（2026-09-08）
+
+现有`pae_protocol_lab`已在默认关闭、显式专用开关下接通C1/C2；Schema 0.5的inspect、encode、
+replay强制Evidence 0.7记录，Replay禁止替换配置，独立Compare只读且零发布。新增CLI 0.1封装
+独立表达进程退出、期望匹配和比较，不改写Result 0.6状态、退出码或指纹；旧Schema 0.1～0.4
+保持原分派。显式C3意图下未知Schema版本进入新封装后按配置失败关闭；缺Record但仍有Event 0.7
+标记的损坏Bundle进入C3 Reader拒绝，不回落到旧代Reader。
+
+Windows Debug/Release C3专项各`2/2 PASS`，排除UDP的完整离线矩阵各`35/35 PASS`；C3
+Testing-off与Product-only Debug/Release均构建成功且各注册0测试，默认旧Lab仍可构建，两项
+非法开关组合按预期在配置阶段拒绝。详细命令、日志和证据限制见
+[C3验证报告](windows-msvc-2026-dec042b-lab-c3-cli.md)。七项人工离线验收仍为`NOT_EVALUATED`，
+可执行步骤见[人工验收单](manual-dec042b-c3-offline-acceptance.md)。本轮未执行UDP或其他网络、
+Linux、Golden、真实协议、硬件、现场、独立Oracle、性能或Qt验证，未Stage、Commit或Push。
+
+### 22.10 C3期望状态绑定P2纠错（2026-09-08）
+
+总控静态审查确认内部退出10时`expected_matched`有意保持null，但绑定层可能直接解引用空optional。
+修复只允许在匹配结果存在时生成匹配/不匹配诊断，内部故障继续退出10并保留原Result或无Result
+事实，不被EXPECTATION_MISMATCH覆盖。Testing-only绑定接缝覆盖“主Codec INTERNAL_ERROR且有
+Result”和“主Encode OK但Review/物化失败且无Result”，两者CLI JSON均保持matched null；Writer
+覆盖内部失败仍为7。Debug/Release C3专项各2/2、排除UDP的离线矩阵各35/35通过；Testing-off
+Release构建及符号扫描确认测试接缝不进入非Testing工具。人工验收单的Decimal展示改为实际六项
+`id`、`kind`、`decimal64.coefficient/scale`、`raw_kind`、`raw_value`，状态仍为NOT_EVALUATED。

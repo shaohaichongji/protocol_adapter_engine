@@ -36,11 +36,27 @@ option(
     "Enable the internal Schema 0.5 compiler and Core DEC-042B slices"
     OFF
 )
+option(
+    PAE_ENABLE_PROTOCOL_LAB_SCHEMA_V05
+    "Enable the dedicated offline Protocol Lab Schema 0.5 C3 command chain"
+    OFF
+)
 
-if(PAE_ENABLE_SCHEMA_V05_COMPILER AND PAE_BUILD_PROTOCOL_LAB)
+if(PAE_ENABLE_SCHEMA_V05_COMPILER AND PAE_BUILD_PROTOCOL_LAB AND
+   NOT PAE_ENABLE_PROTOCOL_LAB_SCHEMA_V05)
     message(
         FATAL_ERROR
-        "Schema 0.5 Core plans must not be linked with Protocol Lab until the Lab evidence slice is implemented."
+        "Schema 0.5 Protocol Lab requires explicit PAE_ENABLE_PROTOCOL_LAB_SCHEMA_V05=ON."
+    )
+endif()
+if(PAE_ENABLE_PROTOCOL_LAB_SCHEMA_V05 AND
+   (NOT PAE_BUILD_PROTOCOL_LAB OR
+    NOT PAE_BUILD_LOADER_SCHEMA_IR_SLICE OR
+    NOT PAE_BUILD_COMPLETE_RECORD_CODEC_SLICE OR
+    NOT PAE_ENABLE_SCHEMA_V05_COMPILER))
+    message(
+        FATAL_ERROR
+        "PAE_ENABLE_PROTOCOL_LAB_SCHEMA_V05 requires Protocol Lab, Loader, Core, and Schema 0.5 compiler slices."
     )
 endif()
 if(PAE_ENABLE_SCHEMA_V05_COMPILER AND NOT PAE_BUILD_LOADER_SCHEMA_IR_SLICE)
@@ -197,6 +213,9 @@ endif()
 
 if(PAE_BUILD_LAB_V07_RUN_EVIDENCE_TESTS)
     add_subdirectory(tests/protocol_lab_v07_run_evidence)
+endif()
+if(PAE_BUILD_TESTING AND PAE_ENABLE_PROTOCOL_LAB_SCHEMA_V05)
+    add_subdirectory(tests/protocol_lab_c3_cli)
 endif()
 
 if(PAE_BUILD_TESTING AND TARGET pae_yyjson_vendor)

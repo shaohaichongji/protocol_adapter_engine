@@ -6,6 +6,9 @@
 
 当前实现范围：
 
+- 专用Schema 0.5 C3离线链：复用同一可执行程序提供inspect、encode、replay、compare，前三者
+  强制Evidence 0.7记录；输出独立`pae.lab.cli/0.1`封装，旧Schema入口不变；
+
 - `inspect`：从Binary或严格Hex文件读取一条完整Frame，跨配置内Pipeline执行唯一Message匹配
   和类型化Decode；
 - `encode`：从严格`pae.lab.values/0.1`、`0.2`或`0.3`文件读取类型化业务值；0.2增加原生JSON
@@ -55,6 +58,19 @@ ctest --preset windows-msvc-protocol-lab-release
 
 该目标不安装、不导出；`PAE_BUILD_PROTOCOL_LAB=OFF`的Product-only构建不生成它。
 
+Schema 0.5 C3链默认关闭，且必须同时显式开启其Compiler、Loader、Core和Lab依赖：
+
+```powershell
+cmake -S . -B out/build/protocol-lab-c3 `
+  -DPAE_BUILD_PROTOCOL_LAB=ON `
+  -DPAE_BUILD_LOADER_SCHEMA_IR_SLICE=ON `
+  -DPAE_BUILD_COMPLETE_RECORD_CODEC_SLICE=ON `
+  -DPAE_ENABLE_SCHEMA_V05_COMPILER=ON `
+  -DPAE_ENABLE_PROTOCOL_LAB_SCHEMA_V05=ON `
+  -DPAE_BUILD_TESTING=OFF -DBUILD_TESTING=OFF
+cmake --build out/build/protocol-lab-c3 --config Release
+```
+
 ## 使用
 
 ```text
@@ -88,6 +104,12 @@ Schema 0.2执行统一使用Result/Record/Event 0.3；Schema 0.3执行统一使�
 跨Schema替换配置Replay和跨代Run Compare均失败关闭；原始Frame比较不受格式代际限制。
 默认文本输出便于人工查看。`--expect-status <status>`可把预期的Codec失败
 作为成功用例返回`0`，但Compare发现差异始终返回`6`。
+
+Schema 0.5专用链中，inspect/encode/replay必须显式提供`--record-root`；Replay只使用合格
+Record 0.7 Bundle内的原配置、输入与指定Pipeline，不接受配置替换。Compare只读两个合格的
+C执行Bundle，不调用Codec也不发布新Bundle。CLI 0.1进程退出和`--expect-status`只控制终端判定，
+不改写Result 0.6的执行状态、退出码或确定性指纹；完整命令与人工记录方式见
+[C3人工离线验收单](../../docs/manual-dec042b-c3-offline-acceptance.md)。
 
 UDP V0.2事件在真实TX持久化、发送和RX持久化阶段采集，使用同一Run单调时钟原点。RX在Peer
 检查和Decode前写入并复核原始字节及来源Metadata。Replay保留历史Transport事实，但当前Codec

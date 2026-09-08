@@ -17,6 +17,31 @@ add_library(
     udp_exchange.h
 )
 
+if(PAE_ENABLE_PROTOCOL_LAB_SCHEMA_V05)
+    target_sources(
+        pae_protocol_lab_internal
+        PRIVATE
+            c3_cli.cpp
+            c3_cli.h
+            v06_evidence.cpp
+            v06_evidence.h
+            v06_execution.cpp
+            v06_execution.h
+            v06_format.cpp
+            v06_format.h
+            v06_values_compat_internal.cpp
+            v06_values_compat_internal.h
+            v07_run.cpp
+            v07_run.h
+            v07_run_evidence.cpp
+            v07_run_evidence.h
+    )
+    target_compile_definitions(pae_protocol_lab_internal PRIVATE PAE_ENABLE_PROTOCOL_LAB_SCHEMA_V05=1)
+    if(PAE_BUILD_TESTING)
+        target_compile_definitions(pae_protocol_lab_internal PRIVATE PAE_ENABLE_C3_BINDING_TESTS=1)
+    endif()
+endif()
+
 target_include_directories(
     pae_protocol_lab_internal
     PRIVATE

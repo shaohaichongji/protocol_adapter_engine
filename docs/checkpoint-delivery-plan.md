@@ -5,11 +5,12 @@
 
 ## 1. 当前落点
 
-C2第一段实现已本地提交为`d7b6e97`，尚未Push；README与旧路线的B组文档已暂存、尚未提交。
-本次规划不改变这份暂存快照。这里的提交状态是本次核对时点，不作为持续更新的Git台账。
+C2第一段`d7b6e97`、B组入口文档`0f2c516`和第二段功能`aa1d663`均已提交并Push。
+C3现已在未提交工作树完成限定实现和Windows离线自动化复核；这里记录检查点状态，不作为
+持续更新的Git台账。
 
 C2第二段第21节四组方案已确认并获整检查点实施授权；当前工作树已完成Plan关联、指定Pipeline
-Replay、历史快照及只读Compare，并完成Windows Debug/Release离线复核，状态为待总控复核。
+Replay、历史快照及只读Compare，并完成Windows Debug/Release离线复核及总控限定复核。
 验证证据见[第二段报告](windows-msvc-2026-dec042b-lab-v07-replay-compare-stage-c2-second.md)。
 
 ## 2. 精简交付规则（已确认）
@@ -36,14 +37,15 @@ Replay、历史快照及只读Compare，并完成Windows Debug/Release离线复�
 
 ## 4. 后续顺序
 
-1. 收口现有B组提交及Push，沿用既有授权门禁，不与本次未暂存规划混合。
+1. C2两段及入口文档提交检查点已收口。
 2. [DEC-042B契约第21节](pae-dec-042b-decimal-conversion-contract-draft.md#21-c2第二段集中实施契约confirmed已授权实施)四组方案已确认，并已一次授权C2第二段实施、范围内修复和Windows离线验证。
 3. 当前检查点交付Plan关联、指定Pipeline重执行、Replay/Compare；不提前开放CLI。
-4. C3冻结退出码与入口，完成专用Schema 0.5命令行闭环及一次人工离线验收，作为DEC-042B结束点。
+4. [C3契约第22节](pae-dec-042b-decimal-conversion-contract-draft.md#22-c3命令行与人工离线验收confirmed已实现待人工验收)八项已确认并完成限定实现；Windows Debug/Release离线自动化已通过。下一步按[人工验收单](manual-dec042b-c3-offline-acceptance.md)执行一次人工离线验收，作为DEC-042B专用离线闭环结束点。
 5. 随后优先讨论最小业务嵌入样例，验证双配置、方向差异、动态数值、结果交付和状态隔离；不默认建设全局调度器。
 6. 依据样例缺口决定CRC、长度/变长及Qt薄界面的顺序。Qt版本核验先于依赖引入。
 
 不扩展无关证据能力、不建设通用安全框架；生成物清理继续暂缓。Linux、独立高精度Oracle、真实协议Golden、硬件和性能仍需各自证据，不因交付流程精简而升级结论。
 
 第21节确认前的计划版本仅做文档细化和静态定向复核；当前实施状态以上述第二段报告为准。
-本检查点未执行Stage、Commit、Push或其他Git写操作。
+本次C3实现未执行Git写操作；实际自动化证据见
+[C3验证报告](windows-msvc-2026-dec042b-lab-c3-cli.md)，人工状态仍为`NOT_EVALUATED`。

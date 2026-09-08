@@ -77,6 +77,10 @@ void PrintUsage() {
       << "      [--local <ipv4:port>] [--timeout-ms <1..60000>]\n"
       << "      [--send [--allow-non-loopback]]\n"
       << "common: [--output text|json] [--record-root <dir>] [--expect-status <status>]\n";
+#if defined(PAE_ENABLE_PROTOCOL_LAB_SCHEMA_V05)
+  std::cerr << "Schema 0.5 C3: inspect/encode/replay require --record-root; replay forbids "
+               "replacement --config; compare accepts two Record 0.7 runs.\n";
+#endif
 }
 
 bool ParseArguments(int argc, char** argv, Arguments& output, bool& early_success) {

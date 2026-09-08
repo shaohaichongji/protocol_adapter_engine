@@ -2,6 +2,15 @@
 
 ## 1. 状态和目的
 
+2026-09-08 C3按已确认的第22节完成限定实现和Windows离线自动化验证。现有
+`pae_protocol_lab`在显式`PAE_ENABLE_PROTOCOL_LAB_SCHEMA_V05=ON`专用构建中分派Schema 0.5及
+Record 0.7；新链强制记录、禁止Replay替换配置，并以独立`pae.lab.cli/0.1`封装表达进程退出、
+期望匹配、比较和原Result。Debug/Release C3专项各2/2、排除UDP的完整离线矩阵各35/35通过；
+默认旧Lab、Testing-off及Product-only隔离保持。七项人工离线验收仍为`NOT_EVALUATED`，详见
+[C3验证报告](windows-msvc-2026-dec042b-lab-c3-cli.md)和
+[人工验收单](manual-dec042b-c3-offline-acceptance.md)。本记录不升级网络、Golden、硬件、现场、
+Linux、Oracle、性能或生产证据。
+
 2026-09-08 C2第二段已按确认的第21节完成限定实现：C执行层在底层0.7 Reader之后执行Plan关联，
 Inspect Replay使用父Result指定Pipeline且只查询一次；Replay保存父Record/历史Result快照及父子
 材料绑定，独立Compare只读且不调用Codec。Debug/Release专项各2/2、完整离线矩阵各22/22通过，

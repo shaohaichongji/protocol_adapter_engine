@@ -15,6 +15,9 @@
 #include "result_format.h"
 #include "sha256.h"
 #include "udp_exchange.h"
+#if defined(PAE_ENABLE_PROTOCOL_LAB_SCHEMA_V05)
+#include "c3_cli.h"
+#endif
 
 namespace pae::protocol_lab {
 namespace {
@@ -800,12 +803,19 @@ int RunApplicationWithDependencies(int argc, char** argv, RecordFileSystem& file
   Arguments arguments;
   bool early_success = false;
   if (!ParseArguments(argc, argv, arguments, early_success)) {
+#if defined(PAE_ENABLE_PROTOCOL_LAB_SCHEMA_V05)
+    if (c3::IsInvocation(argc, argv))
+      return c3::PrintArgumentError(argc, argv, "invalid or inapplicable C3 command options");
+#endif
     PrintUsage();
     return 2;
   }
   if (early_success) {
     return 0;
   }
+#if defined(PAE_ENABLE_PROTOCOL_LAB_SCHEMA_V05)
+  if (c3::IsInvocation(arguments)) return c3::Run(arguments);
+#endif
 
   OperationResult result;
   result.command = CommandName(arguments.command);
