@@ -33,7 +33,7 @@ target_link_libraries(
         pae_protocol_core_slice
         pae::protocol_plan
         pae::project_options
-        pae::yyjson_candidate
+        pae::yyjson
 )
 
 if(WIN32)

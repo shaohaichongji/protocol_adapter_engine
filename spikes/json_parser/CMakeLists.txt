@@ -1,7 +1,7 @@
 include(FetchContent)
 
 include(cmake/GenerateCorpus.cmake)
-include(${PROJECT_SOURCE_DIR}/cmake/PaeYyjsonCandidate.cmake)
+include(${PROJECT_SOURCE_DIR}/cmake/PaeYyjson.cmake)
 set(_pae_json_spike_generated_dir "${CMAKE_CURRENT_BINARY_DIR}/generated")
 pae_generate_json_spike_corpora("${_pae_json_spike_generated_dir}")
 
@@ -89,11 +89,10 @@ if(PAE_BUILD_TESTING)
 endif()
 
 if(PAE_JSON_SPIKE_CANDIDATE STREQUAL "all" OR PAE_JSON_SPIKE_CANDIDATE STREQUAL "yyjson")
-    set(_pae_json_spike_dependency_lock "${CMAKE_CURRENT_SOURCE_DIR}/dependencies.lock.json")
-    pae_add_yyjson_candidate("${_pae_json_spike_dependency_lock}")
+    pae_add_yyjson()
 
     pae_add_json_spike_executable(pae_json_spike_yyjson src/yyjson_adapter.cpp)
-    target_link_libraries(pae_json_spike_yyjson PRIVATE pae::yyjson_candidate)
+    target_link_libraries(pae_json_spike_yyjson PRIVATE pae::yyjson)
     if(PAE_BUILD_TESTING)
         add_test(
             NAME pae_json_spike_yyjson_allocator_limits

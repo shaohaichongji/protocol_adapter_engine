@@ -5,8 +5,8 @@
 | 项目 | 内容 |
 | --- | --- |
 | 文档名称 | PAE V0.1 Loader 与 Compiler 架构边界 |
-| 文档版本 | 0.1.12 |
-| 文档日期 | 2026-09-02 |
+| 文档版本 | 0.1.13 |
+| 文档日期 | 2026-09-08 |
 | 适用范围 | `ProtocolAdapterEngine` V0.1 配置加载和内存执行计划编译链 |
 | 文档属性 | 仓库内架构边界文档，不是公共接口参考 |
 
@@ -411,8 +411,8 @@ SchemaIr
 ```text
 pae_config_compiler
 ├── PRIVATE → pae_protocol_plan
-└── PRIVATE → pae::yyjson_candidate
-               └── PRIVATE → vendored yyjson source
+└── PRIVATE → pae::yyjson
+               └── PRIVATE → third_party/yyjson最小随仓源码
 
 pae_protocol_core_slice
 └── PRIVATE → pae_protocol_plan
@@ -742,11 +742,14 @@ PlanBuilder错误：
 
 ## 12. 当前未冻结事项
 
-当前 Windows Spike 已把 yyjson 候选 Archive、MIT License、`yyjson.h/.c`源码范围和 SHA-256 纳入锁文件及 Configure 正向复核；这只固定候选实验来源，不等于完成下列生产拍板。
+yyjson 0.12.0已经完成正式依赖选择，其MIT License、固定Commit和`LICENSE/yyjson.h/yyjson.c`
+最小随仓范围由`third_party/yyjson/dependency.lock.json`唯一管理，Compiler、Lab和yyjson Spike共用
+同一本地入口。Configure缺失或Hash漂移失败关闭，不提供网络回退。Windows执行证据见
+`docs/windows-msvc-2026-yyjson-vendor-dependency.md`。
 
 以下内容仍保持`OPEN（待确认）`或`UNVERIFIED（未验证）`：
 
-- 最终JSON Parser及正式生产Vendor边界；
+- yyjson后续升级、替换或扩大随仓源码范围；当前0.12.0及三文件边界已经确认；
 - Linux GCC（GNU Compiler Collection，GNU编译器套件）和Clang实际门禁；当前按Windows-first实施顺序暂缓，不阻塞Windows阶段设计与实现，也不构成Linux兼容证据；
 - 五项Loader容量候选的最终生产上限；Parser阶段输入、节点、全部字符串exact/+1和arena检查已经执行，最小Loader切片也已验证代表性失败原子性，但正式Schema最大配置、SHA-256、Loader/Compiler峰值及全阶段故障注入仍未完成；深度、单Object、单Array、单字符串和Number Token结构上限已经确认；
 - 所有嵌套重复key的完整JSON Pointer；
@@ -768,6 +771,7 @@ PlanBuilder错误：
 
 | 文档版本 | 日期 | 说明 |
 | --- | --- | --- |
+| 0.1.13 | 2026-09-08 | 同步yyjson 0.12.0正式最小随仓依赖、唯一锁、本地Configure失败关闭及Windows验证；不改变Core/Plan依赖边界 |
 | 0.1.12 | 2026-09-02 | 同步PAE-DEC-033A单Storage Block、Frozen Storage、PlanOwner、精确单Plan准入、报告复核与Windows部分验证；保持033B为UNVERIFIED |
 | 0.1.11 | 2026-09-02 | 同步第十七轮PAE-DEC-033拍板：拆分冷Plan与Runtime阶段，冻结PAE Accounted Memory口径、长期Allocator计量、Plan准入事务、Runtime并发聚合、Profile候选字段、内部报告分类和验证门禁；保持源码与测试为UNVERIFIED |
 | 0.1.10 | 2026-09-02 | 同步PAE-DEC-032实现：记录move-only不可伪造能力链、移动后重复消费拒绝、原始PlanDraft退出生产入口、Validator单一作者错误权威、Builder内部故障映射和Windows Release/Debug证据 |

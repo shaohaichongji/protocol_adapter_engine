@@ -10,6 +10,8 @@ PAE 的目标是通过严格配置完成工业二进制协议的有方向 Decode
 安排在当前Lab第三段之后。暂不复制现有Qt包，先核验依赖并选择版本。
 Lab指纹0.6精确编码与A阶段纯格式隔离测试方案已完成限定实现和Windows隔离验证，见
 [DEC-042B契约第12～13节](docs/pae-dec-042b-decimal-conversion-contract-draft.md)。
+Config Compiler、Protocol Lab及yyjson Spike现统一使用随仓的yyjson 0.12.0最小源码与唯一锁；
+正常Configure不再通过网络获取yyjson，见[依赖验证报告](docs/windows-msvc-2026-yyjson-vendor-dependency.md)。
 
 2026-09-07状态快照：公开代码基线为`90c5165`，DEC-042B Core第二段已审查、提交并Push。
 Schema 0.2位字段、0.3 SUM8、0.4 INT64已实现；0.5精确Decimal64比例/偏置仅在专用Loader+Core
@@ -23,6 +25,7 @@ Core纠错后Windows专用矩阵Debug/Release各16/16、旧代全切片各25/25�
 
 - 已创建本地工程骨架；
 - 已完成 JSON Parser Spike（JSON 解析器技术探针）的 Windows/MSVC（Microsoft Visual C++，微软C/C++编译器）Strict JSON Profile（严格 JSON 子集规范）、Number Token（数字词法单元）、两批机器语料及三档Parser阶段资源门禁；28项文档清单、77项Token语料、10项yyjson数字诊断、48项资源边界、精确offset/Pointer、5项清单负向门禁，以及yyjson原始数字、解析期内存硬上限、故障注入和候选来源/License复核已有实测证据；
+- 已正式采用yyjson 0.12.0固定Commit作为Compiler和Lab内部依赖，仅随仓`LICENSE`、`yyjson.h`和`yyjson.c`；Config阶段逐文件复核长度及SHA-256，缺失或漂移失败关闭，Core和ProtocolPlan仍不依赖JSON Parser；
 - 已实现内部 `StrictJsonLoader → StructuralValidator / SchemaIrBuilder → DomainValidator → ResourceBudgetValidator → PlanDraftAssembler → PlanBuilder` 最小纵向切片，可把受限 `*.pae.json` 编译为不可变 `PlanBundle`；该切片不安装、不导出，不属于稳定公共 API（应用程序编程接口）；
 - 已形成草案 `pae.schema.json`、ProtocolPlan Execution Semantics（协议计划执行语义）、从零设计的人工实验台双向样例和稳定 ID Golden Snapshot（黄金快照）；
 - 已把 yyjson-free（不依赖yyjson）的`pae_protocol_plan`从配置编译器抽离，并实现首个内部`COMPLETE_RECORD（完整记录）`Codec（编解码器）切片：支持确定性Matcher（匹配器）、`UINT64`、固定`BYTES`、`ENUM`、1～8字节大小端、Plan作用域引用、调用方Buffer及失败关闭；
@@ -98,7 +101,9 @@ cmake --build --preset linux-clang-spike-release
 ctest --preset linux-clang-spike-release
 ```
 
-构建目录和下载的候选依赖位于`out/`，不进入 Git。远端发布必须先通过协议资料保密、仓库可见性、第三方License和提交内容审计门禁。
+构建目录及nlohmann/json、RapidJSON实验候选下载位于`out/`，不进入Git。正式yyjson最小源码和
+MIT License位于`third_party/yyjson`。远端发布必须先通过协议资料保密、仓库可见性、第三方
+License和提交内容审计门禁。
 
 ## License 状态
 

@@ -1,6 +1,6 @@
-include("${PROJECT_SOURCE_DIR}/cmake/PaeYyjsonCandidate.cmake")
+include("${PROJECT_SOURCE_DIR}/cmake/PaeYyjson.cmake")
 
-pae_add_yyjson_candidate("${PROJECT_SOURCE_DIR}/cmake/yyjson_candidate.lock.json")
+pae_add_yyjson()
 
 add_executable(
     pae_protocol_lab_v06_format_tests
@@ -17,7 +17,7 @@ target_link_libraries(
     pae_protocol_lab_v06_format_tests
     PRIVATE
         pae::project_options
-        pae::yyjson_candidate
+        pae::yyjson
 )
 set_target_properties(
     pae_protocol_lab_v06_format_tests

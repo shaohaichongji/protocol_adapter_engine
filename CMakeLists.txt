@@ -139,3 +139,20 @@ endif()
 if(PAE_BUILD_LAB_V06_FORMAT_TESTS)
     add_subdirectory(tests/protocol_lab_v06_format)
 endif()
+
+if(PAE_BUILD_TESTING AND TARGET pae_yyjson_vendor)
+    add_test(
+        NAME pae.dependency.yyjson.vendor_contract
+        COMMAND
+            "${CMAKE_COMMAND}"
+            "-DPAE_SOURCE_DIR=${PROJECT_SOURCE_DIR}"
+            "-DPAE_BINARY_DIR=${PROJECT_BINARY_DIR}/tests/dependency_contract"
+            -P "${PROJECT_SOURCE_DIR}/cmake/VerifyYyjsonVendorContract.cmake"
+    )
+    set_tests_properties(
+        pae.dependency.yyjson.vendor_contract
+        PROPERTIES
+            LABELS "dependency;offline;yyjson"
+            TIMEOUT 30
+    )
+endif()

@@ -155,7 +155,7 @@ target_link_libraries(
         pae_protocol_lab_internal
         pae_config_compiler
         pae::project_options
-        pae::yyjson_candidate
+        pae::yyjson
 )
 add_test(
     NAME pae.tools.protocol_lab.inspect_phase

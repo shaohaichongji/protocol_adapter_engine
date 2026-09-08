@@ -14,3 +14,8 @@ CMakeLists.txt text eol=lf
 *.tsv text eol=lf
 *.yml text eol=lf
 *.yaml text eol=lf
+
+# Locked upstream bytes; do not apply Git text or end-of-line conversion.
+third_party/yyjson/LICENSE -text
+third_party/yyjson/src/yyjson.h -text
+third_party/yyjson/src/yyjson.c -text

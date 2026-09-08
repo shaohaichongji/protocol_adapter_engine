@@ -1,6 +1,6 @@
-include("${PROJECT_SOURCE_DIR}/cmake/PaeYyjsonCandidate.cmake")
+include("${PROJECT_SOURCE_DIR}/cmake/PaeYyjson.cmake")
 
-pae_add_yyjson_candidate("${PROJECT_SOURCE_DIR}/cmake/yyjson_candidate.lock.json")
+pae_add_yyjson()
 
 add_library(
     pae_config_compiler
@@ -23,7 +23,7 @@ target_link_libraries(
     PRIVATE
         pae::project_options
         pae::protocol_plan
-        pae::yyjson_candidate
+        pae::yyjson
 )
 
 set_target_properties(
