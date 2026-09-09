@@ -69,7 +69,7 @@ bool ReverseTwoPipelines(std::string& config) {
   return true;
 }
 
-bool DuplicateFirstPipeline(std::string& config) {
+bool DuplicateFirstPipeline(std::string& config, std::string_view pipeline_id) {
   const std::size_t pipelines = config.find("\"pipelines\"");
   const std::size_t array = config.find('[', pipelines);
   const std::size_t first_begin = config.find('{', array);
@@ -79,12 +79,12 @@ bool DuplicateFirstPipeline(std::string& config) {
     return false;
   }
   std::string duplicate = config.substr(first_begin, first_end - first_begin);
-  const std::string id = "\"id\": \"synthetic_direction\"";
+  const std::string id = "\"id\": \"" + std::string(pipeline_id) + "\"";
   const std::size_t id_position = duplicate.find(id);
   if (id_position == std::string::npos) {
     return false;
   }
-  duplicate.replace(id_position, id.size(), "\"id\": \"synthetic_direction_alias\"");
+  duplicate.replace(id_position, id.size(), id.substr(0U, id.size() - 1U) + "_alias\"");
   config.insert(first_end, ",\n" + duplicate);
   return true;
 }
@@ -168,7 +168,7 @@ int main(int argc, char** argv) {
   }
 
   std::string repeated_message_config = public_config;
-  if (!Expect(DuplicateFirstPipeline(repeated_message_config),
+  if (!Expect(DuplicateFirstPipeline(repeated_message_config, "synthetic_direction"),
               "same Message cross-Pipeline mutation succeeds")) {
     return 1;
   }
@@ -178,6 +178,21 @@ int main(int argc, char** argv) {
       !CheckAmbiguous(*repeated_message_plan, valid)) {
     return 1;
   }
+
+#if defined(PAE_ENABLE_SCHEMA_V07_LENGTH_COMPILER)
+  std::string repeated_length_config = ReadText(root + "/synthetic_length_slice.pae.json");
+  if (!Expect(DuplicateFirstPipeline(repeated_length_config, "synthetic_rx"),
+              "Schema 0.7 length Pipeline duplication succeeds")) {
+    return 1;
+  }
+  auto repeated_length_plan = Compile(repeated_length_config);
+  const std::vector<std::uint8_t> length_frame{0xAAU, 0x00U, 0x06U, 0x05U, 0x7EU, 0x55U};
+  if (!Expect(static_cast<bool>(repeated_length_plan),
+              "same length Message in two Pipelines remains a valid Plan") ||
+      !CheckAmbiguous(*repeated_length_plan, length_frame)) {
+    return 1;
+  }
+#endif
 
   std::string no_integrity = public_config;
   const std::string fixed_marker =

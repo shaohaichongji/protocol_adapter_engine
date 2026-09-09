@@ -495,6 +495,9 @@ bool ParseResult(std::string& text, Result& output, std::string& error) {
 #if defined(PAE_ENABLE_SCHEMA_V06_CRC_COMPILER)
                                                              && format != kCrcResultFormat
 #endif
+#if defined(PAE_ENABLE_SCHEMA_V07_LENGTH_COMPILER)
+                                                             && format != kLengthResultFormat
+#endif
                                                              )) {
     if (error.empty()) error = "unsupported Result format_version";
     return false;
@@ -619,6 +622,9 @@ bool ValidateResult(const Result& result, std::string& error) {
 #if defined(PAE_ENABLE_SCHEMA_V06_CRC_COMPILER)
       && result.format_version != kCrcResultFormat
 #endif
+#if defined(PAE_ENABLE_SCHEMA_V07_LENGTH_COMPILER)
+      && result.format_version != kLengthResultFormat
+#endif
   ) {
     error = "unsupported Result format_version";
     return false;
@@ -645,6 +651,14 @@ bool ValidateResult(const Result& result, std::string& error) {
   const bool has_failure_identity = result.failed_field_id.has_value() ||
                                     result.failed_field_index.has_value() ||
                                     result.failed_value_index.has_value();
+#if defined(PAE_ENABLE_SCHEMA_V07_LENGTH_COMPILER)
+  const bool length_only_status = result.current_execution_status == "LENGTH_MISMATCH" ||
+                                  result.current_execution_status == "COMPUTED_FIELD_OVERRIDE";
+  if (length_only_status && result.format_version != kLengthResultFormat) {
+    error = "computed length Codec status requires Result 0.8";
+    return false;
+  }
+#endif
   if (result.replay_mode == "NONE") {
     if (result.replay_subject != "NONE" || result.current_execution_status != "NOT_EVALUATED" ||
         result.current_execution_diagnostic_id.has_value() || result.conversion_error.has_value() ||
@@ -760,6 +774,12 @@ std::string EncodeFingerprintPayload(const Result& result, std::string& error) {
   if (result.format_version == kCrcResultFormat) {
     fingerprint_domain = kCrcFingerprintDomain;
     schema_version = "0.6";
+  }
+#endif
+#if defined(PAE_ENABLE_SCHEMA_V07_LENGTH_COMPILER)
+  if (result.format_version == kLengthResultFormat) {
+    fingerprint_domain = kLengthFingerprintDomain;
+    schema_version = "0.7";
   }
 #endif
   return "A20:" + EncodeString(fingerprint_domain) + EncodeString(schema_version) +

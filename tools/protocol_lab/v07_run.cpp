@@ -143,6 +143,14 @@ RunBundleInput BuildBundle(const RunRequest& request, const v06::ExecutionOutcom
 #else
   const bool crc_generation = false;
 #endif
+#if defined(PAE_ENABLE_SCHEMA_V07_LENGTH_COMPILER)
+  const bool length_generation =
+      outcome.schema_version == "0.7" ||
+      (outcome.result.has_value() && outcome.result->format_version == v06::kLengthResultFormat);
+  if (length_generation) bundle.record.format_version = std::string{kLengthRecordFormat};
+#else
+  const bool length_generation = false;
+#endif
   bundle.record.tool_version = request.tool_version;
   bundle.record.operation_kind = request.operation_kind;
   bundle.record.invocation_kind = request.invocation_kind;
@@ -162,8 +170,9 @@ RunBundleInput BuildBundle(const RunRequest& request, const v06::ExecutionOutcom
                                  : std::nullopt;
   bundle.record.result_file =
       outcome.result.has_value()
-          ? std::optional<std::string>{crc_generation ? "result_summary_v0.7.json"
-                                                      : "result_summary_v0.6.json"}
+          ? std::optional<std::string>{length_generation ? "result_summary_v0.8.json"
+                                       : crc_generation  ? "result_summary_v0.7.json"
+                                                         : "result_summary_v0.6.json"}
           : std::nullopt;
   if (outcome.result.has_value()) {
     std::string error;
@@ -206,17 +215,32 @@ RunBundleInput BuildBundle(const RunRequest& request, const v06::ExecutionOutcom
     bundle.historical_result_text = request.historical_result_text;
     if (request.parent_record_text.has_value() && request.historical_result_text.has_value() &&
         request.historical_fingerprint.has_value()) {
-      bundle.record.historical_baseline = HistoricalBaseline{
-          crc_generation ? "history/parent_record_v0.8.json" : "history/parent_record_v0.7.json",
-          HashBytes(*request.parent_record_text),
-          crc_generation ? "history/result_summary_v0.7.json" : "history/result_summary_v0.6.json",
-          HashBytes(*request.historical_result_text),
+      bundle.record.historical_baseline =
+          HistoricalBaseline{length_generation ? "history/parent_record_v0.9.json"
+                             : crc_generation  ? "history/parent_record_v0.8.json"
+                                               : "history/parent_record_v0.7.json",
+                             HashBytes(*request.parent_record_text),
+                             length_generation ? "history/result_summary_v0.8.json"
+                             : crc_generation  ? "history/result_summary_v0.7.json"
+                                               : "history/result_summary_v0.6.json",
+                             HashBytes(*request.historical_result_text),
+#if defined(PAE_ENABLE_SCHEMA_V07_LENGTH_COMPILER)
+                             std::string{length_generation ? v06::kLengthFingerprintDomain
 #if defined(PAE_ENABLE_SCHEMA_V06_CRC_COMPILER)
-          std::string{crc_generation ? v06::kCrcFingerprintDomain : v06::kFingerprintDomain},
+                                         : crc_generation ? v06::kCrcFingerprintDomain
+                                                          : v06::kFingerprintDomain},
 #else
-          std::string{v06::kFingerprintDomain},
+                                                           : v06::kFingerprintDomain},
 #endif
-          *request.historical_fingerprint};
+#else
+#if defined(PAE_ENABLE_SCHEMA_V06_CRC_COMPILER)
+                             std::string{crc_generation ? v06::kCrcFingerprintDomain
+                                                        : v06::kFingerprintDomain},
+#else
+                             std::string{v06::kFingerprintDomain},
+#endif
+#endif
+                             *request.historical_fingerprint};
     }
     if (bundle.record.deterministic_fingerprint.has_value() &&
         request.historical_fingerprint.has_value()) {
@@ -371,6 +395,9 @@ bool QualifyRunEvidence(const StoredRunBundle& bundle, EvidenceQualificationStat
 #if defined(PAE_ENABLE_SCHEMA_V06_CRC_COMPILER)
       && plan.SchemaVersion() != "0.6"
 #endif
+#if defined(PAE_ENABLE_SCHEMA_V07_LENGTH_COMPILER)
+      && plan.SchemaVersion() != "0.7"
+#endif
   ) {
     error = "Run Evidence Plan is outside the enabled C execution generations";
     return false;
@@ -383,6 +410,10 @@ bool QualifyRunEvidence(const StoredRunBundle& bundle, EvidenceQualificationStat
 #if defined(PAE_ENABLE_SCHEMA_V06_CRC_COMPILER)
       || (plan.SchemaVersion() == "0.6" && result.format_version == v06::kCrcResultFormat &&
           bundle.record.format_version == kCrcRecordFormat)
+#endif
+#if defined(PAE_ENABLE_SCHEMA_V07_LENGTH_COMPILER)
+      || (plan.SchemaVersion() == "0.7" && result.format_version == v06::kLengthResultFormat &&
+          bundle.record.format_version == kLengthRecordFormat)
 #endif
       ;
   if (!generation_matches) {
@@ -444,6 +475,23 @@ bool QualifyRunEvidence(const StoredRunBundle& bundle, EvidenceQualificationStat
     error = "integrity failure does not bind a Message integrity rule";
     return false;
   }
+#if defined(PAE_ENABLE_SCHEMA_V07_LENGTH_COMPILER)
+  if (result.current_execution_status == "LENGTH_MISMATCH" &&
+      (!result.failed_field_index.has_value() ||
+       !plan.Messages()[message].computed_length.has_value() ||
+       plan.Messages()[message].computed_length->field_index != *result.failed_field_index)) {
+    error = "length mismatch does not bind the Message computed length field";
+    return false;
+  }
+  if (result.current_execution_status == "COMPUTED_FIELD_OVERRIDE" &&
+      (!result.failed_field_index.has_value() || !result.failed_value_index.has_value() ||
+       !plan.Messages()[message].computed_length.has_value() ||
+       plan.Messages()[message].computed_length->field_index != *result.failed_field_index)) {
+    error =
+        "computed field override does not bind the Message computed length field and Values input";
+    return false;
+  }
+#endif
   if (bundle.record.operation_kind == "inspect" &&
       result.current_execution_status == "UNKNOWN_ENUM_VALUE" &&
       (!result.failed_field_index.has_value() ||

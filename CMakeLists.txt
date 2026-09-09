@@ -42,6 +42,11 @@ option(
     OFF
 )
 option(
+    PAE_ENABLE_SCHEMA_V07_LENGTH_COMPILER
+    "Enable the internal Schema 0.7 fixed-record computed length compiler and Core slice"
+    OFF
+)
+option(
     PAE_ENABLE_PROTOCOL_LAB_SCHEMA_V05
     "Enable the dedicated offline Protocol Lab Schema 0.5 C3 command chain"
     OFF
@@ -49,6 +54,11 @@ option(
 option(
     PAE_ENABLE_PROTOCOL_LAB_SCHEMA_V06_CRC
     "Enable the dedicated offline Protocol Lab Schema 0.6 CRC command chain"
+    OFF
+)
+option(
+    PAE_ENABLE_PROTOCOL_LAB_SCHEMA_V07_LENGTH
+    "Enable the dedicated offline Protocol Lab Schema 0.7 length command chain"
     OFF
 )
 option(
@@ -96,6 +106,21 @@ if(PAE_ENABLE_PROTOCOL_LAB_SCHEMA_V06_CRC AND
         "PAE_ENABLE_PROTOCOL_LAB_SCHEMA_V06_CRC requires explicit Schema 0.5 Lab and Schema 0.6 CRC compiler slices."
     )
 endif()
+if(PAE_ENABLE_SCHEMA_V07_LENGTH_COMPILER AND PAE_BUILD_PROTOCOL_LAB AND
+   NOT PAE_ENABLE_PROTOCOL_LAB_SCHEMA_V07_LENGTH)
+    message(
+        FATAL_ERROR
+        "Schema 0.7 Protocol Lab requires explicit PAE_ENABLE_PROTOCOL_LAB_SCHEMA_V07_LENGTH=ON."
+    )
+endif()
+if(PAE_ENABLE_PROTOCOL_LAB_SCHEMA_V07_LENGTH AND
+   (NOT PAE_ENABLE_PROTOCOL_LAB_SCHEMA_V06_CRC OR
+    NOT PAE_ENABLE_SCHEMA_V07_LENGTH_COMPILER))
+    message(
+        FATAL_ERROR
+        "PAE_ENABLE_PROTOCOL_LAB_SCHEMA_V07_LENGTH requires explicit Schema 0.6 CRC Lab and Schema 0.7 length compiler slices."
+    )
+endif()
 if(PAE_ENABLE_SCHEMA_V05_COMPILER AND NOT PAE_BUILD_LOADER_SCHEMA_IR_SLICE)
     message(FATAL_ERROR "PAE_ENABLE_SCHEMA_V05_COMPILER requires the Loader/SchemaIr slice.")
 endif()
@@ -106,6 +131,15 @@ if(PAE_ENABLE_SCHEMA_V06_CRC_COMPILER AND
     message(
         FATAL_ERROR
         "PAE_ENABLE_SCHEMA_V06_CRC_COMPILER requires the Loader, Core, and explicit Schema 0.5 compiler slices."
+    )
+endif()
+if(PAE_ENABLE_SCHEMA_V07_LENGTH_COMPILER AND
+   (NOT PAE_ENABLE_SCHEMA_V06_CRC_COMPILER OR
+    NOT PAE_BUILD_LOADER_SCHEMA_IR_SLICE OR
+    NOT PAE_BUILD_COMPLETE_RECORD_CODEC_SLICE))
+    message(
+        FATAL_ERROR
+        "PAE_ENABLE_SCHEMA_V07_LENGTH_COMPILER requires the Loader, Core, and explicit Schema 0.6 CRC compiler slice."
     )
 endif()
 

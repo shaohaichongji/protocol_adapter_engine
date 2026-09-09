@@ -84,6 +84,9 @@ void PrintUsage() {
 #if defined(PAE_ENABLE_PROTOCOL_LAB_SCHEMA_V06_CRC)
                "/0.6"
 #endif
+#if defined(PAE_ENABLE_PROTOCOL_LAB_SCHEMA_V07_LENGTH)
+               "/0.7"
+#endif
                " C3: inspect/encode/replay require --record-root; replay forbids replacement "
                "--config; compare accepts same-generation complete runs.\n";
 #endif

@@ -45,6 +45,12 @@ if(PAE_ENABLE_PROTOCOL_LAB_SCHEMA_V05)
             PRIVATE PAE_ENABLE_PROTOCOL_LAB_SCHEMA_V06_CRC=1
         )
     endif()
+    if(PAE_ENABLE_PROTOCOL_LAB_SCHEMA_V07_LENGTH)
+        target_compile_definitions(
+            pae_protocol_lab_internal
+            PRIVATE PAE_ENABLE_PROTOCOL_LAB_SCHEMA_V07_LENGTH=1
+        )
+    endif()
     if(PAE_BUILD_TESTING)
         target_compile_definitions(pae_protocol_lab_internal PRIVATE PAE_ENABLE_C3_BINDING_TESTS=1)
     endif()

@@ -189,18 +189,76 @@ bool TestConfigurationB(const std::string& config) {
                 "configuration B adapts scale, offset, endian, and layout without host changes");
 }
 
+#if defined(PAE_ENABLE_SCHEMA_V07_LENGTH_COMPILER)
+bool TestLengthConfiguration(const std::string& config) {
+  Observer observer;
+  std::string error;
+  auto adapter = BusinessAdapter::Initialize(config, observer.Callbacks(), error);
+  if (!Expect(adapter != nullptr, "Schema 0.7 length configuration initializes")) return false;
+
+  const std::vector<std::uint8_t> measurement_frame{0xA1U, 0x06U, 0x02U, 0x08U, 0x01U, 0xB2U};
+  const auto received =
+      adapter->OnReceivedRecord({measurement_frame.data(), measurement_frame.size()});
+  if (!Expect(received.Succeeded() && observer.measurement_calls == 1U &&
+                  observer.latest_measurement.temperature.coefficient == 12 &&
+                  observer.latest_measurement.alarm,
+              "length-checked RX delivers the same business measurement")) {
+    return false;
+  }
+
+  auto bad_length = measurement_frame;
+  bad_length[1] = 0x05U;
+  const auto rejected = adapter->OnReceivedRecord({bad_length.data(), bad_length.size()});
+  if (!Expect(
+          rejected.codec_status == CodecStatus::LENGTH_MISMATCH && observer.measurement_calls == 1U,
+          "length mismatch reaches no business callback")) {
+    return false;
+  }
+
+  const auto first = adapter->SendCommand(Command{{125, 1}});
+  const std::vector<std::uint8_t> expected_first{0xB2U, 0x06U, 0x00U, 0x19U, 0x5AU, 0x2BU};
+  const auto second = adapter->SendCommand(Command{{-5, 0}});
+  const std::vector<std::uint8_t> expected_second{0xB2U, 0x06U, 0xFFU, 0xF6U, 0x5AU, 0x07U};
+  return Expect(first.Succeeded() && second.Succeeded() && observer.bytes_calls == 2U &&
+                    observer.byte_copies[0] == expected_first &&
+                    observer.byte_copies[1] == expected_second,
+                "computed length precedes SUM8 without changing host inputs");
+}
+#endif
+
 }  // namespace
 
 int main(int argc, char** argv) {
-  if (argc != 3) {
-    std::cerr << "usage: business_embedding_tests <config-a> <config-b>\n";
+  const int expected_argc =
+#if defined(PAE_ENABLE_SCHEMA_V07_LENGTH_COMPILER)
+      4;
+#else
+      3;
+#endif
+  if (argc != expected_argc) {
+    std::cerr << "usage: business_embedding_tests <config-a> <config-b> <length-config>\n";
     return 2;
   }
   const std::string config_a = ReadFile(argv[1]);
   const std::string config_b = ReadFile(argv[2]);
-  if (!Expect(!config_a.empty() && !config_b.empty(), "public synthetic configs are readable") ||
+  const std::string length_config =
+#if defined(PAE_ENABLE_SCHEMA_V07_LENGTH_COMPILER)
+      ReadFile(argv[3]);
+#else
+      {};
+#endif
+  if (!Expect(!config_a.empty() && !config_b.empty()
+#if defined(PAE_ENABLE_SCHEMA_V07_LENGTH_COMPILER)
+                  && !length_config.empty()
+#endif
+                  ,
+              "public synthetic configs are readable") ||
       !TestInitialization(config_a) || !TestConfigurationA(config_a) ||
-      !TestConfigurationB(config_b)) {
+      !TestConfigurationB(config_b)
+#if defined(PAE_ENABLE_SCHEMA_V07_LENGTH_COMPILER)
+      || !TestLengthConfiguration(length_config)
+#endif
+  ) {
     return 1;
   }
   std::cout << "BUSINESS_EMBEDDING_TESTS=PASS\n";

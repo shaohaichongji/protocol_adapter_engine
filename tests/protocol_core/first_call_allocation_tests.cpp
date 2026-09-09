@@ -278,6 +278,32 @@ CompileResult BuildCrcPlan() {
 }
 #endif
 
+#if defined(PAE_ENABLE_SCHEMA_V07_LENGTH_COMPILER)
+CompileResult BuildLengthPlan() {
+  return pae::config_compiler::CompileJsonToPlan(R"json({
+    "schema_version":"0.7","protocol_id":"allocation_length","protocol_version":"1",
+    "display_name":"Synthetic","description":"","source_ref":"SYNTHETIC_FROM_SCRATCH:allocation",
+    "resource_profile":"desktop",
+    "framing_profiles":[{"id":"complete_record","display_name":"Synthetic","description":"",
+      "source_ref":"SYNTHETIC_FROM_SCRATCH:allocation","input_kind":"complete_record"}],
+    "pipelines":[{"id":"length_pipe","display_name":"Synthetic","description":"",
+      "source_ref":"SYNTHETIC_FROM_SCRATCH:allocation","direction_id":"length_direction",
+      "input_framing_profile_id":"complete_record","message_ids":["length_message"]}],
+    "messages":[{"id":"length_message","display_name":"Synthetic","description":"",
+      "source_ref":"SYNTHETIC_FROM_SCRATCH:allocation","direction_id":"length_direction",
+      "frame_length_bytes":2,"matcher":{"all":[{"kind":"frame_length_equals","length_bytes":2}]},
+      "fields":[
+        {"id":"record_length","display_name":"Synthetic","description":"",
+         "source_ref":"SYNTHETIC_FROM_SCRATCH:allocation","value_type":"UINT64",
+         "wire":{"codec":"unsigned_integer","byte_offset":0,"byte_width":1},
+         "encode":{"source":"computed"},"computed":{"kind":"length","scope":"frame"}},
+        {"id":"value","display_name":"Synthetic","description":"",
+         "source_ref":"SYNTHETIC_FROM_SCRATCH:allocation","value_type":"UINT64",
+         "wire":{"codec":"unsigned_integer","byte_offset":1,"byte_width":1},
+         "encode":{"source":"input"}}]}]})json");
+}
+#endif
+
 #if defined(PAE_ENABLE_SCHEMA_V05_COMPILER)
 CompileResult BuildDecimalPlan() {
   return pae::config_compiler::CompileJsonToPlan(R"json({
@@ -442,6 +468,32 @@ bool RunFirstCrcCalls() {
 }
 #endif
 
+#if defined(PAE_ENABLE_SCHEMA_V07_LENGTH_COMPILER)
+bool RunFirstLengthCalls() {
+  CompileResult frozen = BuildLengthPlan();
+  if (!frozen.Succeeded()) return false;
+  ExecutionWorkspace workspace{*frozen.Plan()};
+  EncodeFieldValue value;
+  value.field = FieldRef{frozen.Plan(), 0U, 1U};
+  value.uint64_value = 0x31U;
+  std::array<std::uint8_t, 2U> output{0xCCU, 0xCCU};
+  std::size_t before = g_allocation_count.load(std::memory_order_relaxed);
+  const auto encoded = EncodeCompleteRecord(*frozen.Plan(), workspace, 0U, 0U, &value, 1U,
+                                            {output.data(), output.size()});
+  std::size_t after = g_allocation_count.load(std::memory_order_relaxed);
+  if (encoded.status != CodecStatus::OK || output != std::array<std::uint8_t, 2U>{0x02U, 0x31U} ||
+      before != after)
+    return false;
+  std::array<DecodedFieldSlot, 2U> slots{};
+  before = g_allocation_count.load(std::memory_order_relaxed);
+  const auto decoded = DecodeCompleteRecord(
+      *frozen.Plan(), workspace, 0U, {output.data(), output.size()}, slots.data(), slots.size());
+  after = g_allocation_count.load(std::memory_order_relaxed);
+  return decoded.status == CodecStatus::OK && decoded.field_count == slots.size() &&
+         slots[0].uint64_value == 2U && slots[1].uint64_value == 0x31U && before == after;
+}
+#endif
+
 #if defined(PAE_ENABLE_SCHEMA_V05_COMPILER)
 bool RunFirstDecimalCalls() {
   CompileResult frozen = BuildDecimalPlan();
@@ -486,6 +538,9 @@ int main(int argc, char** argv) {
 #if defined(PAE_ENABLE_SCHEMA_V06_CRC_COMPILER)
                       : mode == "--first-crc" ? RunFirstCrcCalls()
 #endif
+#if defined(PAE_ENABLE_SCHEMA_V07_LENGTH_COMPILER)
+                      : mode == "--first-length" ? RunFirstLengthCalls()
+#endif
 #if defined(PAE_ENABLE_SCHEMA_V05_COMPILER)
                       : mode == "--first-decimal" ? RunFirstDecimalCalls()
 #endif
@@ -504,8 +559,11 @@ int main(int argc, char** argv) {
 #if defined(PAE_ENABLE_SCHEMA_V06_CRC_COMPILER)
                                       : (mode == "--first-crc"
                                              ? "first_crc_calls_zero_replaceable_new_allocation"
-                                             : "first_decimal_calls_zero_replaceable_new_"
-                                               "allocation")
+                                             : (mode == "--first-length"
+                                                    ? "first_length_calls_zero_replaceable_new_"
+                                                      "allocation"
+                                                    : "first_decimal_calls_zero_replaceable_new_"
+                                                      "allocation"))
 #else
                                       : "first_decimal_calls_zero_replaceable_new_allocation"
 #endif

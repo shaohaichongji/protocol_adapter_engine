@@ -74,8 +74,8 @@ std::unique_ptr<BusinessAdapter> BusinessAdapter::Initialize(std::string_view co
   }
 
   auto plan = std::move(compiled).TakePlan();
-  if (!plan || plan->SchemaVersion() != "0.5") {
-    error_detail = "business embedding requires a Schema 0.5 plan";
+  if (!plan || (plan->SchemaVersion() != "0.5" && plan->SchemaVersion() != "0.7")) {
+    error_detail = "business embedding requires a supported Schema 0.5 or 0.7 plan";
     return nullptr;
   }
 

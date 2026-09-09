@@ -408,6 +408,22 @@ Schema 0.6使用独立Result 0.7、确定性指纹0.7及Run Record 0.8；Event�
 仍可跨来源。公开合成向量与Windows证据见
 [`windows-msvc-2026-crc-minimal-slice.md`](../docs/windows-msvc-2026-crc-minimal-slice.md)。
 
+### 11.8 Schema 0.7固定完整记录长度字段
+
+Schema 0.7继承0.6，并允许每条COMPLETE_RECORD Message至多一个字节对齐UINT64计算长度字段。
+字段使用`encode.source=computed`与`computed.kind=length`成对声明；`frame`取固定整帧字节数，
+`region`取帧内非空连续区域的固定`byte_length`。存储宽度只允许1/2/4字节；1字节省略字节序，
+2/4字节显式大端或小端。存储不得与其他字段、位容器、完整性存储或固定字节Matcher重叠。
+
+Compiler推导期望值并纳入资源报告，Builder独立重算范围、值、字段关联和数量。Core Encode拒绝
+业务覆盖，写完普通内容后写长度、再生成SUM8/CRC并最终重读；Decode在结构唯一和容量检查后先
+验证长度、再验证完整性和业务字段。失败分别为`COMPUTED_FIELD_OVERRIDE`、`LENGTH_MISMATCH`，
+不交付有效输出长度或字段。长度描述不新增Workspace槽，首次调用不新增可替换`new/new[]`分配。
+
+Schema 0.7统一使用Result及指纹0.8、Run Record 0.9；Event 0.7、Values 0.1～0.4和CLI 0.1不变。
+旧代格式、指纹及证据不重写，跨代Run Compare失败关闭。公开合成证据见
+[`windows-msvc-2026-length-field-slice.md`](../docs/windows-msvc-2026-length-field-slice.md)。
+
 ## 12. 当前不覆盖的完整 V0.1 能力
 
 完成本切片不能宣称完成完整Schema V0.1。至少仍缺少：
@@ -415,8 +431,7 @@ Schema 0.6使用独立Result 0.7、确定性指纹0.7及Run Record 0.8；Event�
 - STREAM_CHUNK及`fixed_length`、`sync_fixed_length`、`sync_length_field`；
 - REAL64、STRING/ASCII和Packed BCD；有符号位字段仍未实现；
 - 比例/偏置的Values/Lab证据、raw/value constraints及稳定公共接口；
-- `default`和`computed`正式作者格式；
-- 长度字段正式语义；
+- `default`及长度以外的通用`computed`作者格式；
 - SUM、XOR、LRC、CRC之外的自定义Checksum及多段/动态完整性规则；
 - Receive Gate、Mapping、Session、资源自定义和Runtime注册；
 - 稳定公共API、C ABI和字符串键值适配层；
@@ -444,6 +459,7 @@ Schema 0.6使用独立Result 0.7、确定性指纹0.7及Run Record 0.8；Event�
 
 | 文档版本 | 日期 | 说明 |
 | --- | --- | --- |
+| 0.1.13 | 2026-09-09 | 同步Schema 0.7固定完整记录长度字段、Builder重算、Core执行顺序、Lab 0.8/Record 0.9及Windows离线边界 |
 | 0.1.12 | 2026-09-09 | 同步Schema 0.6参数化CRC-16/32、冻结参数、Core双向执行、Result 0.7/Record 0.8隔离及Windows离线验证边界 |
 | 0.1.11 | 2026-09-07 | 同步DEC-042B Core审查纠错：非法Decimal scale归类为INVALID_ARGUMENT，最终重读算术内部故障保持INTERNAL_ERROR，并补充运行时代际门禁与Workspace计费边界 |
 | 0.1.10 | 2026-09-07 | 同步PAE-DEC-042B Core精确双向转换、Decimal64、Workspace raw诊断、失败顺序、最终重读复核及运行槽计费；Values/Lab证据段仍未实现 |

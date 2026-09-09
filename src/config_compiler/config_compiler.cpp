@@ -986,7 +986,7 @@ bool ParseBitContainer(yyjson_val* value, std::string_view pointer, BitContainer
 }
 
 bool ParseEncode(yyjson_val* value, std::string_view pointer, ValueType value_type,
-                 EncodeIr& output, CompileDiagnostic& diagnostic) {
+                 bool supports_computed_length, EncodeIr& output, CompileDiagnostic& diagnostic) {
   if (!yyjson_is_obj(value)) {
     return SetDiagnostic(diagnostic, CompileStage::STRUCTURAL, CompileError::TYPE_MISMATCH,
                          std::string(pointer), "encode must be an object");
@@ -998,9 +998,19 @@ bool ParseEncode(yyjson_val* value, std::string_view pointer, ValueType value_ty
     return false;
   }
   if (source_token == "computed") {
+#if defined(PAE_ENABLE_SCHEMA_V07_LENGTH_COMPILER)
+    if (supports_computed_length && value_type == ValueType::UINT64) {
+      if (!ValidateObjectProperties(value, pointer, {"source"}, diagnostic)) return false;
+      output.source = EncodeSource::COMPUTED;
+      output.origin.json_pointer = std::string{pointer};
+      return true;
+    }
+#else
+    static_cast<void>(supports_computed_length);
+#endif
     return SetDiagnostic(diagnostic, CompileStage::STRUCTURAL, CompileError::UNSUPPORTED_FEATURE,
                          ChildPointer(pointer, "source"),
-                         "computed encode source is outside this internal draft slice");
+                         "computed length requires a Schema 0.7 UINT64 field");
   }
   if (source_token == "input") {
     if (!ValidateObjectProperties(value, pointer, {"source"}, diagnostic)) {
@@ -1044,6 +1054,51 @@ bool ParseEncode(yyjson_val* value, std::string_view pointer, ValueType value_ty
   output.origin.json_pointer = std::string{pointer};
   return true;
 }
+
+#if defined(PAE_ENABLE_SCHEMA_V07_LENGTH_COMPILER)
+bool ParseComputedLength(yyjson_val* value, std::string_view pointer, ComputedLengthIr& output,
+                         CompileDiagnostic& diagnostic) {
+  if (!yyjson_is_obj(value)) {
+    return SetDiagnostic(diagnostic, CompileStage::STRUCTURAL, CompileError::TYPE_MISMATCH,
+                         std::string{pointer}, "computed length must be an object");
+  }
+  yyjson_val* kind = RequiredProperty(value, "kind", pointer, diagnostic);
+  yyjson_val* scope = RequiredProperty(value, "scope", pointer, diagnostic);
+  std::string kind_token;
+  std::string scope_token;
+  if (kind == nullptr || scope == nullptr ||
+      !ReadEnumToken(kind, ChildPointer(pointer, "kind"), {"length"}, kind_token, diagnostic) ||
+      !ReadEnumToken(scope, ChildPointer(pointer, "scope"), {"frame", "region"}, scope_token,
+                     diagnostic)) {
+    return false;
+  }
+  output.origin.json_pointer = std::string{pointer};
+  if (scope_token == "frame") {
+    if (!ValidateObjectProperties(value, pointer, {"kind", "scope"}, diagnostic)) return false;
+    output.scope = ComputedLengthScope::FRAME;
+    return true;
+  }
+  if (!ValidateObjectProperties(value, pointer, {"kind", "scope", "range"}, diagnostic))
+    return false;
+  yyjson_val* range = RequiredProperty(value, "range", pointer, diagnostic);
+  const std::string range_pointer = ChildPointer(pointer, "range");
+  if (range == nullptr || !yyjson_is_obj(range)) {
+    if (range != nullptr) {
+      return SetDiagnostic(diagnostic, CompileStage::STRUCTURAL, CompileError::TYPE_MISMATCH,
+                           range_pointer, "computed length range must be an object");
+    }
+    return false;
+  }
+  if (!ValidateObjectProperties(range, range_pointer, {"byte_offset", "byte_length"}, diagnostic) ||
+      !ReadRequiredUint64(range, "byte_offset", range_pointer, output.range_offset, diagnostic) ||
+      !ReadRequiredUint64(range, "byte_length", range_pointer, output.range_length, diagnostic)) {
+    return false;
+  }
+  output.scope = ComputedLengthScope::REGION;
+  output.range_origin.json_pointer = range_pointer;
+  return true;
+}
+#endif
 
 bool ParseEnumEntries(yyjson_val* value, std::string_view pointer, std::vector<EnumEntryIr>& output,
                       CompileDiagnostic& diagnostic) {
@@ -1145,8 +1200,8 @@ bool ParseConversion(yyjson_val* value, std::string_view pointer, LinearConversi
 #endif
 
 bool ParseField(yyjson_val* value, std::string_view pointer, bool supports_bitfields,
-                bool supports_int64, bool supports_conversion, FieldIr& output,
-                CompileDiagnostic& diagnostic) {
+                bool supports_int64, bool supports_conversion, bool supports_computed_length,
+                FieldIr& output, CompileDiagnostic& diagnostic) {
   if (!yyjson_is_obj(value)) {
     return SetDiagnostic(diagnostic, CompileStage::STRUCTURAL, CompileError::TYPE_MISMATCH,
                          std::string(pointer), "field must be an object");
@@ -1168,7 +1223,11 @@ bool ParseField(yyjson_val* value, std::string_view pointer, bool supports_bitfi
     output.value_type = ValueType::UINT64;
     if (!ValidateObjectProperties(
             value, pointer,
-            supports_conversion
+            supports_computed_length
+                ? std::initializer_list<std::string_view>{"id", "display_name", "description",
+                                                          "source_ref", "value_type", "wire",
+                                                          "encode", "computed", "conversion"}
+            : supports_conversion
                 ? std::initializer_list<std::string_view>{"id", "display_name", "description",
                                                           "source_ref", "value_type", "wire",
                                                           "encode", "conversion"}
@@ -1260,9 +1319,30 @@ bool ParseField(yyjson_val* value, std::string_view pointer, bool supports_bitfi
 
   yyjson_val* encode = RequiredProperty(value, "encode", pointer, diagnostic);
   if (encode == nullptr || !ParseEncode(encode, ChildPointer(pointer, "encode"), output.value_type,
-                                        output.encode, diagnostic)) {
+                                        supports_computed_length, output.encode, diagnostic)) {
     return false;
   }
+
+#if defined(PAE_ENABLE_SCHEMA_V07_LENGTH_COMPILER)
+  yyjson_val* computed = yyjson_obj_get(value, "computed");
+  if (output.encode.source == EncodeSource::COMPUTED) {
+    if (computed == nullptr) {
+      return SetDiagnostic(diagnostic, CompileStage::STRUCTURAL, CompileError::MISSING_PROPERTY,
+                           ChildPointer(pointer, "computed"),
+                           "computed encode source requires a computed rule");
+    }
+    ComputedLengthIr parsed;
+    if (!ParseComputedLength(computed, ChildPointer(pointer, "computed"), parsed, diagnostic))
+      return false;
+    output.computed_length = std::move(parsed);
+  } else if (computed != nullptr) {
+    return SetDiagnostic(diagnostic, CompileStage::STRUCTURAL, CompileError::UNKNOWN_PROPERTY,
+                         ChildPointer(pointer, "computed"),
+                         "computed rule requires encode.source computed");
+  }
+#else
+  static_cast<void>(supports_computed_length);
+#endif
 
 #if defined(PAE_ENABLE_SCHEMA_V05_COMPILER)
   if (yyjson_val* conversion = yyjson_obj_get(value, "conversion")) {
@@ -1302,8 +1382,8 @@ bool ParseField(yyjson_val* value, std::string_view pointer, bool supports_bitfi
 }
 
 bool ParseFields(yyjson_val* value, std::string_view pointer, bool supports_bitfields,
-                 bool supports_int64, bool supports_conversion, std::vector<FieldIr>& output,
-                 CompileDiagnostic& diagnostic) {
+                 bool supports_int64, bool supports_conversion, bool supports_computed_length,
+                 std::vector<FieldIr>& output, CompileDiagnostic& diagnostic) {
   if (!yyjson_is_arr(value)) {
     return SetDiagnostic(diagnostic, CompileStage::STRUCTURAL, CompileError::TYPE_MISMATCH,
                          std::string(pointer), "fields must be an array");
@@ -1320,7 +1400,7 @@ bool ParseFields(yyjson_val* value, std::string_view pointer, bool supports_bitf
   while (yyjson_val* field_value = yyjson_arr_iter_next(&iterator)) {
     FieldIr field;
     if (!ParseField(field_value, IndexPointer(pointer, index), supports_bitfields, supports_int64,
-                    supports_conversion, field, diagnostic)) {
+                    supports_conversion, supports_computed_length, field, diagnostic)) {
       return false;
     }
     output.push_back(std::move(field));
@@ -1487,7 +1567,8 @@ bool ParseIntegrity(yyjson_val* value, std::string_view pointer, bool supports_c
 
 bool ParseMessage(yyjson_val* value, std::string_view pointer, bool supports_bitfields,
                   bool supports_integrity, bool supports_crc, bool supports_int64,
-                  bool supports_conversion, MessageIr& output, CompileDiagnostic& diagnostic) {
+                  bool supports_conversion, bool supports_computed_length, MessageIr& output,
+                  CompileDiagnostic& diagnostic) {
   if (!yyjson_is_obj(value)) {
     return SetDiagnostic(diagnostic, CompileStage::STRUCTURAL, CompileError::TYPE_MISMATCH,
                          std::string(pointer), "message must be an object");
@@ -1532,7 +1613,7 @@ bool ParseMessage(yyjson_val* value, std::string_view pointer, bool supports_bit
       !ParseMatcher(matcher, ChildPointer(pointer, "matcher"), output.matcher_clauses,
                     diagnostic) ||
       !ParseFields(fields, ChildPointer(pointer, "fields"), supports_bitfields, supports_int64,
-                   supports_conversion, output.fields, diagnostic)) {
+                   supports_conversion, supports_computed_length, output.fields, diagnostic)) {
     return false;
   }
   if (supports_bitfields) {
@@ -1612,6 +1693,9 @@ bool BuildSchemaIr(yyjson_val* root, SchemaIr& output, CompileDiagnostic& diagno
 #if defined(PAE_ENABLE_SCHEMA_V06_CRC_COMPILER)
                                 || output.schema_version == "0.6"
 #endif
+#if defined(PAE_ENABLE_SCHEMA_V07_LENGTH_COMPILER)
+                                || output.schema_version == "0.7"
+#endif
       ;
 #else
   const bool supported_schema = output.schema_version == "0.1" || output.schema_version == "0.2" ||
@@ -1654,12 +1738,14 @@ bool BuildSchemaIr(yyjson_val* root, SchemaIr& output, CompileDiagnostic& diagno
                return ParseMessage(
                    value, pointer, output.schema_version != "0.1",
                    output.schema_version == "0.3" || output.schema_version == "0.4" ||
-                       output.schema_version == "0.5" || output.schema_version == "0.6",
-                   output.schema_version == "0.6",
+                       output.schema_version == "0.5" || output.schema_version == "0.6" ||
+                       output.schema_version == "0.7",
+                   output.schema_version == "0.6" || output.schema_version == "0.7",
                    output.schema_version == "0.4" || output.schema_version == "0.5" ||
-                       output.schema_version == "0.6",
-                   output.schema_version == "0.5" || output.schema_version == "0.6", message,
-                   item_diagnostic);
+                       output.schema_version == "0.6" || output.schema_version == "0.7",
+                   output.schema_version == "0.5" || output.schema_version == "0.6" ||
+                       output.schema_version == "0.7",
+                   output.schema_version == "0.7", message, item_diagnostic);
              },
              diagnostic);
 }
@@ -1763,7 +1849,13 @@ bool ValidateMessageDomain(MessageIr& message, ResourceRequirements& requirement
       !AddSizeChecked(message.matcher_clauses.size(), requirements.total_matcher_count) ||
       !AddSizeChecked(message.bit_containers.size(), requirements.total_bit_container_count) ||
       (message.integrity.has_value() &&
-       !AddSizeChecked(1U, requirements.total_integrity_rule_count))) {
+       !AddSizeChecked(1U, requirements.total_integrity_rule_count))
+#if defined(PAE_ENABLE_SCHEMA_V07_LENGTH_COMPILER)
+      || (std::any_of(message.fields.begin(), message.fields.end(),
+                      [](const FieldIr& field) { return field.computed_length.has_value(); }) &&
+          !AddSizeChecked(1U, requirements.total_computed_length_count))
+#endif
+  ) {
     return SetDiagnostic(diagnostic, CompileStage::DOMAIN_VALIDATION,
                          CompileError::INTERNAL_CONTRACT_VIOLATION, message.origin.json_pointer,
                          "resource count overflow");
@@ -1780,6 +1872,9 @@ bool ValidateMessageDomain(MessageIr& message, ResourceRequirements& requirement
   };
   std::vector<FieldSpan> spans;
   spans.reserve(message.fields.size() + message.bit_containers.size());
+#if defined(PAE_ENABLE_SCHEMA_V07_LENGTH_COMPILER)
+  std::size_t computed_length_count = 0U;
+#endif
 
   std::unordered_map<std::string, std::size_t> container_ids;
   std::vector<std::uint64_t> member_masks(message.bit_containers.size(), 0U);
@@ -1863,6 +1958,61 @@ bool ValidateMessageDomain(MessageIr& message, ResourceRequirements& requirement
       spans.push_back(FieldSpan{field.wire.byte_offset,
                                 field.wire.byte_offset + field.wire.byte_width, &field});
     }
+
+#if defined(PAE_ENABLE_SCHEMA_V07_LENGTH_COMPILER)
+    if (field.computed_length.has_value()) {
+      ++computed_length_count;
+      const ComputedLengthIr& computed = *field.computed_length;
+      if (computed_length_count > 1U) {
+        return SetDiagnostic(diagnostic, CompileStage::DOMAIN_VALIDATION,
+                             CompileError::UNSUPPORTED_FEATURE, computed.origin.json_pointer,
+                             "a message may contain at most one computed length field");
+      }
+      if (field.value_type != ValueType::UINT64 ||
+          field.wire.codec != WireCodec::UNSIGNED_INTEGER ||
+          field.encode.source != EncodeSource::COMPUTED ||
+          field.encode.constant_value.has_value() ||
+          field.encode.signed_constant_value.has_value() || field.conversion.has_value() ||
+          !field.enum_entries.empty() ||
+          (field.wire.byte_width != 1U && field.wire.byte_width != 2U &&
+           field.wire.byte_width != 4U) ||
+          (field.wire.byte_width == 1U && field.wire.byte_order != ByteOrder::NOT_APPLICABLE) ||
+          (field.wire.byte_width != 1U && field.wire.byte_order != ByteOrder::BIG &&
+           field.wire.byte_order != ByteOrder::LITTLE)) {
+        return SetDiagnostic(
+            diagnostic, CompileStage::DOMAIN_VALIDATION, CompileError::UNSUPPORTED_FEATURE,
+            computed.origin.json_pointer,
+            "computed length requires a byte-aligned UINT64 field of width 1, 2, or 4");
+      }
+      std::uint64_t expected = message.frame_length_bytes;
+      if (computed.scope == ComputedLengthScope::REGION) {
+        if (computed.range_length == 0U) {
+          return SetDiagnostic(diagnostic, CompileStage::DOMAIN_VALIDATION,
+                               CompileError::FIELD_OUT_OF_BOUNDS,
+                               ChildPointer(computed.range_origin.json_pointer, "byte_length"),
+                               "computed length range must contain at least one byte");
+        }
+        if (computed.range_offset > message.frame_length_bytes ||
+            computed.range_length > message.frame_length_bytes - computed.range_offset) {
+          return SetDiagnostic(diagnostic, CompileStage::DOMAIN_VALIDATION,
+                               CompileError::FIELD_OUT_OF_BOUNDS,
+                               computed.range_origin.json_pointer,
+                               "computed length range exceeds message frame_length_bytes");
+        }
+        expected = computed.range_length;
+      }
+      if (!FitsUnsignedWidth(expected, field.wire.byte_width)) {
+        return SetDiagnostic(diagnostic, CompileStage::DOMAIN_VALIDATION,
+                             CompileError::VALUE_NOT_REPRESENTABLE, computed.origin.json_pointer,
+                             "computed length does not fit the configured wire width");
+      }
+    } else if (field.encode.source == EncodeSource::COMPUTED) {
+      return SetDiagnostic(diagnostic, CompileStage::DOMAIN_VALIDATION,
+                           CompileError::INTERNAL_CONTRACT_VIOLATION,
+                           field.encode.origin.json_pointer,
+                           "computed encode source is missing its length descriptor");
+    }
+#endif
 
     if (field.encode.constant_value.has_value() &&
         !(field.wire.codec == WireCodec::BITFIELD
@@ -2064,6 +2214,21 @@ bool ValidateMessageDomain(MessageIr& message, ResourceRequirements& requirement
       }
     }
   }
+
+#if defined(PAE_ENABLE_SCHEMA_V07_LENGTH_COMPILER)
+  for (const FieldIr& field : message.fields) {
+    if (!field.computed_length.has_value()) {
+      continue;
+    }
+    for (std::uint64_t index = 0U; index < field.wire.byte_width; ++index) {
+      if (fixed_matcher_bytes.find(field.wire.byte_offset + index) != fixed_matcher_bytes.end()) {
+        return SetDiagnostic(diagnostic, CompileStage::DOMAIN_VALIDATION,
+                             CompileError::MATCHER_CONFLICT, field.wire.origin.json_pointer,
+                             "computed length storage overlaps a fixed_bytes matcher");
+      }
+    }
+  }
+#endif
 
   if (message.integrity.has_value()) {
     std::uint64_t storage_width = 1U;
@@ -2555,6 +2720,13 @@ ResourceBudgetResult ResourceBudgetValidator::ValidateImpl(
                           diagnostic)) {
     return ResourceBudgetResult::Failure(std::move(diagnostic));
   }
+#if defined(PAE_ENABLE_SCHEMA_V07_LENGTH_COMPILER)
+  if (!CheckResourceCount(requirements.total_computed_length_count, budget->max_messages,
+                          "/messages", "computed length count exceeds the message count limit",
+                          diagnostic)) {
+    return ResourceBudgetResult::Failure(std::move(diagnostic));
+  }
+#endif
 #if defined(PAE_ENABLE_SCHEMA_V05_COMPILER)
   if (!CheckResourceCount(requirements.total_conversion_count, budget->max_total_fields,
                           "/messages", "conversion count exceeds the total field limit",
@@ -2665,6 +2837,28 @@ PlanDraftAssemblyResult PlanDraftAssembler::Assemble(BudgetedSchemaIr budgeted) 
 #endif
       message_plan.integrity = integrity;
     }
+#if defined(PAE_ENABLE_SCHEMA_V07_LENGTH_COMPILER)
+    for (std::size_t field_index = 0U; field_index < message.fields.size(); ++field_index) {
+      const FieldIr& field = message.fields[field_index];
+      if (!field.computed_length.has_value()) {
+        continue;
+      }
+      const ComputedLengthIr& computed = *field.computed_length;
+      protocol_plan::ComputedLengthPlan descriptor;
+      descriptor.field_index = field_index;
+      descriptor.storage_offset = field.wire.byte_offset;
+      descriptor.storage_width = field.wire.byte_width;
+      descriptor.byte_order = field.wire.byte_order;
+      descriptor.scope = computed.scope;
+      descriptor.range_offset = computed.range_offset;
+      descriptor.range_length = computed.range_length;
+      descriptor.expected_value = computed.scope == ComputedLengthScope::FRAME
+                                      ? message.frame_length_bytes
+                                      : computed.range_length;
+      message_plan.computed_length = descriptor;
+      break;
+    }
+#endif
     message_plan.fields.reserve(message.fields.size());
     for (FieldIr& field : message.fields) {
       FieldPlan field_plan;

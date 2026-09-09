@@ -1,0 +1,148 @@
+{
+  "schema_version": "0.7",
+  "protocol_id": "synthetic_length_slice",
+  "protocol_version": "0.1-synthetic",
+  "display_name": "公开合成长度字段切片",
+  "description": "从零构造的固定完整记录长度字段样例，不对应任何真实协议。",
+  "source_ref": "SYNTHETIC_FROM_SCRATCH:length_minimal_public_vector",
+  "resource_profile": "desktop",
+  "framing_profiles": [
+    {
+      "id": "complete_record",
+      "display_name": "完整记录",
+      "description": "固定长度完整记录。",
+      "source_ref": "SYNTHETIC_FROM_SCRATCH:length_minimal_public_vector#framing",
+      "input_kind": "complete_record"
+    }
+  ],
+  "pipelines": [
+    {
+      "id": "synthetic_rx",
+      "display_name": "合成接收",
+      "description": "公开离线测试Pipeline。",
+      "source_ref": "SYNTHETIC_FROM_SCRATCH:length_minimal_public_vector#pipeline",
+      "direction_id": "rx",
+      "input_framing_profile_id": "complete_record",
+      "message_ids": ["frame_length_record", "region_length_record", "wide_length_record"]
+    }
+  ],
+  "messages": [
+    {
+      "id": "frame_length_record",
+      "display_name": "整帧长度记录",
+      "description": "六字节记录，双字节大端长度字段保存整帧长度6。",
+      "source_ref": "SYNTHETIC_FROM_SCRATCH:length_minimal_public_vector#frame",
+      "direction_id": "rx",
+      "frame_length_bytes": 6,
+      "matcher": {
+        "all": [
+          {"kind": "frame_length_equals", "length_bytes": 6},
+          {"kind": "fixed_bytes", "byte_offset": 0, "bytes": "AA"},
+          {"kind": "fixed_bytes", "byte_offset": 5, "bytes": "55"}
+        ]
+      },
+      "fields": [
+        {
+          "id": "record_length",
+          "display_name": "记录长度",
+          "description": "由引擎生成并验证的整帧长度。",
+          "source_ref": "SYNTHETIC_FROM_SCRATCH:length_minimal_public_vector#frame_length",
+          "value_type": "UINT64",
+          "wire": {"codec": "unsigned_integer", "byte_offset": 1, "byte_width": 2, "byte_order": "big_endian"},
+          "encode": {"source": "computed"},
+          "computed": {"kind": "length", "scope": "frame"}
+        },
+        {
+          "id": "value",
+          "display_name": "值",
+          "description": "动态一字节无符号值。",
+          "source_ref": "SYNTHETIC_FROM_SCRATCH:length_minimal_public_vector#value",
+          "value_type": "UINT64",
+          "wire": {"codec": "unsigned_integer", "byte_offset": 3, "byte_width": 1},
+          "encode": {"source": "input"}
+        },
+        {
+          "id": "payload",
+          "display_name": "载荷",
+          "description": "动态一字节载荷。",
+          "source_ref": "SYNTHETIC_FROM_SCRATCH:length_minimal_public_vector#payload",
+          "value_type": "BYTES",
+          "wire": {"codec": "bytes", "byte_offset": 4, "byte_length": 1},
+          "encode": {"source": "input"}
+        }
+      ]
+    },
+    {
+      "id": "region_length_record",
+      "display_name": "区域长度记录",
+      "description": "六字节记录，单字节长度字段保存三字节连续区域长度。",
+      "source_ref": "SYNTHETIC_FROM_SCRATCH:length_minimal_public_vector#region",
+      "direction_id": "rx",
+      "frame_length_bytes": 6,
+      "matcher": {
+        "all": [
+          {"kind": "frame_length_equals", "length_bytes": 6},
+          {"kind": "fixed_bytes", "byte_offset": 0, "bytes": "AB"},
+          {"kind": "fixed_bytes", "byte_offset": 5, "bytes": "55"}
+        ]
+      },
+      "fields": [
+        {
+          "id": "region_length",
+          "display_name": "区域长度",
+          "description": "由引擎生成并验证的连续区域长度。",
+          "source_ref": "SYNTHETIC_FROM_SCRATCH:length_minimal_public_vector#region_length",
+          "value_type": "UINT64",
+          "wire": {"codec": "unsigned_integer", "byte_offset": 1, "byte_width": 1},
+          "encode": {"source": "computed"},
+          "computed": {"kind": "length", "scope": "region", "range": {"byte_offset": 2, "byte_length": 3}}
+        },
+        {
+          "id": "payload",
+          "display_name": "区域载荷",
+          "description": "被计数的三字节区域。",
+          "source_ref": "SYNTHETIC_FROM_SCRATCH:length_minimal_public_vector#region_payload",
+          "value_type": "BYTES",
+          "wire": {"codec": "bytes", "byte_offset": 2, "byte_length": 3},
+          "encode": {"source": "input"}
+        }
+      ]
+    },
+    {
+      "id": "wide_length_record",
+      "display_name": "四字节小端长度记录",
+      "description": "八字节记录，四字节小端长度字段保存整帧长度8。",
+      "source_ref": "SYNTHETIC_FROM_SCRATCH:length_minimal_public_vector#wide",
+      "direction_id": "rx",
+      "frame_length_bytes": 8,
+      "matcher": {
+        "all": [
+          {"kind": "frame_length_equals", "length_bytes": 8},
+          {"kind": "fixed_bytes", "byte_offset": 0, "bytes": "AC"},
+          {"kind": "fixed_bytes", "byte_offset": 6, "bytes": "55 66"}
+        ]
+      },
+      "fields": [
+        {
+          "id": "wide_length",
+          "display_name": "四字节记录长度",
+          "description": "由引擎生成并验证的四字节小端整帧长度。",
+          "source_ref": "SYNTHETIC_FROM_SCRATCH:length_minimal_public_vector#wide_length",
+          "value_type": "UINT64",
+          "wire": {"codec": "unsigned_integer", "byte_offset": 1, "byte_width": 4, "byte_order": "little_endian"},
+          "encode": {"source": "computed"},
+          "computed": {"kind": "length", "scope": "frame"}
+        },
+        {
+          "id": "value",
+          "display_name": "值",
+          "description": "动态一字节无符号值。",
+          "source_ref": "SYNTHETIC_FROM_SCRATCH:length_minimal_public_vector#wide_value",
+          "value_type": "UINT64",
+          "wire": {"codec": "unsigned_integer", "byte_offset": 5, "byte_width": 1},
+          "encode": {"source": "input"}
+        }
+      ]
+    }
+  ]
+}

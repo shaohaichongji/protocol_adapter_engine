@@ -56,6 +56,23 @@ if(PAE_ENABLE_PROTOCOL_LAB_SCHEMA_V06_CRC)
     )
 endif()
 
+if(PAE_ENABLE_PROTOCOL_LAB_SCHEMA_V07_LENGTH)
+    add_test(
+        NAME pae.tools.protocol_lab.length_cli
+        COMMAND
+            "${CMAKE_COMMAND}"
+            "-DPAE_LAB_EXECUTABLE=$<TARGET_FILE:pae_protocol_lab>"
+            "-DPAE_SOURCE_DIR=${PROJECT_SOURCE_DIR}"
+            "-DPAE_BINARY_DIR=${CMAKE_CURRENT_BINARY_DIR}"
+            "-DPAE_FIXTURE_DIR=${pae_protocol_lab_c3_fixture_dir}"
+            -P "${CMAKE_CURRENT_SOURCE_DIR}/verify_length_cli.cmake"
+    )
+    set_tests_properties(
+        pae.tools.protocol_lab.length_cli
+        PROPERTIES LABELS "tools;protocol_lab;offline;length_field;cli" TIMEOUT 180
+    )
+endif()
+
 add_test(NAME pae.tools.protocol_lab.c3_policy COMMAND pae_protocol_lab_c3_policy_tests)
 set_tests_properties(
     pae.tools.protocol_lab.c3_policy

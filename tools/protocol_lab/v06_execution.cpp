@@ -93,6 +93,12 @@ std::string CodecStatusName(CodecStatus status) {
       return "FINAL_REVIEW_FAILED";
     case CodecStatus::INTERNAL_ERROR:
       return "INTERNAL_ERROR";
+#if defined(PAE_ENABLE_SCHEMA_V07_LENGTH_COMPILER)
+    case CodecStatus::COMPUTED_FIELD_OVERRIDE:
+      return "COMPUTED_FIELD_OVERRIDE";
+    case CodecStatus::LENGTH_MISMATCH:
+      return "LENGTH_MISMATCH";
+#endif
   }
   return "INTERNAL_ERROR";
 }
@@ -179,6 +185,11 @@ Result MakeBaseResult(const PlanBundle& plan, std::string_view config_hash,
 #if defined(PAE_ENABLE_SCHEMA_V06_CRC_COMPILER)
   if (plan.SchemaVersion() == "0.6") {
     result.format_version = std::string{kCrcResultFormat};
+  }
+#endif
+#if defined(PAE_ENABLE_SCHEMA_V07_LENGTH_COMPILER)
+  if (plan.SchemaVersion() == "0.7") {
+    result.format_version = std::string{kLengthResultFormat};
   }
 #endif
   result.command = std::string{operation_kind};
@@ -380,9 +391,12 @@ std::unique_ptr<ExecutionBridge> ExecutionBridge::Prepare(std::string_view confi
 #if defined(PAE_ENABLE_SCHEMA_V06_CRC_COMPILER)
       && plan->SchemaVersion() != "0.6"
 #endif
+#if defined(PAE_ENABLE_SCHEMA_V07_LENGTH_COMPILER)
+      && plan->SchemaVersion() != "0.7"
+#endif
   ) {
     failure.diagnostic_id = "PAE_LAB_C1_SCHEMA_UNSUPPORTED";
-    failure.detail = "C1 execution accepts only an enabled Schema 0.5 or Schema 0.6 Plan";
+    failure.detail = "C1 execution accepts only an enabled Schema 0.5, 0.6, or 0.7 Plan";
     return nullptr;
   }
   auto implementation = std::make_unique<Impl>(std::string{config_text}, std::move(plan));

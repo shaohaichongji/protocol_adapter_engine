@@ -156,6 +156,45 @@ if(PAE_ENABLE_SCHEMA_V06_CRC_COMPILER)
         PROPERTIES LABELS "protocol_core;complete_record_codec;allocation;crc" TIMEOUT 180
     )
 endif()
+if(PAE_ENABLE_SCHEMA_V07_LENGTH_COMPILER)
+    add_test(
+        NAME pae.protocol_core.complete_record_codec.first_length_allocation
+        COMMAND pae_complete_record_first_call_allocation_tests --first-length
+    )
+    set_tests_properties(
+        pae.protocol_core.complete_record_codec.first_length_allocation
+        PROPERTIES LABELS "protocol_core;complete_record_codec;allocation;length_field" TIMEOUT 180
+    )
+endif()
+if(PAE_ENABLE_SCHEMA_V07_LENGTH_COMPILER)
+    set(
+        pae_length_core_fixture
+        "${PROJECT_SOURCE_DIR}/examples/config/synthetic_length_slice.pae.json"
+    )
+    add_executable(pae_length_field_contract_tests length_field_contract_tests.cpp)
+    target_include_directories(
+        pae_length_field_contract_tests
+        PRIVATE
+            "${PROJECT_SOURCE_DIR}/src/config_compiler"
+            "${PROJECT_SOURCE_DIR}/src/protocol_core"
+    )
+    target_link_libraries(
+        pae_length_field_contract_tests
+        PRIVATE
+            pae_config_compiler
+            pae_protocol_core_slice_instrumented
+            pae::protocol_plan
+            pae::project_options
+    )
+    add_test(
+        NAME pae.protocol_core.length_field.contract
+        COMMAND pae_length_field_contract_tests "${pae_length_core_fixture}"
+    )
+    set_tests_properties(
+        pae.protocol_core.length_field.contract
+        PROPERTIES LABELS "protocol_core;length_field" TIMEOUT 180
+    )
+endif()
 configure_file(
     "${PROJECT_SOURCE_DIR}/examples/config/synthetic_bitfield_slice.pae.json"
     "${pae_protocol_core_test_data_dir}/synthetic_bitfield_slice.pae.json"

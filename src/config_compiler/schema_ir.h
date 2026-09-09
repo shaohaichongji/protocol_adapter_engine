@@ -14,6 +14,9 @@ namespace pae::config_compiler {
 
 using protocol_plan::BitNumbering;
 using protocol_plan::ByteOrder;
+#if defined(PAE_ENABLE_SCHEMA_V07_LENGTH_COMPILER)
+using protocol_plan::ComputedLengthScope;
+#endif
 using protocol_plan::EncodeSource;
 using protocol_plan::InputKind;
 using protocol_plan::IntegrityAlgorithm;
@@ -104,6 +107,16 @@ struct EncodeIr {
   std::optional<std::int64_t> signed_constant_value;
 };
 
+#if defined(PAE_ENABLE_SCHEMA_V07_LENGTH_COMPILER)
+struct ComputedLengthIr {
+  ComputedLengthScope scope = ComputedLengthScope::FRAME;
+  std::uint64_t range_offset = 0U;
+  std::uint64_t range_length = 0U;
+  ConfigOrigin origin;
+  ConfigOrigin range_origin;
+};
+#endif
+
 struct EnumEntryIr {
   std::string id;
   std::string display_name;
@@ -134,6 +147,9 @@ struct FieldIr {
   ValueType value_type = ValueType::UINT64;
   WireIr wire;
   EncodeIr encode;
+#if defined(PAE_ENABLE_SCHEMA_V07_LENGTH_COMPILER)
+  std::optional<ComputedLengthIr> computed_length;
+#endif
   UnknownEnumPolicy unknown_enum_policy = UnknownEnumPolicy::REJECT;
   std::vector<EnumEntryIr> enum_entries;
 #if defined(PAE_ENABLE_SCHEMA_V05_COMPILER)

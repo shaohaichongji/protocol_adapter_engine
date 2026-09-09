@@ -16,6 +16,9 @@ inline constexpr std::string_view kEventFormat = "pae.lab.event/0.7";
 #if defined(PAE_ENABLE_SCHEMA_V06_CRC_COMPILER)
 inline constexpr std::string_view kCrcRecordFormat = "pae.lab.record/0.8";
 #endif
+#if defined(PAE_ENABLE_SCHEMA_V07_LENGTH_COMPILER)
+inline constexpr std::string_view kLengthRecordFormat = "pae.lab.record/0.9";
+#endif
 
 struct FileDescriptor {
   std::string path;

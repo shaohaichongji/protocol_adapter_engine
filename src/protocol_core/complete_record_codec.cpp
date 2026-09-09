@@ -15,6 +15,10 @@ using protocol_plan::CandidateGroupExecutionPlan;
 using protocol_plan::EncodeSource;
 using protocol_plan::FieldExecutionPlan;
 using protocol_plan::FrozenIntegrityPlan;
+#if defined(PAE_ENABLE_SCHEMA_V07_LENGTH_COMPILER)
+using protocol_plan::ComputedLengthScope;
+using protocol_plan::FrozenComputedLengthPlan;
+#endif
 using protocol_plan::MessageExecutionPlan;
 using protocol_plan::PipelineExecutionPlan;
 using protocol_plan::PlanBundle;
@@ -36,6 +40,9 @@ constexpr std::size_t kPresenceWordBits = 64U;
 
 #if defined(PAE_ENABLE_OPERATION_COUNTERS)
 std::atomic<bool> g_corrupt_integrity_storage_before_final_review{false};
+#if defined(PAE_ENABLE_SCHEMA_V07_LENGTH_COMPILER)
+std::atomic<bool> g_corrupt_computed_length_before_final_review{false};
+#endif
 #if defined(PAE_ENABLE_SCHEMA_V05_COMPILER)
 std::atomic<bool> g_corrupt_decimal_field_before_final_review{false};
 std::atomic<bool> g_fail_next_decimal_conversion{false};
@@ -250,6 +257,52 @@ bool IntegrityDescriptorValid(const MessageExecutionPlan& message) noexcept {
            integrity.range_offset < integrity.storage_offset + storage_width);
 }
 
+#if defined(PAE_ENABLE_SCHEMA_V07_LENGTH_COMPILER)
+bool ComputedLengthDescriptorValid(const MessageExecutionPlan& message) noexcept {
+  if (!message.computed_length.has_value()) {
+    for (const FieldExecutionPlan& field : message.fields) {
+      if (field.encode_source == EncodeSource::COMPUTED) return false;
+    }
+    return true;
+  }
+  const FrozenComputedLengthPlan& computed = *message.computed_length;
+  if (computed.field_index >= message.fields.size()) return false;
+  const FieldExecutionPlan& field = message.fields[computed.field_index];
+  const bool width_valid =
+      computed.storage_width == 1U || computed.storage_width == 2U || computed.storage_width == 4U;
+  const bool order_valid =
+      computed.storage_width == 1U
+          ? computed.byte_order == ByteOrder::NOT_APPLICABLE
+          : (computed.byte_order == ByteOrder::BIG || computed.byte_order == ByteOrder::LITTLE);
+  const bool frame_scope = computed.scope == ComputedLengthScope::FRAME;
+  const bool region_scope = computed.scope == ComputedLengthScope::REGION;
+  const std::size_t expected = frame_scope ? message.frame_size : computed.range_length;
+  return width_valid && order_valid && computed.storage_offset <= message.frame_size &&
+         computed.storage_width <= message.frame_size - computed.storage_offset &&
+         (frame_scope || region_scope) &&
+         (!frame_scope || (computed.range_offset == 0U && computed.range_length == 0U)) &&
+         (!region_scope ||
+          (computed.range_length != 0U && computed.range_offset <= message.frame_size &&
+           computed.range_length <= message.frame_size - computed.range_offset)) &&
+         computed.expected_value == expected &&
+         FitsUnsignedWidth(expected, computed.storage_width) &&
+         field.value_type == ValueType::UINT64 && field.encode_source == EncodeSource::COMPUTED &&
+         field.offset == computed.storage_offset && field.width == computed.storage_width &&
+         field.byte_order == computed.byte_order && !field.has_constant &&
+         field.bit_container_index == kInvalidIndex;
+}
+
+bool ComputedLengthMatches(const MessageExecutionPlan& message, const std::uint8_t* data,
+                           std::uint64_t& actual PAE_OPERATION_COUNTS_PARAMETER) noexcept {
+  if (!message.computed_length.has_value()) return true;
+  const FrozenComputedLengthPlan& computed = *message.computed_length;
+  PAE_INCREMENT_OPERATION_COUNT(computed_length_fields_verified);
+  return LoadUnsigned(data + computed.storage_offset, computed.storage_width, computed.byte_order,
+                      actual) &&
+         actual == computed.expected_value;
+}
+#endif
+
 std::uint8_t Sum8(const std::uint8_t* data, std::size_t offset, std::size_t length,
                   bool review PAE_OPERATION_COUNTS_PARAMETER) noexcept {
   std::uint8_t sum = 0U;
@@ -447,6 +500,9 @@ bool ConversionPlanValid(const PlanBundle& plan, const FieldExecutionPlan& field
 #if defined(PAE_ENABLE_SCHEMA_V06_CRC_COMPILER)
           || plan.SchemaVersion() == "0.6"
 #endif
+#if defined(PAE_ENABLE_SCHEMA_V07_LENGTH_COMPILER)
+          || plan.SchemaVersion() == "0.7"
+#endif
           ) &&
          field.conversion_index < plan.Conversions().size() &&
          field.conversion_slot != kInvalidIndex && field.bit_container_index == kInvalidIndex &&
@@ -524,6 +580,11 @@ CodecStatus PrepareEncodeInputs(const PlanBundle& plan, const MessageExecutionPl
     PAE_INCREMENT_OPERATION_COUNT(field_validation_visits);
     const FieldExecutionPlan& field = message.fields[value.field.field_index];
     if (field.encode_source != EncodeSource::INPUT) {
+#if defined(PAE_ENABLE_SCHEMA_V07_LENGTH_COMPILER)
+      if (field.encode_source == EncodeSource::COMPUTED) {
+        return CodecStatus::COMPUTED_FIELD_OVERRIDE;
+      }
+#endif
       return CodecStatus::CONSTANT_FIELD_OVERRIDE;
     }
     if (field.input_ordinal >= message.required_input_count) {
@@ -535,6 +596,9 @@ CodecStatus PrepareEncodeInputs(const PlanBundle& plan, const MessageExecutionPl
     const bool defer_value_validation = plan.SchemaVersion() == "0.5"
 #if defined(PAE_ENABLE_SCHEMA_V06_CRC_COMPILER)
                                         || plan.SchemaVersion() == "0.6"
+#endif
+#if defined(PAE_ENABLE_SCHEMA_V07_LENGTH_COMPILER)
+                                        || plan.SchemaVersion() == "0.7"
 #endif
         ;
     if (!defer_value_validation && !ValueKindMatches(value.value_kind, field.value_type)) {
@@ -587,6 +651,9 @@ CodecStatus PrepareEncodeInputs(const PlanBundle& plan, const MessageExecutionPl
   if (plan.SchemaVersion() == "0.5"
 #if defined(PAE_ENABLE_SCHEMA_V06_CRC_COMPILER)
       || plan.SchemaVersion() == "0.6"
+#endif
+#if defined(PAE_ENABLE_SCHEMA_V07_LENGTH_COMPILER)
+      || plan.SchemaVersion() == "0.7"
 #endif
   ) {
     for (std::size_t field_index = 0U; field_index < message.fields.size(); ++field_index) {
@@ -699,6 +766,11 @@ bool WriteFields(const MessageExecutionPlan& message, const EncodeFieldValue* va
   }
   for (const FieldExecutionPlan& field : message.fields) {
     PAE_INCREMENT_OPERATION_COUNT(field_write_visits);
+#if defined(PAE_ENABLE_SCHEMA_V07_LENGTH_COMPILER)
+    if (field.encode_source == EncodeSource::COMPUTED) {
+      continue;
+    }
+#endif
     if (field.value_type == ValueType::BYTES) {
       const ByteView bytes = values[value_indices[field.input_ordinal]].bytes_value;
       for (std::size_t index = 0U; index < field.width; ++index) {
@@ -749,6 +821,19 @@ FieldVerificationStatus VerifyFields(
   for (std::size_t field_index = 0U; field_index < message.fields.size(); ++field_index) {
     PAE_INCREMENT_OPERATION_COUNT(field_verify_visits);
     const FieldExecutionPlan& field = message.fields[field_index];
+#if defined(PAE_ENABLE_SCHEMA_V07_LENGTH_COMPILER)
+    if (field.encode_source == EncodeSource::COMPUTED) {
+      std::uint64_t actual = 0U;
+      if (!message.computed_length.has_value() ||
+          message.computed_length->field_index != field_index ||
+          !LoadUnsigned(output + field.offset, field.width, field.byte_order, actual) ||
+          actual != message.computed_length->expected_value) {
+        failed_field_index = field_index;
+        return FieldVerificationStatus::MISMATCH;
+      }
+      continue;
+    }
+#endif
     if (field.value_type == ValueType::BYTES) {
       const ByteView bytes = values[value_indices[field.input_ordinal]].bytes_value;
       for (std::size_t index = 0U; index < field.width; ++index) {
@@ -836,6 +921,9 @@ bool internal::SupportsCompleteRecordSchema(std::string_view schema_version) noe
   if (schema_version == "0.5") return true;
 #if defined(PAE_ENABLE_SCHEMA_V06_CRC_COMPILER)
   if (schema_version == "0.6") return true;
+#endif
+#if defined(PAE_ENABLE_SCHEMA_V07_LENGTH_COMPILER)
+  if (schema_version == "0.7") return true;
 #endif
 #endif
   return false;
@@ -1030,6 +1118,21 @@ DecodeResult DecodeCompleteRecord(const PlanBundle& plan, ExecutionWorkspace& wo
     return result;
   }
 
+#if defined(PAE_ENABLE_SCHEMA_V07_LENGTH_COMPILER)
+  if (!ComputedLengthDescriptorValid(message)) {
+    result.status = CodecStatus::INVALID_PLAN;
+    return result;
+  }
+  std::uint64_t actual_length = 0U;
+  if (!ComputedLengthMatches(message, input.data, actual_length PAE_OPERATION_COUNTS_ARGUMENT)) {
+    result.status = CodecStatus::LENGTH_MISMATCH;
+    if (message.computed_length.has_value()) {
+      result.failed_field_index = message.computed_length->field_index;
+    }
+    return result;
+  }
+#endif
+
   if (!IntegrityDescriptorValid(message)) {
     result.status = CodecStatus::INVALID_PLAN;
     return result;
@@ -1064,6 +1167,9 @@ DecodeResult DecodeCompleteRecord(const PlanBundle& plan, ExecutionWorkspace& wo
     if (plan.SchemaVersion() == "0.5"
 #if defined(PAE_ENABLE_SCHEMA_V06_CRC_COMPILER)
         || plan.SchemaVersion() == "0.6"
+#endif
+#if defined(PAE_ENABLE_SCHEMA_V07_LENGTH_COMPILER)
+        || plan.SchemaVersion() == "0.7"
 #endif
     ) {
       if (!ConversionPlanValid(plan, field)) {
@@ -1293,6 +1399,13 @@ EncodeResult EncodeCompleteRecord(const PlanBundle& plan, ExecutionWorkspace& wo
     }
   }
 
+#if defined(PAE_ENABLE_SCHEMA_V07_LENGTH_COMPILER)
+  if (!ComputedLengthDescriptorValid(message)) {
+    result.status = CodecStatus::FINAL_REVIEW_FAILED;
+    return result;
+  }
+#endif
+
   WriteFixedBytes(message, output.data PAE_OPERATION_COUNTS_ARGUMENT);
   if (!WriteFields(message, values, workspace.encode_value_indices_,
 #if defined(PAE_ENABLE_SCHEMA_V05_COMPILER)
@@ -1302,6 +1415,19 @@ EncodeResult EncodeCompleteRecord(const PlanBundle& plan, ExecutionWorkspace& wo
     result.status = CodecStatus::FINAL_REVIEW_FAILED;
     return result;
   }
+
+#if defined(PAE_ENABLE_SCHEMA_V07_LENGTH_COMPILER)
+  if (message.computed_length.has_value()) {
+    const FrozenComputedLengthPlan& computed = *message.computed_length;
+    PAE_INCREMENT_OPERATION_COUNT(computed_length_fields_generated);
+    if (!StoreUnsigned(computed.expected_value, output.data + computed.storage_offset,
+                       computed.storage_width, computed.byte_order)) {
+      result.status = CodecStatus::FINAL_REVIEW_FAILED;
+      result.failed_field_index = computed.field_index;
+      return result;
+    }
+  }
+#endif
 
   if (!IntegrityDescriptorValid(message)) {
     result.status = CodecStatus::FINAL_REVIEW_FAILED;
@@ -1336,6 +1462,23 @@ EncodeResult EncodeCompleteRecord(const PlanBundle& plan, ExecutionWorkspace& wo
       return result;
     }
   }
+
+#if defined(PAE_ENABLE_SCHEMA_V07_LENGTH_COMPILER)
+#if defined(PAE_ENABLE_OPERATION_COUNTERS)
+  if (message.computed_length.has_value() &&
+      g_corrupt_computed_length_before_final_review.exchange(false, std::memory_order_relaxed)) {
+    output.data[message.computed_length->storage_offset] ^= 0x01U;
+  }
+#endif
+  std::uint64_t actual_length = 0U;
+  if (!ComputedLengthMatches(message, output.data, actual_length PAE_OPERATION_COUNTS_ARGUMENT)) {
+    result.status = CodecStatus::FINAL_REVIEW_FAILED;
+    if (message.computed_length.has_value()) {
+      result.failed_field_index = message.computed_length->field_index;
+    }
+    return result;
+  }
+#endif
 
 #if defined(PAE_ENABLE_OPERATION_COUNTERS) && defined(PAE_ENABLE_SCHEMA_V05_COMPILER)
   if (g_corrupt_decimal_field_before_final_review.exchange(false, std::memory_order_relaxed)) {
@@ -1383,6 +1526,12 @@ namespace test_only {
 void CorruptIntegrityStorageBeforeFinalReviewOnce() noexcept {
   g_corrupt_integrity_storage_before_final_review.store(true, std::memory_order_relaxed);
 }
+
+#if defined(PAE_ENABLE_SCHEMA_V07_LENGTH_COMPILER)
+void CorruptComputedLengthBeforeFinalReviewOnce() noexcept {
+  g_corrupt_computed_length_before_final_review.store(true, std::memory_order_relaxed);
+}
+#endif
 
 #if defined(PAE_ENABLE_SCHEMA_V05_COMPILER)
 void CorruptDecimalFieldBeforeFinalReviewOnce() noexcept {

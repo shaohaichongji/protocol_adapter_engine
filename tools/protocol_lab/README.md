@@ -128,6 +128,13 @@ Schema 0.6统一使用Result 0.7、指纹0.7和Record 0.8，包括无`integrity`
 Record 0.7及历史指纹保持不变。CRC参数、算法及证据边界见
 [CRC确认契约](../../docs/crc-minimal-contract-draft.md)。
 
+Schema 0.7固定完整记录长度字段链必须继续显式开启Schema 0.5、0.6及对应Lab能力，再增加
+`PAE_ENABLE_SCHEMA_V07_LENGTH_COMPILER=ON`和
+`PAE_ENABLE_PROTOCOL_LAB_SCHEMA_V07_LENGTH=ON`。它统一使用Result/指纹0.8、Record 0.9，
+Event仍为0.7。Encode业务Values必须省略computed长度字段；Inspect在结构唯一后先验证长度、
+再验证SUM8/CRC。长度失败及其Replay保持退出5，比较EQUAL不改变当前失败状态；跨代Run Compare
+失败关闭。详见[长度字段契约](../../docs/length-field-minimal-contract.md)。
+
 UDP V0.2事件在真实TX持久化、发送和RX持久化阶段采集，使用同一Run单调时钟原点。RX在Peer
 检查和Decode前写入并复核原始字节及来源Metadata。Replay保留历史Transport事实，但当前Codec
 执行与比较结论独立输出；`NO_CODEC_REEXECUTION`不会调用Codec，比较状态为`NOT_EVALUATED`。

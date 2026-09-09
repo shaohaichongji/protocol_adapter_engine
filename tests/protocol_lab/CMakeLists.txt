@@ -48,6 +48,13 @@ if(PAE_ENABLE_PROTOCOL_LAB_SCHEMA_V06_CRC)
         COPYONLY
     )
 endif()
+if(PAE_ENABLE_PROTOCOL_LAB_SCHEMA_V07_LENGTH)
+    configure_file(
+        "${PROJECT_SOURCE_DIR}/examples/config/synthetic_length_slice.pae.json"
+        "${pae_protocol_lab_test_data_dir}/synthetic_length_slice.pae.json"
+        COPYONLY
+    )
+endif()
 configure_file(
     "${PROJECT_SOURCE_DIR}/tests/protocol_core/golden/synthetic_int64/int64_record_001.frame.hex"
     "${pae_protocol_lab_test_data_dir}/int64_record_001.frame.hex"
@@ -265,6 +272,25 @@ if(WIN32)
         set_tests_properties(
             pae.tools.protocol_lab.crc_schema_contract
             PROPERTIES LABELS "tools;protocol_lab;offline;crc;schema" TIMEOUT 180
+                       WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
+        )
+    endif()
+    if(PAE_ENABLE_PROTOCOL_LAB_SCHEMA_V07_LENGTH)
+        add_test(
+            NAME pae.tools.protocol_lab.length_schema_contract
+            COMMAND
+                "${pae_powershell_executable}"
+                -NoProfile
+                -File "${CMAKE_CURRENT_SOURCE_DIR}/verify_length_schema_contract.ps1"
+                -LabExecutable "$<TARGET_FILE:pae_protocol_lab>"
+                -SchemaPath "${PROJECT_SOURCE_DIR}/schema/pae.schema.json"
+                -ConfigPath "${PROJECT_SOURCE_DIR}/examples/config/synthetic_length_slice.pae.json"
+                -ValuesPath "${PROJECT_SOURCE_DIR}/tests/protocol_lab_c3_cli/fixtures/length.values.pae-lab.json"
+                -TestRoot "${CMAKE_CURRENT_BINARY_DIR}/length-schema-$<CONFIG>"
+        )
+        set_tests_properties(
+            pae.tools.protocol_lab.length_schema_contract
+            PROPERTIES LABELS "tools;protocol_lab;offline;length_field;schema" TIMEOUT 180
                        WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
         )
     endif()

@@ -81,7 +81,17 @@ enum class ByteOrder {
 enum class EncodeSource {
   INPUT,
   CONSTANT,
+#if defined(PAE_ENABLE_SCHEMA_V07_LENGTH_COMPILER)
+  COMPUTED,
+#endif
 };
+
+#if defined(PAE_ENABLE_SCHEMA_V07_LENGTH_COMPILER)
+enum class ComputedLengthScope {
+  FRAME,
+  REGION,
+};
+#endif
 
 enum class UnknownEnumPolicy {
   REJECT,
@@ -105,6 +115,9 @@ struct ResourceRequirements {
   std::size_t total_enum_entry_count = 0U;
   std::size_t total_bit_container_count = 0U;
   std::size_t total_integrity_rule_count = 0U;
+#if defined(PAE_ENABLE_SCHEMA_V07_LENGTH_COMPILER)
+  std::size_t total_computed_length_count = 0U;
+#endif
 #if defined(PAE_ENABLE_SCHEMA_V05_COMPILER)
   std::size_t total_conversion_count = 0U;
 #endif

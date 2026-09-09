@@ -191,6 +191,80 @@ class PlanBuilderTestPeer final {
   }
 #endif
 
+#if defined(PAE_ENABLE_SCHEMA_V07_LENGTH_COMPILER)
+  static BudgetedPlanDraft MakeLengthDraft() {
+    auto draft = std::make_unique<detail::PlanDraftData>();
+    draft->schema_version = "0.7";
+    draft->protocol_id = "length_defense_test";
+    draft->protocol_version = "1";
+    draft->resource_profile = ResourceProfile::DESKTOP;
+    draft->resource_requirements.max_frame_bytes = 2U;
+    draft->resource_requirements.framing_profile_count = 1U;
+    draft->resource_requirements.pipeline_count = 1U;
+    draft->resource_requirements.message_count = 1U;
+    draft->resource_requirements.total_field_count = 2U;
+    draft->resource_requirements.total_matcher_count = 1U;
+    draft->resource_requirements.total_computed_length_count = 1U;
+    draft->framing_profiles.push_back(FramingPlan{"record", InputKind::COMPLETE_RECORD});
+    PipelinePlan pipeline;
+    pipeline.id = "pipeline";
+    pipeline.direction_id = "rx";
+    pipeline.message_indices.push_back(0U);
+    draft->pipelines.push_back(std::move(pipeline));
+    MessagePlan message;
+    message.id = "message";
+    message.direction_id = "rx";
+    message.frame_length_bytes = 2U;
+    message.matchers.push_back(MatcherPlan{MatcherKind::FRAME_LENGTH_EQUALS, 2U});
+    FieldPlan length;
+    length.id = "record_length";
+    length.value_type = ValueType::UINT64;
+    length.wire_codec = WireCodec::UNSIGNED_INTEGER;
+    length.byte_offset = 0U;
+    length.byte_width = 1U;
+    length.byte_order = ByteOrder::NOT_APPLICABLE;
+    length.encode_source = EncodeSource::COMPUTED;
+    message.fields.push_back(std::move(length));
+    FieldPlan value;
+    value.id = "value";
+    value.value_type = ValueType::UINT64;
+    value.wire_codec = WireCodec::UNSIGNED_INTEGER;
+    value.byte_offset = 1U;
+    value.byte_width = 1U;
+    value.byte_order = ByteOrder::NOT_APPLICABLE;
+    value.encode_source = EncodeSource::INPUT;
+    message.fields.push_back(std::move(value));
+    message.computed_length = ComputedLengthPlan{
+        0U, 0U, 1U, ByteOrder::NOT_APPLICABLE, ComputedLengthScope::FRAME, 0U, 0U, 2U};
+    draft->messages.push_back(std::move(message));
+    return BudgetedPlanDraft{std::move(draft)};
+  }
+
+  static BudgetedPlanDraft MakeLengthDraftWithIncorrectExpectedValue() {
+    auto draft = MakeLengthDraft();
+    draft.draft_->messages[0].computed_length->expected_value = 1U;
+    return draft;
+  }
+
+  static BudgetedPlanDraft MakeLengthDraftWithInvalidScope() {
+    auto draft = MakeLengthDraft();
+    draft.draft_->messages[0].computed_length->scope = static_cast<ComputedLengthScope>(255);
+    return draft;
+  }
+
+  static BudgetedPlanDraft MakeLengthDraftWithOldSchema() {
+    auto draft = MakeLengthDraft();
+    draft.draft_->schema_version = "0.6";
+    return draft;
+  }
+
+  static BudgetedPlanDraft MakeLengthDraftWithResourceCountMismatch() {
+    auto draft = MakeLengthDraft();
+    draft.draft_->resource_requirements.total_computed_length_count = 0U;
+    return draft;
+  }
+#endif
+
   static BudgetedPlanDraft MakeInt64DraftWithOutOfRangeConstant() {
     auto draft = MakeIntegrityDraft();
     draft.draft_->schema_version = "0.4";
@@ -329,6 +403,24 @@ protocol_plan::BudgetedPlanDraft MakeCrcDraftWithInvalidStorageOrder() {
 
 protocol_plan::BudgetedPlanDraft MakeCrcDraftWithOldSchema() {
   return protocol_plan::test_only::PlanBuilderTestPeer::MakeCrcDraftWithOldSchema();
+}
+#endif
+
+#if defined(PAE_ENABLE_SCHEMA_V07_LENGTH_COMPILER)
+protocol_plan::BudgetedPlanDraft MakeLengthDraftWithIncorrectExpectedValue() {
+  return protocol_plan::test_only::PlanBuilderTestPeer::MakeLengthDraftWithIncorrectExpectedValue();
+}
+
+protocol_plan::BudgetedPlanDraft MakeLengthDraftWithInvalidScope() {
+  return protocol_plan::test_only::PlanBuilderTestPeer::MakeLengthDraftWithInvalidScope();
+}
+
+protocol_plan::BudgetedPlanDraft MakeLengthDraftWithOldSchema() {
+  return protocol_plan::test_only::PlanBuilderTestPeer::MakeLengthDraftWithOldSchema();
+}
+
+protocol_plan::BudgetedPlanDraft MakeLengthDraftWithResourceCountMismatch() {
+  return protocol_plan::test_only::PlanBuilderTestPeer::MakeLengthDraftWithResourceCountMismatch();
 }
 #endif
 

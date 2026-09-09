@@ -21,6 +21,12 @@ protocol_plan::BudgetedPlanDraft MakeCrcDraftWithEvenPolynomial();
 protocol_plan::BudgetedPlanDraft MakeCrcDraftWithInvalidStorageOrder();
 protocol_plan::BudgetedPlanDraft MakeCrcDraftWithOldSchema();
 #endif
+#if defined(PAE_ENABLE_SCHEMA_V07_LENGTH_COMPILER)
+protocol_plan::BudgetedPlanDraft MakeLengthDraftWithIncorrectExpectedValue();
+protocol_plan::BudgetedPlanDraft MakeLengthDraftWithInvalidScope();
+protocol_plan::BudgetedPlanDraft MakeLengthDraftWithOldSchema();
+protocol_plan::BudgetedPlanDraft MakeLengthDraftWithResourceCountMismatch();
+#endif
 protocol_plan::BudgetedPlanDraft MakeInt64DraftWithOutOfRangeConstant();
 #if defined(PAE_ENABLE_SCHEMA_V05_COMPILER)
 enum class ConversionDraftMutation {

@@ -157,6 +157,9 @@ bool RequirementsEqual(const ResourceRequirements& left,
          left.total_enum_entry_count == right.total_enum_entry_count &&
          left.total_bit_container_count == right.total_bit_container_count &&
          left.total_integrity_rule_count == right.total_integrity_rule_count
+#if defined(PAE_ENABLE_SCHEMA_V07_LENGTH_COMPILER)
+         && left.total_computed_length_count == right.total_computed_length_count
+#endif
 #if defined(PAE_ENABLE_SCHEMA_V05_COMPILER)
          && left.total_conversion_count == right.total_conversion_count
 #endif
@@ -402,6 +405,9 @@ PlanBuildResult PlanBuilder::FreezeImpl(detail::PlanDraftData draft) {
 #if defined(PAE_ENABLE_SCHEMA_V06_CRC_COMPILER)
        && draft.schema_version != "0.6"
 #endif
+#if defined(PAE_ENABLE_SCHEMA_V07_LENGTH_COMPILER)
+       && draft.schema_version != "0.7"
+#endif
        ) ||
       !IsStableId(draft.protocol_id) || draft.protocol_version.empty() || limits == nullptr ||
       draft.framing_profiles.empty() || draft.pipelines.empty() || draft.messages.empty()) {
@@ -422,6 +428,9 @@ PlanBuildResult PlanBuilder::FreezeImpl(detail::PlanDraftData draft) {
     if ((draft.schema_version != "0.5"
 #if defined(PAE_ENABLE_SCHEMA_V06_CRC_COMPILER)
          && draft.schema_version != "0.6"
+#endif
+#if defined(PAE_ENABLE_SCHEMA_V07_LENGTH_COMPILER)
+         && draft.schema_version != "0.7"
 #endif
          ) ||
         (conversion.raw_value_type != ValueType::UINT64 &&
@@ -452,9 +461,16 @@ PlanBuildResult PlanBuilder::FreezeImpl(detail::PlanDraftData draft) {
                         actual_requirements.total_bit_container_count) ||
         (message.integrity.has_value() &&
          !AddSizeChecked(1U, actual_requirements.total_integrity_rule_count)) ||
+#if defined(PAE_ENABLE_SCHEMA_V07_LENGTH_COMPILER)
+        (message.computed_length.has_value() &&
+         !AddSizeChecked(1U, actual_requirements.total_computed_length_count)) ||
+#endif
         actual_requirements.total_field_count > limits->max_total_fields ||
         actual_requirements.total_bit_container_count > limits->max_total_fields ||
         actual_requirements.total_integrity_rule_count > limits->max_messages ||
+#if defined(PAE_ENABLE_SCHEMA_V07_LENGTH_COMPILER)
+        actual_requirements.total_computed_length_count > limits->max_messages ||
+#endif
         actual_requirements.total_matcher_count > limits->max_total_matchers) {
       return Reject(PlanBuildError::RESOURCE_LIMIT_EXCEEDED, kInvalidPlanBuildIndex,
                     kInvalidPlanBuildIndex, message_index);
@@ -522,7 +538,12 @@ PlanBuildResult PlanBuilder::FreezeImpl(detail::PlanDraftData draft) {
         storage_width = static_cast<std::size_t>(integrity.crc_width / 8U);
       }
       const std::uint32_t crc_width_mask = integrity.crc_width == 16U ? 0xFFFFU : 0xFFFFFFFFU;
-      const bool crc_valid = crc && draft.schema_version == "0.6" &&
+      const bool crc_valid = crc &&
+                             (draft.schema_version == "0.6"
+#if defined(PAE_ENABLE_SCHEMA_V07_LENGTH_COMPILER)
+                              || draft.schema_version == "0.7"
+#endif
+                              ) &&
                              (integrity.crc_width == 16U || integrity.crc_width == 32U) &&
                              integrity.crc_polynomial != 0U &&
                              (integrity.crc_polynomial & 1U) != 0U &&
@@ -539,10 +560,18 @@ PlanBuildResult PlanBuilder::FreezeImpl(detail::PlanDraftData draft) {
 #if defined(PAE_ENABLE_SCHEMA_V06_CRC_COMPILER)
            && draft.schema_version != "0.6"
 #endif
+#if defined(PAE_ENABLE_SCHEMA_V07_LENGTH_COMPILER)
+           && draft.schema_version != "0.7"
+#endif
            ) ||
 #if defined(PAE_ENABLE_SCHEMA_V06_CRC_COMPILER)
           (integrity.algorithm != IntegrityAlgorithm::SUM8 && !crc_valid) ||
-          (integrity.algorithm == IntegrityAlgorithm::SUM8 && draft.schema_version == "0.6" &&
+          (integrity.algorithm == IntegrityAlgorithm::SUM8 &&
+           (draft.schema_version == "0.6"
+#if defined(PAE_ENABLE_SCHEMA_V07_LENGTH_COMPILER)
+            || draft.schema_version == "0.7"
+#endif
+            ) &&
            (integrity.crc_width != 0U ||
             integrity.storage_byte_order != ByteOrder::NOT_APPLICABLE)) ||
 #else
@@ -574,6 +603,63 @@ PlanBuildResult PlanBuilder::FreezeImpl(detail::PlanDraftData draft) {
 #endif
       execution.integrity = frozen_integrity;
     }
+#if defined(PAE_ENABLE_SCHEMA_V07_LENGTH_COMPILER)
+    if (message.computed_length.has_value()) {
+      const ComputedLengthPlan& computed = *message.computed_length;
+      std::size_t storage_offset = 0U;
+      std::size_t storage_width = 0U;
+      std::size_t range_offset = 0U;
+      std::size_t range_length = 0U;
+      const bool frame_scope = computed.scope == ComputedLengthScope::FRAME;
+      const bool region_scope = computed.scope == ComputedLengthScope::REGION;
+      if (!ToSize(computed.storage_offset, storage_offset) ||
+          !ToSize(computed.storage_width, storage_width) ||
+          !ToSize(computed.range_offset, range_offset) ||
+          !ToSize(computed.range_length, range_length)) {
+        return Reject(PlanBuildError::INVALID_MESSAGE_PLAN, kInvalidPlanBuildIndex,
+                      kInvalidPlanBuildIndex, message_index);
+      }
+      const std::size_t expected = frame_scope ? frame_size : range_length;
+      if (draft.schema_version != "0.7" || computed.field_index >= message.fields.size() ||
+          (storage_width != 1U && storage_width != 2U && storage_width != 4U) ||
+          (storage_width == 1U ? computed.byte_order != ByteOrder::NOT_APPLICABLE
+                               : (computed.byte_order != ByteOrder::BIG &&
+                                  computed.byte_order != ByteOrder::LITTLE)) ||
+          !IsRangeWithin(storage_offset, storage_width, frame_size) ||
+          (!frame_scope && !region_scope) ||
+          (frame_scope && (range_offset != 0U || range_length != 0U)) ||
+          (region_scope &&
+           (range_length == 0U || !IsRangeWithin(range_offset, range_length, frame_size))) ||
+          computed.expected_value != expected || !FitsUnsignedWidth(expected, storage_width)) {
+        return Reject(PlanBuildError::INVALID_MESSAGE_PLAN, kInvalidPlanBuildIndex,
+                      kInvalidPlanBuildIndex, message_index);
+      }
+      const FieldPlan& computed_field = message.fields[computed.field_index];
+      if (computed_field.value_type != ValueType::UINT64 ||
+          computed_field.wire_codec != WireCodec::UNSIGNED_INTEGER ||
+          computed_field.encode_source != EncodeSource::COMPUTED ||
+          computed_field.constant_value.has_value() ||
+          computed_field.signed_constant_value.has_value() ||
+          !computed_field.enum_entries.empty() ||
+          computed_field.byte_offset != computed.storage_offset ||
+          computed_field.byte_width != computed.storage_width ||
+          computed_field.byte_order != computed.byte_order) {
+        return Reject(PlanBuildError::INVALID_FIELD_PLAN, kInvalidPlanBuildIndex,
+                      kInvalidPlanBuildIndex, message_index, kInvalidPlanBuildIndex,
+                      computed.field_index);
+      }
+      FrozenComputedLengthPlan frozen_computed;
+      frozen_computed.field_index = computed.field_index;
+      frozen_computed.storage_offset = storage_offset;
+      frozen_computed.storage_width = storage_width;
+      frozen_computed.byte_order = computed.byte_order;
+      frozen_computed.scope = computed.scope;
+      frozen_computed.range_offset = range_offset;
+      frozen_computed.range_length = range_length;
+      frozen_computed.expected_value = expected;
+      execution.computed_length = frozen_computed;
+    }
+#endif
     execution.fields.reserve(message.fields.size());
     std::unordered_set<std::string> field_ids;
     field_ids.reserve(message.fields.size());
@@ -638,13 +724,25 @@ PlanBuildResult PlanBuilder::FreezeImpl(detail::PlanDraftData draft) {
           !field.signed_constant_value.has_value() &&
           ((field.encode_source == EncodeSource::INPUT && !field.constant_value.has_value()) ||
            (field.encode_source == EncodeSource::CONSTANT && field.constant_value.has_value() &&
-            FitsUnsignedWidth(*field.constant_value, width)));
+            FitsUnsignedWidth(*field.constant_value, width))
+#if defined(PAE_ENABLE_SCHEMA_V07_LENGTH_COMPILER)
+           || (draft.schema_version == "0.7" && field.encode_source == EncodeSource::COMPUTED &&
+               !field.constant_value.has_value() && message.computed_length.has_value() &&
+               message.computed_length->field_index == field_index &&
+               message.computed_length->storage_offset == field.byte_offset &&
+               message.computed_length->storage_width == field.byte_width &&
+               message.computed_length->byte_order == field.byte_order)
+#endif
+          );
       const bool int64_valid = (draft.schema_version == "0.4"
 #if defined(PAE_ENABLE_SCHEMA_V05_COMPILER)
                                 || draft.schema_version == "0.5"
 #endif
 #if defined(PAE_ENABLE_SCHEMA_V06_CRC_COMPILER)
                                 || draft.schema_version == "0.6"
+#endif
+#if defined(PAE_ENABLE_SCHEMA_V07_LENGTH_COMPILER)
+                                || draft.schema_version == "0.7"
 #endif
                                 ) &&
                                field.value_type == ValueType::INT64 &&
@@ -695,6 +793,9 @@ PlanBuildResult PlanBuilder::FreezeImpl(detail::PlanDraftData draft) {
       if (((draft.schema_version != "0.5"
 #if defined(PAE_ENABLE_SCHEMA_V06_CRC_COMPILER)
             && draft.schema_version != "0.6"
+#endif
+#if defined(PAE_ENABLE_SCHEMA_V07_LENGTH_COMPILER)
+            && draft.schema_version != "0.7"
 #endif
             ) &&
            has_conversion) ||
@@ -867,6 +968,17 @@ PlanBuildResult PlanBuilder::FreezeImpl(detail::PlanDraftData draft) {
         }
       }
     }
+#if defined(PAE_ENABLE_SCHEMA_V07_LENGTH_COMPILER)
+    if (execution.computed_length.has_value()) {
+      for (std::size_t index = 0U; index < execution.computed_length->storage_width; ++index) {
+        if (fixed_bytes.find(execution.computed_length->storage_offset + index) !=
+            fixed_bytes.end()) {
+          return Reject(PlanBuildError::INVALID_MESSAGE_PLAN, kInvalidPlanBuildIndex,
+                        kInvalidPlanBuildIndex, message_index);
+        }
+      }
+    }
+#endif
 
     execution.fixed_bytes.reserve(fixed_bytes.size());
     std::vector<ByteInterval> coverage_intervals = field_intervals;
@@ -1142,6 +1254,9 @@ PlanBuildResult PlanBuilder::FreezeImpl(detail::PlanDraftData draft) {
 #endif
               output.integrity = integrity;
             }
+#if defined(PAE_ENABLE_SCHEMA_V07_LENGTH_COMPILER)
+            output.computed_length = source.computed_length;
+#endif
             if (!FreezeString(arena, source.id, output.id) ||
                 !FreezeString(arena, source.direction_id, output.direction_id) ||
                 !FreezeObjectArray<FrozenMatcherPlan>(
@@ -1223,6 +1338,9 @@ PlanBuildResult PlanBuilder::FreezeImpl(detail::PlanDraftData draft) {
             output.frame_size = source.frame_size;
             output.required_input_count = source.required_input_count;
             output.integrity = source.integrity;
+#if defined(PAE_ENABLE_SCHEMA_V07_LENGTH_COMPILER)
+            output.computed_length = source.computed_length;
+#endif
             return FreezePodArray(arena, source.fixed_bytes, PlanMemoryCategory::MATCHER,
                                   output.fixed_bytes) &&
                    FreezePodArray(arena, source.bit_containers,

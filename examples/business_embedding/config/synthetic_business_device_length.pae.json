@@ -1,0 +1,139 @@
+{
+  "schema_version": "0.7",
+  "protocol_id": "synthetic_business_device_length",
+  "protocol_version": "1.0-synthetic",
+  "display_name": "Synthetic business device with record length",
+  "description": "Public from-scratch business embedding vector with computed frame lengths.",
+  "source_ref": "SYNTHETIC_FROM_SCRATCH:business_embedding_length",
+  "resource_profile": "desktop",
+  "framing_profiles": [
+    {
+      "id": "complete_record",
+      "display_name": "Complete record",
+      "description": "One complete synthetic record.",
+      "source_ref": "SYNTHETIC_FROM_SCRATCH:business_embedding_length#framing",
+      "input_kind": "complete_record"
+    }
+  ],
+  "pipelines": [
+    {
+      "id": "measurement_rx",
+      "display_name": "Measurement RX",
+      "description": "Receive one length-checked measurement record.",
+      "source_ref": "SYNTHETIC_FROM_SCRATCH:business_embedding_length#rx",
+      "direction_id": "rx",
+      "input_framing_profile_id": "complete_record",
+      "message_ids": ["measurement_record"]
+    },
+    {
+      "id": "command_tx",
+      "display_name": "Command TX",
+      "description": "Encode one command record with a computed length.",
+      "source_ref": "SYNTHETIC_FROM_SCRATCH:business_embedding_length#tx",
+      "direction_id": "tx",
+      "input_framing_profile_id": "complete_record",
+      "message_ids": ["command_record"]
+    }
+  ],
+  "messages": [
+    {
+      "id": "measurement_record",
+      "display_name": "Length-checked measurement record",
+      "description": "Computed length, temperature, alarm, and SUM8.",
+      "source_ref": "SYNTHETIC_FROM_SCRATCH:business_embedding_length#measurement",
+      "direction_id": "rx",
+      "frame_length_bytes": 6,
+      "matcher": {"all": [
+        {"kind": "frame_length_equals", "length_bytes": 6},
+        {"kind": "fixed_bytes", "byte_offset": 0, "bytes": "A1"}
+      ]},
+      "bit_containers": [
+        {"id": "status_flags", "container_offset": 4, "container_width": 1,
+         "bit_numbering": "lsb0", "base_value": 0}
+      ],
+      "integrity": {
+        "algorithm": "sum8",
+        "range": {"byte_offset": 0, "byte_length": 5},
+        "storage": {"byte_offset": 5}
+      },
+      "fields": [
+        {
+          "id": "record_length", "display_name": "Record length",
+          "description": "Engine-computed frame length.",
+          "source_ref": "SYNTHETIC_FROM_SCRATCH:business_embedding_length#rx_length",
+          "value_type": "UINT64",
+          "wire": {"codec": "unsigned_integer", "byte_offset": 1, "byte_width": 1},
+          "encode": {"source": "computed"},
+          "computed": {"kind": "length", "scope": "frame"}
+        },
+        {
+          "id": "temperature", "display_name": "Temperature",
+          "description": "Business temperature.",
+          "source_ref": "SYNTHETIC_FROM_SCRATCH:business_embedding_length#temperature",
+          "value_type": "UINT64",
+          "wire": {"codec": "unsigned_integer", "byte_offset": 2, "byte_width": 2,
+                   "byte_order": "big_endian"},
+          "encode": {"source": "input"},
+          "conversion": {"kind": "linear", "output_type": "DECIMAL64",
+                         "scale": {"numerator": 1, "denominator": 10},
+                         "bias": {"numerator": -40, "denominator": 1}}
+        },
+        {
+          "id": "alarm", "display_name": "Alarm", "description": "Business alarm flag.",
+          "source_ref": "SYNTHETIC_FROM_SCRATCH:business_embedding_length#alarm",
+          "value_type": "BOOL",
+          "wire": {"codec": "bitfield", "container_id": "status_flags",
+                   "bit_offset": 0, "bit_width": 1},
+          "encode": {"source": "input"}
+        }
+      ]
+    },
+    {
+      "id": "command_record",
+      "display_name": "Length-bearing command record",
+      "description": "Computed length, dynamic target, marker, and SUM8.",
+      "source_ref": "SYNTHETIC_FROM_SCRATCH:business_embedding_length#command",
+      "direction_id": "tx",
+      "frame_length_bytes": 6,
+      "matcher": {"all": [
+        {"kind": "frame_length_equals", "length_bytes": 6},
+        {"kind": "fixed_bytes", "byte_offset": 0, "bytes": "B2"}
+      ]},
+      "integrity": {
+        "algorithm": "sum8",
+        "range": {"byte_offset": 0, "byte_length": 5},
+        "storage": {"byte_offset": 5}
+      },
+      "fields": [
+        {
+          "id": "record_length", "display_name": "Record length",
+          "description": "Engine-computed frame length.",
+          "source_ref": "SYNTHETIC_FROM_SCRATCH:business_embedding_length#tx_length",
+          "value_type": "UINT64",
+          "wire": {"codec": "unsigned_integer", "byte_offset": 1, "byte_width": 1},
+          "encode": {"source": "computed"},
+          "computed": {"kind": "length", "scope": "frame"}
+        },
+        {
+          "id": "target", "display_name": "Target", "description": "Business target value.",
+          "source_ref": "SYNTHETIC_FROM_SCRATCH:business_embedding_length#target",
+          "value_type": "INT64",
+          "wire": {"codec": "unsigned_integer", "byte_offset": 2, "byte_width": 2,
+                   "byte_order": "big_endian"},
+          "encode": {"source": "input"},
+          "conversion": {"kind": "linear", "output_type": "DECIMAL64",
+                         "scale": {"numerator": 1, "denominator": 2},
+                         "bias": {"numerator": 0, "denominator": 1}}
+        },
+        {
+          "id": "command_marker", "display_name": "Command marker",
+          "description": "Synthetic constant marker.",
+          "source_ref": "SYNTHETIC_FROM_SCRATCH:business_embedding_length#marker",
+          "value_type": "UINT64",
+          "wire": {"codec": "unsigned_integer", "byte_offset": 4, "byte_width": 1},
+          "encode": {"source": "constant", "value": 90}
+        }
+      ]
+    }
+  ]
+}

@@ -201,7 +201,7 @@ run_json(invalid_config_expected 4 inspect --config "${PAE_FIXTURE_DIR}/invalid_
 json_expect("${invalid_config_expected_OUTPUT}" "expectation/matched" "OFF")
 
 file(READ "${config}" unknown_schema_text)
-string(REPLACE [["schema_version": "0.5"]] [["schema_version": "0.7"]]
+string(REPLACE [["schema_version": "0.5"]] [["schema_version": "0.99"]]
                unknown_schema_text "${unknown_schema_text}")
 set(unknown_schema_config "${PAE_BINARY_DIR}/unknown_schema.pae.json")
 file(WRITE "${unknown_schema_config}" "${unknown_schema_text}")

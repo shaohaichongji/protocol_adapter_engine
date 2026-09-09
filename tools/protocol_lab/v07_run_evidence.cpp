@@ -36,6 +36,12 @@ constexpr std::string_view kCrcRecordFile = "run_record_v0.8.json";
 constexpr std::string_view kCrcParentRecordFile = "history/parent_record_v0.8.json";
 constexpr std::string_view kCrcHistoricalResultFile = "history/result_summary_v0.7.json";
 #endif
+#if defined(PAE_ENABLE_SCHEMA_V07_LENGTH_COMPILER)
+constexpr std::string_view kLengthResultFile = "result_summary_v0.8.json";
+constexpr std::string_view kLengthRecordFile = "run_record_v0.9.json";
+constexpr std::string_view kLengthParentRecordFile = "history/parent_record_v0.9.json";
+constexpr std::string_view kLengthHistoricalResultFile = "history/result_summary_v0.8.json";
+#endif
 
 bool IsCrcGeneration(const RunRecord& record) noexcept {
 #if defined(PAE_ENABLE_SCHEMA_V06_CRC_COMPILER)
@@ -46,7 +52,19 @@ bool IsCrcGeneration(const RunRecord& record) noexcept {
 #endif
 }
 
+bool IsLengthGeneration(const RunRecord& record) noexcept {
+#if defined(PAE_ENABLE_SCHEMA_V07_LENGTH_COMPILER)
+  return record.format_version == kLengthRecordFormat;
+#else
+  static_cast<void>(record);
+  return false;
+#endif
+}
+
 std::string_view ResultFileFor([[maybe_unused]] const RunRecord& record) noexcept {
+#if defined(PAE_ENABLE_SCHEMA_V07_LENGTH_COMPILER)
+  if (IsLengthGeneration(record)) return kLengthResultFile;
+#endif
 #if defined(PAE_ENABLE_SCHEMA_V06_CRC_COMPILER)
   if (IsCrcGeneration(record)) return kCrcResultFile;
 #endif
@@ -54,6 +72,9 @@ std::string_view ResultFileFor([[maybe_unused]] const RunRecord& record) noexcep
 }
 
 std::string_view RecordFileFor([[maybe_unused]] const RunRecord& record) noexcept {
+#if defined(PAE_ENABLE_SCHEMA_V07_LENGTH_COMPILER)
+  if (IsLengthGeneration(record)) return kLengthRecordFile;
+#endif
 #if defined(PAE_ENABLE_SCHEMA_V06_CRC_COMPILER)
   if (IsCrcGeneration(record)) return kCrcRecordFile;
 #endif
@@ -61,6 +82,9 @@ std::string_view RecordFileFor([[maybe_unused]] const RunRecord& record) noexcep
 }
 
 std::string_view ParentRecordFileFor([[maybe_unused]] const RunRecord& record) noexcept {
+#if defined(PAE_ENABLE_SCHEMA_V07_LENGTH_COMPILER)
+  if (IsLengthGeneration(record)) return kLengthParentRecordFile;
+#endif
 #if defined(PAE_ENABLE_SCHEMA_V06_CRC_COMPILER)
   if (IsCrcGeneration(record)) return kCrcParentRecordFile;
 #endif
@@ -68,6 +92,9 @@ std::string_view ParentRecordFileFor([[maybe_unused]] const RunRecord& record) n
 }
 
 std::string_view HistoricalResultFileFor([[maybe_unused]] const RunRecord& record) noexcept {
+#if defined(PAE_ENABLE_SCHEMA_V07_LENGTH_COMPILER)
+  if (IsLengthGeneration(record)) return kLengthHistoricalResultFile;
+#endif
 #if defined(PAE_ENABLE_SCHEMA_V06_CRC_COMPILER)
   if (IsCrcGeneration(record)) return kCrcHistoricalResultFile;
 #endif
@@ -75,6 +102,9 @@ std::string_view HistoricalResultFileFor([[maybe_unused]] const RunRecord& recor
 }
 
 std::string_view FingerprintDomainFor([[maybe_unused]] const RunRecord& record) noexcept {
+#if defined(PAE_ENABLE_SCHEMA_V07_LENGTH_COMPILER)
+  if (IsLengthGeneration(record)) return v06::kLengthFingerprintDomain;
+#endif
 #if defined(PAE_ENABLE_SCHEMA_V06_CRC_COMPILER)
   if (IsCrcGeneration(record)) return v06::kCrcFingerprintDomain;
 #endif
@@ -82,6 +112,9 @@ std::string_view FingerprintDomainFor([[maybe_unused]] const RunRecord& record) 
 }
 
 std::string_view ResultFormatFor([[maybe_unused]] const RunRecord& record) noexcept {
+#if defined(PAE_ENABLE_SCHEMA_V07_LENGTH_COMPILER)
+  if (IsLengthGeneration(record)) return v06::kLengthResultFormat;
+#endif
 #if defined(PAE_ENABLE_SCHEMA_V06_CRC_COMPILER)
   if (IsCrcGeneration(record)) return v06::kCrcResultFormat;
 #endif
@@ -690,15 +723,31 @@ const std::set<std::string>& CommonCodecStatuses() {
 
 bool IsCodecStatus(std::string_view status, bool encode) {
   if (CommonCodecStatuses().find(std::string{status}) != CommonCodecStatuses().end()) return true;
-  static const std::set<std::string> decode{"UNKNOWN_MESSAGE", "AMBIGUOUS_MESSAGE",
-                                            "OUTPUT_SLOTS_TOO_SMALL", "INTEGRITY_FAILED",
-                                            "UNKNOWN_ENUM_VALUE"};
-  static const std::set<std::string> encode_only{
-      "MESSAGE_NOT_ALLOWED",     "FIELD_REFERENCE_MISMATCH",
-      "DUPLICATE_FIELD",         "MISSING_FIELD",
-      "TYPE_MISMATCH",           "BYTES_LENGTH_MISMATCH",
-      "ENUM_REFERENCE_MISMATCH", "CONSTANT_FIELD_OVERRIDE",
-      "BUFFER_TOO_SMALL",        "FINAL_REVIEW_FAILED"};
+  static const std::set<std::string> decode{"UNKNOWN_MESSAGE",
+                                            "AMBIGUOUS_MESSAGE",
+                                            "OUTPUT_SLOTS_TOO_SMALL",
+                                            "INTEGRITY_FAILED",
+                                            "UNKNOWN_ENUM_VALUE"
+#if defined(PAE_ENABLE_SCHEMA_V07_LENGTH_COMPILER)
+                                            ,
+                                            "LENGTH_MISMATCH"
+#endif
+  };
+  static const std::set<std::string> encode_only{"MESSAGE_NOT_ALLOWED",
+                                                 "FIELD_REFERENCE_MISMATCH",
+                                                 "DUPLICATE_FIELD",
+                                                 "MISSING_FIELD",
+                                                 "TYPE_MISMATCH",
+                                                 "BYTES_LENGTH_MISMATCH",
+                                                 "ENUM_REFERENCE_MISMATCH",
+                                                 "CONSTANT_FIELD_OVERRIDE",
+                                                 "BUFFER_TOO_SMALL",
+                                                 "FINAL_REVIEW_FAILED"
+#if defined(PAE_ENABLE_SCHEMA_V07_LENGTH_COMPILER)
+                                                 ,
+                                                 "COMPUTED_FIELD_OVERRIDE"
+#endif
+  };
   const auto& set = encode ? encode_only : decode;
   return set.find(std::string{status}) != set.end();
 }
@@ -842,6 +891,11 @@ bool ParseHistoricalBaseline(yyjson_val* value, std::optional<HistoricalBaseline
             history.result_file == kCrcHistoricalResultFile &&
             history.fingerprint_domain == v06::kCrcFingerprintDomain)
 #endif
+#if defined(PAE_ENABLE_SCHEMA_V07_LENGTH_COMPILER)
+        || (history.parent_record_file == kLengthParentRecordFile &&
+            history.result_file == kLengthHistoricalResultFile &&
+            history.fingerprint_domain == v06::kLengthFingerprintDomain)
+#endif
             ) ||
       !IsLowerHash(history.parent_record_sha256) || !IsLowerHash(history.result_sha256) ||
       history.deterministic_fingerprint.size() != 64U) {
@@ -888,6 +942,9 @@ bool ParseRecord(std::string& text, RunRecord& output, std::string& error) {
       (output.format_version != kRecordFormat
 #if defined(PAE_ENABLE_SCHEMA_V06_CRC_COMPILER)
        && output.format_version != kCrcRecordFormat
+#endif
+#if defined(PAE_ENABLE_SCHEMA_V07_LENGTH_COMPILER)
+       && output.format_version != kLengthRecordFormat
 #endif
        ) ||
       !ReadString(root, "run_id", output.run_id, error) || output.run_id.empty() ||
@@ -1372,17 +1429,32 @@ bool LoadRunBundleForTest(const std::filesystem::path& bundle, StoredRunBundle& 
 #else
   const bool has_crc_record = false;
 #endif
-  if (has_old_record == has_crc_record) {
+#if defined(PAE_ENABLE_SCHEMA_V07_LENGTH_COMPILER)
+  const bool has_length_record =
+      manifest_paths.find(std::string{kLengthRecordFile}) != manifest_paths.end();
+#else
+  const bool has_length_record = false;
+#endif
+  const unsigned record_generation_count = static_cast<unsigned>(has_old_record) +
+                                           static_cast<unsigned>(has_crc_record) +
+                                           static_cast<unsigned>(has_length_record);
+  if (record_generation_count != 1U) {
     error = "Run Bundle must contain exactly one supported Run Record generation";
     return false;
   }
-  const std::string_view record_file = has_crc_record
-#if defined(PAE_ENABLE_SCHEMA_V06_CRC_COMPILER)
-                                           ? kCrcRecordFile
+  const std::string_view record_file = has_length_record
+#if defined(PAE_ENABLE_SCHEMA_V07_LENGTH_COMPILER)
+                                           ? kLengthRecordFile
 #else
                                            ? kRecordFile
 #endif
-                                           : kRecordFile;
+                                           : has_crc_record
+#if defined(PAE_ENABLE_SCHEMA_V06_CRC_COMPILER)
+                                                 ? kCrcRecordFile
+#else
+                                                 ? kRecordFile
+#endif
+                                                 : kRecordFile;
   const std::set<std::string> mandatory{"COMPLETE", std::string{kConfigFile},
                                         std::string{kEventFile}, std::string{record_file}};
   if (!std::includes(manifest_paths.begin(), manifest_paths.end(), mandatory.begin(),

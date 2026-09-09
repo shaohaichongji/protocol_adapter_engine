@@ -16,6 +16,10 @@ inline constexpr std::string_view kFingerprintDomain = "pae.lab.fingerprint/0.6"
 inline constexpr std::string_view kCrcResultFormat = "pae.lab.result/0.7";
 inline constexpr std::string_view kCrcFingerprintDomain = "pae.lab.fingerprint/0.7";
 #endif
+#if defined(PAE_ENABLE_SCHEMA_V07_LENGTH_COMPILER)
+inline constexpr std::string_view kLengthResultFormat = "pae.lab.result/0.8";
+inline constexpr std::string_view kLengthFingerprintDomain = "pae.lab.fingerprint/0.8";
+#endif
 
 struct Decimal64 {
   std::int64_t coefficient = 0;

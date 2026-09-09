@@ -206,7 +206,11 @@ class TestRunner final {
  public:
 #if defined(PAE_ENABLE_SCHEMA_V05_COMPILER)
 #if defined(PAE_ENABLE_SCHEMA_V06_CRC_COMPILER)
+#if defined(PAE_ENABLE_SCHEMA_V07_LENGTH_COMPILER)
+  static constexpr std::size_t kExpectedCaseCount = 88U;
+#else
   static constexpr std::size_t kExpectedCaseCount = 84U;
+#endif
 #else
   static constexpr std::size_t kExpectedCaseCount = 80U;
 #endif
@@ -604,6 +608,37 @@ void RunPlanBuilderIntegrityDefenseCases(TestRunner& runner) {
   reject("crc_builder_schema_generation_defense", pae::test_support::MakeCrcDraftWithOldSchema());
 #endif
 }
+
+#if defined(PAE_ENABLE_SCHEMA_V07_LENGTH_COMPILER)
+void RunPlanBuilderLengthDefenseCases(TestRunner& runner) {
+  const auto reject_message = [&runner](std::string_view case_id, BudgetedPlanDraft draft) {
+    const auto result = PlanBuilder::Freeze(std::move(draft));
+    if (result.Succeeded() || result.Diagnostic() == nullptr ||
+        result.Diagnostic()->code != PlanBuildError::INVALID_MESSAGE_PLAN ||
+        result.Diagnostic()->message_index != 0U) {
+      runner.Fail(case_id, "PlanBuilder accepted a corrupted computed-length descriptor");
+      return;
+    }
+    runner.Pass(case_id);
+  };
+  reject_message("length_builder_expected_value_rederivation_defense",
+                 pae::test_support::MakeLengthDraftWithIncorrectExpectedValue());
+  reject_message("length_builder_scope_enum_defense",
+                 pae::test_support::MakeLengthDraftWithInvalidScope());
+  reject_message("length_builder_schema_generation_defense",
+                 pae::test_support::MakeLengthDraftWithOldSchema());
+
+  const auto resource_result =
+      PlanBuilder::Freeze(pae::test_support::MakeLengthDraftWithResourceCountMismatch());
+  if (resource_result.Succeeded() || resource_result.Diagnostic() == nullptr ||
+      resource_result.Diagnostic()->code != PlanBuildError::RESOURCE_REQUIREMENTS_MISMATCH) {
+    runner.Fail("length_builder_resource_count_defense",
+                "PlanBuilder accepted a corrupted computed-length resource count");
+  } else {
+    runner.Pass("length_builder_resource_count_defense");
+  }
+}
+#endif
 
 #if defined(PAE_ENABLE_SCHEMA_V05_COMPILER)
 bool ReadBinaryFile(const std::filesystem::path& path, std::string& output, std::string& error);
@@ -1444,6 +1479,9 @@ int main(int argc, char** argv) {
 #endif
   RunPlanBuilderBitfieldDefenseCases(runner);
   RunPlanBuilderIntegrityDefenseCases(runner);
+#if defined(PAE_ENABLE_SCHEMA_V07_LENGTH_COMPILER)
+  RunPlanBuilderLengthDefenseCases(runner);
+#endif
   RunPlanBuilderInt64DefenseCase(runner);
   RunPlanMemoryContractCases(runner);
 

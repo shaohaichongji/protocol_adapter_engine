@@ -35,6 +35,9 @@ endif()
 if(PAE_ENABLE_SCHEMA_V06_CRC_COMPILER)
     target_compile_definitions(pae_protocol_plan PUBLIC PAE_ENABLE_SCHEMA_V06_CRC_COMPILER=1)
 endif()
+if(PAE_ENABLE_SCHEMA_V07_LENGTH_COMPILER)
+    target_compile_definitions(pae_protocol_plan PUBLIC PAE_ENABLE_SCHEMA_V07_LENGTH_COMPILER=1)
+endif()
 
 set_target_properties(
     pae_protocol_plan

@@ -73,6 +73,12 @@ if(PAE_ENABLE_SCHEMA_V06_CRC_COMPILER)
         PRIVATE PAE_ENABLE_SCHEMA_V06_CRC_COMPILER=1
     )
 endif()
+if(PAE_ENABLE_SCHEMA_V07_LENGTH_COMPILER)
+    target_compile_definitions(
+        pae_config_compiler_contract_tests
+        PRIVATE PAE_ENABLE_SCHEMA_V07_LENGTH_COMPILER=1
+    )
+endif()
 
 set(pae_config_compiler_test_data_dir ${CMAKE_CURRENT_BINARY_DIR}/data)
 file(MAKE_DIRECTORY ${pae_config_compiler_test_data_dir})

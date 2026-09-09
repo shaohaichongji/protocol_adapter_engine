@@ -17,12 +17,14 @@ Decimal64/BOOL业务类型并缓存Plan作用域`FieldRef`。实例持有一份`
 回调参数只保证在回调期间有效。需要排队、异步处理或发送时，宿主必须在回调内复制业务对象或
 字节。示例按同一实例串行调用，不承诺并发或回调重入。
 
-## 两份公开合成配置
+## 三份公开合成配置
 
 - `config/synthetic_business_device_a.pae.json`：RX温度比例`1/10`、告警使用LSB0；TX目标比例
   `1/2`并使用大端布局。
 - `config/synthetic_business_device_b.pae.json`：保持业务ID和类型不变，改变RX/TX偏移、比例、
   位编号、大小端和常量位置。同一宿主代码无需改变。
+- `config/synthetic_business_device_length.pae.json`：Schema 0.7在RX/TX均增加由引擎生成并验证的
+  整帧长度字段，SUM8覆盖长度字节；宿主仍只提供业务值，长度失败不触发业务回调。
 
 配置与测试报文从零人工构造，不来自客户协议、生产端点或现场报文。测试中的预期字节为独立
 手算常量，不由被测Codec生成。
@@ -30,7 +32,7 @@ Decimal64/BOOL业务类型并缓存Plan作用域`FieldRef`。实例持有一份`
 ## 构建与运行
 
 示例默认关闭。演示程序`main.cpp`目前内置配置A的RX输入和TX预期向量，因此下面的命令行演示
-必须使用`synthetic_business_device_a.pae.json`。A/B两份配置在不修改`BusinessAdapter`时保持
+必须使用`synthetic_business_device_a.pae.json`。A/B及长度配置在不修改业务输入模型时保持
 业务语义一致的能力，由`tests/business_embedding`合同测试验证；不能据此宣称这个内置演示程序
 可任意替换配置后仍完成同一组硬编码向量检查。
 

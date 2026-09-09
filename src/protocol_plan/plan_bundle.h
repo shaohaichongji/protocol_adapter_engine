@@ -79,6 +79,19 @@ struct IntegrityPlan {
 #endif
 };
 
+#if defined(PAE_ENABLE_SCHEMA_V07_LENGTH_COMPILER)
+struct ComputedLengthPlan {
+  std::size_t field_index = static_cast<std::size_t>(-1);
+  std::uint64_t storage_offset = 0U;
+  std::uint64_t storage_width = 0U;
+  ByteOrder byte_order = ByteOrder::NOT_APPLICABLE;
+  ComputedLengthScope scope = ComputedLengthScope::FRAME;
+  std::uint64_t range_offset = 0U;
+  std::uint64_t range_length = 0U;
+  std::uint64_t expected_value = 0U;
+};
+#endif
+
 struct MessagePlan {
   std::string id;
   std::string direction_id;
@@ -86,6 +99,9 @@ struct MessagePlan {
   std::vector<MatcherPlan> matchers;
   std::vector<BitContainerPlan> bit_containers;
   std::optional<IntegrityPlan> integrity;
+#if defined(PAE_ENABLE_SCHEMA_V07_LENGTH_COMPILER)
+  std::optional<ComputedLengthPlan> computed_length;
+#endif
   std::vector<FieldPlan> fields;
 };
 
@@ -158,6 +174,10 @@ struct FrozenIntegrityPlan {
 #endif
 };
 
+#if defined(PAE_ENABLE_SCHEMA_V07_LENGTH_COMPILER)
+using FrozenComputedLengthPlan = ComputedLengthPlan;
+#endif
+
 struct FrozenMessagePlan {
   FrozenString id;
   FrozenString direction_id;
@@ -165,6 +185,9 @@ struct FrozenMessagePlan {
   FrozenArray<FrozenMatcherPlan> matchers;
   FrozenArray<FrozenBitContainerPlan> bit_containers;
   std::optional<FrozenIntegrityPlan> integrity;
+#if defined(PAE_ENABLE_SCHEMA_V07_LENGTH_COMPILER)
+  std::optional<FrozenComputedLengthPlan> computed_length;
+#endif
   FrozenArray<FrozenFieldPlan> fields;
 };
 
@@ -221,6 +244,9 @@ struct MessageExecutionPlan {
   std::size_t frame_size = 0U;
   std::size_t required_input_count = 0U;
   std::optional<FrozenIntegrityPlan> integrity;
+#if defined(PAE_ENABLE_SCHEMA_V07_LENGTH_COMPILER)
+  std::optional<FrozenComputedLengthPlan> computed_length;
+#endif
   FrozenArray<FixedByteExecutionPlan> fixed_bytes;
   FrozenArray<BitContainerExecutionPlan> bit_containers;
   FrozenArray<FieldExecutionPlan> fields;

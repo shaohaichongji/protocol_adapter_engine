@@ -32,6 +32,9 @@ struct PreparedMessageExecutionPlan {
   std::size_t frame_size = 0U;
   std::size_t required_input_count = 0U;
   std::optional<FrozenIntegrityPlan> integrity;
+#if defined(PAE_ENABLE_SCHEMA_V07_LENGTH_COMPILER)
+  std::optional<FrozenComputedLengthPlan> computed_length;
+#endif
   std::vector<FixedByteExecutionPlan> fixed_bytes;
   std::vector<BitContainerExecutionPlan> bit_containers;
   std::vector<FieldExecutionPlan> fields;

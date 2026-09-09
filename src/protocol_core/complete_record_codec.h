@@ -37,6 +37,10 @@ enum class CodecStatus {
   BUFFER_TOO_SMALL,
   FINAL_REVIEW_FAILED,
   INTERNAL_ERROR,
+#if defined(PAE_ENABLE_SCHEMA_V07_LENGTH_COMPILER)
+  COMPUTED_FIELD_OVERRIDE,
+  LENGTH_MISMATCH,
+#endif
 };
 
 enum class LogicalValueKind {
@@ -176,6 +180,10 @@ struct CodecOperationCounts {
   std::size_t matcher_bytes_compared = 0U;
   std::size_t integrity_bytes_accumulated = 0U;
   std::size_t integrity_bytes_verified = 0U;
+#if defined(PAE_ENABLE_SCHEMA_V07_LENGTH_COMPILER)
+  std::size_t computed_length_fields_generated = 0U;
+  std::size_t computed_length_fields_verified = 0U;
+#endif
   std::size_t enum_search_steps = 0U;
   std::size_t static_plan_validation_visits = 0U;
   std::size_t decimal_conversion_visits = 0U;
@@ -186,6 +194,9 @@ namespace test_only {
 // Test-only fault injection for the instrumented target. The production target does not expose
 // this declaration or carry the associated branch.
 void CorruptIntegrityStorageBeforeFinalReviewOnce() noexcept;
+#if defined(PAE_ENABLE_SCHEMA_V07_LENGTH_COMPILER)
+void CorruptComputedLengthBeforeFinalReviewOnce() noexcept;
+#endif
 #if defined(PAE_ENABLE_SCHEMA_V05_COMPILER)
 void CorruptDecimalFieldBeforeFinalReviewOnce() noexcept;
 void FailNextDecimalConversionOnce() noexcept;

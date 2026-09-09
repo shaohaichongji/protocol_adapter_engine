@@ -1,0 +1,1 @@
+{"format_version":"pae.lab.values/0.1","pipeline_id":"synthetic_rx","message_id":"frame_length_record","fields":[{"id":"value","kind":"UINT64","uint64":"5"},{"id":"payload","kind":"BYTES","hex":"7E"}]}
