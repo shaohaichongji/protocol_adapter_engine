@@ -6,6 +6,14 @@ PAE 的目标是通过严格配置完成工业二进制协议的有方向 Decode
 
 ## 当前状态
 
+2026-09-09总控收口：[固定完整记录长度字段](docs/length-field-minimal-contract.md)已在当前
+工作树完成Schema 0.7、Compiler/Builder、Core、Lab 0.8/Record 0.9、公开向量及业务嵌入实现。
+初次Windows Debug/Release离线矩阵各39/39、业务嵌入各1/1及两类0测试隔离构建通过；
+P2修复后受影响离线集合各4/4，最后CLI补测各1/1，未重跑完整矩阵。总控定向复核已关闭
+P2及验收缺口，51个候选与文档链接检查完成；A组已本地提交为`0179abc`，B组入口文档待提交，尚未Push。
+未执行网络；详见[验证报告](docs/windows-msvc-2026-length-field-slice.md)。
+更早批次“最新/待提交”叙述保留其历史时点。
+
 2026-09-08最新收口：C2复现/比较、C3专用Schema 0.5离线CLI及Windows中文路径修复已提交并Push，
 代码基线`df43165`。用户确认以代理七项离线验收、35项精确检查PASS收口DEC-042B C3离线功能
 检查点；用户人工验收仍为NOT_EVALUATED，不阻塞本检查点。见

@@ -2,6 +2,14 @@
 
 ## 1. 状态和目的
 
+2026-09-09收口同步：[长度字段确认契约](length-field-minimal-contract.md)已在当前工作树接入
+Schema 0.7、Result/指纹0.8和Run Record 0.9；Event 0.7、Values 0.1～0.4和CLI封装0.1不变。
+`COMPUTED_FIELD_OVERRIDE`与`LENGTH_MISMATCH`只允许出现在Result 0.8；成功和失败Bundle均经完整
+Reader读取并支持链式Replay，跨代Run Compare在指纹比较前拒绝。覆盖失败的Values输入索引
+强绑定及相关补测已通过总控定向复核；初次39/39与修复后4/4、最后CLI 1/1是不同Windows批次。
+A组已本地提交为`0179abc`，B组入口文档待提交，全部尚未Push。未增加网络或阶段事件。
+Windows执行证据见[长度字段验证报告](windows-msvc-2026-length-field-slice.md)。以下内容保留历史时点。
+
 2026-09-08 C3按已确认的第22节完成限定实现和Windows离线自动化验证。现有
 `pae_protocol_lab`在显式`PAE_ENABLE_PROTOCOL_LAB_SCHEMA_V05=ON`专用构建中分派Schema 0.5及
 Record 0.7；新链强制记录、禁止Replay替换配置，并以独立`pae.lab.cli/0.1`封装表达进程退出、

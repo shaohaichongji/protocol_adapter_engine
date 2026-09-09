@@ -34,6 +34,8 @@
 - [PAE-DEC-042B Lab C3 CLI Windows验证报告](windows-msvc-2026-dec042b-lab-c3-cli.md)
 - [PAE-DEC-042B C3人工离线验收单（NOT_EVALUATED）](manual-dec042b-c3-offline-acceptance.md)
 - [参数化CRC-16/32最小检查点确认契约](crc-minimal-contract-draft.md)
+- [固定完整记录长度字段确认契约（已复核，A组已本地提交）](length-field-minimal-contract.md)
+- [固定完整记录长度字段Windows验证报告](windows-msvc-2026-length-field-slice.md)
 - [参数化CRC-16/32最小检查点Windows验证报告](windows-msvc-2026-crc-minimal-slice.md)
 - [最小业务嵌入验证契约](business-embedding-minimal-contract.md)
 - [最小业务嵌入示例Windows验证报告](windows-msvc-2026-business-embedding-minimal.md)
