@@ -491,10 +491,15 @@ bool ParseResult(std::string& text, Result& output, std::string& error) {
   std::string format;
   std::string declared_fingerprint;
   yyjson_val* exit_code = yyjson_obj_get(root, "exit_code");
-  if (!ReadString(root, "format_version", format, error) || format != kResultFormat) {
+  if (!ReadString(root, "format_version", format, error) || (format != kResultFormat
+#if defined(PAE_ENABLE_SCHEMA_V06_CRC_COMPILER)
+                                                             && format != kCrcResultFormat
+#endif
+                                                             )) {
     if (error.empty()) error = "unsupported Result format_version";
     return false;
   }
+  output.format_version = format;
   if (!ReadString(root, "command", output.command, error) ||
       !ReadString(root, "operation_kind", output.operation_kind, error) ||
       !ReadString(root, "operation_status", output.operation_status, error) ||
@@ -610,6 +615,14 @@ bool ParseResult(std::string& text, Result& output, std::string& error) {
 }
 
 bool ValidateResult(const Result& result, std::string& error) {
+  if (result.format_version != kResultFormat
+#if defined(PAE_ENABLE_SCHEMA_V06_CRC_COMPILER)
+      && result.format_version != kCrcResultFormat
+#endif
+  ) {
+    error = "unsupported Result format_version";
+    return false;
+  }
   if (result.operation_kind.empty() || result.operation_status.empty() ||
       result.replay_mode.empty() || result.replay_subject.empty() ||
       result.current_execution_status.empty()) {
@@ -741,7 +754,15 @@ std::string EncodeFingerprintPayload(const Result& result, std::string& error) {
   if (!ValidateResult(result, error)) return {};
   const std::string fields = EncodeFieldsCanonical(result.fields, error);
   if (!error.empty()) return {};
-  return "A20:" + EncodeString(kFingerprintDomain) + EncodeString("0.5") +
+  std::string_view fingerprint_domain = kFingerprintDomain;
+  std::string_view schema_version = "0.5";
+#if defined(PAE_ENABLE_SCHEMA_V06_CRC_COMPILER)
+  if (result.format_version == kCrcResultFormat) {
+    fingerprint_domain = kCrcFingerprintDomain;
+    schema_version = "0.6";
+  }
+#endif
+  return "A20:" + EncodeString(fingerprint_domain) + EncodeString(schema_version) +
          EncodeString(result.operation_kind) + EncodeString(result.replay_mode) +
          EncodeString(result.replay_subject) + EncodeString(result.current_execution_status) +
          EncodeOptionalString(result.current_execution_diagnostic_id) +
@@ -766,7 +787,7 @@ std::string SerializeResult(const Result& result, std::string& error) {
   if (!error.empty()) return {};
   std::ostringstream output;
   output << "{\n"
-         << "  \"format_version\":\"pae.lab.result/0.6\",\n"
+         << "  \"format_version\":" << Quote(result.format_version) << ",\n"
          << "  \"command\":" << Quote(result.command) << ",\n"
          << "  \"operation_kind\":" << Quote(result.operation_kind) << ",\n"
          << "  \"operation_status\":" << Quote(result.operation_status) << ",\n"

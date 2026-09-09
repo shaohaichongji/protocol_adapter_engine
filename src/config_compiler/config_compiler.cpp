@@ -559,6 +559,46 @@ bool ReadRequiredUint64(yyjson_val* object, std::string_view key, std::string_vi
   return value != nullptr && ReadExactUint64(value, ChildPointer(pointer, key), output, diagnostic);
 }
 
+#if defined(PAE_ENABLE_SCHEMA_V06_CRC_COMPILER)
+bool ReadRequiredBool(yyjson_val* object, std::string_view key, std::string_view pointer,
+                      bool& output, CompileDiagnostic& diagnostic) {
+  yyjson_val* value = RequiredProperty(object, key, pointer, diagnostic);
+  if (value == nullptr) {
+    return false;
+  }
+  if (!yyjson_is_bool(value)) {
+    return SetDiagnostic(diagnostic, CompileStage::STRUCTURAL, CompileError::TYPE_MISMATCH,
+                         ChildPointer(pointer, key), "expected a JSON boolean");
+  }
+  output = yyjson_get_bool(value);
+  return true;
+}
+
+bool ReadRequiredCrcHex(yyjson_val* object, std::string_view key, std::string_view pointer,
+                        std::size_t digits, std::uint32_t& output, CompileDiagnostic& diagnostic) {
+  std::string token;
+  if (!ReadRequiredString(object, key, pointer, digits, digits, token, diagnostic)) {
+    return false;
+  }
+  std::uint32_t parsed = 0U;
+  for (const char character : token) {
+    std::uint32_t nibble = 0U;
+    if (character >= '0' && character <= '9') {
+      nibble = static_cast<std::uint32_t>(character - '0');
+    } else if (character >= 'A' && character <= 'F') {
+      nibble = static_cast<std::uint32_t>(character - 'A' + 10);
+    } else {
+      return SetDiagnostic(diagnostic, CompileStage::STRUCTURAL, CompileError::INVALID_ENUM_VALUE,
+                           ChildPointer(pointer, key),
+                           "CRC hexadecimal value must use fixed-width uppercase hexadecimal");
+    }
+    parsed = static_cast<std::uint32_t>((parsed << 4U) | nibble);
+  }
+  output = parsed;
+  return true;
+}
+#endif
+
 bool ParseHexBytes(std::string_view input, std::vector<std::uint8_t>& output) {
   if (input.size() < 2U || (input.size() + 1U) % 3U != 0U) {
     return false;
@@ -1315,20 +1355,83 @@ bool ParseBitContainers(yyjson_val* value, std::string_view pointer,
   return true;
 }
 
-bool ParseIntegrity(yyjson_val* value, std::string_view pointer, IntegrityIr& output,
-                    CompileDiagnostic& diagnostic) {
+bool ParseIntegrity(yyjson_val* value, std::string_view pointer, bool supports_crc,
+                    IntegrityIr& output, CompileDiagnostic& diagnostic) {
   if (!yyjson_is_obj(value)) {
     return SetDiagnostic(diagnostic, CompileStage::STRUCTURAL, CompileError::TYPE_MISMATCH,
                          std::string(pointer), "integrity must be an object");
   }
-  if (!ValidateObjectProperties(value, pointer, {"algorithm", "range", "storage"}, diagnostic)) {
+  if (!ValidateObjectProperties(
+          value, pointer,
+          supports_crc ? std::initializer_list<std::string_view>{"algorithm", "parameters", "range",
+                                                                 "storage"}
+                       : std::initializer_list<std::string_view>{"algorithm", "range", "storage"},
+          diagnostic)) {
     return false;
   }
   yyjson_val* algorithm = RequiredProperty(value, "algorithm", pointer, diagnostic);
   std::string algorithm_token;
-  if (algorithm == nullptr || !ReadEnumToken(algorithm, ChildPointer(pointer, "algorithm"),
-                                             {"sum8"}, algorithm_token, diagnostic)) {
+  if (algorithm == nullptr ||
+      !ReadEnumToken(algorithm, ChildPointer(pointer, "algorithm"),
+                     supports_crc ? std::initializer_list<std::string_view>{"sum8", "crc"}
+                                  : std::initializer_list<std::string_view>{"sum8"},
+                     algorithm_token, diagnostic)) {
     return false;
+  }
+#if defined(PAE_ENABLE_SCHEMA_V06_CRC_COMPILER)
+  if (algorithm_token == "crc") {
+    yyjson_val* parameters = RequiredProperty(value, "parameters", pointer, diagnostic);
+    const std::string parameters_pointer = ChildPointer(pointer, "parameters");
+    if (parameters == nullptr) {
+      return false;
+    }
+    if (!yyjson_is_obj(parameters)) {
+      return SetDiagnostic(diagnostic, CompileStage::STRUCTURAL, CompileError::TYPE_MISMATCH,
+                           parameters_pointer, "CRC parameters must be an object");
+    }
+    if (!ValidateObjectProperties(parameters, parameters_pointer,
+                                  {"width", "poly", "init", "refin", "refout", "xorout"},
+                                  diagnostic)) {
+      return false;
+    }
+    std::uint64_t width = 0U;
+    if (!ReadRequiredUint64(parameters, "width", parameters_pointer, width, diagnostic)) {
+      return false;
+    }
+    if (width != 16U && width != 32U) {
+      return SetDiagnostic(diagnostic, CompileStage::STRUCTURAL, CompileError::INVALID_ENUM_VALUE,
+                           ChildPointer(parameters_pointer, "width"), "CRC width must be 16 or 32");
+    }
+    output.crc_width = static_cast<std::uint8_t>(width);
+    const std::size_t digits = static_cast<std::size_t>(width / 4U);
+    if (!ReadRequiredCrcHex(parameters, "poly", parameters_pointer, digits, output.crc_polynomial,
+                            diagnostic) ||
+        !ReadRequiredCrcHex(parameters, "init", parameters_pointer, digits,
+                            output.crc_initial_value, diagnostic) ||
+        !ReadRequiredBool(parameters, "refin", parameters_pointer, output.crc_reflect_input,
+                          diagnostic) ||
+        !ReadRequiredBool(parameters, "refout", parameters_pointer, output.crc_reflect_output,
+                          diagnostic) ||
+        !ReadRequiredCrcHex(parameters, "xorout", parameters_pointer, digits, output.crc_xor_output,
+                            diagnostic)) {
+      return false;
+    }
+    if (output.crc_polynomial == 0U || (output.crc_polynomial & 1U) == 0U) {
+      return SetDiagnostic(diagnostic, CompileStage::DOMAIN_VALIDATION,
+                           CompileError::INVALID_ENUM_VALUE,
+                           ChildPointer(parameters_pointer, "poly"),
+                           "CRC polynomial must be nonzero with its low bit set");
+    }
+    output.algorithm = IntegrityAlgorithm::CRC;
+  } else
+#endif
+  {
+    if (yyjson_obj_get(value, "parameters") != nullptr) {
+      return SetDiagnostic(diagnostic, CompileStage::STRUCTURAL, CompileError::UNKNOWN_PROPERTY,
+                           ChildPointer(pointer, "parameters"),
+                           "SUM8 does not accept CRC parameters");
+    }
+    output.algorithm = IntegrityAlgorithm::SUM8;
   }
   yyjson_val* range = RequiredProperty(value, "range", pointer, diagnostic);
   const std::string range_pointer = ChildPointer(pointer, "range");
@@ -1353,12 +1456,29 @@ bool ParseIntegrity(yyjson_val* value, std::string_view pointer, IntegrityIr& ou
     return SetDiagnostic(diagnostic, CompileStage::STRUCTURAL, CompileError::TYPE_MISMATCH,
                          storage_pointer, "integrity storage must be an object");
   }
-  if (!ValidateObjectProperties(storage, storage_pointer, {"byte_offset"}, diagnostic) ||
+  const bool crc_storage = algorithm_token == "crc";
+  if (!ValidateObjectProperties(
+          storage, storage_pointer,
+          crc_storage ? std::initializer_list<std::string_view>{"byte_offset", "byte_order"}
+                      : std::initializer_list<std::string_view>{"byte_offset"},
+          diagnostic) ||
       !ReadRequiredUint64(storage, "byte_offset", storage_pointer, output.storage_offset,
                           diagnostic)) {
     return false;
   }
-  output.algorithm = IntegrityAlgorithm::SUM8;
+#if defined(PAE_ENABLE_SCHEMA_V06_CRC_COMPILER)
+  if (crc_storage) {
+    yyjson_val* byte_order = RequiredProperty(storage, "byte_order", storage_pointer, diagnostic);
+    std::string byte_order_token;
+    if (byte_order == nullptr ||
+        !ReadEnumToken(byte_order, ChildPointer(storage_pointer, "byte_order"),
+                       {"big_endian", "little_endian"}, byte_order_token, diagnostic)) {
+      return false;
+    }
+    output.storage_byte_order =
+        byte_order_token == "big_endian" ? ByteOrder::BIG : ByteOrder::LITTLE;
+  }
+#endif
   output.origin.json_pointer = std::string{pointer};
   output.range_origin.json_pointer = range_pointer;
   output.storage_origin.json_pointer = storage_pointer;
@@ -1366,8 +1486,8 @@ bool ParseIntegrity(yyjson_val* value, std::string_view pointer, IntegrityIr& ou
 }
 
 bool ParseMessage(yyjson_val* value, std::string_view pointer, bool supports_bitfields,
-                  bool supports_integrity, bool supports_int64, bool supports_conversion,
-                  MessageIr& output, CompileDiagnostic& diagnostic) {
+                  bool supports_integrity, bool supports_crc, bool supports_int64,
+                  bool supports_conversion, MessageIr& output, CompileDiagnostic& diagnostic) {
   if (!yyjson_is_obj(value)) {
     return SetDiagnostic(diagnostic, CompileStage::STRUCTURAL, CompileError::TYPE_MISMATCH,
                          std::string(pointer), "message must be an object");
@@ -1426,7 +1546,8 @@ bool ParseMessage(yyjson_val* value, std::string_view pointer, bool supports_bit
   if (supports_integrity) {
     if (yyjson_val* integrity = yyjson_obj_get(value, "integrity")) {
       IntegrityIr parsed;
-      if (!ParseIntegrity(integrity, ChildPointer(pointer, "integrity"), parsed, diagnostic)) {
+      if (!ParseIntegrity(integrity, ChildPointer(pointer, "integrity"), supports_crc, parsed,
+                          diagnostic)) {
         return false;
       }
       output.integrity = std::move(parsed);
@@ -1487,7 +1608,11 @@ bool BuildSchemaIr(yyjson_val* root, SchemaIr& output, CompileDiagnostic& diagno
 #if defined(PAE_ENABLE_SCHEMA_V05_COMPILER)
   const bool supported_schema = output.schema_version == "0.1" || output.schema_version == "0.2" ||
                                 output.schema_version == "0.3" || output.schema_version == "0.4" ||
-                                output.schema_version == "0.5";
+                                output.schema_version == "0.5"
+#if defined(PAE_ENABLE_SCHEMA_V06_CRC_COMPILER)
+                                || output.schema_version == "0.6"
+#endif
+      ;
 #else
   const bool supported_schema = output.schema_version == "0.1" || output.schema_version == "0.2" ||
                                 output.schema_version == "0.3" || output.schema_version == "0.4";
@@ -1526,12 +1651,15 @@ bool BuildSchemaIr(yyjson_val* root, SchemaIr& output, CompileDiagnostic& diagno
              messages, "/messages", output.messages,
              [&output](yyjson_val* value, std::string_view pointer, MessageIr& message,
                        CompileDiagnostic& item_diagnostic) {
-               return ParseMessage(value, pointer, output.schema_version != "0.1",
-                                   output.schema_version == "0.3" ||
-                                       output.schema_version == "0.4" ||
-                                       output.schema_version == "0.5",
-                                   output.schema_version == "0.4" || output.schema_version == "0.5",
-                                   output.schema_version == "0.5", message, item_diagnostic);
+               return ParseMessage(
+                   value, pointer, output.schema_version != "0.1",
+                   output.schema_version == "0.3" || output.schema_version == "0.4" ||
+                       output.schema_version == "0.5" || output.schema_version == "0.6",
+                   output.schema_version == "0.6",
+                   output.schema_version == "0.4" || output.schema_version == "0.5" ||
+                       output.schema_version == "0.6",
+                   output.schema_version == "0.5" || output.schema_version == "0.6", message,
+                   item_diagnostic);
              },
              diagnostic);
 }
@@ -1852,37 +1980,58 @@ bool ValidateMessageDomain(MessageIr& message, ResourceRequirements& requirement
 
   if (message.integrity.has_value()) {
     const IntegrityIr& integrity = *message.integrity;
+    std::uint64_t storage_width = 1U;
+#if defined(PAE_ENABLE_SCHEMA_V06_CRC_COMPILER)
+    if (integrity.algorithm == IntegrityAlgorithm::CRC) {
+      storage_width = static_cast<std::uint64_t>(integrity.crc_width / 8U);
+      const std::uint32_t width_mask = integrity.crc_width == 16U ? 0xFFFFU : 0xFFFFFFFFU;
+      if ((integrity.crc_width != 16U && integrity.crc_width != 32U) ||
+          integrity.crc_polynomial == 0U || (integrity.crc_polynomial & 1U) == 0U ||
+          (integrity.crc_polynomial & ~width_mask) != 0U ||
+          (integrity.crc_initial_value & ~width_mask) != 0U ||
+          (integrity.crc_xor_output & ~width_mask) != 0U ||
+          (integrity.storage_byte_order != ByteOrder::BIG &&
+           integrity.storage_byte_order != ByteOrder::LITTLE)) {
+        return SetDiagnostic(diagnostic, CompileStage::DOMAIN_VALIDATION,
+                             CompileError::INVALID_ENUM_VALUE, integrity.origin.json_pointer,
+                             "CRC parameters are outside the frozen CRC-16/CRC-32 domain");
+      }
+    }
+#endif
     if (integrity.range_length == 0U) {
       return SetDiagnostic(diagnostic, CompileStage::DOMAIN_VALIDATION,
                            CompileError::INTEGRITY_RANGE_OUT_OF_BOUNDS,
                            ChildPointer(integrity.range_origin.json_pointer, "byte_length"),
-                           "SUM8 range must contain at least one byte");
+                           "integrity range must contain at least one byte");
     }
     if (integrity.range_offset > message.frame_length_bytes ||
         integrity.range_length > message.frame_length_bytes - integrity.range_offset) {
-      return SetDiagnostic(
-          diagnostic, CompileStage::DOMAIN_VALIDATION, CompileError::INTEGRITY_RANGE_OUT_OF_BOUNDS,
-          integrity.range_origin.json_pointer, "SUM8 range exceeds message frame_length_bytes");
+      return SetDiagnostic(diagnostic, CompileStage::DOMAIN_VALIDATION,
+                           CompileError::INTEGRITY_RANGE_OUT_OF_BOUNDS,
+                           integrity.range_origin.json_pointer,
+                           "integrity range exceeds message frame_length_bytes");
     }
-    if (integrity.storage_offset >= message.frame_length_bytes) {
+    if (integrity.storage_offset > message.frame_length_bytes ||
+        storage_width > message.frame_length_bytes - integrity.storage_offset) {
       return SetDiagnostic(diagnostic, CompileStage::DOMAIN_VALIDATION,
                            CompileError::INTEGRITY_STORAGE_OUT_OF_BOUNDS,
                            ChildPointer(integrity.storage_origin.json_pointer, "byte_offset"),
-                           "SUM8 storage byte exceeds message frame_length_bytes");
+                           "integrity storage exceeds message frame_length_bytes");
     }
-    if (integrity.storage_offset >= integrity.range_offset &&
-        integrity.storage_offset - integrity.range_offset < integrity.range_length) {
+    const std::uint64_t range_end = integrity.range_offset + integrity.range_length;
+    const std::uint64_t storage_end = integrity.storage_offset + storage_width;
+    if (integrity.storage_offset < range_end && integrity.range_offset < storage_end) {
       return SetDiagnostic(diagnostic, CompileStage::DOMAIN_VALIDATION,
                            CompileError::INTEGRITY_SELF_INCLUDED,
                            ChildPointer(integrity.storage_origin.json_pointer, "byte_offset"),
-                           "SUM8 storage byte must be outside its covered range");
+                           "integrity storage must be outside its covered range");
     }
     for (const FieldSpan& span : spans) {
-      if (integrity.storage_offset >= span.begin && integrity.storage_offset < span.end) {
+      if (integrity.storage_offset < span.end && span.begin < storage_end) {
         return SetDiagnostic(diagnostic, CompileStage::DOMAIN_VALIDATION,
                              CompileError::INTEGRITY_STORAGE_CONFLICT,
                              ChildPointer(integrity.storage_origin.json_pointer, "byte_offset"),
-                             "SUM8 storage byte overlaps a field or bit container");
+                             "integrity storage overlaps a field or bit container");
       }
     }
   }
@@ -1916,12 +2065,23 @@ bool ValidateMessageDomain(MessageIr& message, ResourceRequirements& requirement
     }
   }
 
-  if (message.integrity.has_value() &&
-      fixed_matcher_bytes.find(message.integrity->storage_offset) != fixed_matcher_bytes.end()) {
-    return SetDiagnostic(
-        diagnostic, CompileStage::DOMAIN_VALIDATION, CompileError::INTEGRITY_STORAGE_CONFLICT,
-        ChildPointer(message.integrity->storage_origin.json_pointer, "byte_offset"),
-        "SUM8 storage byte overlaps a fixed_bytes matcher");
+  if (message.integrity.has_value()) {
+    std::uint64_t storage_width = 1U;
+#if defined(PAE_ENABLE_SCHEMA_V06_CRC_COMPILER)
+    if (message.integrity->algorithm == IntegrityAlgorithm::CRC) {
+      storage_width = static_cast<std::uint64_t>(message.integrity->crc_width / 8U);
+    }
+#endif
+    for (std::uint64_t index = 0U; index < storage_width; ++index) {
+      if (fixed_matcher_bytes.find(message.integrity->storage_offset + index) ==
+          fixed_matcher_bytes.end()) {
+        continue;
+      }
+      return SetDiagnostic(
+          diagnostic, CompileStage::DOMAIN_VALIDATION, CompileError::INTEGRITY_STORAGE_CONFLICT,
+          ChildPointer(message.integrity->storage_origin.json_pointer, "byte_offset"),
+          "integrity storage overlaps a fixed_bytes matcher");
+    }
   }
 
   for (const FieldIr& field : message.fields) {
@@ -2041,8 +2201,14 @@ bool ValidateMessageDomain(MessageIr& message, ResourceRequirements& requirement
     coverage_spans.push_back(CoverageSpan{offset, offset + 1U});
   }
   if (message.integrity.has_value()) {
-    coverage_spans.push_back(
-        CoverageSpan{message.integrity->storage_offset, message.integrity->storage_offset + 1U});
+    std::uint64_t storage_width = 1U;
+#if defined(PAE_ENABLE_SCHEMA_V06_CRC_COMPILER)
+    if (message.integrity->algorithm == IntegrityAlgorithm::CRC) {
+      storage_width = static_cast<std::uint64_t>(message.integrity->crc_width / 8U);
+    }
+#endif
+    coverage_spans.push_back(CoverageSpan{message.integrity->storage_offset,
+                                          message.integrity->storage_offset + storage_width});
   }
   std::sort(coverage_spans.begin(), coverage_spans.end(),
             [](const CoverageSpan& left, const CoverageSpan& right) {
@@ -2483,9 +2649,21 @@ PlanDraftAssemblyResult PlanDraftAssembler::Assemble(BudgetedSchemaIr budgeted) 
           container.byte_order, container.bit_numbering, container.base_value});
     }
     if (message.integrity.has_value()) {
-      message_plan.integrity = protocol_plan::IntegrityPlan{
-          message.integrity->algorithm, message.integrity->range_offset,
-          message.integrity->range_length, message.integrity->storage_offset};
+      protocol_plan::IntegrityPlan integrity;
+      integrity.algorithm = message.integrity->algorithm;
+      integrity.range_offset = message.integrity->range_offset;
+      integrity.range_length = message.integrity->range_length;
+      integrity.storage_offset = message.integrity->storage_offset;
+#if defined(PAE_ENABLE_SCHEMA_V06_CRC_COMPILER)
+      integrity.crc_width = message.integrity->crc_width;
+      integrity.crc_polynomial = message.integrity->crc_polynomial;
+      integrity.crc_initial_value = message.integrity->crc_initial_value;
+      integrity.crc_xor_output = message.integrity->crc_xor_output;
+      integrity.crc_reflect_input = message.integrity->crc_reflect_input;
+      integrity.crc_reflect_output = message.integrity->crc_reflect_output;
+      integrity.storage_byte_order = message.integrity->storage_byte_order;
+#endif
+      message_plan.integrity = integrity;
     }
     message_plan.fields.reserve(message.fields.size());
     for (FieldIr& field : message.fields) {

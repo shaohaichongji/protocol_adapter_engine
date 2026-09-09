@@ -22,6 +22,12 @@ target_link_libraries(
     pae_protocol_lab_v07_evidence_reader
     PRIVATE pae::project_options pae::yyjson
 )
+if(PAE_ENABLE_SCHEMA_V06_CRC_COMPILER)
+    target_compile_definitions(
+        pae_protocol_lab_v07_evidence_reader
+        PUBLIC PAE_ENABLE_SCHEMA_V06_CRC_COMPILER=1
+    )
+endif()
 
 add_executable(
     pae_protocol_lab_v07_reader_isolation_tests

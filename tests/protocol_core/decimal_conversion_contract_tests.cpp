@@ -88,7 +88,11 @@ int main(int argc, char** argv) {
       !Expect(internal::SupportsCompleteRecordSchema("0.1") &&
                   internal::SupportsCompleteRecordSchema("0.4") &&
                   internal::SupportsCompleteRecordSchema("0.5") &&
+#if defined(PAE_ENABLE_SCHEMA_V06_CRC_COMPILER)
+                  internal::SupportsCompleteRecordSchema("0.6") &&
+#else
                   !internal::SupportsCompleteRecordSchema("0.6") &&
+#endif
                   !internal::SupportsCompleteRecordSchema(""),
               "Core runtime schema capability gate is explicit") ||
       !Expect(plan->Conversions().size() == 4U, "four conversion descriptors are frozen") ||

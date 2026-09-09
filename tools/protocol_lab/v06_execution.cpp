@@ -176,6 +176,11 @@ Result MakeBaseResult(const PlanBundle& plan, std::string_view config_hash,
                       std::string_view operation_kind, std::size_t pipeline_index,
                       std::size_t message_index) {
   Result result;
+#if defined(PAE_ENABLE_SCHEMA_V06_CRC_COMPILER)
+  if (plan.SchemaVersion() == "0.6") {
+    result.format_version = std::string{kCrcResultFormat};
+  }
+#endif
   result.command = std::string{operation_kind};
   result.operation_kind = std::string{operation_kind};
   result.config_sha256 = std::string{config_hash};
@@ -371,9 +376,13 @@ std::unique_ptr<ExecutionBridge> ExecutionBridge::Prepare(std::string_view confi
     return nullptr;
   }
   auto plan = std::move(compiled).TakePlan();
-  if (plan->SchemaVersion() != "0.5") {
+  if (plan->SchemaVersion() != "0.5"
+#if defined(PAE_ENABLE_SCHEMA_V06_CRC_COMPILER)
+      && plan->SchemaVersion() != "0.6"
+#endif
+  ) {
     failure.diagnostic_id = "PAE_LAB_C1_SCHEMA_UNSUPPORTED";
-    failure.detail = "C1 execution accepts only a successfully compiled Schema 0.5 Plan";
+    failure.detail = "C1 execution accepts only an enabled Schema 0.5 or Schema 0.6 Plan";
     return nullptr;
   }
   auto implementation = std::make_unique<Impl>(std::string{config_text}, std::move(plan));
@@ -389,6 +398,7 @@ ExecutionOutcome ExecutionBridge::Inspect(const std::vector<std::uint8_t>& frame
                                           ExecutionObserver* observer) {
   ExecutionOutcome outcome;
   const PlanBundle& plan = *implementation_->plan;
+  outcome.schema_version = CopyText(plan.SchemaVersion());
   std::size_t selected_pipeline = kInvalidIndex;
   std::size_t selected_message = kInvalidIndex;
   std::size_t candidate_count = 0U;
@@ -498,6 +508,7 @@ ExecutionOutcome ExecutionBridge::InspectPipeline(const std::vector<std::uint8_t
                                                   ExecutionObserver* observer) {
   ExecutionOutcome outcome;
   const PlanBundle& plan = *implementation_->plan;
+  outcome.schema_version = CopyText(plan.SchemaVersion());
   const std::size_t pipeline_index = FindPipeline(plan, pipeline_id);
   if (observer != nullptr) observer->PhaseStarted(ExecutionPhase::STRUCTURAL_QUERY);
   ++outcome.counts.structural_query_calls;
@@ -593,6 +604,7 @@ ExecutionOutcome ExecutionBridge::EncodeValuesText(std::string values_text
   std::string error;
   if (!internal::ParseCompatibleValues(values_text, parsed, error)) {
     ExecutionOutcome outcome;
+    outcome.schema_version = CopyText(implementation_->plan->SchemaVersion());
     SetPreparationFailure(outcome, "PAE_LAB_C1_VALUES_INVALID", std::move(error));
     if (observer != nullptr) observer->PhaseFinished(ExecutionPhase::PREPARATION, "FAILED");
     return outcome;
@@ -615,6 +627,7 @@ ExecutionOutcome ExecutionBridge::EncodeParsed(const ParsedValues& values
                                                ExecutionObserver* observer) {
   ExecutionOutcome outcome;
   const PlanBundle& plan = *implementation_->plan;
+  outcome.schema_version = CopyText(plan.SchemaVersion());
   const std::size_t pipeline_index = FindPipeline(plan, values.pipeline_id);
   if (pipeline_index == kInvalidIndex) {
     SetPreparationFailure(outcome, "PAE_LAB_C1_UNKNOWN_PIPELINE",

@@ -90,6 +90,9 @@ enum class UnknownEnumPolicy {
 
 enum class IntegrityAlgorithm {
   SUM8,
+#if defined(PAE_ENABLE_SCHEMA_V06_CRC_COMPILER)
+  CRC,
+#endif
 };
 
 struct ResourceRequirements {

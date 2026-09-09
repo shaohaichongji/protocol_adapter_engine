@@ -1,0 +1,24 @@
+{
+  "schema_version": "0.6",
+  "protocol_id": "schema_v06_no_integrity",
+  "protocol_version": "0.1-synthetic",
+  "display_name": "Schema 0.6 no integrity",
+  "description": "Public synthetic generation-selection fixture.",
+  "source_ref": "SYNTHETIC_FROM_SCRATCH:crc_generation_selection",
+  "resource_profile": "desktop",
+  "framing_profiles": [
+    {"id":"record","display_name":"Record","description":"","source_ref":"SYNTHETIC_FROM_SCRATCH:crc_generation_selection","input_kind":"complete_record"}
+  ],
+  "pipelines": [
+    {"id":"sample_pipeline","display_name":"Pipeline","description":"","source_ref":"SYNTHETIC_FROM_SCRATCH:crc_generation_selection","direction_id":"rx","input_framing_profile_id":"record","message_ids":["sample"]}
+  ],
+  "messages": [
+    {
+      "id":"sample","display_name":"Message","description":"","source_ref":"SYNTHETIC_FROM_SCRATCH:crc_generation_selection","direction_id":"rx","frame_length_bytes":2,
+      "matcher":{"all":[{"kind":"frame_length_equals","length_bytes":2},{"kind":"fixed_bytes","byte_offset":1,"bytes":"AA"}]},
+      "fields":[
+        {"id":"value","display_name":"Value","description":"","source_ref":"SYNTHETIC_FROM_SCRATCH:crc_generation_selection","value_type":"UINT64","wire":{"codec":"unsigned_integer","byte_offset":0,"byte_width":1},"encode":{"source":"input"}}
+      ]
+    }
+  ]
+}

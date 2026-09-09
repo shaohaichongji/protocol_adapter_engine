@@ -135,6 +135,14 @@ RunBundleInput BuildBundle(const RunRequest& request, const v06::ExecutionOutcom
   bundle.values_text = request.values_text;
   bundle.result = outcome.result;
   bundle.record.run_id = request.run_id;
+#if defined(PAE_ENABLE_SCHEMA_V06_CRC_COMPILER)
+  const bool crc_generation =
+      outcome.schema_version == "0.6" ||
+      (outcome.result.has_value() && outcome.result->format_version == v06::kCrcResultFormat);
+  if (crc_generation) bundle.record.format_version = std::string{kCrcRecordFormat};
+#else
+  const bool crc_generation = false;
+#endif
   bundle.record.tool_version = request.tool_version;
   bundle.record.operation_kind = request.operation_kind;
   bundle.record.invocation_kind = request.invocation_kind;
@@ -152,9 +160,11 @@ RunBundleInput BuildBundle(const RunRequest& request, const v06::ExecutionOutcom
   bundle.record.frame_file = bundle.frame.has_value()
                                  ? std::optional<std::string>{"frames/000001_frame.bin"}
                                  : std::nullopt;
-  bundle.record.result_file = outcome.result.has_value()
-                                  ? std::optional<std::string>{"result_summary_v0.6.json"}
-                                  : std::nullopt;
+  bundle.record.result_file =
+      outcome.result.has_value()
+          ? std::optional<std::string>{crc_generation ? "result_summary_v0.7.json"
+                                                      : "result_summary_v0.6.json"}
+          : std::nullopt;
   if (outcome.result.has_value()) {
     std::string error;
     bundle.record.deterministic_fingerprint = v06::FinalizeFingerprint(*outcome.result, error);
@@ -197,9 +207,16 @@ RunBundleInput BuildBundle(const RunRequest& request, const v06::ExecutionOutcom
     if (request.parent_record_text.has_value() && request.historical_result_text.has_value() &&
         request.historical_fingerprint.has_value()) {
       bundle.record.historical_baseline = HistoricalBaseline{
-          "history/parent_record_v0.7.json",    HashBytes(*request.parent_record_text),
-          "history/result_summary_v0.6.json",   HashBytes(*request.historical_result_text),
-          std::string{v06::kFingerprintDomain}, *request.historical_fingerprint};
+          crc_generation ? "history/parent_record_v0.8.json" : "history/parent_record_v0.7.json",
+          HashBytes(*request.parent_record_text),
+          crc_generation ? "history/result_summary_v0.7.json" : "history/result_summary_v0.6.json",
+          HashBytes(*request.historical_result_text),
+#if defined(PAE_ENABLE_SCHEMA_V06_CRC_COMPILER)
+          std::string{crc_generation ? v06::kCrcFingerprintDomain : v06::kFingerprintDomain},
+#else
+          std::string{v06::kFingerprintDomain},
+#endif
+          *request.historical_fingerprint};
     }
     if (bundle.record.deterministic_fingerprint.has_value() &&
         request.historical_fingerprint.has_value()) {
@@ -350,12 +367,28 @@ bool QualifyRunEvidence(const StoredRunBundle& bundle, EvidenceQualificationStat
   }
   auto owner = std::move(compiled).TakePlan();
   const auto& plan = *owner;
-  if (plan.SchemaVersion() != "0.5") {
-    error = "Run Evidence Plan is not Schema 0.5";
+  if (plan.SchemaVersion() != "0.5"
+#if defined(PAE_ENABLE_SCHEMA_V06_CRC_COMPILER)
+      && plan.SchemaVersion() != "0.6"
+#endif
+  ) {
+    error = "Run Evidence Plan is outside the enabled C execution generations";
     return false;
   }
   status = EvidenceQualificationStatus::PLAN_MISMATCH;
   const auto& result = *bundle.result;
+  const bool generation_matches =
+      (plan.SchemaVersion() == "0.5" && result.format_version == v06::kResultFormat &&
+       bundle.record.format_version == kRecordFormat)
+#if defined(PAE_ENABLE_SCHEMA_V06_CRC_COMPILER)
+      || (plan.SchemaVersion() == "0.6" && result.format_version == v06::kCrcResultFormat &&
+          bundle.record.format_version == kCrcRecordFormat)
+#endif
+      ;
+  if (!generation_matches) {
+    error = "Result and Run Record generations do not bind the compiled Plan";
+    return false;
+  }
   if (!result.protocol_id.has_value() || !TextEquals(plan.ProtocolId(), *result.protocol_id) ||
       !result.pipeline_id.has_value() || !result.message_id.has_value()) {
     error = "Result identity does not bind the compiled Plan";
@@ -537,6 +570,12 @@ bool CompareRunEvidence(const std::filesystem::path& left_bundle,
   if (left.record.operation_kind != right.record.operation_kind) {
     status = EvidenceQualificationStatus::PLAN_MISMATCH;
     error = "independent Compare requires matching execution operations";
+    return false;
+  }
+  if (left.record.format_version != right.record.format_version ||
+      left.result->format_version != right.result->format_version) {
+    status = EvidenceQualificationStatus::PLAN_MISMATCH;
+    error = "independent Compare rejects different deterministic fingerprint domains";
     return false;
   }
   const bool equal =

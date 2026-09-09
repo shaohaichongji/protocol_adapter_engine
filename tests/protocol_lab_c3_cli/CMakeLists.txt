@@ -28,6 +28,34 @@ set_tests_properties(
         TIMEOUT 180
 )
 
+if(PAE_ENABLE_PROTOCOL_LAB_SCHEMA_V06_CRC)
+    set(
+        pae_protocol_lab_crc_cli_arguments
+        "-DPAE_LAB_EXECUTABLE=$<TARGET_FILE:pae_protocol_lab>"
+        "-DPAE_SOURCE_DIR=${PROJECT_SOURCE_DIR}"
+        "-DPAE_BINARY_DIR=${CMAKE_CURRENT_BINARY_DIR}"
+        "-DPAE_FIXTURE_DIR=${pae_protocol_lab_c3_fixture_dir}"
+    )
+    if(TARGET pae_protocol_lab_v07_run_evidence_tests)
+        list(
+            APPEND
+            pae_protocol_lab_crc_cli_arguments
+            "-DPAE_HISTORY_GENERATION_FIXTURE=$<TARGET_FILE:pae_protocol_lab_v07_run_evidence_tests>"
+        )
+    endif()
+    add_test(
+        NAME pae.tools.protocol_lab.crc_cli
+        COMMAND
+            "${CMAKE_COMMAND}"
+            ${pae_protocol_lab_crc_cli_arguments}
+            -P "${CMAKE_CURRENT_SOURCE_DIR}/verify_crc_cli.cmake"
+    )
+    set_tests_properties(
+        pae.tools.protocol_lab.crc_cli
+        PROPERTIES LABELS "tools;protocol_lab;offline;crc;cli" TIMEOUT 180
+    )
+endif()
+
 add_test(NAME pae.tools.protocol_lab.c3_policy COMMAND pae_protocol_lab_c3_policy_tests)
 set_tests_properties(
     pae.tools.protocol_lab.c3_policy

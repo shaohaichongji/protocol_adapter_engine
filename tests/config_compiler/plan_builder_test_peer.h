@@ -15,6 +15,12 @@ protocol_plan::BudgetedPlanDraft MakeBitfieldDraftWithTooManyTotalContainers();
 protocol_plan::BudgetedPlanDraft MakeIntegrityDraftWithUnknownAlgorithm();
 protocol_plan::BudgetedPlanDraft MakeIntegrityDraftWithSelfIncludedStorage();
 protocol_plan::BudgetedPlanDraft MakeIntegrityDraftWithFieldStorageConflict();
+#if defined(PAE_ENABLE_SCHEMA_V06_CRC_COMPILER)
+protocol_plan::BudgetedPlanDraft MakeCrcDraftWithInvalidWidth();
+protocol_plan::BudgetedPlanDraft MakeCrcDraftWithEvenPolynomial();
+protocol_plan::BudgetedPlanDraft MakeCrcDraftWithInvalidStorageOrder();
+protocol_plan::BudgetedPlanDraft MakeCrcDraftWithOldSchema();
+#endif
 protocol_plan::BudgetedPlanDraft MakeInt64DraftWithOutOfRangeConstant();
 #if defined(PAE_ENABLE_SCHEMA_V05_COMPILER)
 enum class ConversionDraftMutation {

@@ -205,7 +205,11 @@ std::string_view ToString(CompileError value) noexcept {
 class TestRunner final {
  public:
 #if defined(PAE_ENABLE_SCHEMA_V05_COMPILER)
+#if defined(PAE_ENABLE_SCHEMA_V06_CRC_COMPILER)
+  static constexpr std::size_t kExpectedCaseCount = 84U;
+#else
   static constexpr std::size_t kExpectedCaseCount = 80U;
+#endif
 #else
   static constexpr std::size_t kExpectedCaseCount = 49U;
 #endif
@@ -592,6 +596,13 @@ void RunPlanBuilderIntegrityDefenseCases(TestRunner& runner) {
          pae::test_support::MakeIntegrityDraftWithSelfIncludedStorage());
   reject("sum8_builder_field_storage_conflict_defense",
          pae::test_support::MakeIntegrityDraftWithFieldStorageConflict());
+#if defined(PAE_ENABLE_SCHEMA_V06_CRC_COMPILER)
+  reject("crc_builder_width_defense", pae::test_support::MakeCrcDraftWithInvalidWidth());
+  reject("crc_builder_polynomial_defense", pae::test_support::MakeCrcDraftWithEvenPolynomial());
+  reject("crc_builder_storage_order_defense",
+         pae::test_support::MakeCrcDraftWithInvalidStorageOrder());
+  reject("crc_builder_schema_generation_defense", pae::test_support::MakeCrcDraftWithOldSchema());
+#endif
 }
 
 #if defined(PAE_ENABLE_SCHEMA_V05_COMPILER)

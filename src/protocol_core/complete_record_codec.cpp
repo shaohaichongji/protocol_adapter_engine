@@ -14,6 +14,7 @@ using protocol_plan::ByteOrder;
 using protocol_plan::CandidateGroupExecutionPlan;
 using protocol_plan::EncodeSource;
 using protocol_plan::FieldExecutionPlan;
+using protocol_plan::FrozenIntegrityPlan;
 using protocol_plan::MessageExecutionPlan;
 using protocol_plan::PipelineExecutionPlan;
 using protocol_plan::PlanBundle;
@@ -225,12 +226,28 @@ bool IntegrityDescriptorValid(const MessageExecutionPlan& message) noexcept {
     return true;
   }
   const auto& integrity = *message.integrity;
-  return integrity.algorithm == protocol_plan::IntegrityAlgorithm::SUM8 &&
-         integrity.range_length != 0U && integrity.range_offset <= message.frame_size &&
+  std::size_t storage_width = 1U;
+  bool algorithm_valid = integrity.algorithm == protocol_plan::IntegrityAlgorithm::SUM8;
+#if defined(PAE_ENABLE_SCHEMA_V06_CRC_COMPILER)
+  if (integrity.algorithm == protocol_plan::IntegrityAlgorithm::CRC) {
+    storage_width = static_cast<std::size_t>(integrity.crc_width / 8U);
+    const std::uint32_t width_mask = integrity.crc_width == 16U ? 0xFFFFU : 0xFFFFFFFFU;
+    algorithm_valid = (integrity.crc_width == 16U || integrity.crc_width == 32U) &&
+                      integrity.crc_polynomial != 0U && (integrity.crc_polynomial & 1U) != 0U &&
+                      (integrity.crc_polynomial & ~width_mask) == 0U &&
+                      (integrity.crc_initial_value & ~width_mask) == 0U &&
+                      (integrity.crc_xor_output & ~width_mask) == 0U &&
+                      (integrity.storage_byte_order == ByteOrder::BIG ||
+                       integrity.storage_byte_order == ByteOrder::LITTLE);
+  }
+#endif
+  return algorithm_valid && integrity.range_length != 0U &&
+         integrity.range_offset <= message.frame_size &&
          integrity.range_length <= message.frame_size - integrity.range_offset &&
-         integrity.storage_offset < message.frame_size &&
-         !(integrity.storage_offset >= integrity.range_offset &&
-           integrity.storage_offset - integrity.range_offset < integrity.range_length);
+         integrity.storage_offset <= message.frame_size &&
+         storage_width <= message.frame_size - integrity.storage_offset &&
+         !(integrity.storage_offset < integrity.range_offset + integrity.range_length &&
+           integrity.range_offset < integrity.storage_offset + storage_width);
 }
 
 std::uint8_t Sum8(const std::uint8_t* data, std::size_t offset, std::size_t length,
@@ -251,6 +268,51 @@ std::uint8_t Sum8(const std::uint8_t* data, std::size_t offset, std::size_t leng
   return sum;
 }
 
+#if defined(PAE_ENABLE_SCHEMA_V06_CRC_COMPILER)
+std::uint32_t ReverseLowBits(std::uint32_t value, std::uint8_t width) noexcept {
+  std::uint32_t reversed = 0U;
+  for (std::uint8_t index = 0U; index < width; ++index) {
+    reversed = static_cast<std::uint32_t>((reversed << 1U) | (value & 1U));
+    value >>= 1U;
+  }
+  return reversed;
+}
+
+std::uint32_t Crc(const FrozenIntegrityPlan& integrity, const std::uint8_t* data,
+                  bool review PAE_OPERATION_COUNTS_PARAMETER) noexcept {
+  const std::uint32_t mask = integrity.crc_width == 16U ? 0xFFFFU : 0xFFFFFFFFU;
+  const std::uint32_t top_bit = std::uint32_t{1U} << (integrity.crc_width - 1U);
+  std::uint32_t value = integrity.crc_initial_value;
+  for (std::size_t index = 0U; index < integrity.range_length; ++index) {
+#if defined(PAE_ENABLE_OPERATION_COUNTERS)
+    if (review) {
+      ++counts.integrity_bytes_verified;
+    } else {
+      ++counts.integrity_bytes_accumulated;
+    }
+#else
+    static_cast<void>(review);
+#endif
+    std::uint32_t input = data[integrity.range_offset + index];
+    if (integrity.crc_reflect_input) {
+      input = ReverseLowBits(input, 8U);
+    }
+    value ^= input << (integrity.crc_width - 8U);
+    for (std::uint8_t bit = 0U; bit < 8U; ++bit) {
+      const bool high = (value & top_bit) != 0U;
+      value = static_cast<std::uint32_t>((value << 1U) & mask);
+      if (high) {
+        value ^= integrity.crc_polynomial;
+      }
+    }
+  }
+  if (integrity.crc_reflect_output) {
+    value = ReverseLowBits(value, integrity.crc_width);
+  }
+  return static_cast<std::uint32_t>((value ^ integrity.crc_xor_output) & mask);
+}
+#endif
+
 bool IntegrityMatches(const MessageExecutionPlan& message,
                       const std::uint8_t* data PAE_OPERATION_COUNTS_PARAMETER) noexcept {
   if (!IntegrityDescriptorValid(message)) {
@@ -260,9 +322,20 @@ bool IntegrityMatches(const MessageExecutionPlan& message,
     return true;
   }
   const auto& integrity = *message.integrity;
-  return Sum8(data, static_cast<std::size_t>(integrity.range_offset),
-              static_cast<std::size_t>(integrity.range_length),
-              true PAE_OPERATION_COUNTS_ARGUMENT) == data[integrity.storage_offset];
+  if (integrity.algorithm == protocol_plan::IntegrityAlgorithm::SUM8) {
+    return Sum8(data, static_cast<std::size_t>(integrity.range_offset),
+                static_cast<std::size_t>(integrity.range_length),
+                true PAE_OPERATION_COUNTS_ARGUMENT) == data[integrity.storage_offset];
+  }
+#if defined(PAE_ENABLE_SCHEMA_V06_CRC_COMPILER)
+  std::uint64_t stored = 0U;
+  const std::size_t storage_width = static_cast<std::size_t>(integrity.crc_width / 8U);
+  return LoadUnsigned(data + integrity.storage_offset, storage_width, integrity.storage_byte_order,
+                      stored) &&
+         Crc(integrity, data, true PAE_OPERATION_COUNTS_ARGUMENT) == stored;
+#else
+  return false;
+#endif
 }
 
 MatchOutcome FindPipelineMatch(const PipelineExecutionPlan& pipeline,
@@ -370,7 +443,12 @@ CodecStatus ToCodecStatus(detail::DecimalArithmeticStatus status) noexcept {
 
 bool ConversionPlanValid(const PlanBundle& plan, const FieldExecutionPlan& field) noexcept {
   if (!HasConversion(field)) return true;
-  return plan.SchemaVersion() == "0.5" && field.conversion_index < plan.Conversions().size() &&
+  return (plan.SchemaVersion() == "0.5"
+#if defined(PAE_ENABLE_SCHEMA_V06_CRC_COMPILER)
+          || plan.SchemaVersion() == "0.6"
+#endif
+          ) &&
+         field.conversion_index < plan.Conversions().size() &&
          field.conversion_slot != kInvalidIndex && field.bit_container_index == kInvalidIndex &&
          field.encode_source == EncodeSource::INPUT &&
          plan.Conversions()[field.conversion_index].raw_value_type == field.value_type;
@@ -454,7 +532,11 @@ CodecStatus PrepareEncodeInputs(const PlanBundle& plan, const MessageExecutionPl
     if (IsPresent(present_words, field.input_ordinal)) {
       return CodecStatus::DUPLICATE_FIELD;
     }
-    const bool defer_value_validation = plan.SchemaVersion() == "0.5";
+    const bool defer_value_validation = plan.SchemaVersion() == "0.5"
+#if defined(PAE_ENABLE_SCHEMA_V06_CRC_COMPILER)
+                                        || plan.SchemaVersion() == "0.6"
+#endif
+        ;
     if (!defer_value_validation && !ValueKindMatches(value.value_kind, field.value_type)) {
       return CodecStatus::TYPE_MISMATCH;
     }
@@ -502,7 +584,11 @@ CodecStatus PrepareEncodeInputs(const PlanBundle& plan, const MessageExecutionPl
     }
   }
 #if defined(PAE_ENABLE_SCHEMA_V05_COMPILER)
-  if (plan.SchemaVersion() == "0.5") {
+  if (plan.SchemaVersion() == "0.5"
+#if defined(PAE_ENABLE_SCHEMA_V06_CRC_COMPILER)
+      || plan.SchemaVersion() == "0.6"
+#endif
+  ) {
     for (std::size_t field_index = 0U; field_index < message.fields.size(); ++field_index) {
       const FieldExecutionPlan& field = message.fields[field_index];
       if (field.encode_source != EncodeSource::INPUT) continue;
@@ -748,6 +834,9 @@ bool internal::SupportsCompleteRecordSchema(std::string_view schema_version) noe
   }
 #if defined(PAE_ENABLE_SCHEMA_V05_COMPILER)
   if (schema_version == "0.5") return true;
+#if defined(PAE_ENABLE_SCHEMA_V06_CRC_COMPILER)
+  if (schema_version == "0.6") return true;
+#endif
 #endif
   return false;
 }
@@ -972,7 +1061,11 @@ DecodeResult DecodeCompleteRecord(const PlanBundle& plan, ExecutionWorkspace& wo
     PAE_INCREMENT_OPERATION_COUNT(field_validation_visits);
     const FieldExecutionPlan& field = message.fields[field_index];
 #if defined(PAE_ENABLE_SCHEMA_V05_COMPILER)
-    if (plan.SchemaVersion() == "0.5") {
+    if (plan.SchemaVersion() == "0.5"
+#if defined(PAE_ENABLE_SCHEMA_V06_CRC_COMPILER)
+        || plan.SchemaVersion() == "0.6"
+#endif
+    ) {
       if (!ConversionPlanValid(plan, field)) {
         result.status = CodecStatus::INVALID_PLAN;
         result.failed_field_index = field_index;
@@ -1216,9 +1309,22 @@ EncodeResult EncodeCompleteRecord(const PlanBundle& plan, ExecutionWorkspace& wo
   }
   if (message.integrity.has_value()) {
     const auto& integrity = *message.integrity;
-    output.data[integrity.storage_offset] =
-        Sum8(output.data, static_cast<std::size_t>(integrity.range_offset),
-             static_cast<std::size_t>(integrity.range_length), false PAE_OPERATION_COUNTS_ARGUMENT);
+    if (integrity.algorithm == protocol_plan::IntegrityAlgorithm::SUM8) {
+      output.data[integrity.storage_offset] = Sum8(
+          output.data, static_cast<std::size_t>(integrity.range_offset),
+          static_cast<std::size_t>(integrity.range_length), false PAE_OPERATION_COUNTS_ARGUMENT);
+    }
+#if defined(PAE_ENABLE_SCHEMA_V06_CRC_COMPILER)
+    else {
+      const std::size_t storage_width = static_cast<std::size_t>(integrity.crc_width / 8U);
+      const std::uint32_t crc = Crc(integrity, output.data, false PAE_OPERATION_COUNTS_ARGUMENT);
+      if (!StoreUnsigned(crc, output.data + integrity.storage_offset, storage_width,
+                         integrity.storage_byte_order)) {
+        result.status = CodecStatus::FINAL_REVIEW_FAILED;
+        return result;
+      }
+    }
+#endif
 #if defined(PAE_ENABLE_OPERATION_COUNTERS)
     if (g_corrupt_integrity_storage_before_final_review.exchange(false,
                                                                  std::memory_order_relaxed)) {

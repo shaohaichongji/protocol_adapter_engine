@@ -1,9 +1,9 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "urn:pae:schema:protocol-package:0.5:decimal-compiler-slice",
-  "title": "PAE ProtocolPackage V0.1-V0.5 Decimal Compiler Slice",
-  "description": "Schema 0.5在既有能力上增加精确线性DECIMAL64转换的编译期描述。",
-  "x-pae-status": "DEC-042B COMPILER-ONLY ISOLATED SLICE",
+  "$id": "urn:pae:schema:protocol-package:0.6:crc-slice",
+  "title": "PAE ProtocolPackage V0.1-V0.6 CRC Slice",
+  "description": "Schema 0.6在既有能力上增加参数化CRC-16/CRC-32完整记录校验。",
+  "x-pae-status": "PARAMETERIZED CRC MINIMAL SLICE",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -19,7 +19,7 @@
   ],
   "properties": {
     "schema_version": {
-      "enum": ["0.1", "0.2", "0.3", "0.4", "0.5"]
+      "enum": ["0.1", "0.2", "0.3", "0.4", "0.5", "0.6"]
     },
     "protocol_id": {
       "$ref": "#/$defs/stable_id"
@@ -79,7 +79,11 @@
           "else": {
             "if": {"properties": {"schema_version": {"const": "0.4"}}},
             "then": {"properties": {"messages": {"items": {"$ref": "#/$defs/message_v04"}}}},
-            "else": {"properties": {"messages": {"items": {"$ref": "#/$defs/message_v05"}}}}
+            "else": {
+              "if": {"properties": {"schema_version": {"const": "0.5"}}},
+              "then": {"properties": {"messages": {"items": {"$ref": "#/$defs/message_v05"}}}},
+              "else": {"properties": {"messages": {"items": {"$ref": "#/$defs/message_v06"}}}}
+            }
           }
         }
       }
@@ -317,6 +321,33 @@
         }
       }
     },
+    "message_v06": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "display_name", "description", "source_ref", "direction_id",
+                   "frame_length_bytes", "matcher", "fields"],
+      "properties": {
+        "id": {"$ref": "#/$defs/stable_id"},
+        "display_name": {"$ref": "#/$defs/display_name"},
+        "description": {"$ref": "#/$defs/description"},
+        "source_ref": {"$ref": "#/$defs/source_ref"},
+        "direction_id": {"$ref": "#/$defs/stable_id"},
+        "frame_length_bytes": {"type": "integer", "minimum": 1, "maximum": 1048576},
+        "matcher": {"$ref": "#/$defs/matcher"},
+        "bit_containers": {
+          "type": "array", "minItems": 1, "maxItems": 4096,
+          "items": {"$ref": "#/$defs/bit_container"}
+        },
+        "integrity": {"oneOf": [
+          {"$ref": "#/$defs/integrity_sum8"},
+          {"$ref": "#/$defs/integrity_crc"}
+        ]},
+        "fields": {
+          "type": "array", "minItems": 1, "maxItems": 4096,
+          "items": {"$ref": "#/$defs/field_v05"}
+        }
+      }
+    },
     "integrity_sum8": {
       "type": "object",
       "additionalProperties": false,
@@ -338,6 +369,45 @@
           "required": ["byte_offset"],
           "properties": {
             "byte_offset": {"type": "integer", "minimum": 0, "maximum": 18446744073709551615}
+          }
+        }
+      }
+    },
+    "integrity_crc": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["algorithm", "parameters", "range", "storage"],
+      "properties": {
+        "algorithm": {"const": "crc"},
+        "parameters": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["width", "poly", "init", "refin", "refout", "xorout"],
+          "properties": {
+            "width": {"enum": [16, 32]},
+            "poly": {"type": "string", "pattern": "^(?:[0-9A-F]{4}|[0-9A-F]{8})$"},
+            "init": {"type": "string", "pattern": "^(?:[0-9A-F]{4}|[0-9A-F]{8})$"},
+            "refin": {"type": "boolean"},
+            "refout": {"type": "boolean"},
+            "xorout": {"type": "string", "pattern": "^(?:[0-9A-F]{4}|[0-9A-F]{8})$"}
+          }
+        },
+        "range": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["byte_offset", "byte_length"],
+          "properties": {
+            "byte_offset": {"type": "integer", "minimum": 0, "maximum": 18446744073709551615},
+            "byte_length": {"type": "integer", "minimum": 1, "maximum": 18446744073709551615}
+          }
+        },
+        "storage": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["byte_offset", "byte_order"],
+          "properties": {
+            "byte_offset": {"type": "integer", "minimum": 0, "maximum": 18446744073709551615},
+            "byte_order": {"enum": ["big_endian", "little_endian"]}
           }
         }
       }

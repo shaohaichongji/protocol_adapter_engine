@@ -13,6 +13,9 @@ namespace pae::protocol_lab::v07 {
 
 inline constexpr std::string_view kRecordFormat = "pae.lab.record/0.7";
 inline constexpr std::string_view kEventFormat = "pae.lab.event/0.7";
+#if defined(PAE_ENABLE_SCHEMA_V06_CRC_COMPILER)
+inline constexpr std::string_view kCrcRecordFormat = "pae.lab.record/0.8";
+#endif
 
 struct FileDescriptor {
   std::string path;
@@ -83,6 +86,7 @@ struct StageEvent {
 };
 
 struct RunRecord {
+  std::string format_version = std::string{kRecordFormat};
   std::string run_id;
   std::string tool_version;
   std::string operation_kind;

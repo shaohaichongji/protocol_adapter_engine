@@ -30,6 +30,63 @@ constexpr std::string_view kValuesFile = "inputs/values.pae-lab.json";
 constexpr std::string_view kFrameFile = "frames/000001_frame.bin";
 constexpr std::string_view kParentRecordFile = "history/parent_record_v0.7.json";
 constexpr std::string_view kHistoricalResultFile = "history/result_summary_v0.6.json";
+#if defined(PAE_ENABLE_SCHEMA_V06_CRC_COMPILER)
+constexpr std::string_view kCrcResultFile = "result_summary_v0.7.json";
+constexpr std::string_view kCrcRecordFile = "run_record_v0.8.json";
+constexpr std::string_view kCrcParentRecordFile = "history/parent_record_v0.8.json";
+constexpr std::string_view kCrcHistoricalResultFile = "history/result_summary_v0.7.json";
+#endif
+
+bool IsCrcGeneration(const RunRecord& record) noexcept {
+#if defined(PAE_ENABLE_SCHEMA_V06_CRC_COMPILER)
+  return record.format_version == kCrcRecordFormat;
+#else
+  static_cast<void>(record);
+  return false;
+#endif
+}
+
+std::string_view ResultFileFor([[maybe_unused]] const RunRecord& record) noexcept {
+#if defined(PAE_ENABLE_SCHEMA_V06_CRC_COMPILER)
+  if (IsCrcGeneration(record)) return kCrcResultFile;
+#endif
+  return kResultFile;
+}
+
+std::string_view RecordFileFor([[maybe_unused]] const RunRecord& record) noexcept {
+#if defined(PAE_ENABLE_SCHEMA_V06_CRC_COMPILER)
+  if (IsCrcGeneration(record)) return kCrcRecordFile;
+#endif
+  return kRecordFile;
+}
+
+std::string_view ParentRecordFileFor([[maybe_unused]] const RunRecord& record) noexcept {
+#if defined(PAE_ENABLE_SCHEMA_V06_CRC_COMPILER)
+  if (IsCrcGeneration(record)) return kCrcParentRecordFile;
+#endif
+  return kParentRecordFile;
+}
+
+std::string_view HistoricalResultFileFor([[maybe_unused]] const RunRecord& record) noexcept {
+#if defined(PAE_ENABLE_SCHEMA_V06_CRC_COMPILER)
+  if (IsCrcGeneration(record)) return kCrcHistoricalResultFile;
+#endif
+  return kHistoricalResultFile;
+}
+
+std::string_view FingerprintDomainFor([[maybe_unused]] const RunRecord& record) noexcept {
+#if defined(PAE_ENABLE_SCHEMA_V06_CRC_COMPILER)
+  if (IsCrcGeneration(record)) return v06::kCrcFingerprintDomain;
+#endif
+  return v06::kFingerprintDomain;
+}
+
+std::string_view ResultFormatFor([[maybe_unused]] const RunRecord& record) noexcept {
+#if defined(PAE_ENABLE_SCHEMA_V06_CRC_COMPILER)
+  if (IsCrcGeneration(record)) return v06::kCrcResultFormat;
+#endif
+  return v06::kResultFormat;
+}
 
 struct DocumentDeleter {
   void operator()(yyjson_doc* document) const noexcept { yyjson_doc_free(document); }
@@ -261,7 +318,8 @@ std::string SerializeExecution(const ExecutionFacts& facts) {
 
 std::string SerializeRecord(const RunRecord& record) {
   std::ostringstream output;
-  output << "{\"format_version\":" << Quote(kRecordFormat) << ",\"run_id\":" << Quote(record.run_id)
+  output << "{\"format_version\":" << Quote(record.format_version)
+         << ",\"run_id\":" << Quote(record.run_id)
          << ",\"tool_version\":" << Quote(record.tool_version)
          << ",\"evidence_origin\":\"LAB_C_EXECUTION\",\"operation_kind\":"
          << Quote(record.operation_kind) << ",\"invocation_kind\":" << Quote(record.invocation_kind)
@@ -326,13 +384,18 @@ bool ValidateInputAssociations(const RunBundleInput& input, std::string& error) 
       input.record.frame_file != (input.frame.has_value()
                                       ? std::optional<std::string>{std::string{kFrameFile}}
                                       : std::nullopt) ||
-      input.record.result_file != (input.result.has_value()
-                                       ? std::optional<std::string>{std::string{kResultFile}}
-                                       : std::nullopt)) {
+      input.record.result_file !=
+          (input.result.has_value()
+               ? std::optional<std::string>{std::string{ResultFileFor(input.record)}}
+               : std::nullopt)) {
     error = "Run Record file roles do not match supplied payloads";
     return false;
   }
   if (input.result.has_value()) {
+    if (input.result->format_version != ResultFormatFor(input.record)) {
+      error = "Run Record and Result generations do not match";
+      return false;
+    }
     std::string format_error;
     const std::string fingerprint = v06::FinalizeFingerprint(*input.result, format_error);
     if (!format_error.empty() || input.record.deterministic_fingerprint != fingerprint) {
@@ -369,9 +432,9 @@ bool ValidateInputAssociations(const RunBundleInput& input, std::string& error) 
   }
   if (replay) {
     const auto& history = *input.record.historical_baseline;
-    if (history.parent_record_file != kParentRecordFile ||
-        history.result_file != kHistoricalResultFile ||
-        history.fingerprint_domain != v06::kFingerprintDomain ||
+    if (history.parent_record_file != ParentRecordFileFor(input.record) ||
+        history.result_file != HistoricalResultFileFor(input.record) ||
+        history.fingerprint_domain != FingerprintDomainFor(input.record) ||
         history.parent_record_sha256 != HashBytes(*input.parent_record_text) ||
         history.result_sha256 != HashBytes(*input.historical_result_text)) {
       error = "Replay historical baseline does not bind supplied snapshots";
@@ -405,6 +468,10 @@ bool WriteRunBundle(const std::filesystem::path& record_root, const RunBundleInp
   if (!file_system.CreateDirectory(progress_path, error)) return false;
 
   RunRecord record = input.record;
+  const std::string_view result_file = ResultFileFor(record);
+  const std::string_view record_file = RecordFileFor(record);
+  const std::string_view parent_record_file = ParentRecordFileFor(record);
+  const std::string_view historical_result_file = HistoricalResultFileFor(record);
   record.recorded_payload_files.clear();
   if (!WriteVerified(file_system, progress_path, kConfigFile, input.config_text,
                      record.recorded_payload_files, error) ||
@@ -420,18 +487,18 @@ bool WriteRunBundle(const std::filesystem::path& record_root, const RunBundleInp
     std::string result_error;
     const std::string result_text = v06::SerializeResult(*input.result, result_error);
     if (!result_error.empty() ||
-        !WriteVerified(file_system, progress_path, kResultFile, result_text,
+        !WriteVerified(file_system, progress_path, result_file, result_text,
                        record.recorded_payload_files, error)) {
       if (error.empty()) error = result_error;
       return false;
     }
   }
   if (input.parent_record_text.has_value() &&
-      !WriteVerified(file_system, progress_path, kParentRecordFile, *input.parent_record_text,
+      !WriteVerified(file_system, progress_path, parent_record_file, *input.parent_record_text,
                      record.recorded_payload_files, error))
     return false;
   if (input.historical_result_text.has_value() &&
-      !WriteVerified(file_system, progress_path, kHistoricalResultFile,
+      !WriteVerified(file_system, progress_path, historical_result_file,
                      *input.historical_result_text, record.recorded_payload_files, error))
     return false;
   const std::string events = SerializeEvents(record.run_id, input.events);
@@ -444,7 +511,7 @@ bool WriteRunBundle(const std::filesystem::path& record_root, const RunBundleInp
             });
   std::vector<FileDescriptor> manifest_files = record.recorded_payload_files;
   const std::string record_text = SerializeRecord(record);
-  if (!WriteVerified(file_system, progress_path, kRecordFile, record_text, manifest_files, error) ||
+  if (!WriteVerified(file_system, progress_path, record_file, record_text, manifest_files, error) ||
       !WriteVerified(file_system, progress_path, "COMPLETE", std::string_view{}, manifest_files,
                      error))
     return false;
@@ -767,9 +834,15 @@ bool ParseHistoricalBaseline(yyjson_val* value, std::optional<HistoricalBaseline
       !ReadString(value, "result_sha256", history.result_sha256, error) ||
       !ReadString(value, "fingerprint_domain", history.fingerprint_domain, error) ||
       !ReadString(value, "deterministic_fingerprint", history.deterministic_fingerprint, error) ||
-      history.parent_record_file != kParentRecordFile ||
-      history.result_file != kHistoricalResultFile ||
-      history.fingerprint_domain != v06::kFingerprintDomain ||
+      !((history.parent_record_file == kParentRecordFile &&
+         history.result_file == kHistoricalResultFile &&
+         history.fingerprint_domain == v06::kFingerprintDomain)
+#if defined(PAE_ENABLE_SCHEMA_V06_CRC_COMPILER)
+        || (history.parent_record_file == kCrcParentRecordFile &&
+            history.result_file == kCrcHistoricalResultFile &&
+            history.fingerprint_domain == v06::kCrcFingerprintDomain)
+#endif
+            ) ||
       !IsLowerHash(history.parent_record_sha256) || !IsLowerHash(history.result_sha256) ||
       history.deterministic_fingerprint.size() != 64U) {
     if (error.empty()) error = "Run Record historical_baseline is invalid";
@@ -810,8 +883,13 @@ bool ParseRecord(std::string& text, RunRecord& output, std::string& error) {
                                               "hash_manifest",
                                               "hash_manifest_excludes_self",
                                               "recorded_payload_files"};
-  if (!IsObject(root, properties, properties, "Run Record 0.7", error) ||
-      !ReadFixedString(root, "format_version", kRecordFormat, error) ||
+  if (!IsObject(root, properties, properties, "Run Record", error) ||
+      !ReadString(root, "format_version", output.format_version, error) ||
+      (output.format_version != kRecordFormat
+#if defined(PAE_ENABLE_SCHEMA_V06_CRC_COMPILER)
+       && output.format_version != kCrcRecordFormat
+#endif
+       ) ||
       !ReadString(root, "run_id", output.run_id, error) || output.run_id.empty() ||
       !ReadString(root, "tool_version", output.tool_version, error) ||
       output.tool_version.empty() ||
@@ -847,6 +925,12 @@ bool ParseRecord(std::string& text, RunRecord& output, std::string& error) {
       (!replay && output.requested_pipeline_id.has_value()) ||
       (replay && inspect != output.requested_pipeline_id.has_value())) {
     error = "Run Record invocation, history, and requested Pipeline are inconsistent";
+    return false;
+  }
+  if (replay && (output.historical_baseline->parent_record_file != ParentRecordFileFor(output) ||
+                 output.historical_baseline->result_file != HistoricalResultFileFor(output) ||
+                 output.historical_baseline->fingerprint_domain != FingerprintDomainFor(output))) {
+    error = "Run Record history generation does not match its format_version";
     return false;
   }
   yyjson_val* excludes = yyjson_obj_get(root, "hash_manifest_excludes_self");
@@ -1147,7 +1231,7 @@ bool ValidateTerminal(const RunRecord& record, bool has_result, std::string& err
       (record.deterministic_fingerprint.has_value() != has_result) ||
       (record.values_file.has_value() && *record.values_file != kValuesFile) ||
       (record.frame_file.has_value() && *record.frame_file != kFrameFile) ||
-      (record.result_file.has_value() && *record.result_file != kResultFile) ||
+      (record.result_file.has_value() && *record.result_file != ResultFileFor(record)) ||
       (!inspect && (has_frame != (execution.terminal_status == "OK" && has_result)))) {
     error = "Run Record payload roles are inconsistent with its operation and terminal state";
     return false;
@@ -1179,10 +1263,10 @@ std::set<std::string> ExpectedPayloadPaths(const RunRecord& record) {
   std::set<std::string> expected{std::string{kConfigFile}, std::string{kEventFile}};
   if (record.values_file.has_value()) expected.insert(std::string{kValuesFile});
   if (record.frame_file.has_value()) expected.insert(std::string{kFrameFile});
-  if (record.result_file.has_value()) expected.insert(std::string{kResultFile});
+  if (record.result_file.has_value()) expected.insert(std::string{ResultFileFor(record)});
   if (record.invocation_kind == "REPLAY") {
-    expected.insert(std::string{kParentRecordFile});
-    expected.insert(std::string{kHistoricalResultFile});
+    expected.insert(std::string{ParentRecordFileFor(record)});
+    expected.insert(std::string{HistoricalResultFileFor(record)});
   }
   return expected;
 }
@@ -1281,8 +1365,26 @@ bool LoadRunBundleForTest(const std::filesystem::path& bundle, StoredRunBundle& 
   if (!PreflightBundleTree(bundle, disk_files, error)) return false;
   std::set<std::string> manifest_paths;
   if (!ParseManifest(bundle, file_system, manifest_paths, error)) return false;
+  const bool has_old_record = manifest_paths.find(std::string{kRecordFile}) != manifest_paths.end();
+#if defined(PAE_ENABLE_SCHEMA_V06_CRC_COMPILER)
+  const bool has_crc_record =
+      manifest_paths.find(std::string{kCrcRecordFile}) != manifest_paths.end();
+#else
+  const bool has_crc_record = false;
+#endif
+  if (has_old_record == has_crc_record) {
+    error = "Run Bundle must contain exactly one supported Run Record generation";
+    return false;
+  }
+  const std::string_view record_file = has_crc_record
+#if defined(PAE_ENABLE_SCHEMA_V06_CRC_COMPILER)
+                                           ? kCrcRecordFile
+#else
+                                           ? kRecordFile
+#endif
+                                           : kRecordFile;
   const std::set<std::string> mandatory{"COMPLETE", std::string{kConfigFile},
-                                        std::string{kEventFile}, std::string{kRecordFile}};
+                                        std::string{kEventFile}, std::string{record_file}};
   if (!std::includes(manifest_paths.begin(), manifest_paths.end(), mandatory.begin(),
                      mandatory.end())) {
     error = "Run Bundle 0.7 manifest omits a required file";
@@ -1295,9 +1397,13 @@ bool LoadRunBundleForTest(const std::filesystem::path& bundle, StoredRunBundle& 
     return false;
   }
 
-  if (!ReadText(file_system, bundle / kRecordFile, candidate.record_text, error) ||
+  if (!ReadText(file_system, bundle / record_file, candidate.record_text, error) ||
       !ParseRecord(candidate.record_text, candidate.record, error))
     return false;
+  if (record_file != RecordFileFor(candidate.record)) {
+    error = "Run Record filename does not match its format_version";
+    return false;
+  }
   std::string bundle_name = bundle.filename().generic_string();
   constexpr std::string_view suffix = ".inprogress";
   if (bundle_name.size() > suffix.size() &&
@@ -1325,7 +1431,7 @@ bool LoadRunBundleForTest(const std::filesystem::path& bundle, StoredRunBundle& 
   if (!ValidatePayloadRoleSet(candidate.record, "Run Record 0.7", error)) return false;
   std::set<std::string> expected_manifest = expected_payloads;
   expected_manifest.insert("COMPLETE");
-  expected_manifest.insert(std::string{kRecordFile});
+  expected_manifest.insert(std::string{record_file});
   if (manifest_paths != expected_manifest) {
     error = "Run Bundle 0.7 has a mixed generation or unsupported file set";
     return false;
@@ -1348,10 +1454,15 @@ bool LoadRunBundleForTest(const std::filesystem::path& bundle, StoredRunBundle& 
   }
   if (candidate.record.result_file.has_value()) {
     std::string result_text;
-    if (*candidate.record.result_file != kResultFile ||
-        !ReadText(file_system, bundle / kResultFile, result_text, error) ||
+    const std::string_view result_file = ResultFileFor(candidate.record);
+    if (*candidate.record.result_file != result_file ||
+        !ReadText(file_system, bundle / result_file, result_text, error) ||
         !v06::ParseResult(result_text, candidate.result.emplace(), error))
       return false;
+    if (candidate.result->format_version != ResultFormatFor(candidate.record)) {
+      error = "Result format_version does not match the Run Record generation";
+      return false;
+    }
     candidate.result_text = result_text;
     const std::string fingerprint = v06::FinalizeFingerprint(*candidate.result, error);
     if (!error.empty() || !candidate.record.execution.main_codec.has_value() ||
@@ -1380,8 +1491,10 @@ bool LoadRunBundleForTest(const std::filesystem::path& bundle, StoredRunBundle& 
   if (candidate.record.invocation_kind == "REPLAY") {
     std::string parent_text;
     std::string historical_result_text;
-    if (!ReadText(file_system, bundle / kParentRecordFile, parent_text, error) ||
-        !ReadText(file_system, bundle / kHistoricalResultFile, historical_result_text, error))
+    const std::string_view parent_record_file = ParentRecordFileFor(candidate.record);
+    const std::string_view historical_result_file = HistoricalResultFileFor(candidate.record);
+    if (!ReadText(file_system, bundle / parent_record_file, parent_text, error) ||
+        !ReadText(file_system, bundle / historical_result_file, historical_result_text, error))
       return false;
     const auto& history = *candidate.record.historical_baseline;
     if (HashBytes(parent_text) != history.parent_record_sha256 ||
@@ -1396,13 +1509,21 @@ bool LoadRunBundleForTest(const std::filesystem::path& bundle, StoredRunBundle& 
     if (!ParseRecord(parent_parse_text, parent_record, error) ||
         !v06::ParseResult(historical_parse_text, historical_result, error))
       return false;
-    const FileDescriptor* parent_result = DescriptorFor(parent_record, kResultFile);
+    if (historical_result.format_version != ResultFormatFor(parent_record) ||
+        history.fingerprint_domain != FingerprintDomainFor(parent_record)) {
+      error = "Replay historical Result generation does not match the parent Run Record";
+      return false;
+    }
+    const FileDescriptor* parent_result =
+        DescriptorFor(parent_record, ResultFileFor(parent_record));
     const FileDescriptor* parent_config = DescriptorFor(parent_record, kConfigFile);
     const FileDescriptor* child_config = DescriptorFor(candidate.record, kConfigFile);
     const std::string historical_fingerprint = v06::FinalizeFingerprint(historical_result, error);
     if (!error.empty() || !parent_result || !parent_config || !child_config ||
         parent_record.run_id != candidate.record.parent_run_id ||
-        parent_record.result_file != std::optional<std::string>{std::string{kResultFile}} ||
+        parent_record.format_version != candidate.record.format_version ||
+        parent_record.result_file !=
+            std::optional<std::string>{std::string{ResultFileFor(parent_record)}} ||
         parent_record.deterministic_fingerprint != historical_fingerprint ||
         parent_result->size != historical_result_text.size() ||
         parent_result->sha256 != HashBytes(historical_result_text) ||

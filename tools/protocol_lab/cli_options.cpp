@@ -80,8 +80,12 @@ void PrintUsage() {
       << "      [--send [--allow-non-loopback]]\n"
       << "common: [--output text|json] [--record-root <dir>] [--expect-status <status>]\n";
 #if defined(PAE_ENABLE_PROTOCOL_LAB_SCHEMA_V05)
-  std::cerr << "Schema 0.5 C3: inspect/encode/replay require --record-root; replay forbids "
-               "replacement --config; compare accepts two Record 0.7 runs.\n";
+  std::cerr << "Schema 0.5"
+#if defined(PAE_ENABLE_PROTOCOL_LAB_SCHEMA_V06_CRC)
+               "/0.6"
+#endif
+               " C3: inspect/encode/replay require --record-root; replay forbids replacement "
+               "--config; compare accepts same-generation complete runs.\n";
 #endif
 }
 

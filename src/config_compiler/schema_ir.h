@@ -83,6 +83,15 @@ struct IntegrityIr {
   std::uint64_t range_offset = 0U;
   std::uint64_t range_length = 0U;
   std::uint64_t storage_offset = 0U;
+#if defined(PAE_ENABLE_SCHEMA_V06_CRC_COMPILER)
+  std::uint8_t crc_width = 0U;
+  std::uint32_t crc_polynomial = 0U;
+  std::uint32_t crc_initial_value = 0U;
+  std::uint32_t crc_xor_output = 0U;
+  bool crc_reflect_input = false;
+  bool crc_reflect_output = false;
+  ByteOrder storage_byte_order = ByteOrder::NOT_APPLICABLE;
+#endif
   ConfigOrigin origin;
   ConfigOrigin range_origin;
   ConfigOrigin storage_origin;

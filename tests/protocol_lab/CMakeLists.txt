@@ -36,6 +36,18 @@ configure_file(
     "${pae_protocol_lab_test_data_dir}/synthetic_int64_slice.values.pae-lab.json"
     COPYONLY
 )
+if(PAE_ENABLE_PROTOCOL_LAB_SCHEMA_V06_CRC)
+    configure_file(
+        "${PROJECT_SOURCE_DIR}/examples/config/synthetic_crc_slice.pae.json"
+        "${pae_protocol_lab_test_data_dir}/synthetic_crc_slice.pae.json"
+        COPYONLY
+    )
+    configure_file(
+        "${PROJECT_SOURCE_DIR}/examples/config/synthetic_crc_slice.values.pae-lab.json"
+        "${pae_protocol_lab_test_data_dir}/synthetic_crc_slice.values.pae-lab.json"
+        COPYONLY
+    )
+endif()
 configure_file(
     "${PROJECT_SOURCE_DIR}/tests/protocol_core/golden/synthetic_int64/int64_record_001.frame.hex"
     "${pae_protocol_lab_test_data_dir}/int64_record_001.frame.hex"
@@ -237,6 +249,25 @@ if(WIN32)
         PROPERTIES LABELS "tools;protocol_lab;offline;sum8;dec041;schema" TIMEOUT 180
                    WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
     )
+    if(PAE_ENABLE_PROTOCOL_LAB_SCHEMA_V06_CRC)
+        add_test(
+            NAME pae.tools.protocol_lab.crc_schema_contract
+            COMMAND
+                "${pae_powershell_executable}"
+                -NoProfile
+                -File "${CMAKE_CURRENT_SOURCE_DIR}/verify_crc_schema_contract.ps1"
+                -LabExecutable "$<TARGET_FILE:pae_protocol_lab>"
+                -SchemaPath "${PROJECT_SOURCE_DIR}/schema/pae.schema.json"
+                -ConfigPath "${pae_protocol_lab_test_data_dir}/synthetic_crc_slice.pae.json"
+                -ValuesPath "${pae_protocol_lab_test_data_dir}/synthetic_crc_slice.values.pae-lab.json"
+                -TestRoot "${CMAKE_CURRENT_BINARY_DIR}/crc-schema-$<CONFIG>"
+        )
+        set_tests_properties(
+            pae.tools.protocol_lab.crc_schema_contract
+            PROPERTIES LABELS "tools;protocol_lab;offline;crc;schema" TIMEOUT 180
+                       WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
+        )
+    endif()
 
     add_executable(
         pae_protocol_lab_udp_exchange_tests

@@ -399,6 +399,9 @@ PlanBuildResult PlanBuilder::FreezeImpl(detail::PlanDraftData draft) {
 #if defined(PAE_ENABLE_SCHEMA_V05_COMPILER)
        && draft.schema_version != "0.5"
 #endif
+#if defined(PAE_ENABLE_SCHEMA_V06_CRC_COMPILER)
+       && draft.schema_version != "0.6"
+#endif
        ) ||
       !IsStableId(draft.protocol_id) || draft.protocol_version.empty() || limits == nullptr ||
       draft.framing_profiles.empty() || draft.pipelines.empty() || draft.messages.empty()) {
@@ -416,7 +419,11 @@ PlanBuildResult PlanBuilder::FreezeImpl(detail::PlanDraftData draft) {
   }
   for (const LinearConversionDescriptor& conversion : draft.conversions) {
     LinearConversionDescriptor recomputed;
-    if (draft.schema_version != "0.5" ||
+    if ((draft.schema_version != "0.5"
+#if defined(PAE_ENABLE_SCHEMA_V06_CRC_COMPILER)
+         && draft.schema_version != "0.6"
+#endif
+         ) ||
         (conversion.raw_value_type != ValueType::UINT64 &&
          conversion.raw_value_type != ValueType::INT64) ||
         detail::DeriveLinearConversion(conversion.raw_value_type, conversion.scale_numerator,
@@ -508,22 +515,64 @@ PlanBuildResult PlanBuilder::FreezeImpl(detail::PlanDraftData draft) {
       std::size_t range_length = 0U;
       std::size_t storage_offset = 0U;
       const IntegrityPlan& integrity = *message.integrity;
+      std::size_t storage_width = 1U;
+#if defined(PAE_ENABLE_SCHEMA_V06_CRC_COMPILER)
+      const bool crc = integrity.algorithm == IntegrityAlgorithm::CRC;
+      if (crc) {
+        storage_width = static_cast<std::size_t>(integrity.crc_width / 8U);
+      }
+      const std::uint32_t crc_width_mask = integrity.crc_width == 16U ? 0xFFFFU : 0xFFFFFFFFU;
+      const bool crc_valid = crc && draft.schema_version == "0.6" &&
+                             (integrity.crc_width == 16U || integrity.crc_width == 32U) &&
+                             integrity.crc_polynomial != 0U &&
+                             (integrity.crc_polynomial & 1U) != 0U &&
+                             (integrity.crc_polynomial & ~crc_width_mask) == 0U &&
+                             (integrity.crc_initial_value & ~crc_width_mask) == 0U &&
+                             (integrity.crc_xor_output & ~crc_width_mask) == 0U &&
+                             (integrity.storage_byte_order == ByteOrder::BIG ||
+                              integrity.storage_byte_order == ByteOrder::LITTLE);
+#endif
       if ((draft.schema_version != "0.3" && draft.schema_version != "0.4"
 #if defined(PAE_ENABLE_SCHEMA_V05_COMPILER)
            && draft.schema_version != "0.5"
 #endif
+#if defined(PAE_ENABLE_SCHEMA_V06_CRC_COMPILER)
+           && draft.schema_version != "0.6"
+#endif
            ) ||
+#if defined(PAE_ENABLE_SCHEMA_V06_CRC_COMPILER)
+          (integrity.algorithm != IntegrityAlgorithm::SUM8 && !crc_valid) ||
+          (integrity.algorithm == IntegrityAlgorithm::SUM8 && draft.schema_version == "0.6" &&
+           (integrity.crc_width != 0U ||
+            integrity.storage_byte_order != ByteOrder::NOT_APPLICABLE)) ||
+#else
           integrity.algorithm != IntegrityAlgorithm::SUM8 ||
+#endif
           !ToSize(integrity.range_offset, range_offset) ||
           !ToSize(integrity.range_length, range_length) ||
           !ToSize(integrity.storage_offset, storage_offset) || range_length == 0U ||
-          !IsRangeWithin(range_offset, range_length, frame_size) || storage_offset >= frame_size ||
-          (storage_offset >= range_offset && storage_offset - range_offset < range_length)) {
+          !IsRangeWithin(range_offset, range_length, frame_size) ||
+          !IsRangeWithin(storage_offset, storage_width, frame_size) ||
+          (storage_offset < range_offset + range_length &&
+           range_offset < storage_offset + storage_width)) {
         return Reject(PlanBuildError::INVALID_MESSAGE_PLAN, kInvalidPlanBuildIndex,
                       kInvalidPlanBuildIndex, message_index);
       }
-      execution.integrity =
-          FrozenIntegrityPlan{integrity.algorithm, range_offset, range_length, storage_offset};
+      FrozenIntegrityPlan frozen_integrity;
+      frozen_integrity.algorithm = integrity.algorithm;
+      frozen_integrity.range_offset = range_offset;
+      frozen_integrity.range_length = range_length;
+      frozen_integrity.storage_offset = storage_offset;
+#if defined(PAE_ENABLE_SCHEMA_V06_CRC_COMPILER)
+      frozen_integrity.crc_width = integrity.crc_width;
+      frozen_integrity.crc_polynomial = integrity.crc_polynomial;
+      frozen_integrity.crc_initial_value = integrity.crc_initial_value;
+      frozen_integrity.crc_xor_output = integrity.crc_xor_output;
+      frozen_integrity.crc_reflect_input = integrity.crc_reflect_input;
+      frozen_integrity.crc_reflect_output = integrity.crc_reflect_output;
+      frozen_integrity.storage_byte_order = integrity.storage_byte_order;
+#endif
+      execution.integrity = frozen_integrity;
     }
     execution.fields.reserve(message.fields.size());
     std::unordered_set<std::string> field_ids;
@@ -594,6 +643,9 @@ PlanBuildResult PlanBuilder::FreezeImpl(detail::PlanDraftData draft) {
 #if defined(PAE_ENABLE_SCHEMA_V05_COMPILER)
                                 || draft.schema_version == "0.5"
 #endif
+#if defined(PAE_ENABLE_SCHEMA_V06_CRC_COMPILER)
+                                || draft.schema_version == "0.6"
+#endif
                                 ) &&
                                field.value_type == ValueType::INT64 &&
                                field.wire_codec == WireCodec::UNSIGNED_INTEGER && width <= 8U &&
@@ -640,7 +692,12 @@ PlanBuildResult PlanBuilder::FreezeImpl(detail::PlanDraftData draft) {
       }
 #if defined(PAE_ENABLE_SCHEMA_V05_COMPILER)
       const bool has_conversion = field.conversion_index != kInvalidPlanBuildIndex;
-      if ((draft.schema_version != "0.5" && has_conversion) ||
+      if (((draft.schema_version != "0.5"
+#if defined(PAE_ENABLE_SCHEMA_V06_CRC_COMPILER)
+            && draft.schema_version != "0.6"
+#endif
+            ) &&
+           has_conversion) ||
           (has_conversion &&
            (field.conversion_index >= draft.conversions.size() || bitfield ||
             field.encode_source != EncodeSource::INPUT ||
@@ -761,9 +818,15 @@ PlanBuildResult PlanBuilder::FreezeImpl(detail::PlanDraftData draft) {
       }
     }
     if (execution.integrity.has_value()) {
+      std::size_t integrity_storage_width = 1U;
+#if defined(PAE_ENABLE_SCHEMA_V06_CRC_COMPILER)
+      if (execution.integrity->algorithm == IntegrityAlgorithm::CRC) {
+        integrity_storage_width = static_cast<std::size_t>(execution.integrity->crc_width / 8U);
+      }
+#endif
       for (const ByteInterval& interval : field_intervals) {
-        if (execution.integrity->storage_offset >= interval.begin &&
-            execution.integrity->storage_offset < interval.end) {
+        if (execution.integrity->storage_offset < interval.end &&
+            interval.begin < execution.integrity->storage_offset + integrity_storage_width) {
           return Reject(PlanBuildError::INVALID_MESSAGE_PLAN, kInvalidPlanBuildIndex,
                         kInvalidPlanBuildIndex, message_index);
         }
@@ -814,13 +877,21 @@ PlanBuildResult PlanBuilder::FreezeImpl(detail::PlanDraftData draft) {
       coverage_intervals.push_back(ByteInterval{offset, offset + 1U, kInvalidPlanBuildIndex});
     }
     if (execution.integrity.has_value()) {
-      if (fixed_bytes.find(execution.integrity->storage_offset) != fixed_bytes.end()) {
-        return Reject(PlanBuildError::INVALID_MESSAGE_PLAN, kInvalidPlanBuildIndex,
-                      kInvalidPlanBuildIndex, message_index);
+      std::size_t integrity_storage_width = 1U;
+#if defined(PAE_ENABLE_SCHEMA_V06_CRC_COMPILER)
+      if (execution.integrity->algorithm == IntegrityAlgorithm::CRC) {
+        integrity_storage_width = static_cast<std::size_t>(execution.integrity->crc_width / 8U);
       }
-      coverage_intervals.push_back(ByteInterval{execution.integrity->storage_offset,
-                                                execution.integrity->storage_offset + 1U,
-                                                kInvalidPlanBuildIndex});
+#endif
+      for (std::size_t index = 0U; index < integrity_storage_width; ++index) {
+        if (fixed_bytes.find(execution.integrity->storage_offset + index) != fixed_bytes.end()) {
+          return Reject(PlanBuildError::INVALID_MESSAGE_PLAN, kInvalidPlanBuildIndex,
+                        kInvalidPlanBuildIndex, message_index);
+        }
+      }
+      coverage_intervals.push_back(ByteInterval{
+          execution.integrity->storage_offset,
+          execution.integrity->storage_offset + integrity_storage_width, kInvalidPlanBuildIndex});
     }
     if (!CoversWholeFrame(coverage_intervals, frame_size)) {
       return Reject(PlanBuildError::FRAME_NOT_FULLY_DEFINED, kInvalidPlanBuildIndex,
@@ -1055,9 +1126,21 @@ PlanBuildResult PlanBuilder::FreezeImpl(detail::PlanDraftData draft) {
             const MessagePlan& source = draft.messages[message_index];
             output.frame_length_bytes = source.frame_length_bytes;
             if (source.integrity.has_value()) {
-              output.integrity = FrozenIntegrityPlan{
-                  source.integrity->algorithm, source.integrity->range_offset,
-                  source.integrity->range_length, source.integrity->storage_offset};
+              FrozenIntegrityPlan integrity;
+              integrity.algorithm = source.integrity->algorithm;
+              integrity.range_offset = source.integrity->range_offset;
+              integrity.range_length = source.integrity->range_length;
+              integrity.storage_offset = source.integrity->storage_offset;
+#if defined(PAE_ENABLE_SCHEMA_V06_CRC_COMPILER)
+              integrity.crc_width = source.integrity->crc_width;
+              integrity.crc_polynomial = source.integrity->crc_polynomial;
+              integrity.crc_initial_value = source.integrity->crc_initial_value;
+              integrity.crc_xor_output = source.integrity->crc_xor_output;
+              integrity.crc_reflect_input = source.integrity->crc_reflect_input;
+              integrity.crc_reflect_output = source.integrity->crc_reflect_output;
+              integrity.storage_byte_order = source.integrity->storage_byte_order;
+#endif
+              output.integrity = integrity;
             }
             if (!FreezeString(arena, source.id, output.id) ||
                 !FreezeString(arena, source.direction_id, output.direction_id) ||

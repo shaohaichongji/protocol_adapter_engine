@@ -111,6 +111,14 @@ bool RecordDescriptorMatches(const std::filesystem::path& record_path,
   return ReadText(record_path).find(expected) != std::string::npos;
 }
 
+bool RecordTextDescriptorMatches(std::string_view record, std::string_view relative,
+                                 std::string_view payload) {
+  const std::string expected = "{\"path\":\"" + std::string{relative} +
+                               "\",\"size\":" + std::to_string(payload.size()) + ",\"sha256\":\"" +
+                               HashBytes(payload) + "\"}";
+  return record.find(expected) != std::string_view::npos;
+}
+
 bool ReplayHistoryLinksMatch(const std::filesystem::path& bundle) {
   const std::string parent = ReadText(bundle / "history/parent_record_v0.7.json");
   const std::string result = ReadText(bundle / "history/result_summary_v0.6.json");
@@ -221,6 +229,74 @@ bool RewriteHistoricalResultAndRefresh(const std::filesystem::path& bundle,
   return true;
 }
 
+#if defined(PAE_ENABLE_SCHEMA_V06_CRC_COMPILER)
+struct GenerationFiles {
+  std::string_view child_record;
+  std::string_view parent_record;
+  std::string_view historical_result;
+  std::string_view parent_result;
+  std::string_view history_domain;
+  std::string_view replacement_result_format;
+};
+
+bool RewriteHistoricalResultGenerationAndRefresh(const std::filesystem::path& bundle,
+                                                 const GenerationFiles& files, std::string& error) {
+  const std::filesystem::path result_path = bundle / files.historical_result;
+  const std::filesystem::path parent_path = bundle / files.parent_record;
+  const std::filesystem::path child_path = bundle / files.child_record;
+  const std::string original_result = ReadText(result_path);
+  const std::string original_parent = ReadText(parent_path);
+  Result result;
+  std::string parse_text = original_result;
+  if (!pae::protocol_lab::v06::ParseResult(parse_text, result, error)) return false;
+  const std::string original_fingerprint =
+      pae::protocol_lab::v06::FinalizeFingerprint(result, error);
+  if (!error.empty()) return false;
+  result.format_version = std::string{files.replacement_result_format};
+  const std::string changed_fingerprint =
+      pae::protocol_lab::v06::FinalizeFingerprint(result, error);
+  const std::string changed_result = pae::protocol_lab::v06::SerializeResult(result, error);
+  if (!error.empty()) return false;
+
+  std::string changed_parent = original_parent;
+  if (!ReplaceAll(changed_parent, "\"deterministic_fingerprint\":\"" + original_fingerprint + "\"",
+                  "\"deterministic_fingerprint\":\"" + changed_fingerprint + "\"") ||
+      !RefreshDescriptorText(changed_parent, files.parent_result, changed_result, error)) {
+    if (error.empty()) error = "test helper could not refresh mixed-generation parent Record";
+    return false;
+  }
+
+  std::string changed_child = ReadText(child_path);
+  const std::string original_history =
+      "\"fingerprint_domain\":\"" + std::string{files.history_domain} +
+      "\",\"deterministic_fingerprint\":\"" + original_fingerprint + "\"";
+  const std::string changed_history =
+      "\"fingerprint_domain\":\"" + std::string{files.history_domain} +
+      "\",\"deterministic_fingerprint\":\"" + changed_fingerprint + "\"";
+  if (!ReplaceAll(changed_child, "\"result_sha256\":\"" + HashBytes(original_result) + "\"",
+                  "\"result_sha256\":\"" + HashBytes(changed_result) + "\"") ||
+      !ReplaceAll(changed_child, "\"parent_record_sha256\":\"" + HashBytes(original_parent) + "\"",
+                  "\"parent_record_sha256\":\"" + HashBytes(changed_parent) + "\"") ||
+      !ReplaceAll(changed_child, original_history, changed_history) ||
+      !ReplaceAll(changed_child, "\"status\":\"EQUAL\",\"reason\":\"FINGERPRINT_EQUAL\"",
+                  "\"status\":\"DIFFERENT\",\"reason\":\"FINGERPRINT_DIFFERENT\"") ||
+      !RefreshDescriptorText(changed_child, files.parent_record, changed_parent, error) ||
+      !RefreshDescriptorText(changed_child, files.historical_result, changed_result, error)) {
+    if (error.empty()) error = "test helper could not refresh mixed-generation child Record";
+    return false;
+  }
+
+  WriteText(result_path, changed_result);
+  WriteText(parent_path, changed_parent);
+  WriteText(child_path, changed_child);
+  RebuildManifest(bundle);
+  return ManifestHashesMatch(bundle) &&
+         RecordDescriptorMatches(child_path, bundle, files.parent_record) &&
+         RecordDescriptorMatches(child_path, bundle, files.historical_result) &&
+         RecordTextDescriptorMatches(changed_parent, files.parent_result, changed_result);
+}
+#endif
+
 bool RewriteResultAndRefresh(const std::filesystem::path& bundle,
                              const std::function<void(Result&)>& mutate, std::string& error) {
   std::string original = ReadText(bundle / "result_summary_v0.6.json");
@@ -316,6 +392,12 @@ const std::vector<std::uint8_t>& ValidFrame() {
 std::string NoConversionConfig() {
   return R"json({"schema_version":"0.5","protocol_id":"c2_no_conversion","protocol_version":"1","display_name":"Synthetic","description":"","source_ref":"SYNTHETIC_FROM_SCRATCH:C2","resource_profile":"desktop","framing_profiles":[{"id":"record","display_name":"Synthetic","description":"","source_ref":"SYNTHETIC_FROM_SCRATCH:C2","input_kind":"complete_record"}],"pipelines":[{"id":"p","display_name":"Synthetic","description":"","source_ref":"SYNTHETIC_FROM_SCRATCH:C2","direction_id":"rx","input_framing_profile_id":"record","message_ids":["m"]}],"messages":[{"id":"m","display_name":"Synthetic","description":"","source_ref":"SYNTHETIC_FROM_SCRATCH:C2","direction_id":"rx","frame_length_bytes":1,"matcher":{"all":[{"kind":"frame_length_equals","length_bytes":1}]},"fields":[{"id":"value","display_name":"Synthetic","description":"","source_ref":"SYNTHETIC_FROM_SCRATCH:C2","value_type":"UINT64","wire":{"codec":"unsigned_integer","byte_offset":0,"byte_width":1},"encode":{"source":"input"}}]}]})json";
 }
+
+#if defined(PAE_ENABLE_SCHEMA_V06_CRC_COMPILER)
+std::string CrcGenerationConfig() {
+  return R"json({"schema_version":"0.6","protocol_id":"c3_generation_binding","protocol_version":"1","display_name":"Synthetic","description":"","source_ref":"SYNTHETIC_FROM_SCRATCH:CRC_HISTORY_GENERATION","resource_profile":"desktop","framing_profiles":[{"id":"record","display_name":"Synthetic","description":"","source_ref":"SYNTHETIC_FROM_SCRATCH:CRC_HISTORY_GENERATION","input_kind":"complete_record"}],"pipelines":[{"id":"p","display_name":"Synthetic","description":"","source_ref":"SYNTHETIC_FROM_SCRATCH:CRC_HISTORY_GENERATION","direction_id":"rx","input_framing_profile_id":"record","message_ids":["m"]}],"messages":[{"id":"m","display_name":"Synthetic","description":"","source_ref":"SYNTHETIC_FROM_SCRATCH:CRC_HISTORY_GENERATION","direction_id":"rx","frame_length_bytes":1,"matcher":{"all":[{"kind":"frame_length_equals","length_bytes":1}]},"fields":[{"id":"value","display_name":"Synthetic","description":"","source_ref":"SYNTHETIC_FROM_SCRATCH:CRC_HISTORY_GENERATION","value_type":"UINT64","wire":{"codec":"unsigned_integer","byte_offset":0,"byte_width":1},"encode":{"source":"input"}}]}]})json";
+}
+#endif
 
 std::string LegacyUintValues() {
   return R"json({"format_version":"pae.lab.values/0.1","pipeline_id":"p","message_id":"m","fields":[{"id":"value","kind":"UINT64","uint64":"42"}]})json";
@@ -1417,9 +1499,106 @@ bool TestPlanReplayAndCompare(const std::filesystem::path& root, std::string_vie
   return passed;
 }
 
+#if defined(PAE_ENABLE_SCHEMA_V06_CRC_COMPILER)
+bool TestHistoricalResultGenerationBinding(const std::filesystem::path& root,
+                                           std::filesystem::path* old_mixed_path = nullptr,
+                                           std::filesystem::path* crc_mixed_path = nullptr) {
+  using pae::protocol_lab::v07::EvidenceQualificationStatus;
+  bool passed = true;
+  std::string error;
+  StandardEvidenceFileSystem file_system;
+  StoredRunBundle stored;
+  EvidenceQualificationStatus qualification = EvidenceQualificationStatus::INVALID_BUNDLE;
+
+  RunPublishOutcome old_run;
+  RunPublishOutcome old_replay;
+  passed =
+      Expect(
+          Execute(root,
+                  EncodeRequest("run_history_old_parent", NoConversionConfig(), LegacyUintValues()),
+                  old_run) &&
+              pae::protocol_lab::v07::ReplayRunAndWrite(
+                  root, old_run.published_path, "run_history_old_mixed", "0.1.0-test", file_system,
+                  old_replay, qualification, error) &&
+              pae::protocol_lab::v07::LoadRunBundle(old_replay.published_path, stored, error),
+          "legal Record 0.7 / historical Result 0.6 replay prepares: " + error) &&
+      passed;
+  const GenerationFiles old_to_crc{"run_record_v0.7.json",
+                                   "history/parent_record_v0.7.json",
+                                   "history/result_summary_v0.6.json",
+                                   "result_summary_v0.6.json",
+                                   pae::protocol_lab::v06::kFingerprintDomain,
+                                   pae::protocol_lab::v06::kCrcResultFormat};
+  error.clear();
+  passed = Expect(RewriteHistoricalResultGenerationAndRefresh(old_replay.published_path, old_to_crc,
+                                                              error),
+                  "Record 0.7 / historical Result 0.7 mutation is fully rehashed: " + error) &&
+           passed;
+  error.clear();
+  passed =
+      Expect(
+          !pae::protocol_lab::v07::LoadRunBundle(old_replay.published_path, stored, error) &&
+              error == "Replay historical Result generation does not match the parent Run Record",
+          "Record 0.7 rejects historical Result 0.7 at the generation binding: " + error) &&
+      passed;
+
+  RunPublishOutcome crc_run;
+  RunPublishOutcome crc_replay;
+  error.clear();
+  passed =
+      Expect(Execute(
+                 root,
+                 EncodeRequest("run_history_crc_parent", CrcGenerationConfig(), LegacyUintValues()),
+                 crc_run) &&
+                 pae::protocol_lab::v07::ReplayRunAndWrite(
+                     root, crc_run.published_path, "run_history_crc_mixed", "0.1.0-test",
+                     file_system, crc_replay, qualification, error) &&
+                 pae::protocol_lab::v07::LoadRunBundle(crc_replay.published_path, stored, error),
+             "legal Record 0.8 / historical Result 0.7 replay prepares: " + error) &&
+      passed;
+  const GenerationFiles crc_to_old{"run_record_v0.8.json",
+                                   "history/parent_record_v0.8.json",
+                                   "history/result_summary_v0.7.json",
+                                   "result_summary_v0.7.json",
+                                   pae::protocol_lab::v06::kCrcFingerprintDomain,
+                                   pae::protocol_lab::v06::kResultFormat};
+  error.clear();
+  passed = Expect(RewriteHistoricalResultGenerationAndRefresh(crc_replay.published_path, crc_to_old,
+                                                              error),
+                  "Record 0.8 / historical Result 0.6 mutation is fully rehashed: " + error) &&
+           passed;
+  error.clear();
+  passed =
+      Expect(
+          !pae::protocol_lab::v07::LoadRunBundle(crc_replay.published_path, stored, error) &&
+              error == "Replay historical Result generation does not match the parent Run Record",
+          "Record 0.8 rejects historical Result 0.6 at the generation binding: " + error) &&
+      passed;
+
+  if (old_mixed_path != nullptr) *old_mixed_path = old_replay.published_path;
+  if (crc_mixed_path != nullptr) *crc_mixed_path = crc_replay.published_path;
+  return passed;
+}
+#endif
+
 }  // namespace
 
 int main(int argc, char** argv) {
+#if defined(PAE_ENABLE_SCHEMA_V06_CRC_COMPILER)
+  if (argc == 3 && std::string_view{argv[1]} == "--prepare-history-generation") {
+    const std::filesystem::path root = argv[2];
+    std::error_code error;
+    std::filesystem::remove_all(root, error);
+    std::filesystem::create_directories(root, error);
+    if (!Expect(!error, "history-generation fixture root prepares")) return 1;
+    std::filesystem::path old_mixed;
+    std::filesystem::path crc_mixed;
+    if (!TestHistoricalResultGenerationBinding(root, &old_mixed, &crc_mixed)) return 1;
+    std::cout << "OLD_MIXED=" << old_mixed.generic_string() << '\n';
+    std::cout << "CRC_MIXED=" << crc_mixed.generic_string() << '\n';
+    return 0;
+  }
+#endif
   if (!Expect(argc == 2, "decimal Core fixture path is required")) return 1;
   const std::string config = ReadText(argv[1]);
   const std::filesystem::path root =
@@ -1433,5 +1612,8 @@ int main(int argc, char** argv) {
   passed = TestPublicationFailures(root, config) && passed;
   passed = TestStrictReader(root, config) && passed;
   passed = TestPlanReplayAndCompare(root, config) && passed;
+#if defined(PAE_ENABLE_SCHEMA_V06_CRC_COMPILER)
+  passed = TestHistoricalResultGenerationBinding(root) && passed;
+#endif
   return passed ? 0 : 1;
 }

@@ -189,11 +189,18 @@ std::string MakeDeterministicPlanSnapshot(const PlanBundle& plan) {
   const bool v04 = plan.SchemaVersion() == "0.4";
 #if defined(PAE_ENABLE_SCHEMA_V05_COMPILER)
   const bool v05 = plan.SchemaVersion() == "0.5";
+#if defined(PAE_ENABLE_SCHEMA_V06_CRC_COMPILER)
+  const bool v06 = plan.SchemaVersion() == "0.6";
+#else
+  const bool v06 = false;
+#endif
 #else
   const bool v05 = false;
+  const bool v06 = false;
 #endif
   AppendStringProperty("snapshot_format",
-                       v05   ? "pae_plan_bundle_v0.5_decimal_compiler_slice"
+                       v06   ? "pae_plan_bundle_v0.6_crc_slice"
+                       : v05 ? "pae_plan_bundle_v0.5_decimal_compiler_slice"
                        : v04 ? "pae_plan_bundle_v0.4_int64_slice"
                              : (v03 ? "pae_plan_bundle_v0.3_sum8_slice"
                                     : (v02 ? "pae_plan_bundle_v0.2_bitfield_slice"
@@ -223,18 +230,18 @@ std::string MakeDeterministicPlanSnapshot(const PlanBundle& plan) {
   AppendIntegerProperty("total_matcher_count", requirements.total_matcher_count, output);
   output.push_back(',');
   AppendIntegerProperty("total_enum_entry_count", requirements.total_enum_entry_count, output);
-  if (v02 || v03 || v04 || v05) {
+  if (v02 || v03 || v04 || v05 || v06) {
     output.push_back(',');
     AppendIntegerProperty("total_bit_container_count", requirements.total_bit_container_count,
                           output);
   }
-  if (v03 || v04 || v05) {
+  if (v03 || v04 || v05 || v06) {
     output.push_back(',');
     AppendIntegerProperty("total_integrity_rule_count", requirements.total_integrity_rule_count,
                           output);
   }
 #if defined(PAE_ENABLE_SCHEMA_V05_COMPILER)
-  if (v05) {
+  if (v05 || v06) {
     output.push_back(',');
     AppendIntegerProperty("total_conversion_count", requirements.total_conversion_count, output);
   }
@@ -242,7 +249,7 @@ std::string MakeDeterministicPlanSnapshot(const PlanBundle& plan) {
   output.push_back('}');
 
 #if defined(PAE_ENABLE_SCHEMA_V05_COMPILER)
-  if (v05) {
+  if (v05 || v06) {
     output.append(",\"conversions\":[");
     const auto& conversions = plan.Conversions();
     for (std::size_t index = 0U; index < conversions.size(); ++index) {
@@ -356,7 +363,7 @@ std::string MakeDeterministicPlanSnapshot(const PlanBundle& plan) {
     }
     output.push_back(']');
 
-    if (v02 || v03 || v04 || v05) {
+    if (v02 || v03 || v04 || v05 || v06) {
       output.append(",\"bit_containers\":[");
       for (std::size_t index = 0U; index < message.bit_containers.size(); ++index) {
         if (index != 0U) output.push_back(',');
@@ -378,19 +385,45 @@ std::string MakeDeterministicPlanSnapshot(const PlanBundle& plan) {
       output.push_back(']');
     }
 
-    if (v03 || v04 || v05) {
+    if (v03 || v04 || v05 || v06) {
       output.append(",\"integrity\":");
       if (!message.integrity.has_value()) {
         output.append("null");
       } else {
         output.push_back('{');
-        AppendStringProperty("algorithm", "sum8", output);
+        AppendStringProperty(
+            "algorithm",
+#if defined(PAE_ENABLE_SCHEMA_V06_CRC_COMPILER)
+            message.integrity->algorithm == protocol_plan::IntegrityAlgorithm::CRC ? "crc" : "sum8",
+#else
+            "sum8",
+#endif
+            output);
         output.push_back(',');
         AppendIntegerProperty("range_offset", message.integrity->range_offset, output);
         output.push_back(',');
         AppendIntegerProperty("range_length", message.integrity->range_length, output);
         output.push_back(',');
         AppendIntegerProperty("storage_offset", message.integrity->storage_offset, output);
+#if defined(PAE_ENABLE_SCHEMA_V06_CRC_COMPILER)
+        if (message.integrity->algorithm == protocol_plan::IntegrityAlgorithm::CRC) {
+          output.push_back(',');
+          AppendIntegerProperty("crc_width", message.integrity->crc_width, output);
+          output.push_back(',');
+          AppendIntegerProperty("crc_polynomial", message.integrity->crc_polynomial, output);
+          output.push_back(',');
+          AppendIntegerProperty("crc_initial_value", message.integrity->crc_initial_value, output);
+          output.push_back(',');
+          AppendIntegerProperty("crc_xor_output", message.integrity->crc_xor_output, output);
+          output.append(",\"crc_reflect_input\":");
+          output.append(message.integrity->crc_reflect_input ? "true" : "false");
+          output.append(",\"crc_reflect_output\":");
+          output.append(message.integrity->crc_reflect_output ? "true" : "false");
+          output.push_back(',');
+          AppendStringProperty("storage_byte_order",
+                               ToString(message.integrity->storage_byte_order), output);
+        }
+#endif
         output.push_back('}');
       }
     }
@@ -424,7 +457,7 @@ std::string MakeDeterministicPlanSnapshot(const PlanBundle& plan) {
       output.push_back(',');
       AppendStringProperty("encode_source", ToString(field.encode_source), output);
 #if defined(PAE_ENABLE_SCHEMA_V05_COMPILER)
-      if (v05 && field.conversion_index != (std::numeric_limits<std::size_t>::max)()) {
+      if ((v05 || v06) && field.conversion_index != (std::numeric_limits<std::size_t>::max)()) {
         output.push_back(',');
         AppendIntegerProperty("conversion_index", field.conversion_index, output);
       }

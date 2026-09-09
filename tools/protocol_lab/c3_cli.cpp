@@ -22,7 +22,11 @@ namespace pae::protocol_lab::c3 {
 namespace {
 
 constexpr std::string_view kCliFormat = "pae.lab.cli/0.1";
+#if defined(PAE_ENABLE_PROTOCOL_LAB_SCHEMA_V06_CRC)
+constexpr std::string_view kC3ToolVersion = "0.7.0-crc-cli-slice";
+#else
 constexpr std::string_view kC3ToolVersion = "0.6.0-decimal-cli-slice";
+#endif
 
 struct Envelope {
   std::string command;
@@ -175,14 +179,20 @@ bool IsSchemaV05(const std::filesystem::path& path, bool route_unclassified) {
                  : std::string_view{};
   const bool known_legacy = schema_version == "0.1" || schema_version == "0.2" ||
                             schema_version == "0.3" || schema_version == "0.4";
-  const bool matches =
-      schema_version == "0.5" || (route_unclassified && classified && !known_legacy);
+  const bool matches = schema_version == "0.5"
+#if defined(PAE_ENABLE_PROTOCOL_LAB_SCHEMA_V06_CRC)
+                       || schema_version == "0.6"
+#endif
+                       || (route_unclassified && classified && !known_legacy);
   yyjson_doc_free(document);
   return matches || (!classified && route_unclassified);
 }
 
 bool IsRunV07(const std::filesystem::path& bundle) {
   return std::filesystem::is_regular_file(bundle / "run_record_v0.7.json") ||
+#if defined(PAE_ENABLE_PROTOCOL_LAB_SCHEMA_V06_CRC)
+         std::filesystem::is_regular_file(bundle / "run_record_v0.8.json") ||
+#endif
          std::filesystem::is_regular_file(bundle / "events_v0.7.jsonl");
 }
 

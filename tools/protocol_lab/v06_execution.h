@@ -56,6 +56,7 @@ struct ExecutionCounts {
 };
 
 struct ExecutionOutcome {
+  std::string schema_version;
   ExecutionStage stage = ExecutionStage::PREPARATION;
   PreparationFailure preparation_failure;
   std::string structural_status;

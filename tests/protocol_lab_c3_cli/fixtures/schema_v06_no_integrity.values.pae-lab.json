@@ -1,0 +1,1 @@
+{"format_version":"pae.lab.values/0.1","pipeline_id":"sample_pipeline","message_id":"sample","fields":[{"id":"value","kind":"UINT64","uint64":"49"}]}

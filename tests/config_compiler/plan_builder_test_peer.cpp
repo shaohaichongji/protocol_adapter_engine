@@ -149,6 +149,48 @@ class PlanBuilderTestPeer final {
     return draft;
   }
 
+#if defined(PAE_ENABLE_SCHEMA_V06_CRC_COMPILER)
+  static BudgetedPlanDraft MakeCrcDraft() {
+    auto draft = MakeIntegrityDraft();
+    draft.draft_->schema_version = "0.6";
+    draft.draft_->messages[0].frame_length_bytes = 3U;
+    draft.draft_->messages[0].matchers[0].length_bytes = 3U;
+    draft.draft_->resource_requirements.max_frame_bytes = 3U;
+    auto& integrity = *draft.draft_->messages[0].integrity;
+    integrity.algorithm = IntegrityAlgorithm::CRC;
+    integrity.crc_width = 16U;
+    integrity.crc_polynomial = 0x1021U;
+    integrity.crc_initial_value = 0xFFFFU;
+    integrity.crc_xor_output = 0U;
+    integrity.storage_byte_order = ByteOrder::BIG;
+    return draft;
+  }
+
+  static BudgetedPlanDraft MakeCrcDraftWithInvalidWidth() {
+    auto draft = MakeCrcDraft();
+    draft.draft_->messages[0].integrity->crc_width = 24U;
+    return draft;
+  }
+
+  static BudgetedPlanDraft MakeCrcDraftWithEvenPolynomial() {
+    auto draft = MakeCrcDraft();
+    draft.draft_->messages[0].integrity->crc_polynomial = 0x1020U;
+    return draft;
+  }
+
+  static BudgetedPlanDraft MakeCrcDraftWithInvalidStorageOrder() {
+    auto draft = MakeCrcDraft();
+    draft.draft_->messages[0].integrity->storage_byte_order = ByteOrder::NOT_APPLICABLE;
+    return draft;
+  }
+
+  static BudgetedPlanDraft MakeCrcDraftWithOldSchema() {
+    auto draft = MakeCrcDraft();
+    draft.draft_->schema_version = "0.5";
+    return draft;
+  }
+#endif
+
   static BudgetedPlanDraft MakeInt64DraftWithOutOfRangeConstant() {
     auto draft = MakeIntegrityDraft();
     draft.draft_->schema_version = "0.4";
@@ -271,6 +313,24 @@ protocol_plan::BudgetedPlanDraft MakeIntegrityDraftWithFieldStorageConflict() {
   return protocol_plan::test_only::PlanBuilderTestPeer::
       MakeIntegrityDraftWithFieldStorageConflict();
 }
+
+#if defined(PAE_ENABLE_SCHEMA_V06_CRC_COMPILER)
+protocol_plan::BudgetedPlanDraft MakeCrcDraftWithInvalidWidth() {
+  return protocol_plan::test_only::PlanBuilderTestPeer::MakeCrcDraftWithInvalidWidth();
+}
+
+protocol_plan::BudgetedPlanDraft MakeCrcDraftWithEvenPolynomial() {
+  return protocol_plan::test_only::PlanBuilderTestPeer::MakeCrcDraftWithEvenPolynomial();
+}
+
+protocol_plan::BudgetedPlanDraft MakeCrcDraftWithInvalidStorageOrder() {
+  return protocol_plan::test_only::PlanBuilderTestPeer::MakeCrcDraftWithInvalidStorageOrder();
+}
+
+protocol_plan::BudgetedPlanDraft MakeCrcDraftWithOldSchema() {
+  return protocol_plan::test_only::PlanBuilderTestPeer::MakeCrcDraftWithOldSchema();
+}
+#endif
 
 protocol_plan::BudgetedPlanDraft MakeInt64DraftWithOutOfRangeConstant() {
   return protocol_plan::test_only::PlanBuilderTestPeer::MakeInt64DraftWithOutOfRangeConstant();

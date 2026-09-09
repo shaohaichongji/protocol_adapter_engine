@@ -253,6 +253,31 @@ CompileResult BuildInt64Plan() {
         "encode":{"source":"input"}}]}]})json");
 }
 
+#if defined(PAE_ENABLE_SCHEMA_V06_CRC_COMPILER)
+CompileResult BuildCrcPlan() {
+  return pae::config_compiler::CompileJsonToPlan(R"json({
+    "schema_version":"0.6","protocol_id":"allocation_crc","protocol_version":"1",
+    "display_name":"Synthetic","description":"","source_ref":"SYNTHETIC_FROM_SCRATCH:allocation",
+    "resource_profile":"desktop",
+    "framing_profiles":[{"id":"complete_record","display_name":"Synthetic","description":"",
+      "source_ref":"SYNTHETIC_FROM_SCRATCH:allocation","input_kind":"complete_record"}],
+    "pipelines":[{"id":"crc_pipe","display_name":"Synthetic","description":"",
+      "source_ref":"SYNTHETIC_FROM_SCRATCH:allocation","direction_id":"crc_direction",
+      "input_framing_profile_id":"complete_record","message_ids":["crc_message"]}],
+    "messages":[{"id":"crc_message","display_name":"Synthetic","description":"",
+      "source_ref":"SYNTHETIC_FROM_SCRATCH:allocation","direction_id":"crc_direction",
+      "frame_length_bytes":3,"matcher":{"all":[{"kind":"frame_length_equals","length_bytes":3}]},
+      "integrity":{"algorithm":"crc","parameters":{"width":16,"poly":"1021",
+        "init":"FFFF","refin":false,"refout":false,"xorout":"0000"},
+        "range":{"byte_offset":0,"byte_length":1},
+        "storage":{"byte_offset":1,"byte_order":"big_endian"}},
+      "fields":[{"id":"value","display_name":"Synthetic","description":"",
+        "source_ref":"SYNTHETIC_FROM_SCRATCH:allocation","value_type":"UINT64",
+        "wire":{"codec":"unsigned_integer","byte_offset":0,"byte_width":1},
+        "encode":{"source":"input"}}]}]})json");
+}
+#endif
+
 #if defined(PAE_ENABLE_SCHEMA_V05_COMPILER)
 CompileResult BuildDecimalPlan() {
   return pae::config_compiler::CompileJsonToPlan(R"json({
@@ -393,6 +418,30 @@ bool RunFirstInt64Calls() {
          slot.value_kind == LogicalValueKind::INT64 && slot.int64_value == -2 && before == after;
 }
 
+#if defined(PAE_ENABLE_SCHEMA_V06_CRC_COMPILER)
+bool RunFirstCrcCalls() {
+  CompileResult frozen = BuildCrcPlan();
+  if (!frozen.Succeeded()) return false;
+  ExecutionWorkspace workspace{*frozen.Plan()};
+  EncodeFieldValue value;
+  value.field = FieldRef{frozen.Plan(), 0U, 0U};
+  value.uint64_value = 0x31U;
+  std::array<std::uint8_t, 3U> output{};
+  std::size_t before = g_allocation_count.load(std::memory_order_relaxed);
+  const auto encoded = EncodeCompleteRecord(*frozen.Plan(), workspace, 0U, 0U, &value, 1U,
+                                            {output.data(), output.size()});
+  std::size_t after = g_allocation_count.load(std::memory_order_relaxed);
+  if (encoded.status != CodecStatus::OK || before != after) return false;
+  DecodedFieldSlot slot;
+  before = g_allocation_count.load(std::memory_order_relaxed);
+  const auto decoded = DecodeCompleteRecord(*frozen.Plan(), workspace, 0U,
+                                            {output.data(), output.size()}, &slot, 1U);
+  after = g_allocation_count.load(std::memory_order_relaxed);
+  return decoded.status == CodecStatus::OK && decoded.field_count == 1U &&
+         slot.uint64_value == 0x31U && before == after;
+}
+#endif
+
 #if defined(PAE_ENABLE_SCHEMA_V05_COMPILER)
 bool RunFirstDecimalCalls() {
   CompileResult frozen = BuildDecimalPlan();
@@ -434,6 +483,9 @@ int main(int argc, char** argv) {
                       : mode == "--first-bitfield" ? RunFirstBitfieldCalls()
                       : mode == "--first-sum8"     ? RunFirstSum8Calls()
                       : mode == "--first-int64"    ? RunFirstInt64Calls()
+#if defined(PAE_ENABLE_SCHEMA_V06_CRC_COMPILER)
+                      : mode == "--first-crc" ? RunFirstCrcCalls()
+#endif
 #if defined(PAE_ENABLE_SCHEMA_V05_COMPILER)
                       : mode == "--first-decimal" ? RunFirstDecimalCalls()
 #endif
@@ -449,7 +501,15 @@ int main(int argc, char** argv) {
                                ? "first_sum8_calls_zero_replaceable_new_allocation"
                                : (mode == "--first-int64"
                                       ? "first_int64_calls_zero_replaceable_new_allocation"
-                                      : "first_decimal_calls_zero_replaceable_new_allocation"))));
+#if defined(PAE_ENABLE_SCHEMA_V06_CRC_COMPILER)
+                                      : (mode == "--first-crc"
+                                             ? "first_crc_calls_zero_replaceable_new_allocation"
+                                             : "first_decimal_calls_zero_replaceable_new_"
+                                               "allocation")
+#else
+                                      : "first_decimal_calls_zero_replaceable_new_allocation"
+#endif
+                                      ))));
   std::cout << (passed ? "PASS" : "FAIL") << " case=" << case_id << '\n';
   std::cout << "FIRST_CALL_ALLOCATION_TEST_SUMMARY passed=" << (passed ? 1 : 0)
             << " failed=" << (passed ? 0 : 1) << " expected=1 gate=" << (passed ? "PASS" : "FAIL")

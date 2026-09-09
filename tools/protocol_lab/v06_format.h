@@ -12,6 +12,10 @@ namespace pae::protocol_lab::v06 {
 inline constexpr std::string_view kValuesFormat = "pae.lab.values/0.4";
 inline constexpr std::string_view kResultFormat = "pae.lab.result/0.6";
 inline constexpr std::string_view kFingerprintDomain = "pae.lab.fingerprint/0.6";
+#if defined(PAE_ENABLE_SCHEMA_V06_CRC_COMPILER)
+inline constexpr std::string_view kCrcResultFormat = "pae.lab.result/0.7";
+inline constexpr std::string_view kCrcFingerprintDomain = "pae.lab.fingerprint/0.7";
+#endif
 
 struct Decimal64 {
   std::int64_t coefficient = 0;
@@ -46,6 +50,7 @@ struct FieldResult {
 };
 
 struct Result {
+  std::string format_version = std::string{kResultFormat};
   std::string command;
   std::string operation_kind;
   std::string operation_status;

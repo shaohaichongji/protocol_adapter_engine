@@ -1,0 +1,8 @@
+{
+  "format_version": "pae.lab.values/0.1",
+  "pipeline_id": "synthetic_rx",
+  "message_id": "crc_record",
+  "fields": [
+    {"id": "payload", "kind": "BYTES", "hex": "313233343536373839"}
+  ]
+}

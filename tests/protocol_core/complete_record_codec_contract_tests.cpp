@@ -1030,8 +1030,14 @@ int main(int argc, char** argv) {
   TestRunner runner;
   try {
     bool schema_capability_ok = pae::protocol_core::internal::SupportsCompleteRecordSchema("0.1") &&
-                                pae::protocol_core::internal::SupportsCompleteRecordSchema("0.4") &&
-                                !pae::protocol_core::internal::SupportsCompleteRecordSchema("0.6");
+                                pae::protocol_core::internal::SupportsCompleteRecordSchema("0.4");
+#if defined(PAE_ENABLE_SCHEMA_V06_CRC_COMPILER)
+    schema_capability_ok =
+        schema_capability_ok && pae::protocol_core::internal::SupportsCompleteRecordSchema("0.6");
+#else
+    schema_capability_ok =
+        schema_capability_ok && !pae::protocol_core::internal::SupportsCompleteRecordSchema("0.6");
+#endif
 #if defined(PAE_ENABLE_SCHEMA_V05_COMPILER)
     schema_capability_ok =
         schema_capability_ok && pae::protocol_core::internal::SupportsCompleteRecordSchema("0.5");
