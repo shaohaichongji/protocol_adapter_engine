@@ -1,5 +1,15 @@
 # DEC-040 后续推进路线与当前状态
 
+2026-09-08最新决定：`df43165`已提交并Push，DEC-042B C3离线功能检查点按用户确认的代理验收
+PASS收口，见[验收报告](agent-dec042b-c3-offline-acceptance.md)。用户人工仍NOT_EVALUATED，
+不再阻塞本检查点。下文是早期批次路线快照，其未实现/未Push状态以本条及最新契约为准。
+
+下一检查点的[最小业务嵌入验证八项契约](business-embedding-minimal-contract.md)已由用户确认并授权，
+现已使用公开合成协议完成限定实施和Windows验证：宿主收到字节后调用Decode、业务产生动态值后
+调用Encode，错误不交付。实际证据见[验证报告](windows-msvc-2026-business-embedding-minimal.md)，
+当前待总控收口。
+不自动扩展Runtime/Session、线程调度、网络、Qt UI、CRC或变长能力，也不自动发布稳定公共API。
+
 日期：2026-09-06。更新：SUM8的11项范围原则及四项补充均已确认并登记为PAE-DEC-041；
 实现、Windows验证与本轮已发现的P2纠错已完成，DEC-041已随`4d923e9`提交并Push。
 具体接口、版本与测试组合见[SUM8契约](pae-dec-041-sum8-contract.md)。本路线不新增实现授权。

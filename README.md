@@ -6,6 +6,14 @@ PAE 的目标是通过严格配置完成工业二进制协议的有方向 Decode
 
 ## 当前状态
 
+2026-09-08最新收口：C2复现/比较、C3专用Schema 0.5离线CLI及Windows中文路径修复已提交并Push，
+代码基线`df43165`。用户确认以代理七项离线验收、35项精确检查PASS收口DEC-042B C3离线功能
+检查点；用户人工验收仍为NOT_EVALUATED，不阻塞本检查点。见
+[代理验收报告](docs/agent-dec042b-c3-offline-acceptance.md)。当前工作树已按确认契约完成默认关闭的
+[最小业务嵌入示例](examples/business_embedding/README.md)及Windows离线验证，待总控审查；它不扩展
+Core/Lab，不升级完整V0.1、Oracle、Linux、Golden、硬件、现场或生产准入状态。
+以下批次记录保留历史时点，其“尚未实现/提交/Push”不代表最新状态。
+
 2026-09-08 C2第一段实施：默认关闭的C执行RUN Evidence 0.7隔离入口已实现真实阶段事件、
 事务Writer、严格Reader及完整失败记录；P2修复后Windows Debug/Release专项各2/2、相关离线集
 各5/5通过。完整离线切片各22/22及两类0测试隔离构建属于P2前验证批次，本次未重跑。

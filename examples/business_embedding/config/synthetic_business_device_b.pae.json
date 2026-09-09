@@ -1,0 +1,148 @@
+{
+  "schema_version": "0.5",
+  "protocol_id": "synthetic_business_device_b",
+  "protocol_version": "1.0",
+  "display_name": "Synthetic business device B",
+  "description": "Public from-scratch business embedding vector B with different layouts and scales.",
+  "source_ref": "SYNTHETIC_FROM_SCRATCH:business_embedding_b",
+  "resource_profile": "desktop",
+  "framing_profiles": [
+    {
+      "id": "complete_record",
+      "display_name": "Complete record",
+      "description": "One complete synthetic record.",
+      "source_ref": "SYNTHETIC_FROM_SCRATCH:business_embedding_b#framing",
+      "input_kind": "complete_record"
+    }
+  ],
+  "pipelines": [
+    {
+      "id": "measurement_rx",
+      "display_name": "Measurement RX",
+      "description": "Receive one measurement record.",
+      "source_ref": "SYNTHETIC_FROM_SCRATCH:business_embedding_b#rx",
+      "direction_id": "rx",
+      "input_framing_profile_id": "complete_record",
+      "message_ids": ["measurement_record"]
+    },
+    {
+      "id": "command_tx",
+      "display_name": "Command TX",
+      "description": "Encode one command record.",
+      "source_ref": "SYNTHETIC_FROM_SCRATCH:business_embedding_b#tx",
+      "direction_id": "tx",
+      "input_framing_profile_id": "complete_record",
+      "message_ids": ["command_record"]
+    }
+  ],
+  "messages": [
+    {
+      "id": "measurement_record",
+      "display_name": "Measurement record",
+      "description": "Same business values with a different byte layout.",
+      "source_ref": "SYNTHETIC_FROM_SCRATCH:business_embedding_b#measurement",
+      "direction_id": "rx",
+      "frame_length_bytes": 6,
+      "matcher": {
+        "all": [
+          {"kind": "frame_length_equals", "length_bytes": 6},
+          {"kind": "fixed_bytes", "byte_offset": 0, "bytes": "A1"}
+        ]
+      },
+      "bit_containers": [
+        {
+          "id": "status_flags",
+          "container_offset": 1,
+          "container_width": 1,
+          "bit_numbering": "msb0",
+          "base_value": 0
+        }
+      ],
+      "integrity": {
+        "algorithm": "sum8",
+        "range": {"byte_offset": 0, "byte_length": 5},
+        "storage": {"byte_offset": 5}
+      },
+      "fields": [
+        {
+          "id": "temperature",
+          "display_name": "Temperature",
+          "description": "Business temperature with a different scale and offset.",
+          "source_ref": "SYNTHETIC_FROM_SCRATCH:business_embedding_b#temperature",
+          "value_type": "UINT64",
+          "wire": {"codec": "unsigned_integer", "byte_offset": 2, "byte_width": 2, "byte_order": "big_endian"},
+          "encode": {"source": "input"},
+          "conversion": {
+            "kind": "linear",
+            "output_type": "DECIMAL64",
+            "scale": {"numerator": 1, "denominator": 5},
+            "bias": {"numerator": -40, "denominator": 1}
+          }
+        },
+        {
+          "id": "alarm",
+          "display_name": "Alarm",
+          "description": "Business alarm flag in MSB0 numbering.",
+          "source_ref": "SYNTHETIC_FROM_SCRATCH:business_embedding_b#alarm",
+          "value_type": "BOOL",
+          "wire": {"codec": "bitfield", "container_id": "status_flags", "bit_offset": 0, "bit_width": 1},
+          "encode": {"source": "input"}
+        },
+        {
+          "id": "measurement_marker",
+          "display_name": "Measurement marker",
+          "description": "Synthetic constant marker.",
+          "source_ref": "SYNTHETIC_FROM_SCRATCH:business_embedding_b#marker",
+          "value_type": "UINT64",
+          "wire": {"codec": "unsigned_integer", "byte_offset": 4, "byte_width": 1},
+          "encode": {"source": "constant", "value": 51}
+        }
+      ]
+    },
+    {
+      "id": "command_record",
+      "display_name": "Command record",
+      "description": "Same business command with a different scale and byte layout.",
+      "source_ref": "SYNTHETIC_FROM_SCRATCH:business_embedding_b#command",
+      "direction_id": "tx",
+      "frame_length_bytes": 5,
+      "matcher": {
+        "all": [
+          {"kind": "frame_length_equals", "length_bytes": 5},
+          {"kind": "fixed_bytes", "byte_offset": 0, "bytes": "B2"}
+        ]
+      },
+      "integrity": {
+        "algorithm": "sum8",
+        "range": {"byte_offset": 0, "byte_length": 4},
+        "storage": {"byte_offset": 4}
+      },
+      "fields": [
+        {
+          "id": "command_marker",
+          "display_name": "Command marker",
+          "description": "Synthetic constant marker moved before the target.",
+          "source_ref": "SYNTHETIC_FROM_SCRATCH:business_embedding_b#marker",
+          "value_type": "UINT64",
+          "wire": {"codec": "unsigned_integer", "byte_offset": 1, "byte_width": 1},
+          "encode": {"source": "constant", "value": 90}
+        },
+        {
+          "id": "target",
+          "display_name": "Target",
+          "description": "Business target with a different scale and little-endian layout.",
+          "source_ref": "SYNTHETIC_FROM_SCRATCH:business_embedding_b#target",
+          "value_type": "INT64",
+          "wire": {"codec": "unsigned_integer", "byte_offset": 2, "byte_width": 2, "byte_order": "little_endian"},
+          "encode": {"source": "input"},
+          "conversion": {
+            "kind": "linear",
+            "output_type": "DECIMAL64",
+            "scale": {"numerator": 1, "denominator": 4},
+            "bias": {"numerator": 0, "denominator": 1}
+          }
+        }
+      ]
+    }
+  ]
+}

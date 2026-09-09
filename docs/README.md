@@ -33,4 +33,6 @@
 - [PAE-DEC-042B Lab 0.6执行桥接C1阶段Windows验证报告](windows-msvc-2026-dec042b-lab-v06-execution-stage-c1.md)
 - [PAE-DEC-042B Lab C3 CLI Windows验证报告](windows-msvc-2026-dec042b-lab-c3-cli.md)
 - [PAE-DEC-042B C3人工离线验收单（NOT_EVALUATED）](manual-dec042b-c3-offline-acceptance.md)
+- [最小业务嵌入验证契约](business-embedding-minimal-contract.md)
+- [最小业务嵌入示例Windows验证报告](windows-msvc-2026-business-embedding-minimal.md)
 - [yyjson 0.12.0正式最小随仓依赖Windows验证报告](windows-msvc-2026-yyjson-vendor-dependency.md)

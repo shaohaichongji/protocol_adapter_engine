@@ -5,6 +5,8 @@
 - [`config/synthetic_lab_exchange_slice.pae.json`](config/synthetic_lab_exchange_slice.pae.json)：从零设计的人工实验台双向配置切片；状态为`V0.1 DRAFT SLICE / INCOMPLETE`。
 - [`config/synthetic_sum8_slice.pae.json`](config/synthetic_sum8_slice.pae.json)：从零设计的Schema 0.3
   SUM8完整记录样例，配套Values与独立计算Frame；不来自真实协议或现场报文。
+- [`business_embedding`](business_embedding/README.md)：默认关闭的最小C++17业务宿主示例，使用两份
+  从零合成配置验证类型化RX/TX、配置适应、失败不交付及回调复制生命周期。
 
 该样例只用于当前及后续 Loader/Compiler 和 Plan快照验证：
 

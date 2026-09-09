@@ -41,6 +41,18 @@ option(
     "Enable the dedicated offline Protocol Lab Schema 0.5 C3 command chain"
     OFF
 )
+option(
+    PAE_BUILD_BUSINESS_EMBEDDING_EXAMPLE
+    "Build the internal minimal business embedding example"
+    OFF
+)
+
+if(PAE_BUILD_BUSINESS_EMBEDDING_EXAMPLE AND NOT PAE_ENABLE_SCHEMA_V05_COMPILER)
+    message(
+        FATAL_ERROR
+        "PAE_BUILD_BUSINESS_EMBEDDING_EXAMPLE requires PAE_ENABLE_SCHEMA_V05_COMPILER=ON."
+    )
+endif()
 
 if(PAE_ENABLE_SCHEMA_V05_COMPILER AND PAE_BUILD_PROTOCOL_LAB AND
    NOT PAE_ENABLE_PROTOCOL_LAB_SCHEMA_V05)
@@ -166,13 +178,15 @@ endif()
 
 if(PAE_BUILD_LOADER_SCHEMA_IR_SLICE OR
    PAE_BUILD_COMPLETE_RECORD_CODEC_SLICE OR
-   PAE_BUILD_PROTOCOL_LAB)
+   PAE_BUILD_PROTOCOL_LAB OR
+   PAE_BUILD_BUSINESS_EMBEDDING_EXAMPLE)
     add_subdirectory(src/protocol_plan)
 endif()
 
 if(PAE_BUILD_LOADER_SCHEMA_IR_SLICE OR
    (PAE_BUILD_COMPLETE_RECORD_CODEC_SLICE AND PAE_BUILD_TESTING) OR
-   PAE_BUILD_PROTOCOL_LAB)
+   PAE_BUILD_PROTOCOL_LAB OR
+   PAE_BUILD_BUSINESS_EMBEDDING_EXAMPLE)
     add_subdirectory(src/config_compiler)
 endif()
 
@@ -183,8 +197,17 @@ if((PAE_BUILD_LOADER_SCHEMA_IR_SLICE OR
     add_subdirectory(tests/config_compiler)
 endif()
 
-if(PAE_BUILD_COMPLETE_RECORD_CODEC_SLICE OR PAE_BUILD_PROTOCOL_LAB)
+if(PAE_BUILD_COMPLETE_RECORD_CODEC_SLICE OR
+   PAE_BUILD_PROTOCOL_LAB OR
+   PAE_BUILD_BUSINESS_EMBEDDING_EXAMPLE)
     add_subdirectory(src/protocol_core)
+endif()
+
+if(PAE_BUILD_BUSINESS_EMBEDDING_EXAMPLE)
+    add_subdirectory(examples/business_embedding)
+    if(PAE_BUILD_TESTING)
+        add_subdirectory(tests/business_embedding)
+    endif()
 endif()
 
 if(PAE_BUILD_COMPLETE_RECORD_CODEC_SLICE AND PAE_BUILD_TESTING)

@@ -7,11 +7,13 @@
 `AGENT_OFFLINE_ACCEPTANCE=PASS`：修复Windows CLI路径输入/输出编码边界后，代理使用包含中文及
 空格的绝对配置、Values和record-root，完成七项离线验收，35项精确检查全部通过。
 `USER_MANUAL_ACCEPTANCE=NOT_EVALUATED`。本结果是代理自动执行证据，不替代用户人工验收，
-DEC-042B不据本次直接关闭。
+2026-09-08用户确认以该代理离线验收通过作为本功能检查点收口依据；DEC-042B C3离线功能检查点
+已收口。该决定不将用户人工状态改为PASS，也不代表完整PAE V0.1或生产准入通过。
 
 ## 基线与证据
 
-- Git基线：`386a8bb7a1b0e21453f6b80faa3283e513f4a02e`；本轮源码、测试和文档修复均未提交。
+- 验证时Git基线：`386a8bb7a1b0e21453f6b80faa3283e513f4a02e`，当时包含未提交修复；
+  该修复随后随`df43165`提交并Push。此次收口沿用原验证证据，没有重新运行验收。
 - 可执行文件：`out/dec042b-c3-release-msvc/tools/protocol_lab/pae_protocol_lab.exe`。
 - EXE SHA-256：`0C213C43EF595980B2DC543A3E03FC259B50C61E0C38AC80E6F18BEF7ABCCE3E`。
 - 修复后证据根：`out/agent-c3-acceptance-20260908-212535`，均留在Git之外；`record.json`
