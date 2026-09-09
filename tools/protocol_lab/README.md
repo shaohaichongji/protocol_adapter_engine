@@ -71,6 +71,17 @@ cmake -S . -B out/build/protocol-lab-c3 `
 cmake --build out/build/protocol-lab-c3 --config Release
 ```
 
+Schema 0.6 CRC链在上述C3依赖之上还必须显式开启CRC编译与Lab能力：
+
+```powershell
+cmake -S . -B out/build/protocol-lab-crc `
+  -DPAE_BUILD_PROTOCOL_LAB=ON -DPAE_BUILD_LOADER_SCHEMA_IR_SLICE=ON `
+  -DPAE_BUILD_COMPLETE_RECORD_CODEC_SLICE=ON -DPAE_ENABLE_SCHEMA_V05_COMPILER=ON `
+  -DPAE_ENABLE_PROTOCOL_LAB_SCHEMA_V05=ON -DPAE_ENABLE_SCHEMA_V06_CRC_COMPILER=ON `
+  -DPAE_ENABLE_PROTOCOL_LAB_SCHEMA_V06_CRC=ON
+cmake --build out/build/protocol-lab-crc --config Release
+```
+
 ## 使用
 
 ```text
@@ -110,6 +121,12 @@ Record 0.7 Bundle内的原配置、输入与指定Pipeline，不接受配置替�
 C执行Bundle，不调用Codec也不发布新Bundle。CLI 0.1进程退出和`--expect-status`只控制终端判定，
 不改写Result 0.6的执行状态、退出码或确定性指纹；完整命令与人工记录方式见
 [C3人工离线验收单](../../docs/manual-dec042b-c3-offline-acceptance.md)。
+
+Schema 0.6统一使用Result 0.7、指纹0.7和Record 0.8，包括无`integrity`及继续使用SUM8的消息。
+成功Run、完整性失败Run及其链式Replay均按新代完整读取；失败Replay即使比较`EQUAL`仍保留
+当前失败和退出5。Schema 0.5/0.6 Run直接Compare在确定性指纹域比较前拒绝，旧Result 0.6、
+Record 0.7及历史指纹保持不变。CRC参数、算法及证据边界见
+[CRC确认契约](../../docs/crc-minimal-contract-draft.md)。
 
 UDP V0.2事件在真实TX持久化、发送和RX持久化阶段采集，使用同一Run单调时钟原点。RX在Peer
 检查和Decode前写入并复核原始字节及来源Metadata。Replay保留历史Transport事实，但当前Codec

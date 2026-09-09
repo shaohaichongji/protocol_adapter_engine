@@ -735,6 +735,19 @@ Peer不匹配、超长/截断、错误响应的完整证据、记录失败、Pro
 Runtime、Session、Route、公共C ABI、真实设备、硬件、现场验证和Golden Candidate自动升级
 均不在本切片。
 
+### 16.3 Schema 0.6 CRC离线证据代际
+
+Schema 0.6离线执行统一产生Result 0.7、确定性指纹0.7和Run Record 0.8；该选择由已成功编译的
+配置代际决定，与Message是否实际配置CRC无关。Event保持0.7阶段语法，CLI封装保持0.1，RX
+Metadata仍保持0.2。新代文件名为`result_summary_v0.7.json`、`run_record_v0.8.json`和
+`events_v0.7.jsonl`，历史父记录使用相同新代Record/Result文件名。
+
+同代成功或完整性失败Bundle均须可读取和链式Replay。CRC失败Replay可比较为`EQUAL`，但当前
+执行仍是`INTEGRITY_FAILED`并保持退出5；这不等于执行成功。Schema 0.5与0.6的Run Compare在
+指纹比较前拒绝，不伪造协议差异；原始Frame比较保持跨代可用。旧Result 0.6、Record 0.7、
+指纹算法及历史夹具不重写。详细验证见
+[`windows-msvc-2026-crc-minimal-slice.md`](windows-msvc-2026-crc-minimal-slice.md)。
+
 ## 17. 当前未验证范围
 
 - CLI名称和JSON字段已有内部实现，但尚未形成公共兼容性承诺；

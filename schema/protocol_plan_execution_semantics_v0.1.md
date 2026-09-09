@@ -385,9 +385,28 @@ DECIMAL_SCALE_OUT_OF_RANGE；反算非整数、Wire越界和
 最大转换数预分配并计入执行内存估算，热路径不分配。Core入口同时按编译能力检查Schema代际，
 未知代际及缺省构建中的0.5执行均失败关闭。
 
-默认Schema 0.5开关仍关闭，开启时可与Loader和Core共存，但仍禁止Protocol Lab。Values 0.4、
-Lab 0.6及证据读写尚未实现；详见[编译首段报告](../docs/windows-msvc-2026-dec042b-compiler-slice.md)
-和[Core第二段报告](../docs/windows-msvc-2026-dec042b-core-slice.md)。
+默认Schema 0.5及其Lab开关仍关闭；显式开启专用C3链时使用Values 0.4、Result 0.6、指纹0.6和
+Record 0.7。详见[编译首段报告](../docs/windows-msvc-2026-dec042b-compiler-slice.md)、
+[Core第二段报告](../docs/windows-msvc-2026-dec042b-core-slice.md)和
+[C3 CLI报告](../docs/windows-msvc-2026-dec042b-lab-c3-cli.md)。
+
+### 11.7 Schema 0.6参数化CRC规则
+
+Schema 0.6继承0.5并为COMPLETE_RECORD增加CRC-16/CRC-32。每条Message仍至多一个
+`integrity`规则，可选无校验、SUM8或CRC。CRC显式冻结位宽、正常非反射多项式、初值、
+`refin/refout`、最终异或、连续非空覆盖范围和独立存储字节序；2/4字节存储区不得进入覆盖区，
+也不得与字段、位容器或`fixed_bytes` Matcher重叠。
+
+Core使用有界直接左移寄存器实现：可选逐字节位反转、逐位最高位反馈、位宽截断、可选最终寄存器
+反转及`xorout`，不追加零字节、不构建动态表、不逐帧分配。Decode在唯一结构候选和容量检查后
+校验CRC，失败返回`INTEGRITY_FAILED`且不交付字段；Encode写完业务内容后生成CRC并从最终Frame
+复算，最终不一致保持`FINAL_REVIEW_FAILED`且有效输出长度为0。覆盖字节操作计数为Decode N、
+Encode 2N，这只是有界操作证据。
+
+Schema 0.6使用独立Result 0.7、确定性指纹0.7及Run Record 0.8；Event语法保持0.7，CLI保持0.1。
+旧Schema 0.1至0.5、旧指纹及历史Bundle不重写，跨0.5/0.6执行域Compare失败关闭，原始Frame比较
+仍可跨来源。公开合成向量与Windows证据见
+[`windows-msvc-2026-crc-minimal-slice.md`](../docs/windows-msvc-2026-crc-minimal-slice.md)。
 
 ## 12. 当前不覆盖的完整 V0.1 能力
 
@@ -398,7 +417,7 @@ Lab 0.6及证据读写尚未实现；详见[编译首段报告](../docs/windows-
 - 比例/偏置的Values/Lab证据、raw/value constraints及稳定公共接口；
 - `default`和`computed`正式作者格式；
 - 长度字段正式语义；
-- SUM、XOR、LRC、Parameterized CRC和自定义Checksum；
+- SUM、XOR、LRC、CRC之外的自定义Checksum及多段/动态完整性规则；
 - Receive Gate、Mapping、Session、资源自定义和Runtime注册；
 - 稳定公共API、C ABI和字符串键值适配层；
 - 三个PoC（Proof of Concept，概念验证）的正式协议独立Golden Vector；当前只有人工实验协议的两条Synthetic引擎向量。
@@ -425,6 +444,7 @@ Lab 0.6及证据读写尚未实现；详见[编译首段报告](../docs/windows-
 
 | 文档版本 | 日期 | 说明 |
 | --- | --- | --- |
+| 0.1.12 | 2026-09-09 | 同步Schema 0.6参数化CRC-16/32、冻结参数、Core双向执行、Result 0.7/Record 0.8隔离及Windows离线验证边界 |
 | 0.1.11 | 2026-09-07 | 同步DEC-042B Core审查纠错：非法Decimal scale归类为INVALID_ARGUMENT，最终重读算术内部故障保持INTERNAL_ERROR，并补充运行时代际门禁与Workspace计费边界 |
 | 0.1.10 | 2026-09-07 | 同步PAE-DEC-042B Core精确双向转换、Decimal64、Workspace raw诊断、失败顺序、最终重读复核及运行槽计费；Values/Lab证据段仍未实现 |
 | 0.1.9 | 2026-09-07 | 同步PAE-DEC-042B临时门隔离的Schema 0.5编译冻结、独立转换表、Builder复核和Plan计费首段；Core/Lab运行语义仍未实现 |
