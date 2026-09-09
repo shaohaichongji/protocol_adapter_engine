@@ -151,6 +151,14 @@ RunBundleInput BuildBundle(const RunRequest& request, const v06::ExecutionOutcom
 #else
   const bool length_generation = false;
 #endif
+#if defined(PAE_ENABLE_SCHEMA_V08_VARIABLE_COMPILER)
+  const bool variable_generation =
+      outcome.schema_version == "0.8" ||
+      (outcome.result.has_value() && outcome.result->format_version == v06::kVariableResultFormat);
+  if (variable_generation) bundle.record.format_version = std::string{kVariableRecordFormat};
+#else
+  const bool variable_generation = false;
+#endif
   bundle.record.tool_version = request.tool_version;
   bundle.record.operation_kind = request.operation_kind;
   bundle.record.invocation_kind = request.invocation_kind;
@@ -170,9 +178,10 @@ RunBundleInput BuildBundle(const RunRequest& request, const v06::ExecutionOutcom
                                  : std::nullopt;
   bundle.record.result_file =
       outcome.result.has_value()
-          ? std::optional<std::string>{length_generation ? "result_summary_v0.8.json"
-                                       : crc_generation  ? "result_summary_v0.7.json"
-                                                         : "result_summary_v0.6.json"}
+          ? std::optional<std::string>{variable_generation ? "result_summary_v0.9.json"
+                                       : length_generation ? "result_summary_v0.8.json"
+                                       : crc_generation    ? "result_summary_v0.7.json"
+                                                           : "result_summary_v0.6.json"}
           : std::nullopt;
   if (outcome.result.has_value()) {
     std::string error;
@@ -216,15 +225,26 @@ RunBundleInput BuildBundle(const RunRequest& request, const v06::ExecutionOutcom
     if (request.parent_record_text.has_value() && request.historical_result_text.has_value() &&
         request.historical_fingerprint.has_value()) {
       bundle.record.historical_baseline =
-          HistoricalBaseline{length_generation ? "history/parent_record_v0.9.json"
-                             : crc_generation  ? "history/parent_record_v0.8.json"
-                                               : "history/parent_record_v0.7.json",
+          HistoricalBaseline{variable_generation ? "history/parent_record_v0.10.json"
+                             : length_generation ? "history/parent_record_v0.9.json"
+                             : crc_generation    ? "history/parent_record_v0.8.json"
+                                                 : "history/parent_record_v0.7.json",
                              HashBytes(*request.parent_record_text),
-                             length_generation ? "history/result_summary_v0.8.json"
-                             : crc_generation  ? "history/result_summary_v0.7.json"
-                                               : "history/result_summary_v0.6.json",
+                             variable_generation ? "history/result_summary_v0.9.json"
+                             : length_generation ? "history/result_summary_v0.8.json"
+                             : crc_generation    ? "history/result_summary_v0.7.json"
+                                                 : "history/result_summary_v0.6.json",
                              HashBytes(*request.historical_result_text),
-#if defined(PAE_ENABLE_SCHEMA_V07_LENGTH_COMPILER)
+#if defined(PAE_ENABLE_SCHEMA_V08_VARIABLE_COMPILER)
+                             std::string{variable_generation ? v06::kVariableFingerprintDomain
+                                         : length_generation ? v06::kLengthFingerprintDomain
+#if defined(PAE_ENABLE_SCHEMA_V06_CRC_COMPILER)
+                                         : crc_generation ? v06::kCrcFingerprintDomain
+                                                          : v06::kFingerprintDomain},
+#else
+                                                             : v06::kFingerprintDomain},
+#endif
+#elif defined(PAE_ENABLE_SCHEMA_V07_LENGTH_COMPILER)
                              std::string{length_generation ? v06::kLengthFingerprintDomain
 #if defined(PAE_ENABLE_SCHEMA_V06_CRC_COMPILER)
                                          : crc_generation ? v06::kCrcFingerprintDomain
@@ -398,6 +418,9 @@ bool QualifyRunEvidence(const StoredRunBundle& bundle, EvidenceQualificationStat
 #if defined(PAE_ENABLE_SCHEMA_V07_LENGTH_COMPILER)
       && plan.SchemaVersion() != "0.7"
 #endif
+#if defined(PAE_ENABLE_SCHEMA_V08_VARIABLE_COMPILER)
+      && plan.SchemaVersion() != "0.8"
+#endif
   ) {
     error = "Run Evidence Plan is outside the enabled C execution generations";
     return false;
@@ -414,6 +437,10 @@ bool QualifyRunEvidence(const StoredRunBundle& bundle, EvidenceQualificationStat
 #if defined(PAE_ENABLE_SCHEMA_V07_LENGTH_COMPILER)
       || (plan.SchemaVersion() == "0.7" && result.format_version == v06::kLengthResultFormat &&
           bundle.record.format_version == kLengthRecordFormat)
+#endif
+#if defined(PAE_ENABLE_SCHEMA_V08_VARIABLE_COMPILER)
+      || (plan.SchemaVersion() == "0.8" && result.format_version == v06::kVariableResultFormat &&
+          bundle.record.format_version == kVariableRecordFormat)
 #endif
       ;
   if (!generation_matches) {
@@ -455,6 +482,48 @@ bool QualifyRunEvidence(const StoredRunBundle& bundle, EvidenceQualificationStat
         return false;
       }
     }
+#if defined(PAE_ENABLE_SCHEMA_V08_VARIABLE_COMPILER)
+    if (plan.SchemaVersion() == "0.8" && plan.Messages()[message].bounded_payload.has_value()) {
+      const auto& bounded = *plan.Messages()[message].bounded_payload;
+      if (!result.frame_hex.has_value() || (result.frame_hex->size() % 2U) != 0U) {
+        error = "successful bounded Result is missing its actual Frame";
+        return false;
+      }
+      const std::size_t frame_size = result.frame_hex->size() / 2U;
+      if (bounded.header_length > frame_size ||
+          bounded.trailer_length > frame_size - bounded.header_length) {
+        error = "successful bounded Result Frame cannot derive a safe payload length";
+        return false;
+      }
+      const std::size_t payload_size = frame_size -
+                                       static_cast<std::size_t>(bounded.header_length) -
+                                       static_cast<std::size_t>(bounded.trailer_length);
+      if (frame_size < bounded.min_frame_length || frame_size > bounded.max_frame_length ||
+          payload_size < bounded.min_payload_length || payload_size > bounded.max_payload_length ||
+          bounded.payload_field_index >= result.fields.size() ||
+          result.fields[bounded.payload_field_index].kind != "BYTES" ||
+          result.fields[bounded.payload_field_index].raw_value.size() != payload_size * 2U ||
+          result.fields[bounded.payload_field_index].logical_value !=
+              result.fields[bounded.payload_field_index].raw_value) {
+        error = "successful bounded Result payload does not bind its actual Frame layout";
+        return false;
+      }
+      if (!plan.Messages()[message].computed_length.has_value()) {
+        error = "successful bounded Result is missing the computed length descriptor";
+        return false;
+      }
+      const auto& computed = *plan.Messages()[message].computed_length;
+      const std::size_t expected_length =
+          computed.scope == protocol_plan::ComputedLengthScope::FRAME ? frame_size : payload_size;
+      if (computed.field_index >= result.fields.size() ||
+          result.fields[computed.field_index].kind != "UINT64" ||
+          result.fields[computed.field_index].raw_value != std::to_string(expected_length) ||
+          result.fields[computed.field_index].logical_value != std::to_string(expected_length)) {
+        error = "successful bounded Result length field does not bind its actual Frame layout";
+        return false;
+      }
+    }
+#endif
   }
   if (result.failed_field_index.has_value()) {
     const std::size_t index = *result.failed_field_index;
@@ -509,6 +578,11 @@ bool QualifyRunEvidence(const StoredRunBundle& bundle, EvidenceQualificationStat
     std::string values_text = *bundle.values_text;
     if (!v06::internal::ParseCompatibleValues(values_text, values, error)) {
       error = "Encode Run Values cannot be parsed during Plan qualification: " + error;
+      return false;
+    }
+    if (!v06::internal::ValuesFormatCompatibleWithSchema(values.format_version,
+                                                         plan.SchemaVersion())) {
+      error = "Encode Run Values generation is not accepted by the compiled Plan";
       return false;
     }
     if (values.pipeline_id != *result.pipeline_id || values.message_id != *result.message_id) {

@@ -207,7 +207,11 @@ class TestRunner final {
 #if defined(PAE_ENABLE_SCHEMA_V05_COMPILER)
 #if defined(PAE_ENABLE_SCHEMA_V06_CRC_COMPILER)
 #if defined(PAE_ENABLE_SCHEMA_V07_LENGTH_COMPILER)
-  static constexpr std::size_t kExpectedCaseCount = 88U;
+  static constexpr std::size_t kExpectedCaseCount = 88U
+#if defined(PAE_ENABLE_SCHEMA_V08_VARIABLE_COMPILER)
+                                                    + 11U
+#endif
+      ;
 #else
   static constexpr std::size_t kExpectedCaseCount = 84U;
 #endif
@@ -637,6 +641,62 @@ void RunPlanBuilderLengthDefenseCases(TestRunner& runner) {
   } else {
     runner.Pass("length_builder_resource_count_defense");
   }
+}
+#endif
+
+#if defined(PAE_ENABLE_SCHEMA_V08_VARIABLE_COMPILER)
+void RunPlanBuilderVariableDefenseCases(TestRunner& runner) {
+  const auto reject = [&runner](std::string_view case_id,
+                                pae::test_support::VariableDraftMutation mutation) {
+    const auto result =
+        PlanBuilder::Freeze(pae::test_support::MakeCorruptedVariableDraft(mutation));
+    if (result.Succeeded() || result.Diagnostic() == nullptr ||
+        result.Diagnostic()->code != PlanBuildError::INVALID_MESSAGE_PLAN ||
+        result.Diagnostic()->message_index != 0U) {
+      runner.Fail(case_id, "PlanBuilder accepted a corrupted bounded payload descriptor");
+      return;
+    }
+    runner.Pass(case_id);
+  };
+  reject("variable_builder_payload_index_defense",
+         pae::test_support::VariableDraftMutation::INVALID_PAYLOAD_INDEX);
+  reject("variable_builder_payload_range_defense",
+         pae::test_support::VariableDraftMutation::REVERSED_PAYLOAD_RANGE);
+  reject("variable_builder_frame_rederivation_defense",
+         pae::test_support::VariableDraftMutation::INCORRECT_MAX_FRAME);
+  reject("variable_builder_integrity_anchor_defense",
+         pae::test_support::VariableDraftMutation::INVALID_DYNAMIC_INTEGRITY);
+  reject("variable_builder_required_length_defense",
+         pae::test_support::VariableDraftMutation::MISSING_COMPUTED_LENGTH);
+  const auto late_container = PlanBuilder::Freeze(pae::test_support::MakeCorruptedVariableDraft(
+      pae::test_support::VariableDraftMutation::LATE_BIT_CONTAINER));
+  if (late_container.Succeeded() || late_container.Diagnostic() == nullptr ||
+      late_container.Diagnostic()->code != PlanBuildError::INVALID_FIELD_PLAN ||
+      late_container.Diagnostic()->message_index != 0U) {
+    runner.Fail("variable_builder_bit_container_header_defense",
+                "PlanBuilder accepted a bit container outside the bounded header");
+  } else {
+    runner.Pass("variable_builder_bit_container_header_defense");
+  }
+
+  const auto header_gap = PlanBuilder::Freeze(pae::test_support::MakeCorruptedVariableDraft(
+      pae::test_support::VariableDraftMutation::HEADER_GAP));
+  if (header_gap.Succeeded() || header_gap.Diagnostic() == nullptr ||
+      header_gap.Diagnostic()->code != PlanBuildError::FRAME_NOT_FULLY_DEFINED ||
+      header_gap.Diagnostic()->message_index != 0U) {
+    runner.Fail("variable_builder_header_coverage_defense",
+                "PlanBuilder accepted an undefined bounded header byte");
+  } else {
+    runner.Pass("variable_builder_header_coverage_defense");
+  }
+  reject("variable_builder_region_length_scope_defense",
+         pae::test_support::VariableDraftMutation::REGION_COMPUTED_LENGTH);
+  reject("variable_builder_sum8_trailer_width_defense",
+         pae::test_support::VariableDraftMutation::TRAILER_LENGTH_MISMATCH);
+  reject("variable_builder_no_integrity_trailer_width_defense",
+         pae::test_support::VariableDraftMutation::TRAILER_WITHOUT_INTEGRITY);
+  reject("variable_builder_crc16_trailer_width_defense",
+         pae::test_support::VariableDraftMutation::CRC16_TRAILER_MISMATCH);
 }
 #endif
 
@@ -1481,6 +1541,9 @@ int main(int argc, char** argv) {
   RunPlanBuilderIntegrityDefenseCases(runner);
 #if defined(PAE_ENABLE_SCHEMA_V07_LENGTH_COMPILER)
   RunPlanBuilderLengthDefenseCases(runner);
+#endif
+#if defined(PAE_ENABLE_SCHEMA_V08_VARIABLE_COMPILER)
+  RunPlanBuilderVariableDefenseCases(runner);
 #endif
   RunPlanBuilderInt64DefenseCase(runner);
   RunPlanMemoryContractCases(runner);

@@ -140,13 +140,20 @@ bool ParseCompatibleValues(std::string& text, ParsedValues& output, std::string&
   if (!IsObjectWithKeys(root, root_keys, root_keys, "values", error)) return false;
   std::string format;
   if (!ReadString(root, "format_version", format, error)) return false;
-  if (format == kValuesFormat) return ParseValues(text, output, error);
+  if (format == kValuesFormat
+#if defined(PAE_ENABLE_SCHEMA_V08_VARIABLE_COMPILER)
+      || format == kVariableValuesFormat
+#endif
+  ) {
+    return ParseValues(text, output, error);
+  }
   if (!IsLegacyFormat(format)) {
     error = "unsupported Values format_version";
     return false;
   }
 
   ParsedValues candidate;
+  candidate.format_version = format;
   if (!ReadString(root, "pipeline_id", candidate.pipeline_id, error) ||
       !ReadString(root, "message_id", candidate.message_id, error))
     return false;
@@ -223,6 +230,17 @@ bool ParseCompatibleValues(std::string& text, ParsedValues& output, std::string&
   }
   output = std::move(candidate);
   error.clear();
+  return true;
+}
+
+bool ValuesFormatCompatibleWithSchema(std::string_view values_format,
+                                      std::string_view schema_version) noexcept {
+#if defined(PAE_ENABLE_SCHEMA_V08_VARIABLE_COMPILER)
+  if (values_format == kVariableValuesFormat) return schema_version == "0.8";
+#else
+  static_cast<void>(values_format);
+  static_cast<void>(schema_version);
+#endif
   return true;
 }
 

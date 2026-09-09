@@ -278,6 +278,34 @@ CompileResult BuildCrcPlan() {
 }
 #endif
 
+#if defined(PAE_ENABLE_SCHEMA_V08_VARIABLE_COMPILER)
+CompileResult BuildVariablePlan() {
+  return pae::config_compiler::CompileJsonToPlan(R"json({
+    "schema_version":"0.8","protocol_id":"allocation_variable","protocol_version":"1",
+    "display_name":"Synthetic","description":"","source_ref":"SYNTHETIC_FROM_SCRATCH:allocation",
+    "resource_profile":"desktop",
+    "framing_profiles":[{"id":"record","display_name":"Synthetic","description":"",
+      "source_ref":"SYNTHETIC_FROM_SCRATCH:allocation","input_kind":"complete_record"}],
+    "pipelines":[{"id":"pipe","display_name":"Synthetic","description":"",
+      "source_ref":"SYNTHETIC_FROM_SCRATCH:allocation","direction_id":"rx",
+      "input_framing_profile_id":"record","message_ids":["message"]}],
+    "messages":[{"id":"message","display_name":"Synthetic","description":"",
+      "source_ref":"SYNTHETIC_FROM_SCRATCH:allocation","direction_id":"rx",
+      "layout":{"kind":"bounded_payload","header_length_bytes":2,"payload_field_id":"payload",
+        "min_payload_bytes":0,"max_payload_bytes":3},
+      "matcher":{"all":[{"kind":"fixed_bytes","byte_offset":0,"bytes":"A5"}]},
+      "integrity":{"algorithm":"sum8","range":{"byte_offset":0,"end":"payload_end"},
+        "storage":{"anchor":"payload_end"}},
+      "fields":[{"id":"length","display_name":"Synthetic","description":"",
+        "source_ref":"SYNTHETIC_FROM_SCRATCH:allocation","value_type":"UINT64",
+        "wire":{"codec":"unsigned_integer","byte_offset":1,"byte_width":1},
+        "encode":{"source":"computed"},"computed":{"kind":"length","scope":"frame"}},
+       {"id":"payload","display_name":"Synthetic","description":"",
+        "source_ref":"SYNTHETIC_FROM_SCRATCH:allocation","value_type":"BYTES",
+        "wire":{"codec":"bytes","byte_offset":2},"encode":{"source":"input"}}]}]})json");
+}
+#endif
+
 #if defined(PAE_ENABLE_SCHEMA_V07_LENGTH_COMPILER)
 CompileResult BuildLengthPlan() {
   return pae::config_compiler::CompileJsonToPlan(R"json({
@@ -301,6 +329,36 @@ CompileResult BuildLengthPlan() {
          "source_ref":"SYNTHETIC_FROM_SCRATCH:allocation","value_type":"UINT64",
          "wire":{"codec":"unsigned_integer","byte_offset":1,"byte_width":1},
          "encode":{"source":"input"}}]}]})json");
+}
+#endif
+
+#if defined(PAE_ENABLE_SCHEMA_V08_VARIABLE_COMPILER)
+bool RunFirstVariableCalls() {
+  CompileResult frozen = BuildVariablePlan();
+  if (!frozen.Succeeded()) return false;
+  ExecutionWorkspace workspace{*frozen.Plan()};
+  const std::array<std::uint8_t, 2U> payload{0x10U, 0x20U};
+  EncodeFieldValue value;
+  value.field = FieldRef{frozen.Plan(), 0U, 1U};
+  value.value_kind = LogicalValueKind::BYTES;
+  value.bytes_value = {payload.data(), payload.size()};
+  std::array<std::uint8_t, 5U> output{};
+  std::size_t before = g_allocation_count.load(std::memory_order_relaxed);
+  const auto encoded = EncodeCompleteRecord(*frozen.Plan(), workspace, 0U, 0U, &value, 1U,
+                                            {output.data(), output.size()});
+  std::size_t after = g_allocation_count.load(std::memory_order_relaxed);
+  if (encoded.status != CodecStatus::OK ||
+      output != std::array<std::uint8_t, 5U>{0xA5U, 0x05U, 0x10U, 0x20U, 0xDAU} ||
+      before != after) {
+    return false;
+  }
+  std::array<DecodedFieldSlot, 2U> slots{};
+  before = g_allocation_count.load(std::memory_order_relaxed);
+  const auto decoded = DecodeCompleteRecord(
+      *frozen.Plan(), workspace, 0U, {output.data(), output.size()}, slots.data(), slots.size());
+  after = g_allocation_count.load(std::memory_order_relaxed);
+  return decoded.status == CodecStatus::OK && slots[0].uint64_value == 5U &&
+         slots[1].bytes_value.size == 2U && before == after;
 }
 #endif
 
@@ -541,11 +599,14 @@ int main(int argc, char** argv) {
 #if defined(PAE_ENABLE_SCHEMA_V07_LENGTH_COMPILER)
                       : mode == "--first-length" ? RunFirstLengthCalls()
 #endif
+#if defined(PAE_ENABLE_SCHEMA_V08_VARIABLE_COMPILER)
+                      : mode == "--first-variable" ? RunFirstVariableCalls()
+#endif
 #if defined(PAE_ENABLE_SCHEMA_V05_COMPILER)
                       : mode == "--first-decimal" ? RunFirstDecimalCalls()
 #endif
                                                   : false;
-  const std::string_view case_id =
+  std::string_view case_id =
       mode == "--first-decode"
           ? "first_decode_zero_replaceable_new_allocation"
           : (mode == "--first-encode"
@@ -568,6 +629,7 @@ int main(int argc, char** argv) {
                                       : "first_decimal_calls_zero_replaceable_new_allocation"
 #endif
                                       ))));
+  if (mode == "--first-variable") case_id = "first_variable_calls_zero_replaceable_new_allocation";
   std::cout << (passed ? "PASS" : "FAIL") << " case=" << case_id << '\n';
   std::cout << "FIRST_CALL_ALLOCATION_TEST_SUMMARY passed=" << (passed ? 1 : 0)
             << " failed=" << (passed ? 0 : 1) << " expected=1 gate=" << (passed ? "PASS" : "FAIL")

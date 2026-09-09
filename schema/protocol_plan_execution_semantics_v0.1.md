@@ -424,6 +424,22 @@ Schema 0.7统一使用Result及指纹0.8、Run Record 0.9；Event 0.7、Values 0
 旧代格式、指纹及证据不重写，跨代Run Compare失败关闭。公开合成证据见
 [`windows-msvc-2026-length-field-slice.md`](../docs/windows-msvc-2026-length-field-slice.md)。
 
+### 11.9 Schema 0.8有界变长完整记录
+
+Schema 0.8继承固定Message，并增加固定头部、一段输入BYTES载荷和可选紧邻SUM8/CRC尾部的
+`bounded_payload`布局。实际帧长由完整输入或BYTES长度安全推导；一个头部计算长度字段记录
+frame或payload字节数。结构候选只使用实际长度闭区间及fixed_bytes，长度值和完整性不消歧。
+
+Core Decode在唯一结构及容量检查后依次验证计算长度、动态完整性和字段；Encode预检载荷后按
+实际尺寸写业务字段、长度和尾部，并只对实际帧范围最终复核。载荷Decode视图借用输入Frame；
+正常首调及重复调用不新增堆分配。Builder重新推导载荷索引、尺寸区间、尾部锚点和资源计费。
+
+Schema 0.8使用Result及指纹0.9、Run Record 0.10；Event 0.7和CLI 0.1不变。Values 0.1～0.4
+保持原接受域；Values 0.5仅为Schema 0.8扩展显式空BYTES，缺失、null及旧代空BYTES仍拒绝。
+Result 0.9允许空BYTES的raw/logical同为空串且enum_known为false，旧Result接受域不改。
+旧格式及指纹不重写，跨代Run Compare失败关闭。公开合成证据见
+[`windows-msvc-2026-bounded-variable-record-slice.md`](../docs/windows-msvc-2026-bounded-variable-record-slice.md)。
+
 ## 12. 当前不覆盖的完整 V0.1 能力
 
 完成本切片不能宣称完成完整Schema V0.1。至少仍缺少：
@@ -459,6 +475,8 @@ Schema 0.7统一使用Result及指纹0.8、Run Record 0.9；Event 0.7、Values 0
 
 | 文档版本 | 日期 | 说明 |
 | --- | --- | --- |
+| 0.1.15 | 2026-09-09 | 收口Schema 0.8空BYTES：增加仅新代可用的Values 0.5，Result 0.9 Reader/Writer/指纹统一接受空配对，旧代不变 |
+| 0.1.14 | 2026-09-09 | 同步Schema 0.8有界变长完整记录、实际尺寸执行、动态完整性、Lab 0.9/Record 0.10及Windows离线边界 |
 | 0.1.13 | 2026-09-09 | 同步Schema 0.7固定完整记录长度字段、Builder重算、Core执行顺序、Lab 0.8/Record 0.9及Windows离线边界 |
 | 0.1.12 | 2026-09-09 | 同步Schema 0.6参数化CRC-16/32、冻结参数、Core双向执行、Result 0.7/Record 0.8隔离及Windows离线验证边界 |
 | 0.1.11 | 2026-09-07 | 同步DEC-042B Core审查纠错：非法Decimal scale归类为INVALID_ARGUMENT，最终重读算术内部故障保持INTERNAL_ERROR，并补充运行时代际门禁与Workspace计费边界 |

@@ -68,6 +68,10 @@ struct IntegrityPlan {
   std::uint64_t range_offset = 0U;
   std::uint64_t range_length = 0U;
   std::uint64_t storage_offset = 0U;
+#if defined(PAE_ENABLE_SCHEMA_V08_VARIABLE_COMPILER)
+  bool range_ends_at_payload = false;
+  bool storage_at_payload_end = false;
+#endif
 #if defined(PAE_ENABLE_SCHEMA_V06_CRC_COMPILER)
   std::uint8_t crc_width = 0U;
   std::uint32_t crc_polynomial = 0U;
@@ -78,6 +82,18 @@ struct IntegrityPlan {
   ByteOrder storage_byte_order = ByteOrder::NOT_APPLICABLE;
 #endif
 };
+
+#if defined(PAE_ENABLE_SCHEMA_V08_VARIABLE_COMPILER)
+struct BoundedPayloadPlan {
+  std::size_t payload_field_index = static_cast<std::size_t>(-1);
+  std::uint64_t header_length = 0U;
+  std::uint64_t min_payload_length = 0U;
+  std::uint64_t max_payload_length = 0U;
+  std::uint64_t trailer_length = 0U;
+  std::uint64_t min_frame_length = 0U;
+  std::uint64_t max_frame_length = 0U;
+};
+#endif
 
 #if defined(PAE_ENABLE_SCHEMA_V07_LENGTH_COMPILER)
 struct ComputedLengthPlan {
@@ -99,6 +115,9 @@ struct MessagePlan {
   std::vector<MatcherPlan> matchers;
   std::vector<BitContainerPlan> bit_containers;
   std::optional<IntegrityPlan> integrity;
+#if defined(PAE_ENABLE_SCHEMA_V08_VARIABLE_COMPILER)
+  std::optional<BoundedPayloadPlan> bounded_payload;
+#endif
 #if defined(PAE_ENABLE_SCHEMA_V07_LENGTH_COMPILER)
   std::optional<ComputedLengthPlan> computed_length;
 #endif
@@ -163,6 +182,10 @@ struct FrozenIntegrityPlan {
   std::uint64_t range_offset = 0U;
   std::uint64_t range_length = 0U;
   std::uint64_t storage_offset = 0U;
+#if defined(PAE_ENABLE_SCHEMA_V08_VARIABLE_COMPILER)
+  bool range_ends_at_payload = false;
+  bool storage_at_payload_end = false;
+#endif
 #if defined(PAE_ENABLE_SCHEMA_V06_CRC_COMPILER)
   std::uint8_t crc_width = 0U;
   std::uint32_t crc_polynomial = 0U;
@@ -173,6 +196,10 @@ struct FrozenIntegrityPlan {
   ByteOrder storage_byte_order = ByteOrder::NOT_APPLICABLE;
 #endif
 };
+
+#if defined(PAE_ENABLE_SCHEMA_V08_VARIABLE_COMPILER)
+using FrozenBoundedPayloadPlan = BoundedPayloadPlan;
+#endif
 
 #if defined(PAE_ENABLE_SCHEMA_V07_LENGTH_COMPILER)
 using FrozenComputedLengthPlan = ComputedLengthPlan;
@@ -185,6 +212,9 @@ struct FrozenMessagePlan {
   FrozenArray<FrozenMatcherPlan> matchers;
   FrozenArray<FrozenBitContainerPlan> bit_containers;
   std::optional<FrozenIntegrityPlan> integrity;
+#if defined(PAE_ENABLE_SCHEMA_V08_VARIABLE_COMPILER)
+  std::optional<FrozenBoundedPayloadPlan> bounded_payload;
+#endif
 #if defined(PAE_ENABLE_SCHEMA_V07_LENGTH_COMPILER)
   std::optional<FrozenComputedLengthPlan> computed_length;
 #endif
@@ -244,6 +274,9 @@ struct MessageExecutionPlan {
   std::size_t frame_size = 0U;
   std::size_t required_input_count = 0U;
   std::optional<FrozenIntegrityPlan> integrity;
+#if defined(PAE_ENABLE_SCHEMA_V08_VARIABLE_COMPILER)
+  std::optional<FrozenBoundedPayloadPlan> bounded_payload;
+#endif
 #if defined(PAE_ENABLE_SCHEMA_V07_LENGTH_COMPILER)
   std::optional<FrozenComputedLengthPlan> computed_length;
 #endif
@@ -263,6 +296,9 @@ struct PipelineExecutionPlan {
   std::size_t framing_profile_index = 0U;
   FrozenArray<std::uint64_t> allowed_message_words;
   FrozenArray<CandidateGroupExecutionPlan> candidate_groups;
+#if defined(PAE_ENABLE_SCHEMA_V08_VARIABLE_COMPILER)
+  FrozenArray<std::size_t> variable_message_indices;
+#endif
 };
 
 struct ExecutionResourceLayout {

@@ -869,8 +869,8 @@ bool ParseUnsignedWire(yyjson_val* value, std::string_view pointer, WireIr& outp
   return true;
 }
 
-bool ParseBytesWire(yyjson_val* value, std::string_view pointer, WireIr& output,
-                    CompileDiagnostic& diagnostic) {
+bool ParseBytesWire(yyjson_val* value, std::string_view pointer, bool allow_omitted_length,
+                    WireIr& output, CompileDiagnostic& diagnostic) {
   if (!yyjson_is_obj(value)) {
     return SetDiagnostic(diagnostic, CompileStage::STRUCTURAL, CompileError::TYPE_MISMATCH,
                          std::string(pointer), "wire must be an object");
@@ -883,11 +883,22 @@ bool ParseBytesWire(yyjson_val* value, std::string_view pointer, WireIr& output,
   std::string codec_token;
   if (codec == nullptr ||
       !ReadEnumToken(codec, ChildPointer(pointer, "codec"), {"bytes"}, codec_token, diagnostic) ||
-      !ReadRequiredUint64(value, "byte_offset", pointer, output.byte_offset, diagnostic) ||
-      !ReadRequiredUint64(value, "byte_length", pointer, output.byte_width, diagnostic)) {
+      !ReadRequiredUint64(value, "byte_offset", pointer, output.byte_offset, diagnostic)) {
     return false;
   }
-  if (output.byte_offset >= 1024U * 1024U || output.byte_width == 0U ||
+  yyjson_val* byte_length = yyjson_obj_get(value, "byte_length");
+  if (byte_length == nullptr) {
+    if (!allow_omitted_length) {
+      return SetDiagnostic(diagnostic, CompileStage::STRUCTURAL, CompileError::MISSING_PROPERTY,
+                           ChildPointer(pointer, "byte_length"),
+                           "fixed BYTES wire requires byte_length");
+    }
+    output.byte_width = 0U;
+  } else if (!ReadExactUint64(byte_length, ChildPointer(pointer, "byte_length"), output.byte_width,
+                              diagnostic)) {
+    return false;
+  }
+  if (output.byte_offset >= 1024U * 1024U || (!allow_omitted_length && output.byte_width == 0U) ||
       output.byte_width > 1024U * 1024U) {
     return SetDiagnostic(diagnostic, CompileStage::STRUCTURAL, CompileError::INTEGER_OUT_OF_RANGE,
                          output.byte_width == 0U || output.byte_width > 1024U * 1024U
@@ -1056,8 +1067,8 @@ bool ParseEncode(yyjson_val* value, std::string_view pointer, ValueType value_ty
 }
 
 #if defined(PAE_ENABLE_SCHEMA_V07_LENGTH_COMPILER)
-bool ParseComputedLength(yyjson_val* value, std::string_view pointer, ComputedLengthIr& output,
-                         CompileDiagnostic& diagnostic) {
+bool ParseComputedLength(yyjson_val* value, std::string_view pointer, bool supports_payload_scope,
+                         ComputedLengthIr& output, CompileDiagnostic& diagnostic) {
   if (!yyjson_is_obj(value)) {
     return SetDiagnostic(diagnostic, CompileStage::STRUCTURAL, CompileError::TYPE_MISMATCH,
                          std::string{pointer}, "computed length must be an object");
@@ -1068,8 +1079,11 @@ bool ParseComputedLength(yyjson_val* value, std::string_view pointer, ComputedLe
   std::string scope_token;
   if (kind == nullptr || scope == nullptr ||
       !ReadEnumToken(kind, ChildPointer(pointer, "kind"), {"length"}, kind_token, diagnostic) ||
-      !ReadEnumToken(scope, ChildPointer(pointer, "scope"), {"frame", "region"}, scope_token,
-                     diagnostic)) {
+      !ReadEnumToken(scope, ChildPointer(pointer, "scope"),
+                     supports_payload_scope
+                         ? std::initializer_list<std::string_view>{"frame", "region", "payload"}
+                         : std::initializer_list<std::string_view>{"frame", "region"},
+                     scope_token, diagnostic)) {
     return false;
   }
   output.origin.json_pointer = std::string{pointer};
@@ -1078,6 +1092,15 @@ bool ParseComputedLength(yyjson_val* value, std::string_view pointer, ComputedLe
     output.scope = ComputedLengthScope::FRAME;
     return true;
   }
+#if defined(PAE_ENABLE_SCHEMA_V08_VARIABLE_COMPILER)
+  if (scope_token == "payload") {
+    if (!ValidateObjectProperties(value, pointer, {"kind", "scope"}, diagnostic)) return false;
+    output.scope = ComputedLengthScope::PAYLOAD;
+    return true;
+  }
+#else
+  static_cast<void>(supports_payload_scope);
+#endif
   if (!ValidateObjectProperties(value, pointer, {"kind", "scope", "range"}, diagnostic))
     return false;
   yyjson_val* range = RequiredProperty(value, "range", pointer, diagnostic);
@@ -1201,7 +1224,7 @@ bool ParseConversion(yyjson_val* value, std::string_view pointer, LinearConversi
 
 bool ParseField(yyjson_val* value, std::string_view pointer, bool supports_bitfields,
                 bool supports_int64, bool supports_conversion, bool supports_computed_length,
-                FieldIr& output, CompileDiagnostic& diagnostic) {
+                bool variable_layout, FieldIr& output, CompileDiagnostic& diagnostic) {
   if (!yyjson_is_obj(value)) {
     return SetDiagnostic(diagnostic, CompileStage::STRUCTURAL, CompileError::TYPE_MISMATCH,
                          std::string(pointer), "field must be an object");
@@ -1310,7 +1333,7 @@ bool ParseField(yyjson_val* value, std::string_view pointer, bool supports_bitfi
     return SetDiagnostic(diagnostic, CompileStage::STRUCTURAL, CompileError::UNSUPPORTED_FEATURE,
                          wire_pointer, "BOOL requires bitfield wire");
   } else if (output.value_type == ValueType::BYTES) {
-    if (!ParseBytesWire(wire, wire_pointer, output.wire, diagnostic)) {
+    if (!ParseBytesWire(wire, wire_pointer, variable_layout, output.wire, diagnostic)) {
       return false;
     }
   } else if (!ParseUnsignedWire(wire, wire_pointer, output.wire, diagnostic)) {
@@ -1332,7 +1355,8 @@ bool ParseField(yyjson_val* value, std::string_view pointer, bool supports_bitfi
                            "computed encode source requires a computed rule");
     }
     ComputedLengthIr parsed;
-    if (!ParseComputedLength(computed, ChildPointer(pointer, "computed"), parsed, diagnostic))
+    if (!ParseComputedLength(computed, ChildPointer(pointer, "computed"), variable_layout, parsed,
+                             diagnostic))
       return false;
     output.computed_length = std::move(parsed);
   } else if (computed != nullptr) {
@@ -1383,7 +1407,8 @@ bool ParseField(yyjson_val* value, std::string_view pointer, bool supports_bitfi
 
 bool ParseFields(yyjson_val* value, std::string_view pointer, bool supports_bitfields,
                  bool supports_int64, bool supports_conversion, bool supports_computed_length,
-                 std::vector<FieldIr>& output, CompileDiagnostic& diagnostic) {
+                 bool variable_layout, std::vector<FieldIr>& output,
+                 CompileDiagnostic& diagnostic) {
   if (!yyjson_is_arr(value)) {
     return SetDiagnostic(diagnostic, CompileStage::STRUCTURAL, CompileError::TYPE_MISMATCH,
                          std::string(pointer), "fields must be an array");
@@ -1400,7 +1425,8 @@ bool ParseFields(yyjson_val* value, std::string_view pointer, bool supports_bitf
   while (yyjson_val* field_value = yyjson_arr_iter_next(&iterator)) {
     FieldIr field;
     if (!ParseField(field_value, IndexPointer(pointer, index), supports_bitfields, supports_int64,
-                    supports_conversion, supports_computed_length, field, diagnostic)) {
+                    supports_conversion, supports_computed_length, variable_layout, field,
+                    diagnostic)) {
       return false;
     }
     output.push_back(std::move(field));
@@ -1436,7 +1462,7 @@ bool ParseBitContainers(yyjson_val* value, std::string_view pointer,
 }
 
 bool ParseIntegrity(yyjson_val* value, std::string_view pointer, bool supports_crc,
-                    IntegrityIr& output, CompileDiagnostic& diagnostic) {
+                    bool variable_layout, IntegrityIr& output, CompileDiagnostic& diagnostic) {
   if (!yyjson_is_obj(value)) {
     return SetDiagnostic(diagnostic, CompileStage::STRUCTURAL, CompileError::TYPE_MISMATCH,
                          std::string(pointer), "integrity must be an object");
@@ -1522,10 +1548,29 @@ bool ParseIntegrity(yyjson_val* value, std::string_view pointer, bool supports_c
     return SetDiagnostic(diagnostic, CompileStage::STRUCTURAL, CompileError::TYPE_MISMATCH,
                          range_pointer, "integrity range must be an object");
   }
-  if (!ValidateObjectProperties(range, range_pointer, {"byte_offset", "byte_length"}, diagnostic) ||
-      !ReadRequiredUint64(range, "byte_offset", range_pointer, output.range_offset, diagnostic) ||
-      !ReadRequiredUint64(range, "byte_length", range_pointer, output.range_length, diagnostic)) {
-    return false;
+  yyjson_val* dynamic_end = yyjson_obj_get(range, "end");
+#if defined(PAE_ENABLE_SCHEMA_V08_VARIABLE_COMPILER)
+  if (variable_layout && dynamic_end != nullptr) {
+    std::string end_token;
+    if (!ValidateObjectProperties(range, range_pointer, {"byte_offset", "end"}, diagnostic) ||
+        !ReadRequiredUint64(range, "byte_offset", range_pointer, output.range_offset, diagnostic) ||
+        !ReadEnumToken(dynamic_end, ChildPointer(range_pointer, "end"), {"payload_end"}, end_token,
+                       diagnostic)) {
+      return false;
+    }
+    output.range_ends_at_payload = true;
+  } else
+#else
+  static_cast<void>(variable_layout);
+  static_cast<void>(dynamic_end);
+#endif
+  {
+    if (!ValidateObjectProperties(range, range_pointer, {"byte_offset", "byte_length"},
+                                  diagnostic) ||
+        !ReadRequiredUint64(range, "byte_offset", range_pointer, output.range_offset, diagnostic) ||
+        !ReadRequiredUint64(range, "byte_length", range_pointer, output.range_length, diagnostic)) {
+      return false;
+    }
   }
   yyjson_val* storage = RequiredProperty(value, "storage", pointer, diagnostic);
   const std::string storage_pointer = ChildPointer(pointer, "storage");
@@ -1537,14 +1582,34 @@ bool ParseIntegrity(yyjson_val* value, std::string_view pointer, bool supports_c
                          storage_pointer, "integrity storage must be an object");
   }
   const bool crc_storage = algorithm_token == "crc";
-  if (!ValidateObjectProperties(
-          storage, storage_pointer,
-          crc_storage ? std::initializer_list<std::string_view>{"byte_offset", "byte_order"}
-                      : std::initializer_list<std::string_view>{"byte_offset"},
-          diagnostic) ||
-      !ReadRequiredUint64(storage, "byte_offset", storage_pointer, output.storage_offset,
-                          diagnostic)) {
-    return false;
+#if defined(PAE_ENABLE_SCHEMA_V08_VARIABLE_COMPILER)
+  if (variable_layout) {
+    if (!ValidateObjectProperties(
+            storage, storage_pointer,
+            crc_storage ? std::initializer_list<std::string_view>{"anchor", "byte_order"}
+                        : std::initializer_list<std::string_view>{"anchor"},
+            diagnostic)) {
+      return false;
+    }
+    yyjson_val* anchor = RequiredProperty(storage, "anchor", storage_pointer, diagnostic);
+    std::string anchor_token;
+    if (anchor == nullptr || !ReadEnumToken(anchor, ChildPointer(storage_pointer, "anchor"),
+                                            {"payload_end"}, anchor_token, diagnostic)) {
+      return false;
+    }
+    output.storage_at_payload_end = true;
+  } else
+#endif
+  {
+    if (!ValidateObjectProperties(
+            storage, storage_pointer,
+            crc_storage ? std::initializer_list<std::string_view>{"byte_offset", "byte_order"}
+                        : std::initializer_list<std::string_view>{"byte_offset"},
+            diagnostic) ||
+        !ReadRequiredUint64(storage, "byte_offset", storage_pointer, output.storage_offset,
+                            diagnostic)) {
+      return false;
+    }
   }
 #if defined(PAE_ENABLE_SCHEMA_V06_CRC_COMPILER)
   if (crc_storage) {
@@ -1565,17 +1630,59 @@ bool ParseIntegrity(yyjson_val* value, std::string_view pointer, bool supports_c
   return true;
 }
 
+#if defined(PAE_ENABLE_SCHEMA_V08_VARIABLE_COMPILER)
+bool ParseBoundedPayloadLayout(yyjson_val* value, std::string_view pointer,
+                               BoundedPayloadIr& output, CompileDiagnostic& diagnostic) {
+  if (!yyjson_is_obj(value)) {
+    return SetDiagnostic(diagnostic, CompileStage::STRUCTURAL, CompileError::TYPE_MISMATCH,
+                         std::string{pointer}, "layout must be an object");
+  }
+  if (!ValidateObjectProperties(value, pointer,
+                                {"kind", "header_length_bytes", "payload_field_id",
+                                 "min_payload_bytes", "max_payload_bytes"},
+                                diagnostic)) {
+    return false;
+  }
+  yyjson_val* kind = RequiredProperty(value, "kind", pointer, diagnostic);
+  std::string kind_token;
+  if (kind == nullptr ||
+      !ReadEnumToken(kind, ChildPointer(pointer, "kind"), {"bounded_payload"}, kind_token,
+                     diagnostic) ||
+      !ReadRequiredUint64(value, "header_length_bytes", pointer, output.header_length,
+                          diagnostic) ||
+      !ReadRequiredId(value, "payload_field_id", pointer, output.payload_field_id, diagnostic) ||
+      !ReadRequiredUint64(value, "min_payload_bytes", pointer, output.min_payload_length,
+                          diagnostic) ||
+      !ReadRequiredUint64(value, "max_payload_bytes", pointer, output.max_payload_length,
+                          diagnostic)) {
+    return false;
+  }
+  if (output.header_length == 0U) {
+    return SetDiagnostic(diagnostic, CompileStage::STRUCTURAL, CompileError::INTEGER_OUT_OF_RANGE,
+                         ChildPointer(pointer, "header_length_bytes"),
+                         "bounded payload header must contain at least one byte");
+  }
+  output.origin.json_pointer = std::string{pointer};
+  return true;
+}
+#endif
+
 bool ParseMessage(yyjson_val* value, std::string_view pointer, bool supports_bitfields,
                   bool supports_integrity, bool supports_crc, bool supports_int64,
-                  bool supports_conversion, bool supports_computed_length, MessageIr& output,
-                  CompileDiagnostic& diagnostic) {
+                  bool supports_conversion, bool supports_computed_length,
+                  bool supports_variable_layout, MessageIr& output, CompileDiagnostic& diagnostic) {
   if (!yyjson_is_obj(value)) {
     return SetDiagnostic(diagnostic, CompileStage::STRUCTURAL, CompileError::TYPE_MISMATCH,
                          std::string(pointer), "message must be an object");
   }
   if (!ValidateObjectProperties(
           value, pointer,
-          supports_integrity
+          supports_variable_layout
+              ? std::initializer_list<std::string_view>{"id", "display_name", "description",
+                                                        "source_ref", "direction_id",
+                                                        "frame_length_bytes", "layout", "matcher",
+                                                        "bit_containers", "integrity", "fields"}
+          : supports_integrity
               ? std::initializer_list<std::string_view>{"id", "display_name", "description",
                                                         "source_ref", "direction_id",
                                                         "frame_length_bytes", "matcher",
@@ -1597,12 +1704,36 @@ bool ParseMessage(yyjson_val* value, std::string_view pointer, bool supports_bit
       !ReadRequiredString(value, "description", pointer, 0U, 1024U, output.description,
                           diagnostic) ||
       !ReadRequiredString(value, "source_ref", pointer, 1U, 512U, output.source_ref, diagnostic) ||
-      !ReadRequiredId(value, "direction_id", pointer, output.direction_id, diagnostic) ||
-      !ReadRequiredUint64(value, "frame_length_bytes", pointer, output.frame_length_bytes,
-                          diagnostic)) {
+      !ReadRequiredId(value, "direction_id", pointer, output.direction_id, diagnostic)) {
     return false;
   }
-  if (output.frame_length_bytes == 0U || output.frame_length_bytes > 1024U * 1024U) {
+#if defined(PAE_ENABLE_SCHEMA_V08_VARIABLE_COMPILER)
+  yyjson_val* layout = yyjson_obj_get(value, "layout");
+  const bool variable_layout = supports_variable_layout && layout != nullptr;
+  if (variable_layout) {
+    if (yyjson_obj_get(value, "frame_length_bytes") != nullptr) {
+      return SetDiagnostic(diagnostic, CompileStage::STRUCTURAL, CompileError::UNKNOWN_PROPERTY,
+                           ChildPointer(pointer, "frame_length_bytes"),
+                           "bounded payload Message must omit frame_length_bytes");
+    }
+    BoundedPayloadIr parsed;
+    if (!ParseBoundedPayloadLayout(layout, ChildPointer(pointer, "layout"), parsed, diagnostic)) {
+      return false;
+    }
+    output.bounded_payload = std::move(parsed);
+  } else
+#else
+  const bool variable_layout = false;
+  static_cast<void>(supports_variable_layout);
+#endif
+  {
+    if (!ReadRequiredUint64(value, "frame_length_bytes", pointer, output.frame_length_bytes,
+                            diagnostic)) {
+      return false;
+    }
+  }
+  if (!variable_layout &&
+      (output.frame_length_bytes == 0U || output.frame_length_bytes > 1024U * 1024U)) {
     return SetDiagnostic(diagnostic, CompileStage::STRUCTURAL, CompileError::INTEGER_OUT_OF_RANGE,
                          ChildPointer(pointer, "frame_length_bytes"),
                          "frame length must be in the range 1..1048576");
@@ -1613,7 +1744,8 @@ bool ParseMessage(yyjson_val* value, std::string_view pointer, bool supports_bit
       !ParseMatcher(matcher, ChildPointer(pointer, "matcher"), output.matcher_clauses,
                     diagnostic) ||
       !ParseFields(fields, ChildPointer(pointer, "fields"), supports_bitfields, supports_int64,
-                   supports_conversion, supports_computed_length, output.fields, diagnostic)) {
+                   supports_conversion, supports_computed_length, variable_layout, output.fields,
+                   diagnostic)) {
     return false;
   }
   if (supports_bitfields) {
@@ -1627,8 +1759,8 @@ bool ParseMessage(yyjson_val* value, std::string_view pointer, bool supports_bit
   if (supports_integrity) {
     if (yyjson_val* integrity = yyjson_obj_get(value, "integrity")) {
       IntegrityIr parsed;
-      if (!ParseIntegrity(integrity, ChildPointer(pointer, "integrity"), supports_crc, parsed,
-                          diagnostic)) {
+      if (!ParseIntegrity(integrity, ChildPointer(pointer, "integrity"), supports_crc,
+                          variable_layout, parsed, diagnostic)) {
         return false;
       }
       output.integrity = std::move(parsed);
@@ -1696,6 +1828,9 @@ bool BuildSchemaIr(yyjson_val* root, SchemaIr& output, CompileDiagnostic& diagno
 #if defined(PAE_ENABLE_SCHEMA_V07_LENGTH_COMPILER)
                                 || output.schema_version == "0.7"
 #endif
+#if defined(PAE_ENABLE_SCHEMA_V08_VARIABLE_COMPILER)
+                                || output.schema_version == "0.8"
+#endif
       ;
 #else
   const bool supported_schema = output.schema_version == "0.1" || output.schema_version == "0.2" ||
@@ -1739,13 +1874,16 @@ bool BuildSchemaIr(yyjson_val* root, SchemaIr& output, CompileDiagnostic& diagno
                    value, pointer, output.schema_version != "0.1",
                    output.schema_version == "0.3" || output.schema_version == "0.4" ||
                        output.schema_version == "0.5" || output.schema_version == "0.6" ||
-                       output.schema_version == "0.7",
-                   output.schema_version == "0.6" || output.schema_version == "0.7",
+                       output.schema_version == "0.7" || output.schema_version == "0.8",
+                   output.schema_version == "0.6" || output.schema_version == "0.7" ||
+                       output.schema_version == "0.8",
                    output.schema_version == "0.4" || output.schema_version == "0.5" ||
-                       output.schema_version == "0.6" || output.schema_version == "0.7",
+                       output.schema_version == "0.6" || output.schema_version == "0.7" ||
+                       output.schema_version == "0.8",
                    output.schema_version == "0.5" || output.schema_version == "0.6" ||
-                       output.schema_version == "0.7",
-                   output.schema_version == "0.7", message, item_diagnostic);
+                       output.schema_version == "0.7" || output.schema_version == "0.8",
+                   output.schema_version == "0.7" || output.schema_version == "0.8",
+                   output.schema_version == "0.8", message, item_diagnostic);
              },
              diagnostic);
 }
@@ -1817,7 +1955,19 @@ std::uint64_t BitWidthMask(std::uint64_t byte_width) noexcept {
 }
 
 bool FixedMatchersCanIntersect(const MessageIr& left, const MessageIr& right) {
-  if (left.frame_length_bytes != right.frame_length_bytes) {
+  const std::uint64_t left_min =
+#if defined(PAE_ENABLE_SCHEMA_V08_VARIABLE_COMPILER)
+      left.bounded_payload.has_value() ? left.bounded_payload->min_frame_length :
+#endif
+                                       left.frame_length_bytes;
+  const std::uint64_t left_max = left.frame_length_bytes;
+  const std::uint64_t right_min =
+#if defined(PAE_ENABLE_SCHEMA_V08_VARIABLE_COMPILER)
+      right.bounded_payload.has_value() ? right.bounded_payload->min_frame_length :
+#endif
+                                        right.frame_length_bytes;
+  const std::uint64_t right_max = right.frame_length_bytes;
+  if (left_max < right_min || right_max < left_min) {
     return false;
   }
   std::unordered_map<std::uint64_t, std::uint8_t> left_bytes;
@@ -1845,6 +1995,62 @@ bool FixedMatchersCanIntersect(const MessageIr& left, const MessageIr& right) {
 
 bool ValidateMessageDomain(MessageIr& message, ResourceRequirements& requirements,
                            CompileDiagnostic& diagnostic) {
+#if defined(PAE_ENABLE_SCHEMA_V08_VARIABLE_COMPILER)
+  if (message.bounded_payload.has_value()) {
+    BoundedPayloadIr& layout = *message.bounded_payload;
+    if (layout.min_payload_length > layout.max_payload_length) {
+      return SetDiagnostic(diagnostic, CompileStage::DOMAIN_VALIDATION,
+                           CompileError::VALUE_NOT_REPRESENTABLE,
+                           ChildPointer(layout.origin.json_pointer, "min_payload_bytes"),
+                           "min_payload_bytes must not exceed max_payload_bytes");
+    }
+    layout.trailer_length = 0U;
+    if (message.integrity.has_value()) {
+      layout.trailer_length = message.integrity->algorithm == IntegrityAlgorithm::SUM8
+                                  ? 1U
+                                  : static_cast<std::uint64_t>(message.integrity->crc_width / 8U);
+    }
+    if (layout.min_payload_length >
+            std::numeric_limits<std::uint64_t>::max() - layout.header_length ||
+        layout.max_payload_length >
+            std::numeric_limits<std::uint64_t>::max() - layout.header_length ||
+        layout.trailer_length > std::numeric_limits<std::uint64_t>::max() - layout.header_length -
+                                    layout.min_payload_length ||
+        layout.trailer_length > std::numeric_limits<std::uint64_t>::max() - layout.header_length -
+                                    layout.max_payload_length) {
+      return SetDiagnostic(diagnostic, CompileStage::DOMAIN_VALIDATION,
+                           CompileError::FIELD_OUT_OF_BOUNDS, layout.origin.json_pointer,
+                           "bounded payload frame length arithmetic overflows");
+    }
+    layout.min_frame_length =
+        layout.header_length + layout.min_payload_length + layout.trailer_length;
+    layout.max_frame_length =
+        layout.header_length + layout.max_payload_length + layout.trailer_length;
+    message.frame_length_bytes = layout.max_frame_length;
+    std::size_t payload_matches = 0U;
+    for (std::size_t index = 0U; index < message.fields.size(); ++index) {
+      FieldIr& field = message.fields[index];
+      if (field.id != layout.payload_field_id) continue;
+      ++payload_matches;
+      layout.payload_field_index = index;
+      if (field.value_type != ValueType::BYTES || field.wire.codec != WireCodec::BYTES ||
+          field.wire.byte_offset != layout.header_length || field.wire.byte_width != 0U ||
+          field.encode.source != EncodeSource::INPUT || field.conversion.has_value()) {
+        return SetDiagnostic(diagnostic, CompileStage::DOMAIN_VALIDATION,
+                             CompileError::UNSUPPORTED_FEATURE, field.wire.origin.json_pointer,
+                             "bounded payload field must be input BYTES at header_length_bytes and "
+                             "omit byte_length");
+      }
+      field.wire.byte_width = layout.max_payload_length;
+    }
+    if (payload_matches != 1U) {
+      return SetDiagnostic(diagnostic, CompileStage::DOMAIN_VALIDATION,
+                           CompileError::UNKNOWN_REFERENCE,
+                           ChildPointer(layout.origin.json_pointer, "payload_field_id"),
+                           "payload_field_id must resolve exactly once in its Message");
+    }
+  }
+#endif
   if (!AddSizeChecked(message.fields.size(), requirements.total_field_count) ||
       !AddSizeChecked(message.matcher_clauses.size(), requirements.total_matcher_count) ||
       !AddSizeChecked(message.bit_containers.size(), requirements.total_bit_container_count) ||
@@ -1892,6 +2098,15 @@ bool ValidateMessageDomain(MessageIr& message, ResourceRequirements& requirement
                            CompileError::FIELD_OUT_OF_BOUNDS, container.origin.json_pointer,
                            "bit container byte range exceeds message frame_length_bytes");
     }
+#if defined(PAE_ENABLE_SCHEMA_V08_VARIABLE_COMPILER)
+    if (message.bounded_payload.has_value() &&
+        (container.byte_offset > message.bounded_payload->header_length ||
+         container.byte_width > message.bounded_payload->header_length - container.byte_offset)) {
+      return SetDiagnostic(diagnostic, CompileStage::DOMAIN_VALIDATION,
+                           CompileError::FIELD_OUT_OF_BOUNDS, container.origin.json_pointer,
+                           "bit container must be fully inside the bounded payload header");
+    }
+#endif
     if (!FitsUnsignedWidth(container.base_value, container.byte_width)) {
       return SetDiagnostic(diagnostic, CompileStage::DOMAIN_VALIDATION,
                            CompileError::VALUE_NOT_REPRESENTABLE,
@@ -1954,6 +2169,22 @@ bool ValidateMessageDomain(MessageIr& message, ResourceRequirements& requirement
                            CompileError::FIELD_OUT_OF_BOUNDS, field.wire.origin.json_pointer,
                            "field byte range exceeds message frame_length_bytes");
     }
+#if defined(PAE_ENABLE_SCHEMA_V08_VARIABLE_COMPILER)
+    if (message.bounded_payload.has_value() &&
+        &field != &message.fields[message.bounded_payload->payload_field_index]) {
+      if (field.wire.codec == WireCodec::BYTES && field.wire.byte_width == 0U) {
+        return SetDiagnostic(diagnostic, CompileStage::DOMAIN_VALIDATION,
+                             CompileError::UNSUPPORTED_FEATURE, field.wire.origin.json_pointer,
+                             "only the bounded payload field may omit byte_length");
+      }
+      if (field.wire.codec != WireCodec::BITFIELD &&
+          field.wire.byte_offset + field.wire.byte_width > message.bounded_payload->header_length) {
+        return SetDiagnostic(diagnostic, CompileStage::DOMAIN_VALIDATION,
+                             CompileError::FIELD_OUT_OF_BOUNDS, field.wire.origin.json_pointer,
+                             "non-payload field must be fully inside the bounded payload header");
+      }
+    }
+#endif
     if (field.wire.codec != WireCodec::BITFIELD) {
       spans.push_back(FieldSpan{field.wire.byte_offset,
                                 field.wire.byte_offset + field.wire.byte_width, &field});
@@ -1986,6 +2217,13 @@ bool ValidateMessageDomain(MessageIr& message, ResourceRequirements& requirement
       }
       std::uint64_t expected = message.frame_length_bytes;
       if (computed.scope == ComputedLengthScope::REGION) {
+#if defined(PAE_ENABLE_SCHEMA_V08_VARIABLE_COMPILER)
+        if (message.bounded_payload.has_value()) {
+          return SetDiagnostic(diagnostic, CompileStage::DOMAIN_VALIDATION,
+                               CompileError::UNSUPPORTED_FEATURE, computed.origin.json_pointer,
+                               "bounded payload length supports only frame or payload scope");
+        }
+#endif
         if (computed.range_length == 0U) {
           return SetDiagnostic(diagnostic, CompileStage::DOMAIN_VALIDATION,
                                CompileError::FIELD_OUT_OF_BOUNDS,
@@ -2001,6 +2239,23 @@ bool ValidateMessageDomain(MessageIr& message, ResourceRequirements& requirement
         }
         expected = computed.range_length;
       }
+#if defined(PAE_ENABLE_SCHEMA_V08_VARIABLE_COMPILER)
+      if (computed.scope == ComputedLengthScope::PAYLOAD) {
+        if (!message.bounded_payload.has_value()) {
+          return SetDiagnostic(diagnostic, CompileStage::DOMAIN_VALIDATION,
+                               CompileError::UNSUPPORTED_FEATURE, computed.origin.json_pointer,
+                               "payload length scope requires a bounded payload Message");
+        }
+        expected = message.bounded_payload->max_payload_length;
+      }
+      if (message.bounded_payload.has_value() &&
+          field.wire.byte_offset + field.wire.byte_width > message.bounded_payload->header_length) {
+        return SetDiagnostic(
+            diagnostic, CompileStage::DOMAIN_VALIDATION, CompileError::FIELD_OUT_OF_BOUNDS,
+            field.wire.origin.json_pointer,
+            "computed length storage must be fully inside the bounded payload header");
+      }
+#endif
       if (!FitsUnsignedWidth(expected, field.wire.byte_width)) {
         return SetDiagnostic(diagnostic, CompileStage::DOMAIN_VALIDATION,
                              CompileError::VALUE_NOT_REPRESENTABLE, computed.origin.json_pointer,
@@ -2105,6 +2360,16 @@ bool ValidateMessageDomain(MessageIr& message, ResourceRequirements& requirement
     }
   }
 
+#if defined(PAE_ENABLE_SCHEMA_V08_VARIABLE_COMPILER) && \
+    defined(PAE_ENABLE_SCHEMA_V07_LENGTH_COMPILER)
+  if (message.bounded_payload.has_value() && computed_length_count != 1U) {
+    return SetDiagnostic(diagnostic, CompileStage::DOMAIN_VALIDATION,
+                         CompileError::UNSUPPORTED_FEATURE,
+                         message.bounded_payload->origin.json_pointer,
+                         "bounded payload Message requires exactly one computed length field");
+  }
+#endif
+
   for (std::size_t index = 0U; index < member_counts.size(); ++index) {
     if (member_counts[index] == 0U) {
       return SetDiagnostic(diagnostic, CompileStage::DOMAIN_VALIDATION, CompileError::EMPTY_ARRAY,
@@ -2148,40 +2413,69 @@ bool ValidateMessageDomain(MessageIr& message, ResourceRequirements& requirement
       }
     }
 #endif
-    if (integrity.range_length == 0U) {
-      return SetDiagnostic(diagnostic, CompileStage::DOMAIN_VALIDATION,
-                           CompileError::INTEGRITY_RANGE_OUT_OF_BOUNDS,
-                           ChildPointer(integrity.range_origin.json_pointer, "byte_length"),
-                           "integrity range must contain at least one byte");
-    }
-    if (integrity.range_offset > message.frame_length_bytes ||
-        integrity.range_length > message.frame_length_bytes - integrity.range_offset) {
-      return SetDiagnostic(diagnostic, CompileStage::DOMAIN_VALIDATION,
-                           CompileError::INTEGRITY_RANGE_OUT_OF_BOUNDS,
-                           integrity.range_origin.json_pointer,
-                           "integrity range exceeds message frame_length_bytes");
-    }
-    if (integrity.storage_offset > message.frame_length_bytes ||
-        storage_width > message.frame_length_bytes - integrity.storage_offset) {
-      return SetDiagnostic(diagnostic, CompileStage::DOMAIN_VALIDATION,
-                           CompileError::INTEGRITY_STORAGE_OUT_OF_BOUNDS,
-                           ChildPointer(integrity.storage_origin.json_pointer, "byte_offset"),
-                           "integrity storage exceeds message frame_length_bytes");
-    }
-    const std::uint64_t range_end = integrity.range_offset + integrity.range_length;
-    const std::uint64_t storage_end = integrity.storage_offset + storage_width;
-    if (integrity.storage_offset < range_end && integrity.range_offset < storage_end) {
-      return SetDiagnostic(diagnostic, CompileStage::DOMAIN_VALIDATION,
-                           CompileError::INTEGRITY_SELF_INCLUDED,
-                           ChildPointer(integrity.storage_origin.json_pointer, "byte_offset"),
-                           "integrity storage must be outside its covered range");
-    }
-    for (const FieldSpan& span : spans) {
-      if (integrity.storage_offset < span.end && span.begin < storage_end) {
+#if defined(PAE_ENABLE_SCHEMA_V08_VARIABLE_COMPILER)
+    if (message.bounded_payload.has_value()) {
+      const BoundedPayloadIr& layout = *message.bounded_payload;
+      if (!integrity.storage_at_payload_end) {
         return SetDiagnostic(diagnostic, CompileStage::DOMAIN_VALIDATION,
-                             CompileError::INTEGRITY_STORAGE_CONFLICT,
+                             CompileError::INTEGRITY_STORAGE_OUT_OF_BOUNDS,
+                             integrity.storage_origin.json_pointer,
+                             "bounded payload integrity storage must anchor at payload_end");
+      }
+      if (integrity.range_ends_at_payload) {
+        if (integrity.range_offset > layout.header_length) {
+          return SetDiagnostic(diagnostic, CompileStage::DOMAIN_VALIDATION,
+                               CompileError::INTEGRITY_RANGE_OUT_OF_BOUNDS,
+                               ChildPointer(integrity.range_origin.json_pointer, "byte_offset"),
+                               "dynamic integrity range must start at or before the payload");
+        }
+      } else if (integrity.range_length == 0U ||
+                 integrity.range_offset > layout.min_frame_length - layout.trailer_length ||
+                 integrity.range_length >
+                     layout.min_frame_length - layout.trailer_length - integrity.range_offset) {
+        return SetDiagnostic(diagnostic, CompileStage::DOMAIN_VALIDATION,
+                             CompileError::INTEGRITY_RANGE_OUT_OF_BOUNDS,
+                             integrity.range_origin.json_pointer,
+                             "fixed integrity range must fit before every possible payload_end");
+      }
+    } else
+#endif
+    {
+      if (integrity.range_length == 0U) {
+        return SetDiagnostic(diagnostic, CompileStage::DOMAIN_VALIDATION,
+                             CompileError::INTEGRITY_RANGE_OUT_OF_BOUNDS,
+                             ChildPointer(integrity.range_origin.json_pointer, "byte_length"),
+                             "integrity range must contain at least one byte");
+      }
+      if (integrity.range_offset > message.frame_length_bytes ||
+          integrity.range_length > message.frame_length_bytes - integrity.range_offset) {
+        return SetDiagnostic(diagnostic, CompileStage::DOMAIN_VALIDATION,
+                             CompileError::INTEGRITY_RANGE_OUT_OF_BOUNDS,
+                             integrity.range_origin.json_pointer,
+                             "integrity range exceeds message frame_length_bytes");
+      }
+      if (integrity.storage_offset > message.frame_length_bytes ||
+          storage_width > message.frame_length_bytes - integrity.storage_offset) {
+        return SetDiagnostic(diagnostic, CompileStage::DOMAIN_VALIDATION,
+                             CompileError::INTEGRITY_STORAGE_OUT_OF_BOUNDS,
                              ChildPointer(integrity.storage_origin.json_pointer, "byte_offset"),
-                             "integrity storage overlaps a field or bit container");
+                             "integrity storage exceeds message frame_length_bytes");
+      }
+      const std::uint64_t range_end = integrity.range_offset + integrity.range_length;
+      const std::uint64_t storage_end = integrity.storage_offset + storage_width;
+      if (integrity.storage_offset < range_end && integrity.range_offset < storage_end) {
+        return SetDiagnostic(diagnostic, CompileStage::DOMAIN_VALIDATION,
+                             CompileError::INTEGRITY_SELF_INCLUDED,
+                             ChildPointer(integrity.storage_origin.json_pointer, "byte_offset"),
+                             "integrity storage must be outside its covered range");
+      }
+      for (const FieldSpan& span : spans) {
+        if (integrity.storage_offset < span.end && span.begin < storage_end) {
+          return SetDiagnostic(diagnostic, CompileStage::DOMAIN_VALIDATION,
+                               CompileError::INTEGRITY_STORAGE_CONFLICT,
+                               ChildPointer(integrity.storage_origin.json_pointer, "byte_offset"),
+                               "integrity storage overlaps a field or bit container");
+        }
       }
     }
   }
@@ -2189,6 +2483,13 @@ bool ValidateMessageDomain(MessageIr& message, ResourceRequirements& requirement
   std::unordered_map<std::uint64_t, std::uint8_t> fixed_matcher_bytes;
   for (const MatcherClauseIr& matcher : message.matcher_clauses) {
     if (matcher.kind == MatcherKind::FRAME_LENGTH_EQUALS) {
+#if defined(PAE_ENABLE_SCHEMA_V08_VARIABLE_COMPILER)
+      if (message.bounded_payload.has_value()) {
+        return SetDiagnostic(diagnostic, CompileStage::DOMAIN_VALIDATION,
+                             CompileError::MATCHER_CONFLICT, matcher.origin.json_pointer,
+                             "bounded payload Message must not declare frame_length_equals");
+      }
+#endif
       if (matcher.length_bytes != message.frame_length_bytes) {
         return SetDiagnostic(diagnostic, CompileStage::DOMAIN_VALIDATION,
                              CompileError::MATCHER_CONFLICT,
@@ -2198,7 +2499,15 @@ bool ValidateMessageDomain(MessageIr& message, ResourceRequirements& requirement
       continue;
     }
     if (matcher.bytes.size() > std::numeric_limits<std::uint64_t>::max() - matcher.byte_offset ||
-        matcher.byte_offset + matcher.bytes.size() > message.frame_length_bytes) {
+        matcher.byte_offset + matcher.bytes.size() >
+#if defined(PAE_ENABLE_SCHEMA_V08_VARIABLE_COMPILER)
+            (message.bounded_payload.has_value() ? message.bounded_payload->header_length :
+#endif
+                                                 message.frame_length_bytes
+#if defined(PAE_ENABLE_SCHEMA_V08_VARIABLE_COMPILER)
+             )
+#endif
+    ) {
       return SetDiagnostic(diagnostic, CompileStage::DOMAIN_VALIDATION,
                            CompileError::MATCHER_OUT_OF_BOUNDS, matcher.origin.json_pointer,
                            "fixed byte matcher exceeds message frame_length_bytes");
@@ -2214,6 +2523,13 @@ bool ValidateMessageDomain(MessageIr& message, ResourceRequirements& requirement
       }
     }
   }
+#if defined(PAE_ENABLE_SCHEMA_V08_VARIABLE_COMPILER)
+  if (message.bounded_payload.has_value() && fixed_matcher_bytes.empty()) {
+    return SetDiagnostic(diagnostic, CompileStage::DOMAIN_VALIDATION,
+                         CompileError::MATCHER_CONFLICT, message.origin.json_pointer,
+                         "bounded payload Message requires at least one fixed_bytes matcher");
+  }
+#endif
 
 #if defined(PAE_ENABLE_SCHEMA_V07_LENGTH_COMPILER)
   for (const FieldIr& field : message.fields) {
@@ -2237,7 +2553,12 @@ bool ValidateMessageDomain(MessageIr& message, ResourceRequirements& requirement
       storage_width = static_cast<std::uint64_t>(message.integrity->crc_width / 8U);
     }
 #endif
-    for (std::uint64_t index = 0U; index < storage_width; ++index) {
+    for (std::uint64_t index = 0U;
+#if defined(PAE_ENABLE_SCHEMA_V08_VARIABLE_COMPILER)
+         !message.bounded_payload.has_value() &&
+#endif
+         index < storage_width;
+         ++index) {
       if (fixed_matcher_bytes.find(message.integrity->storage_offset + index) ==
           fixed_matcher_bytes.end()) {
         continue;
@@ -2358,14 +2679,23 @@ bool ValidateMessageDomain(MessageIr& message, ResourceRequirements& requirement
   std::vector<CoverageSpan> coverage_spans;
   coverage_spans.reserve(spans.size() + fixed_matcher_bytes.size() +
                          (message.integrity.has_value() ? 1U : 0U));
+  std::uint64_t required_coverage = message.frame_length_bytes;
+#if defined(PAE_ENABLE_SCHEMA_V08_VARIABLE_COMPILER)
+  const bool bounded_payload = message.bounded_payload.has_value();
+  if (bounded_payload) required_coverage = message.bounded_payload->header_length;
+#else
+  constexpr bool bounded_payload = false;
+#endif
   for (const FieldSpan& span : spans) {
-    coverage_spans.push_back(CoverageSpan{span.begin, span.end});
+    if (span.begin < required_coverage) {
+      coverage_spans.push_back(CoverageSpan{span.begin, span.end});
+    }
   }
   for (const auto& [offset, unused_value] : fixed_matcher_bytes) {
     static_cast<void>(unused_value);
     coverage_spans.push_back(CoverageSpan{offset, offset + 1U});
   }
-  if (message.integrity.has_value()) {
+  if (message.integrity.has_value() && !bounded_payload) {
     std::uint64_t storage_width = 1U;
 #if defined(PAE_ENABLE_SCHEMA_V06_CRC_COMPILER)
     if (message.integrity->algorithm == IntegrityAlgorithm::CRC) {
@@ -2391,10 +2721,12 @@ bool ValidateMessageDomain(MessageIr& message, ResourceRequirements& requirement
     }
     covered_end = (std::max)(covered_end, span.end);
   }
-  if (covered_end != message.frame_length_bytes) {
+  if (covered_end != required_coverage) {
     return SetDiagnostic(diagnostic, CompileStage::DOMAIN_VALIDATION,
                          CompileError::FRAME_NOT_FULLY_DEFINED, message.origin.json_pointer,
-                         "field and fixed matcher ranges do not define every frame byte");
+                         bounded_payload
+                             ? "field and fixed matcher ranges do not define every header byte"
+                             : "field and fixed matcher ranges do not define every frame byte");
   }
   return true;
 }
@@ -2637,12 +2969,25 @@ bool EstimateSchemaPlanMemory(const SchemaIr& schema,
       schema.messages.size() / 64U + (schema.messages.size() % 64U == 0U ? 0U : 1U);
   for (const ResolvedPipelineIr& pipeline : resolved_pipelines) {
     std::map<std::uint64_t, std::size_t> candidate_groups;
+#if defined(PAE_ENABLE_SCHEMA_V08_VARIABLE_COMPILER)
+    std::size_t variable_count = 0U;
+#endif
     for (const std::size_t message_index : pipeline.message_indices) {
+#if defined(PAE_ENABLE_SCHEMA_V08_VARIABLE_COMPILER)
+      if (schema.messages[message_index].bounded_payload.has_value()) {
+        ++variable_count;
+        continue;
+      }
+#endif
       ++candidate_groups[schema.messages[message_index].frame_length_bytes];
     }
     if (!layout.AddArray<std::uint64_t>(allowed_word_count, PlanMemoryCategory::INDEX) ||
         !layout.AddArray<CandidateGroupExecutionPlan>(candidate_groups.size(),
-                                                      PlanMemoryCategory::EXECUTION_DESCRIPTOR)) {
+                                                      PlanMemoryCategory::EXECUTION_DESCRIPTOR)
+#if defined(PAE_ENABLE_SCHEMA_V08_VARIABLE_COMPILER)
+        || !layout.AddArray<std::size_t>(variable_count, PlanMemoryCategory::INDEX)
+#endif
+    ) {
       return false;
     }
     for (const auto& [frame_length, message_count] : candidate_groups) {
@@ -2826,6 +3171,10 @@ PlanDraftAssemblyResult PlanDraftAssembler::Assemble(BudgetedSchemaIr budgeted) 
       integrity.range_offset = message.integrity->range_offset;
       integrity.range_length = message.integrity->range_length;
       integrity.storage_offset = message.integrity->storage_offset;
+#if defined(PAE_ENABLE_SCHEMA_V08_VARIABLE_COMPILER)
+      integrity.range_ends_at_payload = message.integrity->range_ends_at_payload;
+      integrity.storage_at_payload_end = message.integrity->storage_at_payload_end;
+#endif
 #if defined(PAE_ENABLE_SCHEMA_V06_CRC_COMPILER)
       integrity.crc_width = message.integrity->crc_width;
       integrity.crc_polynomial = message.integrity->crc_polynomial;
@@ -2837,6 +3186,15 @@ PlanDraftAssemblyResult PlanDraftAssembler::Assemble(BudgetedSchemaIr budgeted) 
 #endif
       message_plan.integrity = integrity;
     }
+#if defined(PAE_ENABLE_SCHEMA_V08_VARIABLE_COMPILER)
+    if (message.bounded_payload.has_value()) {
+      message_plan.bounded_payload = protocol_plan::BoundedPayloadPlan{
+          message.bounded_payload->payload_field_index, message.bounded_payload->header_length,
+          message.bounded_payload->min_payload_length,  message.bounded_payload->max_payload_length,
+          message.bounded_payload->trailer_length,      message.bounded_payload->min_frame_length,
+          message.bounded_payload->max_frame_length};
+    }
+#endif
 #if defined(PAE_ENABLE_SCHEMA_V07_LENGTH_COMPILER)
     for (std::size_t field_index = 0U; field_index < message.fields.size(); ++field_index) {
       const FieldIr& field = message.fields[field_index];
@@ -2854,6 +3212,10 @@ PlanDraftAssemblyResult PlanDraftAssembler::Assemble(BudgetedSchemaIr budgeted) 
       descriptor.range_length = computed.range_length;
       descriptor.expected_value = computed.scope == ComputedLengthScope::FRAME
                                       ? message.frame_length_bytes
+#if defined(PAE_ENABLE_SCHEMA_V08_VARIABLE_COMPILER)
+                                  : computed.scope == ComputedLengthScope::PAYLOAD
+                                      ? message.bounded_payload->max_payload_length
+#endif
                                       : computed.range_length;
       message_plan.computed_length = descriptor;
       break;

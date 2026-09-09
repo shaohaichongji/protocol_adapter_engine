@@ -192,6 +192,11 @@ Result MakeBaseResult(const PlanBundle& plan, std::string_view config_hash,
     result.format_version = std::string{kLengthResultFormat};
   }
 #endif
+#if defined(PAE_ENABLE_SCHEMA_V08_VARIABLE_COMPILER)
+  if (plan.SchemaVersion() == "0.8") {
+    result.format_version = std::string{kVariableResultFormat};
+  }
+#endif
   result.command = std::string{operation_kind};
   result.operation_kind = std::string{operation_kind};
   result.config_sha256 = std::string{config_hash};
@@ -394,9 +399,12 @@ std::unique_ptr<ExecutionBridge> ExecutionBridge::Prepare(std::string_view confi
 #if defined(PAE_ENABLE_SCHEMA_V07_LENGTH_COMPILER)
       && plan->SchemaVersion() != "0.7"
 #endif
+#if defined(PAE_ENABLE_SCHEMA_V08_VARIABLE_COMPILER)
+      && plan->SchemaVersion() != "0.8"
+#endif
   ) {
     failure.diagnostic_id = "PAE_LAB_C1_SCHEMA_UNSUPPORTED";
-    failure.detail = "C1 execution accepts only an enabled Schema 0.5, 0.6, or 0.7 Plan";
+    failure.detail = "C1 execution accepts only an enabled Schema 0.5 through 0.8 Plan";
     return nullptr;
   }
   auto implementation = std::make_unique<Impl>(std::string{config_text}, std::move(plan));
@@ -623,6 +631,15 @@ ExecutionOutcome ExecutionBridge::EncodeValuesText(std::string values_text
     if (observer != nullptr) observer->PhaseFinished(ExecutionPhase::PREPARATION, "FAILED");
     return outcome;
   }
+  if (!internal::ValuesFormatCompatibleWithSchema(parsed.format_version,
+                                                  implementation_->plan->SchemaVersion())) {
+    ExecutionOutcome outcome;
+    outcome.schema_version = CopyText(implementation_->plan->SchemaVersion());
+    SetPreparationFailure(outcome, "PAE_LAB_C1_VALUES_INVALID",
+                          "Values 0.5 is accepted only for Schema 0.8 execution");
+    if (observer != nullptr) observer->PhaseFinished(ExecutionPhase::PREPARATION, "FAILED");
+    return outcome;
+  }
   return EncodeParsed(parsed
 #if defined(PAE_ENABLE_OPERATION_COUNTERS)
                       ,
@@ -748,6 +765,12 @@ ExecutionOutcome ExecutionBridge::EncodeParsed(const ParsedValues& values
     outcome.result = std::move(result);
     return outcome;
   }
+  if (encoded_result.bytes_written > encoded.size()) {
+    outcome.stage = ExecutionStage::MATERIALIZATION;
+    outcome.materialization_failure = MaterializationFailure::INTERNAL_ERROR;
+    return outcome;
+  }
+  encoded.resize(encoded_result.bytes_written);
 
   std::vector<DecodedFieldSlot> slots(message.fields.size());
   std::size_t review_pipeline = pipeline_index;

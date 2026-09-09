@@ -2,6 +2,20 @@
 
 ## 1. 状态和目的
 
+2026-09-09当前工作树已按[有界变长实施契约](bounded-variable-record-contract.md)接入默认关闭的
+Schema 0.8离线链：Result/指纹0.9、Run Record 0.10，Event 0.7和CLI封装0.1保持不变。
+Values 0.1～0.4保持原接受域；只有Schema 0.8可使用Values 0.5显式表达空BYTES。
+成功和失败Bundle均要求`--record-root`，原配置Replay A/B可读且失败执行状态不被比较EQUAL
+覆盖；跨代Run Compare及混代自洽证据失败关闭。实际Windows离线证据见
+[专项报告](windows-msvc-2026-bounded-variable-record-slice.md)。普通UDP、UI、历史Bundle、
+旧指纹及真实设备能力不升级；当前工作树尚待总控审查。
+
+Result 0.9对空BYTES的唯一合法配对为`raw_value=""`、`logical_value=""`且
+`enum_known=false`，Writer、Reader与确定性指纹共用该版本化校验。Result 0.8及更旧代不放宽。
+Values 0.5仅在0.4上扩展显式`{"kind":"BYTES","hex":""}`；旧Schema、Values 0.4、
+缺失`hex`和`hex:null`仍失败关闭。下限大于0的空载荷仍由Core返回
+`BYTES_LENGTH_MISMATCH`，不把空Frame伪造为成功。
+
 2026-09-09收口同步：[长度字段确认契约](length-field-minimal-contract.md)已在当前工作树接入
 Schema 0.7、Result/指纹0.8和Run Record 0.9；Event 0.7、Values 0.1～0.4和CLI封装0.1不变。
 `COMPUTED_FIELD_OVERRIDE`与`LENGTH_MISMATCH`只允许出现在Result 0.8；成功和失败Bundle均经完整

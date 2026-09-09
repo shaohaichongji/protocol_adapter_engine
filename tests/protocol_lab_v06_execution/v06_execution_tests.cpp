@@ -364,6 +364,14 @@ bool TestLegacyValuesCompatibility() {
                                      "unsupported Values format_version",
                                      "unknown Values generation fails closed before Core") &&
            passed;
+#if defined(PAE_ENABLE_SCHEMA_V08_VARIABLE_COMPILER)
+  passed =
+      expect_preparation_detail(
+          R"json({"format_version":"pae.lab.values/0.5","pipeline_id":"p","message_id":"m","fields":[{"id":"payload","kind":"BYTES","hex":""}]})json",
+          "Values 0.5 is accepted only for Schema 0.8 execution",
+          "Values 0.5 is rejected by an older Schema before Core") &&
+      passed;
+#endif
   passed =
       expect_preparation_detail(
           R"json({"format_version":"pae.lab.values/0.1","pipeline_id":"p","message_id":"m","fields":[{"id":"value","kind":"UINT64","uint64":42}]})json",

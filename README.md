@@ -6,6 +6,14 @@ PAE 的目标是通过严格配置完成工业二进制协议的有方向 Decode
 
 ## 当前状态
 
+2026-09-09当前工作树：在已交付基线`7d2ef4f`上完成
+[有界变长完整记录](docs/bounded-variable-record-contract.md)限定实现，新增默认关闭Schema 0.8、
+固定头部加单段有界BYTES、frame/payload计算长度、动态SUM8/CRC尾部、Core双向执行、
+Result/指纹0.9及Record 0.10离线证据链。公开A5向量、业务宿主和Windows Debug/Release离线
+验证见[专项报告](docs/windows-msvc-2026-bounded-variable-record-slice.md)。空载荷收口新增仅Schema 0.8
+可用的Values 0.5显式空BYTES，不放宽旧Values/Result。本工作树尚待总控审查，
+未Stage/Commit/Push；不代表流式切帧、Linux、真实协议Golden、设备或现场通过。
+
 2026-09-09总控收口：[固定完整记录长度字段](docs/length-field-minimal-contract.md)已在当前
 工作树完成Schema 0.7、Compiler/Builder、Core、Lab 0.8/Record 0.9、公开向量及业务嵌入实现。
 初次Windows Debug/Release离线矩阵各39/39、业务嵌入各1/1及两类0测试隔离构建通过；

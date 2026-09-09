@@ -47,6 +47,11 @@ option(
     OFF
 )
 option(
+    PAE_ENABLE_SCHEMA_V08_VARIABLE_COMPILER
+    "Enable the internal Schema 0.8 bounded variable COMPLETE_RECORD compiler and Core slice"
+    OFF
+)
+option(
     PAE_ENABLE_PROTOCOL_LAB_SCHEMA_V05
     "Enable the dedicated offline Protocol Lab Schema 0.5 C3 command chain"
     OFF
@@ -59,6 +64,11 @@ option(
 option(
     PAE_ENABLE_PROTOCOL_LAB_SCHEMA_V07_LENGTH
     "Enable the dedicated offline Protocol Lab Schema 0.7 length command chain"
+    OFF
+)
+option(
+    PAE_ENABLE_PROTOCOL_LAB_SCHEMA_V08_VARIABLE
+    "Enable the dedicated offline Protocol Lab Schema 0.8 bounded variable command chain"
     OFF
 )
 option(
@@ -121,6 +131,21 @@ if(PAE_ENABLE_PROTOCOL_LAB_SCHEMA_V07_LENGTH AND
         "PAE_ENABLE_PROTOCOL_LAB_SCHEMA_V07_LENGTH requires explicit Schema 0.6 CRC Lab and Schema 0.7 length compiler slices."
     )
 endif()
+if(PAE_ENABLE_SCHEMA_V08_VARIABLE_COMPILER AND PAE_BUILD_PROTOCOL_LAB AND
+   NOT PAE_ENABLE_PROTOCOL_LAB_SCHEMA_V08_VARIABLE)
+    message(
+        FATAL_ERROR
+        "Schema 0.8 Protocol Lab requires explicit PAE_ENABLE_PROTOCOL_LAB_SCHEMA_V08_VARIABLE=ON."
+    )
+endif()
+if(PAE_ENABLE_PROTOCOL_LAB_SCHEMA_V08_VARIABLE AND
+   (NOT PAE_ENABLE_PROTOCOL_LAB_SCHEMA_V07_LENGTH OR
+    NOT PAE_ENABLE_SCHEMA_V08_VARIABLE_COMPILER))
+    message(
+        FATAL_ERROR
+        "PAE_ENABLE_PROTOCOL_LAB_SCHEMA_V08_VARIABLE requires explicit Schema 0.7 Lab and Schema 0.8 variable compiler slices."
+    )
+endif()
 if(PAE_ENABLE_SCHEMA_V05_COMPILER AND NOT PAE_BUILD_LOADER_SCHEMA_IR_SLICE)
     message(FATAL_ERROR "PAE_ENABLE_SCHEMA_V05_COMPILER requires the Loader/SchemaIr slice.")
 endif()
@@ -140,6 +165,15 @@ if(PAE_ENABLE_SCHEMA_V07_LENGTH_COMPILER AND
     message(
         FATAL_ERROR
         "PAE_ENABLE_SCHEMA_V07_LENGTH_COMPILER requires the Loader, Core, and explicit Schema 0.6 CRC compiler slice."
+    )
+endif()
+if(PAE_ENABLE_SCHEMA_V08_VARIABLE_COMPILER AND
+   (NOT PAE_ENABLE_SCHEMA_V07_LENGTH_COMPILER OR
+    NOT PAE_BUILD_LOADER_SCHEMA_IR_SLICE OR
+    NOT PAE_BUILD_COMPLETE_RECORD_CODEC_SLICE))
+    message(
+        FATAL_ERROR
+        "PAE_ENABLE_SCHEMA_V08_VARIABLE_COMPILER requires the Loader, Core, and explicit Schema 0.7 length compiler slice."
     )
 endif()
 

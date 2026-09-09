@@ -1,9 +1,9 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "urn:pae:schema:protocol-package:0.7:length-slice",
-  "title": "PAE ProtocolPackage V0.1-V0.7 Fixed Record Length Slice",
-  "description": "Schema 0.7在既有能力上增加固定完整记录的计算长度字段。",
-  "x-pae-status": "FIXED COMPLETE RECORD LENGTH MINIMAL SLICE",
+  "$id": "urn:pae:schema:protocol-package:0.8:bounded-variable-slice",
+  "title": "PAE ProtocolPackage V0.1-V0.8 Bounded Variable Record Slice",
+  "description": "Schema 0.8在既有能力上增加有界单BYTES载荷完整记录。",
+  "x-pae-status": "BOUNDED VARIABLE COMPLETE RECORD MINIMAL SLICE",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -19,7 +19,7 @@
   ],
   "properties": {
     "schema_version": {
-      "enum": ["0.1", "0.2", "0.3", "0.4", "0.5", "0.6", "0.7"]
+      "enum": ["0.1", "0.2", "0.3", "0.4", "0.5", "0.6", "0.7", "0.8"]
     },
     "protocol_id": {
       "$ref": "#/$defs/stable_id"
@@ -85,7 +85,11 @@
               "else": {
                 "if": {"properties": {"schema_version": {"const": "0.6"}}},
                 "then": {"properties": {"messages": {"items": {"$ref": "#/$defs/message_v06"}}}},
-                "else": {"properties": {"messages": {"items": {"$ref": "#/$defs/message_v07"}}}}
+                "else": {
+                  "if": {"properties": {"schema_version": {"const": "0.7"}}},
+                  "then": {"properties": {"messages": {"items": {"$ref": "#/$defs/message_v07"}}}},
+                  "else": {"properties": {"messages": {"items": {"$ref": "#/$defs/message_v08"}}}}
+                }
               }
             }
           }
@@ -379,6 +383,107 @@
         }
       }
     },
+    "message_v08": {
+      "oneOf": [
+        {"$ref": "#/$defs/message_v07"},
+        {"$ref": "#/$defs/message_v08_bounded"}
+      ]
+    },
+    "message_v08_bounded": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "display_name", "description", "source_ref", "direction_id",
+                   "layout", "matcher", "fields"],
+      "properties": {
+        "id": {"$ref": "#/$defs/stable_id"},
+        "display_name": {"$ref": "#/$defs/display_name"},
+        "description": {"$ref": "#/$defs/description"},
+        "source_ref": {"$ref": "#/$defs/source_ref"},
+        "direction_id": {"$ref": "#/$defs/stable_id"},
+        "layout": {"$ref": "#/$defs/bounded_payload_layout"},
+        "matcher": {"$ref": "#/$defs/matcher"},
+        "bit_containers": {
+          "type": "array", "minItems": 1, "maxItems": 4096,
+          "items": {"$ref": "#/$defs/bit_container"}
+        },
+        "integrity": {"oneOf": [
+          {"$ref": "#/$defs/integrity_sum8_bounded"},
+          {"$ref": "#/$defs/integrity_crc_bounded"}
+        ]},
+        "fields": {
+          "type": "array", "minItems": 1, "maxItems": 4096,
+          "items": {"$ref": "#/$defs/field_v08"}
+        }
+      }
+    },
+    "bounded_payload_layout": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "header_length_bytes", "payload_field_id", "min_payload_bytes",
+                   "max_payload_bytes"],
+      "properties": {
+        "kind": {"const": "bounded_payload"},
+        "header_length_bytes": {"type": "integer", "minimum": 1,
+                                "maximum": 18446744073709551615},
+        "payload_field_id": {"$ref": "#/$defs/stable_id"},
+        "min_payload_bytes": {"type": "integer", "minimum": 0,
+                              "maximum": 18446744073709551615},
+        "max_payload_bytes": {"type": "integer", "minimum": 0,
+                              "maximum": 18446744073709551615}
+      }
+    },
+    "integrity_range_bounded": {
+      "oneOf": [
+        {
+          "type": "object", "additionalProperties": false,
+          "required": ["byte_offset", "byte_length"],
+          "properties": {
+            "byte_offset": {"type": "integer", "minimum": 0,
+                            "maximum": 18446744073709551615},
+            "byte_length": {"type": "integer", "minimum": 1,
+                            "maximum": 18446744073709551615}
+          }
+        },
+        {
+          "type": "object", "additionalProperties": false,
+          "required": ["byte_offset", "end"],
+          "properties": {
+            "byte_offset": {"type": "integer", "minimum": 0,
+                            "maximum": 18446744073709551615},
+            "end": {"const": "payload_end"}
+          }
+        }
+      ]
+    },
+    "integrity_sum8_bounded": {
+      "type": "object", "additionalProperties": false,
+      "required": ["algorithm", "range", "storage"],
+      "properties": {
+        "algorithm": {"const": "sum8"},
+        "range": {"$ref": "#/$defs/integrity_range_bounded"},
+        "storage": {
+          "type": "object", "additionalProperties": false,
+          "required": ["anchor"], "properties": {"anchor": {"const": "payload_end"}}
+        }
+      }
+    },
+    "integrity_crc_bounded": {
+      "type": "object", "additionalProperties": false,
+      "required": ["algorithm", "parameters", "range", "storage"],
+      "properties": {
+        "algorithm": {"const": "crc"},
+        "parameters": {"$ref": "#/$defs/crc_parameters"},
+        "range": {"$ref": "#/$defs/integrity_range_bounded"},
+        "storage": {
+          "type": "object", "additionalProperties": false,
+          "required": ["anchor", "byte_order"],
+          "properties": {
+            "anchor": {"const": "payload_end"},
+            "byte_order": {"enum": ["big_endian", "little_endian"]}
+          }
+        }
+      }
+    },
     "integrity_sum8": {
       "type": "object",
       "additionalProperties": false,
@@ -411,17 +516,7 @@
       "properties": {
         "algorithm": {"const": "crc"},
         "parameters": {
-          "type": "object",
-          "additionalProperties": false,
-          "required": ["width", "poly", "init", "refin", "refout", "xorout"],
-          "properties": {
-            "width": {"enum": [16, 32]},
-            "poly": {"type": "string", "pattern": "^(?:[0-9A-F]{4}|[0-9A-F]{8})$"},
-            "init": {"type": "string", "pattern": "^(?:[0-9A-F]{4}|[0-9A-F]{8})$"},
-            "refin": {"type": "boolean"},
-            "refout": {"type": "boolean"},
-            "xorout": {"type": "string", "pattern": "^(?:[0-9A-F]{4}|[0-9A-F]{8})$"}
-          }
+          "$ref": "#/$defs/crc_parameters"
         },
         "range": {
           "type": "object",
@@ -443,6 +538,19 @@
         }
       }
     },
+    "crc_parameters": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["width", "poly", "init", "refin", "refout", "xorout"],
+          "properties": {
+            "width": {"enum": [16, 32]},
+            "poly": {"type": "string", "pattern": "^(?:[0-9A-F]{4}|[0-9A-F]{8})$"},
+            "init": {"type": "string", "pattern": "^(?:[0-9A-F]{4}|[0-9A-F]{8})$"},
+            "refin": {"type": "boolean"},
+            "refout": {"type": "boolean"},
+            "xorout": {"type": "string", "pattern": "^(?:[0-9A-F]{4}|[0-9A-F]{8})$"}
+          }
+      },
     "bit_container": {
       "type": "object",
       "additionalProperties": false,
@@ -589,6 +697,21 @@
         {"$ref": "#/$defs/bit_bool_field"}
       ]
     },
+    "field_v08": {
+      "oneOf": [
+        {"$ref": "#/$defs/uint64_field"},
+        {"$ref": "#/$defs/uint64_computed_length_field_v08"},
+        {"$ref": "#/$defs/int64_field"},
+        {"$ref": "#/$defs/converted_uint64_field"},
+        {"$ref": "#/$defs/converted_int64_field"},
+        {"$ref": "#/$defs/bytes_field"},
+        {"$ref": "#/$defs/bytes_variable_field"},
+        {"$ref": "#/$defs/enum_field"},
+        {"$ref": "#/$defs/bit_uint64_field"},
+        {"$ref": "#/$defs/bit_enum_field"},
+        {"$ref": "#/$defs/bit_bool_field"}
+      ]
+    },
     "field_common": {
       "type": "object",
       "required": [
@@ -658,6 +781,25 @@
       ],
       "unevaluatedProperties": false
     },
+    "uint64_computed_length_field_v08": {
+      "allOf": [
+        {"$ref": "#/$defs/field_common"},
+        {
+          "type": "object",
+          "required": ["value_type", "wire", "encode", "computed"],
+          "properties": {
+            "value_type": {"const": "UINT64"},
+            "wire": {"$ref": "#/$defs/wire_computed_length"},
+            "encode": {
+              "type": "object", "additionalProperties": false,
+              "required": ["source"], "properties": {"source": {"const": "computed"}}
+            },
+            "computed": {"$ref": "#/$defs/computed_length_v08"}
+          }
+        }
+      ],
+      "unevaluatedProperties": false
+    },
     "computed_length": {
       "oneOf": [
         {
@@ -684,6 +826,14 @@
           }
         }
       ]
+    },
+    "computed_length_v08": {
+      "type": "object", "additionalProperties": false,
+      "required": ["kind", "scope"],
+      "properties": {
+        "kind": {"const": "length"},
+        "scope": {"enum": ["frame", "payload"]}
+      }
     },
     "int64_field": {
       "allOf": [
@@ -766,6 +916,21 @@
             "encode": {
               "$ref": "#/$defs/input_encode_source"
             }
+          }
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    "bytes_variable_field": {
+      "allOf": [
+        {"$ref": "#/$defs/field_common"},
+        {
+          "type": "object",
+          "required": ["value_type", "wire", "encode"],
+          "properties": {
+            "value_type": {"const": "BYTES"},
+            "wire": {"$ref": "#/$defs/wire_bytes_variable"},
+            "encode": {"$ref": "#/$defs/input_encode_source"}
           }
         }
       ],
@@ -956,6 +1121,15 @@
           "minimum": 1,
           "maximum": 1048576
         }
+      }
+    },
+    "wire_bytes_variable": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["codec", "byte_offset"],
+      "properties": {
+        "codec": {"const": "bytes"},
+        "byte_offset": {"type": "integer", "minimum": 0, "maximum": 1048575}
       }
     },
     "input_encode_source": {

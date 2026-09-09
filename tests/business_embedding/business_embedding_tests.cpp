@@ -15,6 +15,9 @@ using pae::examples::business_embedding::Measurement;
 using pae::protocol_core::ByteView;
 using pae::protocol_core::CodecStatus;
 using pae::protocol_core::ConversionError;
+#if defined(PAE_ENABLE_SCHEMA_V08_VARIABLE_COMPILER)
+using pae::examples::business_embedding::BoundedRecordAdapter;
+#endif
 
 std::string ReadFile(const char* path) {
   std::ifstream input(path, std::ios::binary);
@@ -226,15 +229,56 @@ bool TestLengthConfiguration(const std::string& config) {
 }
 #endif
 
+#if defined(PAE_ENABLE_SCHEMA_V08_VARIABLE_COMPILER)
+bool TestBoundedRecordConfiguration(const std::string& config) {
+  std::vector<std::vector<std::uint8_t>> payloads;
+  std::vector<std::vector<std::uint8_t>> frames;
+  pae::examples::business_embedding::BoundedRecordCallbacks callbacks{
+      [&payloads](ByteView value) { payloads.emplace_back(value.data, value.data + value.size); },
+      [&frames](ByteView value) { frames.emplace_back(value.data, value.data + value.size); }};
+  std::string error;
+  auto adapter = BoundedRecordAdapter::Initialize(config, std::move(callbacks), error);
+  if (!Expect(adapter != nullptr && error.empty(), "Schema 0.8 bounded host initializes"))
+    return false;
+
+  const std::vector<std::uint8_t> middle_payload{0x10U, 0x20U};
+  const auto empty = adapter->EncodePayload({nullptr, 0U});
+  const auto middle = adapter->EncodePayload({middle_payload.data(), middle_payload.size()});
+  const std::vector<std::uint8_t> expected_empty{0xA5U, 0x03U, 0xA8U};
+  const std::vector<std::uint8_t> expected_middle{0xA5U, 0x05U, 0x10U, 0x20U, 0xDAU};
+  if (!Expect(empty.Succeeded() && middle.Succeeded() && frames.size() == 2U &&
+                  frames[0] == expected_empty && frames[1] == expected_middle,
+              "bounded host emits independent empty and middle vectors")) {
+    return false;
+  }
+
+  const auto decoded = adapter->OnReceivedRecord({expected_middle.data(), expected_middle.size()});
+  auto bad_length = expected_middle;
+  bad_length[1] = 0x04U;
+  const auto rejected = adapter->OnReceivedRecord({bad_length.data(), bad_length.size()});
+  const std::vector<std::uint8_t> too_long{1U, 2U, 3U, 4U};
+  const auto encode_rejected = adapter->EncodePayload({too_long.data(), too_long.size()});
+  return Expect(
+      decoded.Succeeded() && payloads.size() == 1U && payloads.front() == middle_payload &&
+          rejected.codec_status == CodecStatus::LENGTH_MISMATCH &&
+          encode_rejected.codec_status == CodecStatus::BYTES_LENGTH_MISMATCH && frames.size() == 2U,
+      "bounded host copies borrowed payload and suppresses failure callbacks");
+}
+#endif
+
 }  // namespace
 
 int main(int argc, char** argv) {
   const int expected_argc =
 #if defined(PAE_ENABLE_SCHEMA_V07_LENGTH_COMPILER)
-      4;
+      4
 #else
-      3;
+      3
 #endif
+#if defined(PAE_ENABLE_SCHEMA_V08_VARIABLE_COMPILER)
+      + 1
+#endif
+      ;
   if (argc != expected_argc) {
     std::cerr << "usage: business_embedding_tests <config-a> <config-b> <length-config>\n";
     return 2;
@@ -247,9 +291,15 @@ int main(int argc, char** argv) {
 #else
       {};
 #endif
+#if defined(PAE_ENABLE_SCHEMA_V08_VARIABLE_COMPILER)
+  const std::string variable_config = ReadFile(argv[expected_argc - 1]);
+#endif
   if (!Expect(!config_a.empty() && !config_b.empty()
 #if defined(PAE_ENABLE_SCHEMA_V07_LENGTH_COMPILER)
                   && !length_config.empty()
+#endif
+#if defined(PAE_ENABLE_SCHEMA_V08_VARIABLE_COMPILER)
+                  && !variable_config.empty()
 #endif
                   ,
               "public synthetic configs are readable") ||
@@ -257,6 +307,9 @@ int main(int argc, char** argv) {
       !TestConfigurationB(config_b)
 #if defined(PAE_ENABLE_SCHEMA_V07_LENGTH_COMPILER)
       || !TestLengthConfiguration(length_config)
+#endif
+#if defined(PAE_ENABLE_SCHEMA_V08_VARIABLE_COMPILER)
+      || !TestBoundedRecordConfiguration(variable_config)
 #endif
   ) {
     return 1;

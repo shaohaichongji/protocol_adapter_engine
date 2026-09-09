@@ -19,6 +19,12 @@ target_link_libraries(
         pae::project_options
         pae::yyjson
 )
+if(PAE_ENABLE_SCHEMA_V08_VARIABLE_COMPILER)
+    target_compile_definitions(
+        pae_protocol_lab_v06_format_tests
+        PRIVATE PAE_ENABLE_SCHEMA_V08_VARIABLE_COMPILER=1
+    )
+endif()
 set_target_properties(
     pae_protocol_lab_v06_format_tests
     PROPERTIES

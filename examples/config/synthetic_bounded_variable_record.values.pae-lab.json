@@ -1,0 +1,8 @@
+{
+  "format_version": "pae.lab.values/0.1",
+  "pipeline_id": "synthetic_rx",
+  "message_id": "bounded_record",
+  "fields": [
+    {"id": "payload", "kind": "BYTES", "hex": "1020"}
+  ]
+}

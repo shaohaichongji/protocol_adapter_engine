@@ -22,7 +22,9 @@ namespace pae::protocol_lab::c3 {
 namespace {
 
 constexpr std::string_view kCliFormat = "pae.lab.cli/0.1";
-#if defined(PAE_ENABLE_PROTOCOL_LAB_SCHEMA_V07_LENGTH)
+#if defined(PAE_ENABLE_PROTOCOL_LAB_SCHEMA_V08_VARIABLE)
+constexpr std::string_view kC3ToolVersion = "0.9.0-variable-record-cli-slice";
+#elif defined(PAE_ENABLE_PROTOCOL_LAB_SCHEMA_V07_LENGTH)
 constexpr std::string_view kC3ToolVersion = "0.8.0-length-cli-slice";
 #elif defined(PAE_ENABLE_PROTOCOL_LAB_SCHEMA_V06_CRC)
 constexpr std::string_view kC3ToolVersion = "0.7.0-crc-cli-slice";
@@ -188,6 +190,9 @@ bool IsSchemaV05(const std::filesystem::path& path, bool route_unclassified) {
 #if defined(PAE_ENABLE_PROTOCOL_LAB_SCHEMA_V07_LENGTH)
                        || schema_version == "0.7"
 #endif
+#if defined(PAE_ENABLE_PROTOCOL_LAB_SCHEMA_V08_VARIABLE)
+                       || schema_version == "0.8"
+#endif
                        || (route_unclassified && classified && !known_legacy);
   yyjson_doc_free(document);
   return matches || (!classified && route_unclassified);
@@ -200,6 +205,9 @@ bool IsRunV07(const std::filesystem::path& bundle) {
 #endif
 #if defined(PAE_ENABLE_PROTOCOL_LAB_SCHEMA_V07_LENGTH)
          std::filesystem::is_regular_file(bundle / "run_record_v0.9.json") ||
+#endif
+#if defined(PAE_ENABLE_PROTOCOL_LAB_SCHEMA_V08_VARIABLE)
+         std::filesystem::is_regular_file(bundle / "run_record_v0.10.json") ||
 #endif
          std::filesystem::is_regular_file(bundle / "events_v0.7.jsonl");
 }

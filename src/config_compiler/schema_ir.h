@@ -86,6 +86,10 @@ struct IntegrityIr {
   std::uint64_t range_offset = 0U;
   std::uint64_t range_length = 0U;
   std::uint64_t storage_offset = 0U;
+#if defined(PAE_ENABLE_SCHEMA_V08_VARIABLE_COMPILER)
+  bool range_ends_at_payload = false;
+  bool storage_at_payload_end = false;
+#endif
 #if defined(PAE_ENABLE_SCHEMA_V06_CRC_COMPILER)
   std::uint8_t crc_width = 0U;
   std::uint32_t crc_polynomial = 0U;
@@ -99,6 +103,20 @@ struct IntegrityIr {
   ConfigOrigin range_origin;
   ConfigOrigin storage_origin;
 };
+
+#if defined(PAE_ENABLE_SCHEMA_V08_VARIABLE_COMPILER)
+struct BoundedPayloadIr {
+  std::string payload_field_id;
+  std::size_t payload_field_index = static_cast<std::size_t>(-1);
+  std::uint64_t header_length = 0U;
+  std::uint64_t min_payload_length = 0U;
+  std::uint64_t max_payload_length = 0U;
+  std::uint64_t trailer_length = 0U;
+  std::uint64_t min_frame_length = 0U;
+  std::uint64_t max_frame_length = 0U;
+  ConfigOrigin origin;
+};
+#endif
 
 struct EncodeIr {
   EncodeSource source = EncodeSource::INPUT;
@@ -165,6 +183,9 @@ struct MessageIr {
   std::string source_ref;
   std::string direction_id;
   std::uint64_t frame_length_bytes = 0U;
+#if defined(PAE_ENABLE_SCHEMA_V08_VARIABLE_COMPILER)
+  std::optional<BoundedPayloadIr> bounded_payload;
+#endif
   std::vector<MatcherClauseIr> matcher_clauses;
   std::vector<BitContainerIr> bit_containers;
   std::optional<IntegrityIr> integrity;

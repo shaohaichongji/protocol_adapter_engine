@@ -194,6 +194,32 @@ int main(int argc, char** argv) {
   }
 #endif
 
+#if defined(PAE_ENABLE_SCHEMA_V08_VARIABLE_COMPILER)
+  std::string repeated_variable_config =
+      ReadText(root + "/synthetic_bounded_variable_record.pae.json");
+  if (!Expect(DuplicateFirstPipeline(repeated_variable_config, "synthetic_rx"),
+              "Schema 0.8 variable Pipeline duplication succeeds")) {
+    return 1;
+  }
+  auto repeated_variable_plan = Compile(repeated_variable_config);
+  const std::vector<std::uint8_t> variable_bad_sum{0xA5U, 0x05U, 0x10U, 0x20U, 0xDBU};
+  if (!Expect(static_cast<bool>(repeated_variable_plan),
+              "same bounded Message in two Pipelines remains a valid Plan") ||
+      !CheckAmbiguous(*repeated_variable_plan, variable_bad_sum)) {
+    return 1;
+  }
+  if (!Expect(ReverseTwoPipelines(repeated_variable_config),
+              "Schema 0.8 variable Pipeline order mutation succeeds")) {
+    return 1;
+  }
+  auto reversed_variable_plan = Compile(repeated_variable_config);
+  if (!Expect(static_cast<bool>(reversed_variable_plan),
+              "reordered bounded Pipeline Plan compiles") ||
+      !CheckAmbiguous(*reversed_variable_plan, variable_bad_sum)) {
+    return 1;
+  }
+#endif
+
   std::string no_integrity = public_config;
   const std::string fixed_marker =
       "          {\"kind\": \"fixed_bytes\", \"byte_offset\": 6, \"bytes\": \"7E\"}";

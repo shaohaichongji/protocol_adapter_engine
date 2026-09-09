@@ -75,4 +75,42 @@ class BusinessAdapter final {
   std::vector<std::uint8_t> tx_buffer_;
 };
 
+#if defined(PAE_ENABLE_SCHEMA_V08_VARIABLE_COMPILER)
+struct BoundedRecordCallbacks {
+  std::function<void(protocol_core::ByteView)> on_payload;
+  std::function<void(protocol_core::ByteView)> on_bytes_ready;
+};
+
+// Example-only synchronous host for the public bounded-record sample. Received payload bytes are
+// borrowed only for the callback; a host that retains them must make its own copy.
+class BoundedRecordAdapter final {
+ public:
+  BoundedRecordAdapter(const BoundedRecordAdapter&) = delete;
+  BoundedRecordAdapter& operator=(const BoundedRecordAdapter&) = delete;
+  BoundedRecordAdapter(BoundedRecordAdapter&&) = delete;
+  BoundedRecordAdapter& operator=(BoundedRecordAdapter&&) = delete;
+  ~BoundedRecordAdapter() = default;
+
+  static std::unique_ptr<BoundedRecordAdapter> Initialize(std::string_view config_text,
+                                                          BoundedRecordCallbacks callbacks,
+                                                          std::string& error_detail);
+
+  [[nodiscard]] HostResult OnReceivedRecord(protocol_core::ByteView bytes);
+  [[nodiscard]] HostResult EncodePayload(protocol_core::ByteView payload);
+
+ private:
+  BoundedRecordAdapter(protocol_plan::PlanOwner plan, BoundedRecordCallbacks callbacks,
+                       std::size_t pipeline, std::size_t message, std::size_t payload_field);
+
+  protocol_plan::PlanOwner plan_;
+  BoundedRecordCallbacks callbacks_;
+  std::size_t pipeline_ = protocol_core::kInvalidIndex;
+  std::size_t message_ = protocol_core::kInvalidIndex;
+  protocol_core::FieldRef payload_field_;
+  std::unique_ptr<protocol_core::ExecutionWorkspace> workspace_;
+  std::vector<protocol_core::DecodedFieldSlot> slots_;
+  std::vector<std::uint8_t> frame_buffer_;
+};
+#endif
+
 }  // namespace pae::examples::business_embedding

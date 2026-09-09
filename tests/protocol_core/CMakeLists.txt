@@ -166,6 +166,49 @@ if(PAE_ENABLE_SCHEMA_V07_LENGTH_COMPILER)
         PROPERTIES LABELS "protocol_core;complete_record_codec;allocation;length_field" TIMEOUT 180
     )
 endif()
+if(PAE_ENABLE_SCHEMA_V08_VARIABLE_COMPILER)
+    add_test(
+        NAME pae.protocol_core.complete_record_codec.first_variable_allocation
+        COMMAND pae_complete_record_first_call_allocation_tests --first-variable
+    )
+    set_tests_properties(
+        pae.protocol_core.complete_record_codec.first_variable_allocation
+        PROPERTIES LABELS "protocol_core;complete_record_codec;allocation;bounded_variable"
+                   TIMEOUT 180
+    )
+endif()
+if(PAE_ENABLE_SCHEMA_V08_VARIABLE_COMPILER)
+    set(
+        pae_bounded_variable_core_fixture
+        "${PROJECT_SOURCE_DIR}/examples/config/synthetic_bounded_variable_record.pae.json"
+    )
+    add_executable(
+        pae_bounded_variable_record_contract_tests
+        bounded_variable_record_contract_tests.cpp
+    )
+    target_include_directories(
+        pae_bounded_variable_record_contract_tests
+        PRIVATE
+            "${PROJECT_SOURCE_DIR}/src/config_compiler"
+            "${PROJECT_SOURCE_DIR}/src/protocol_core"
+    )
+    target_link_libraries(
+        pae_bounded_variable_record_contract_tests
+        PRIVATE
+            pae_config_compiler
+            pae_protocol_core_slice_instrumented
+            pae::protocol_plan
+            pae::project_options
+    )
+    add_test(
+        NAME pae.protocol_core.bounded_variable_record.contract
+        COMMAND pae_bounded_variable_record_contract_tests "${pae_bounded_variable_core_fixture}"
+    )
+    set_tests_properties(
+        pae.protocol_core.bounded_variable_record.contract
+        PROPERTIES LABELS "protocol_core;bounded_variable;dec043" TIMEOUT 180
+    )
+endif()
 if(PAE_ENABLE_SCHEMA_V07_LENGTH_COMPILER)
     set(
         pae_length_core_fixture

@@ -90,6 +90,9 @@ enum class EncodeSource {
 enum class ComputedLengthScope {
   FRAME,
   REGION,
+#if defined(PAE_ENABLE_SCHEMA_V08_VARIABLE_COMPILER)
+  PAYLOAD,
+#endif
 };
 #endif
 

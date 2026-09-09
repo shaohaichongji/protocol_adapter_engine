@@ -188,4 +188,92 @@ HostResult BusinessAdapter::SendCommand(const Command& command) {
   return {HostStatus::OK, protocol_core::CodecStatus::OK, protocol_core::ConversionError::NONE};
 }
 
+#if defined(PAE_ENABLE_SCHEMA_V08_VARIABLE_COMPILER)
+std::unique_ptr<BoundedRecordAdapter> BoundedRecordAdapter::Initialize(
+    std::string_view config_text, BoundedRecordCallbacks callbacks, std::string& error_detail) {
+  error_detail.clear();
+  if (!callbacks.on_payload || !callbacks.on_bytes_ready) {
+    error_detail = "both synchronous bounded-record callbacks are required";
+    return nullptr;
+  }
+  auto compiled = config_compiler::CompileJsonToPlan(config_text);
+  if (!compiled.Succeeded()) {
+    const auto* diagnostic = compiled.Diagnostic();
+    error_detail = diagnostic != nullptr ? diagnostic->detail : "configuration compilation failed";
+    return nullptr;
+  }
+  auto plan = std::move(compiled).TakePlan();
+  if (!plan || plan->SchemaVersion() != "0.8") {
+    error_detail = "bounded-record embedding requires a Schema 0.8 plan";
+    return nullptr;
+  }
+  const std::size_t pipeline = FindPipeline(*plan, "synthetic_rx");
+  const std::size_t message = FindMessage(*plan, "bounded_record");
+  if (pipeline == kInvalidIndex || message == kInvalidIndex ||
+      !PipelineContains(plan->Pipelines()[pipeline], message)) {
+    error_detail = "required bounded-record pipeline or message id is missing";
+    return nullptr;
+  }
+  const auto& message_plan = plan->Messages()[message];
+  const std::size_t payload = FindField(message_plan, "payload");
+  if (!message_plan.bounded_payload.has_value() || payload == kInvalidIndex ||
+      message_plan.bounded_payload->payload_field_index != payload ||
+      message_plan.fields[payload].value_type != protocol_plan::ValueType::BYTES) {
+    error_detail = "required bounded payload field does not match";
+    return nullptr;
+  }
+  return std::unique_ptr<BoundedRecordAdapter>(
+      new BoundedRecordAdapter(std::move(plan), std::move(callbacks), pipeline, message, payload));
+}
+
+BoundedRecordAdapter::BoundedRecordAdapter(protocol_plan::PlanOwner plan,
+                                           BoundedRecordCallbacks callbacks, std::size_t pipeline,
+                                           std::size_t message, std::size_t payload_field)
+    : plan_(std::move(plan)),
+      callbacks_(std::move(callbacks)),
+      pipeline_(pipeline),
+      message_(message),
+      payload_field_{plan_.get(), message, payload_field},
+      workspace_(std::make_unique<protocol_core::ExecutionWorkspace>(*plan_)),
+      slots_(plan_->GetExecutionResourceLayout().max_fields_per_message),
+      frame_buffer_(
+          static_cast<std::size_t>(plan_->Messages()[message].bounded_payload->max_frame_length)) {}
+
+HostResult BoundedRecordAdapter::OnReceivedRecord(protocol_core::ByteView bytes) {
+  const auto decoded = protocol_core::DecodeCompleteRecord(*plan_, *workspace_, pipeline_, bytes,
+                                                           slots_.data(), slots_.size());
+  if (decoded.status != protocol_core::CodecStatus::OK) {
+    return {HostStatus::CODEC_ERROR, decoded.status, decoded.conversion_error};
+  }
+  if (decoded.message_index != message_ || decoded.field_count <= payload_field_.field_index) {
+    return {HostStatus::CODEC_ERROR, protocol_core::CodecStatus::INTERNAL_ERROR,
+            protocol_core::ConversionError::NONE};
+  }
+  const auto& payload = slots_[payload_field_.field_index];
+  if (payload.field.plan_scope != plan_.get() || payload.field.message_index != message_ ||
+      payload.field.field_index != payload_field_.field_index ||
+      payload.value_kind != protocol_core::LogicalValueKind::BYTES) {
+    return {HostStatus::CODEC_ERROR, protocol_core::CodecStatus::INTERNAL_ERROR,
+            protocol_core::ConversionError::NONE};
+  }
+  callbacks_.on_payload(payload.bytes_value);
+  return {HostStatus::OK, protocol_core::CodecStatus::OK, protocol_core::ConversionError::NONE};
+}
+
+HostResult BoundedRecordAdapter::EncodePayload(protocol_core::ByteView payload) {
+  protocol_core::EncodeFieldValue value;
+  value.field = payload_field_;
+  value.value_kind = protocol_core::LogicalValueKind::BYTES;
+  value.bytes_value = payload;
+  const auto encoded =
+      protocol_core::EncodeCompleteRecord(*plan_, *workspace_, pipeline_, message_, &value, 1U,
+                                          {frame_buffer_.data(), frame_buffer_.size()});
+  if (encoded.status != protocol_core::CodecStatus::OK) {
+    return {HostStatus::CODEC_ERROR, encoded.status, encoded.conversion_error};
+  }
+  callbacks_.on_bytes_ready({frame_buffer_.data(), encoded.bytes_written});
+  return {HostStatus::OK, protocol_core::CodecStatus::OK, protocol_core::ConversionError::NONE};
+}
+#endif
+
 }  // namespace pae::examples::business_embedding

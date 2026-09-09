@@ -149,10 +149,77 @@ bool TestValuesV04() {
       false, "isolated Values parser accepts only 0.4");
 }
 
+#if defined(PAE_ENABLE_SCHEMA_V08_VARIABLE_COMPILER)
+bool TestValuesV05AndVariableEmptyResult() {
+  const std::string prefix =
+      "{\"pipeline_id\":\"p\",\"message_id\":\"m\",\"fields\":[{\"id\":\"payload\",";
+  const std::string suffix = "}]}";
+  const std::string empty_field = "\"kind\":\"BYTES\",\"hex\":\"\"";
+  ParsedValues parsed_values;
+  std::string error;
+  std::string values =
+      "{\"format_version\":\"pae.lab.values/0.5\"," + prefix.substr(1U) + empty_field + suffix;
+  if (!Expect(pae::protocol_lab::v06::ParseValues(values, parsed_values, error) &&
+                  parsed_values.format_version == "pae.lab.values/0.5" &&
+                  parsed_values.fields.size() == 1U && parsed_values.fields[0].bytes.empty(),
+              "Values 0.5 strictly represents explicit empty BYTES")) {
+    return false;
+  }
+  std::string legacy_empty = values;
+  legacy_empty.replace(legacy_empty.find("0.5"), 3U, "0.4");
+  std::string null_value = values;
+  null_value.replace(null_value.find("\"\"", null_value.find("\"hex\"")), 2U, "null");
+  std::string missing_value = values;
+  missing_value.erase(missing_value.find(",\"hex\":\"\""), 9U);
+  if (!ExpectParse(legacy_empty, false, "Values 0.4 keeps rejecting empty BYTES") ||
+      !ExpectParse(null_value, false, "Values 0.5 distinguishes null from empty BYTES") ||
+      !ExpectParse(missing_value, false, "Values 0.5 distinguishes missing from empty BYTES")) {
+    return false;
+  }
+
+  Result result = SuccessResult();
+  result.format_version = std::string{pae::protocol_lab::v06::kVariableResultFormat};
+  FieldResult payload;
+  payload.id = "payload";
+  payload.kind = "BYTES";
+  payload.raw_value = "";
+  payload.logical_value = "";
+  result.fields.push_back(payload);
+  const std::string empty_fingerprint = pae::protocol_lab::v06::FinalizeFingerprint(result, error);
+  const std::string serialized = pae::protocol_lab::v06::SerializeResult(result, error);
+  Result parsed_result;
+  std::string mutable_serialized = serialized;
+  if (!Expect(!empty_fingerprint.empty() && !serialized.empty() &&
+                  pae::protocol_lab::v06::ParseResult(mutable_serialized, parsed_result, error) &&
+                  parsed_result.fields.back().kind == "BYTES" &&
+                  parsed_result.fields.back().raw_value.empty() &&
+                  parsed_result.fields.back().logical_value.empty(),
+              "Result 0.9 Writer, Reader, and fingerprint share empty BYTES semantics")) {
+    return false;
+  }
+  Result nonempty = result;
+  nonempty.fields.back().raw_value = "00";
+  nonempty.fields.back().logical_value = "00";
+  if (!Expect(empty_fingerprint != pae::protocol_lab::v06::FinalizeFingerprint(nonempty, error),
+              "Result 0.9 fingerprint distinguishes empty and non-empty BYTES")) {
+    return false;
+  }
+#if defined(PAE_ENABLE_SCHEMA_V07_LENGTH_COMPILER)
+  Result old_generation = result;
+  old_generation.format_version = std::string{pae::protocol_lab::v06::kLengthResultFormat};
+  return Expect(!pae::protocol_lab::v06::ValidateResult(old_generation, error),
+                "Result 0.8 keeps rejecting empty BYTES");
+#else
+  return true;
+#endif
+}
+#endif
+
 bool TestCanonicalEncoding() {
   Result result = SuccessResult();
   std::string error;
-  const std::string fields = pae::protocol_lab::v06::EncodeFieldsCanonical(result.fields, error);
+  const std::string fields =
+      pae::protocol_lab::v06::EncodeFieldsCanonical(result.fields, result.format_version, error);
   const std::string expected_fields =
       u8"A2:A6:S6:温\n|:S9:DECIMAL64I3:123I1:1S5:INT64I20:-9223372036854775808"
       "A5:S1:uS6:UINT64S20:18446744073709551615S20:18446744073709551615B0;";
@@ -451,7 +518,11 @@ bool TestFingerprintDifferences() {
 
 int main() {
   if (!TestValuesV04() || !TestCanonicalEncoding() || !TestResultSerializationAndValidation() ||
-      !TestReplayModeAndFailureIdentityValidation() || !TestFingerprintDifferences())
+      !TestReplayModeAndFailureIdentityValidation() || !TestFingerprintDifferences()
+#if defined(PAE_ENABLE_SCHEMA_V08_VARIABLE_COMPILER)
+      || !TestValuesV05AndVariableEmptyResult()
+#endif
+  )
     return 1;
   std::cout << "Protocol Lab V0.6 isolated format tests passed\n";
   return 0;

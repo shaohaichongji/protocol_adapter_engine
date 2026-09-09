@@ -180,7 +180,7 @@ bool IsUpperHexOrEmpty(std::string_view value) noexcept {
          value.size() % 2U == 0U;
 }
 
-bool ValidateField(const FieldResult& field, std::string& error) {
+bool ValidateField(const FieldResult& field, bool allow_empty_bytes, std::string& error) {
   if (field.id.empty()) {
     error = "result field id must not be empty";
     return false;
@@ -240,7 +240,7 @@ bool ValidateField(const FieldResult& field, std::string& error) {
       return false;
     }
   } else if (field.kind == "BYTES") {
-    if (field.raw_value.empty() || !IsUpperHexOrEmpty(field.raw_value) ||
+    if ((!allow_empty_bytes && field.raw_value.empty()) || !IsUpperHexOrEmpty(field.raw_value) ||
         field.logical_value != field.raw_value || field.enum_known) {
       error = "BYTES result field has an invalid legacy tuple";
       return false;
@@ -331,12 +331,18 @@ bool ParseValues(std::string& text, ParsedValues& output, std::string& error) {
                                              "fields"};
   if (!IsObjectWithKeys(root, root_keys, root_keys, "values", error)) return false;
   std::string format;
-  if (!ReadString(root, "format_version", format, error) || format != kValuesFormat ||
+  if (!ReadString(root, "format_version", format, error) ||
+      (format != kValuesFormat
+#if defined(PAE_ENABLE_SCHEMA_V08_VARIABLE_COMPILER)
+       && format != kVariableValuesFormat
+#endif
+       ) ||
       !ReadString(root, "pipeline_id", output.pipeline_id, error) ||
       !ReadString(root, "message_id", output.message_id, error)) {
     if (error.empty()) error = "unsupported Values format_version";
     return false;
   }
+  output.format_version = format;
   yyjson_val* fields = yyjson_obj_get(root, "fields");
   if (!yyjson_is_arr(fields)) {
     error = "fields must be an array";
@@ -380,7 +386,14 @@ bool ParseValues(std::string& text, ParsedValues& output, std::string& error) {
       exact.insert("hex");
       std::string raw;
       if (!IsObjectWithKeys(value, exact, exact, pointer, error) ||
-          !ReadString(value, "hex", raw, error) || !ParseUpperHex(raw, parsed.bytes)) {
+          !ReadString(value, "hex", raw, error) ||
+          (raw.empty()
+#if defined(PAE_ENABLE_SCHEMA_V08_VARIABLE_COMPILER)
+               ? format != kVariableValuesFormat
+#else
+               ? true
+#endif
+               : !ParseUpperHex(raw, parsed.bytes))) {
         if (error.empty()) error = pointer + ".hex is not canonical uppercase bytes";
         return false;
       }
@@ -497,6 +510,9 @@ bool ParseResult(std::string& text, Result& output, std::string& error) {
 #endif
 #if defined(PAE_ENABLE_SCHEMA_V07_LENGTH_COMPILER)
                                                              && format != kLengthResultFormat
+#endif
+#if defined(PAE_ENABLE_SCHEMA_V08_VARIABLE_COMPILER)
+                                                             && format != kVariableResultFormat
 #endif
                                                              )) {
     if (error.empty()) error = "unsupported Result format_version";
@@ -625,6 +641,9 @@ bool ValidateResult(const Result& result, std::string& error) {
 #if defined(PAE_ENABLE_SCHEMA_V07_LENGTH_COMPILER)
       && result.format_version != kLengthResultFormat
 #endif
+#if defined(PAE_ENABLE_SCHEMA_V08_VARIABLE_COMPILER)
+      && result.format_version != kVariableResultFormat
+#endif
   ) {
     error = "unsupported Result format_version";
     return false;
@@ -654,7 +673,11 @@ bool ValidateResult(const Result& result, std::string& error) {
 #if defined(PAE_ENABLE_SCHEMA_V07_LENGTH_COMPILER)
   const bool length_only_status = result.current_execution_status == "LENGTH_MISMATCH" ||
                                   result.current_execution_status == "COMPUTED_FIELD_OVERRIDE";
-  if (length_only_status && result.format_version != kLengthResultFormat) {
+  if (length_only_status && result.format_version != kLengthResultFormat
+#if defined(PAE_ENABLE_SCHEMA_V08_VARIABLE_COMPILER)
+      && result.format_version != kVariableResultFormat
+#endif
+  ) {
     error = "computed length Codec status requires Result 0.8";
     return false;
   }
@@ -733,8 +756,14 @@ bool ValidateResult(const Result& result, std::string& error) {
     return false;
   }
   std::set<std::string> ids;
+  const bool allow_empty_bytes =
+#if defined(PAE_ENABLE_SCHEMA_V08_VARIABLE_COMPILER)
+      result.format_version == kVariableResultFormat;
+#else
+      false;
+#endif
   for (const FieldResult& field : result.fields) {
-    if (!ValidateField(field, error)) return false;
+    if (!ValidateField(field, allow_empty_bytes, error)) return false;
     if (!ids.insert(field.id).second) {
       error = "Result 0.6 contains duplicate field ids";
       return false;
@@ -744,10 +773,17 @@ bool ValidateResult(const Result& result, std::string& error) {
   return true;
 }
 
-std::string EncodeFieldsCanonical(const std::vector<FieldResult>& fields, std::string& error) {
+std::string EncodeFieldsCanonical(const std::vector<FieldResult>& fields,
+                                  std::string_view result_format, std::string& error) {
   std::string output = "A" + std::to_string(fields.size()) + ":";
+  const bool allow_empty_bytes =
+#if defined(PAE_ENABLE_SCHEMA_V08_VARIABLE_COMPILER)
+      result_format == kVariableResultFormat;
+#else
+      (static_cast<void>(result_format), false);
+#endif
   for (const FieldResult& field : fields) {
-    if (!ValidateField(field, error)) return {};
+    if (!ValidateField(field, allow_empty_bytes, error)) return {};
     if (field.kind == "DECIMAL64") {
       const std::string coefficient = std::to_string(field.decimal64->coefficient);
       const std::string scale = std::to_string(field.decimal64->scale);
@@ -766,7 +802,7 @@ std::string EncodeFieldsCanonical(const std::vector<FieldResult>& fields, std::s
 
 std::string EncodeFingerprintPayload(const Result& result, std::string& error) {
   if (!ValidateResult(result, error)) return {};
-  const std::string fields = EncodeFieldsCanonical(result.fields, error);
+  const std::string fields = EncodeFieldsCanonical(result.fields, result.format_version, error);
   if (!error.empty()) return {};
   std::string_view fingerprint_domain = kFingerprintDomain;
   std::string_view schema_version = "0.5";
@@ -780,6 +816,12 @@ std::string EncodeFingerprintPayload(const Result& result, std::string& error) {
   if (result.format_version == kLengthResultFormat) {
     fingerprint_domain = kLengthFingerprintDomain;
     schema_version = "0.7";
+  }
+#endif
+#if defined(PAE_ENABLE_SCHEMA_V08_VARIABLE_COMPILER)
+  if (result.format_version == kVariableResultFormat) {
+    fingerprint_domain = kVariableFingerprintDomain;
+    schema_version = "0.8";
   }
 #endif
   return "A20:" + EncodeString(fingerprint_domain) + EncodeString(schema_version) +

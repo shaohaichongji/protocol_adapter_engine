@@ -189,9 +189,31 @@ bool CoversWholeFrame(std::vector<ByteInterval>& intervals, std::size_t frame_si
 
 bool FixedMatchersCanIntersect(const detail::PreparedMessageExecutionPlan& left,
                                const detail::PreparedMessageExecutionPlan& right) noexcept {
+#if defined(PAE_ENABLE_SCHEMA_V08_VARIABLE_COMPILER)
+  const std::size_t left_min =
+      left.bounded_payload.has_value()
+          ? static_cast<std::size_t>(left.bounded_payload->min_frame_length)
+          : left.frame_size;
+  const std::size_t left_max =
+      left.bounded_payload.has_value()
+          ? static_cast<std::size_t>(left.bounded_payload->max_frame_length)
+          : left.frame_size;
+  const std::size_t right_min =
+      right.bounded_payload.has_value()
+          ? static_cast<std::size_t>(right.bounded_payload->min_frame_length)
+          : right.frame_size;
+  const std::size_t right_max =
+      right.bounded_payload.has_value()
+          ? static_cast<std::size_t>(right.bounded_payload->max_frame_length)
+          : right.frame_size;
+  if (left_max < right_min || right_max < left_min) {
+    return false;
+  }
+#else
   if (left.frame_size != right.frame_size) {
     return false;
   }
+#endif
   std::size_t left_index = 0U;
   std::size_t right_index = 0U;
   while (left_index < left.fixed_bytes.size() && right_index < right.fixed_bytes.size()) {
@@ -319,7 +341,12 @@ bool EstimatePreparedPlanMemory(
     if (!layout.AddArray<std::uint64_t>(pipeline.allowed_message_words.size(),
                                         PlanMemoryCategory::INDEX) ||
         !layout.AddArray<CandidateGroupExecutionPlan>(pipeline.candidate_groups.size(),
-                                                      PlanMemoryCategory::EXECUTION_DESCRIPTOR)) {
+                                                      PlanMemoryCategory::EXECUTION_DESCRIPTOR)
+#if defined(PAE_ENABLE_SCHEMA_V08_VARIABLE_COMPILER)
+        || !layout.AddArray<std::size_t>(pipeline.variable_message_indices.size(),
+                                         PlanMemoryCategory::INDEX)
+#endif
+    ) {
       return false;
     }
     for (const detail::PreparedCandidateGroupExecutionPlan& group : pipeline.candidate_groups) {
@@ -408,6 +435,9 @@ PlanBuildResult PlanBuilder::FreezeImpl(detail::PlanDraftData draft) {
 #if defined(PAE_ENABLE_SCHEMA_V07_LENGTH_COMPILER)
        && draft.schema_version != "0.7"
 #endif
+#if defined(PAE_ENABLE_SCHEMA_V08_VARIABLE_COMPILER)
+       && draft.schema_version != "0.8"
+#endif
        ) ||
       !IsStableId(draft.protocol_id) || draft.protocol_version.empty() || limits == nullptr ||
       draft.framing_profiles.empty() || draft.pipelines.empty() || draft.messages.empty()) {
@@ -431,6 +461,9 @@ PlanBuildResult PlanBuilder::FreezeImpl(detail::PlanDraftData draft) {
 #endif
 #if defined(PAE_ENABLE_SCHEMA_V07_LENGTH_COMPILER)
          && draft.schema_version != "0.7"
+#endif
+#if defined(PAE_ENABLE_SCHEMA_V08_VARIABLE_COMPILER)
+         && draft.schema_version != "0.8"
 #endif
          ) ||
         (conversion.raw_value_type != ValueType::UINT64 &&
@@ -526,6 +559,55 @@ PlanBuildResult PlanBuilder::FreezeImpl(detail::PlanDraftData draft) {
 
     detail::PreparedMessageExecutionPlan execution;
     execution.frame_size = frame_size;
+#if defined(PAE_ENABLE_SCHEMA_V08_VARIABLE_COMPILER)
+    if (message.bounded_payload.has_value()) {
+      const BoundedPayloadPlan& bounded = *message.bounded_payload;
+      std::size_t header = 0U;
+      std::size_t minimum_payload = 0U;
+      std::size_t maximum_payload = 0U;
+      std::size_t trailer = 0U;
+      std::size_t minimum_frame = 0U;
+      std::size_t maximum_frame = 0U;
+      std::size_t recomputed_minimum = 0U;
+      std::size_t recomputed_maximum = 0U;
+      std::size_t expected_trailer = 0U;
+      if (message.integrity.has_value()) {
+        if (message.integrity->algorithm == IntegrityAlgorithm::SUM8) {
+          expected_trailer = 1U;
+#if defined(PAE_ENABLE_SCHEMA_V06_CRC_COMPILER)
+        } else if (message.integrity->algorithm == IntegrityAlgorithm::CRC &&
+                   (message.integrity->crc_width == 16U || message.integrity->crc_width == 32U)) {
+          expected_trailer = static_cast<std::size_t>(message.integrity->crc_width / 8U);
+#endif
+        } else {
+          return Reject(PlanBuildError::INVALID_MESSAGE_PLAN, kInvalidPlanBuildIndex,
+                        kInvalidPlanBuildIndex, message_index);
+        }
+      }
+      if (draft.schema_version != "0.8" || !message.computed_length.has_value() ||
+          bounded.payload_field_index >= message.fields.size() ||
+          !ToSize(bounded.header_length, header) || header == 0U ||
+          !ToSize(bounded.min_payload_length, minimum_payload) ||
+          !ToSize(bounded.max_payload_length, maximum_payload) ||
+          minimum_payload > maximum_payload || !ToSize(bounded.trailer_length, trailer) ||
+          trailer != expected_trailer || !ToSize(bounded.min_frame_length, minimum_frame) ||
+          !ToSize(bounded.max_frame_length, maximum_frame) ||
+          !AddSizeChecked(header, recomputed_minimum) ||
+          !AddSizeChecked(minimum_payload, recomputed_minimum) ||
+          !AddSizeChecked(trailer, recomputed_minimum) ||
+          !AddSizeChecked(header, recomputed_maximum) ||
+          !AddSizeChecked(maximum_payload, recomputed_maximum) ||
+          !AddSizeChecked(trailer, recomputed_maximum) || minimum_frame != recomputed_minimum ||
+          maximum_frame != recomputed_maximum || frame_size != maximum_frame ||
+          maximum_frame > limits->max_frame_bytes) {
+        return Reject(PlanBuildError::INVALID_MESSAGE_PLAN, kInvalidPlanBuildIndex,
+                      kInvalidPlanBuildIndex, message_index);
+      }
+      execution.bounded_payload = bounded;
+    } else if (draft.schema_version == "0.8") {
+      // Schema 0.8 also permits fixed-layout messages.
+    }
+#endif
     if (message.integrity.has_value()) {
       std::size_t range_offset = 0U;
       std::size_t range_length = 0U;
@@ -542,6 +624,9 @@ PlanBuildResult PlanBuilder::FreezeImpl(detail::PlanDraftData draft) {
                              (draft.schema_version == "0.6"
 #if defined(PAE_ENABLE_SCHEMA_V07_LENGTH_COMPILER)
                               || draft.schema_version == "0.7"
+#endif
+#if defined(PAE_ENABLE_SCHEMA_V08_VARIABLE_COMPILER)
+                              || draft.schema_version == "0.8"
 #endif
                               ) &&
                              (integrity.crc_width == 16U || integrity.crc_width == 32U) &&
@@ -563,6 +648,9 @@ PlanBuildResult PlanBuilder::FreezeImpl(detail::PlanDraftData draft) {
 #if defined(PAE_ENABLE_SCHEMA_V07_LENGTH_COMPILER)
            && draft.schema_version != "0.7"
 #endif
+#if defined(PAE_ENABLE_SCHEMA_V08_VARIABLE_COMPILER)
+           && draft.schema_version != "0.8"
+#endif
            ) ||
 #if defined(PAE_ENABLE_SCHEMA_V06_CRC_COMPILER)
           (integrity.algorithm != IntegrityAlgorithm::SUM8 && !crc_valid) ||
@@ -570,6 +658,9 @@ PlanBuildResult PlanBuilder::FreezeImpl(detail::PlanDraftData draft) {
            (draft.schema_version == "0.6"
 #if defined(PAE_ENABLE_SCHEMA_V07_LENGTH_COMPILER)
             || draft.schema_version == "0.7"
+#endif
+#if defined(PAE_ENABLE_SCHEMA_V08_VARIABLE_COMPILER)
+            || draft.schema_version == "0.8"
 #endif
             ) &&
            (integrity.crc_width != 0U ||
@@ -579,11 +670,30 @@ PlanBuildResult PlanBuilder::FreezeImpl(detail::PlanDraftData draft) {
 #endif
           !ToSize(integrity.range_offset, range_offset) ||
           !ToSize(integrity.range_length, range_length) ||
-          !ToSize(integrity.storage_offset, storage_offset) || range_length == 0U ||
-          !IsRangeWithin(range_offset, range_length, frame_size) ||
+          !ToSize(integrity.storage_offset, storage_offset) ||
+#if defined(PAE_ENABLE_SCHEMA_V08_VARIABLE_COMPILER)
+          (message.bounded_payload.has_value()
+               ? (!integrity.storage_at_payload_end ||
+                  (integrity.range_ends_at_payload
+                       ? range_offset > message.bounded_payload->header_length
+                       : (range_length == 0U ||
+                          range_offset > message.bounded_payload->header_length +
+                                             message.bounded_payload->min_payload_length ||
+                          range_length > message.bounded_payload->header_length +
+                                             message.bounded_payload->min_payload_length -
+                                             range_offset)))
+               : (integrity.range_ends_at_payload || integrity.storage_at_payload_end ||
+                  range_length == 0U || !IsRangeWithin(range_offset, range_length, frame_size) ||
+                  !IsRangeWithin(storage_offset, storage_width, frame_size) ||
+                  (storage_offset < range_offset + range_length &&
+                   range_offset < storage_offset + storage_width)))
+#else
+          range_length == 0U || !IsRangeWithin(range_offset, range_length, frame_size) ||
           !IsRangeWithin(storage_offset, storage_width, frame_size) ||
           (storage_offset < range_offset + range_length &&
-           range_offset < storage_offset + storage_width)) {
+           range_offset < storage_offset + storage_width)
+#endif
+      ) {
         return Reject(PlanBuildError::INVALID_MESSAGE_PLAN, kInvalidPlanBuildIndex,
                       kInvalidPlanBuildIndex, message_index);
       }
@@ -592,6 +702,10 @@ PlanBuildResult PlanBuilder::FreezeImpl(detail::PlanDraftData draft) {
       frozen_integrity.range_offset = range_offset;
       frozen_integrity.range_length = range_length;
       frozen_integrity.storage_offset = storage_offset;
+#if defined(PAE_ENABLE_SCHEMA_V08_VARIABLE_COMPILER)
+      frozen_integrity.range_ends_at_payload = integrity.range_ends_at_payload;
+      frozen_integrity.storage_at_payload_end = integrity.storage_at_payload_end;
+#endif
 #if defined(PAE_ENABLE_SCHEMA_V06_CRC_COMPILER)
       frozen_integrity.crc_width = integrity.crc_width;
       frozen_integrity.crc_polynomial = integrity.crc_polynomial;
@@ -612,6 +726,11 @@ PlanBuildResult PlanBuilder::FreezeImpl(detail::PlanDraftData draft) {
       std::size_t range_length = 0U;
       const bool frame_scope = computed.scope == ComputedLengthScope::FRAME;
       const bool region_scope = computed.scope == ComputedLengthScope::REGION;
+#if defined(PAE_ENABLE_SCHEMA_V08_VARIABLE_COMPILER)
+      const bool payload_scope = computed.scope == ComputedLengthScope::PAYLOAD;
+#else
+      const bool payload_scope = false;
+#endif
       if (!ToSize(computed.storage_offset, storage_offset) ||
           !ToSize(computed.storage_width, storage_width) ||
           !ToSize(computed.range_offset, range_offset) ||
@@ -619,17 +738,41 @@ PlanBuildResult PlanBuilder::FreezeImpl(detail::PlanDraftData draft) {
         return Reject(PlanBuildError::INVALID_MESSAGE_PLAN, kInvalidPlanBuildIndex,
                       kInvalidPlanBuildIndex, message_index);
       }
-      const std::size_t expected = frame_scope ? frame_size : range_length;
-      if (draft.schema_version != "0.7" || computed.field_index >= message.fields.size() ||
+      const std::size_t expected =
+#if defined(PAE_ENABLE_SCHEMA_V08_VARIABLE_COMPILER)
+          payload_scope && message.bounded_payload.has_value()
+              ? static_cast<std::size_t>(message.bounded_payload->max_payload_length)
+              :
+#endif
+              (frame_scope ? frame_size : range_length);
+      if ((draft.schema_version != "0.7"
+#if defined(PAE_ENABLE_SCHEMA_V08_VARIABLE_COMPILER)
+           && draft.schema_version != "0.8"
+#endif
+           ) ||
+          computed.field_index >= message.fields.size() ||
           (storage_width != 1U && storage_width != 2U && storage_width != 4U) ||
           (storage_width == 1U ? computed.byte_order != ByteOrder::NOT_APPLICABLE
                                : (computed.byte_order != ByteOrder::BIG &&
                                   computed.byte_order != ByteOrder::LITTLE)) ||
-          !IsRangeWithin(storage_offset, storage_width, frame_size) ||
-          (!frame_scope && !region_scope) ||
+          !IsRangeWithin(storage_offset, storage_width,
+#if defined(PAE_ENABLE_SCHEMA_V08_VARIABLE_COMPILER)
+                         message.bounded_payload.has_value()
+                             ? static_cast<std::size_t>(message.bounded_payload->header_length)
+                             :
+#endif
+                             frame_size) ||
+          (!frame_scope && !region_scope && !payload_scope) ||
           (frame_scope && (range_offset != 0U || range_length != 0U)) ||
+#if defined(PAE_ENABLE_SCHEMA_V08_VARIABLE_COMPILER)
+          (message.bounded_payload.has_value() && region_scope) ||
+#endif
           (region_scope &&
            (range_length == 0U || !IsRangeWithin(range_offset, range_length, frame_size))) ||
+#if defined(PAE_ENABLE_SCHEMA_V08_VARIABLE_COMPILER)
+          (payload_scope &&
+           (!message.bounded_payload.has_value() || range_offset != 0U || range_length != 0U)) ||
+#endif
           computed.expected_value != expected || !FitsUnsignedWidth(expected, storage_width)) {
         return Reject(PlanBuildError::INVALID_MESSAGE_PLAN, kInvalidPlanBuildIndex,
                       kInvalidPlanBuildIndex, message_index);
@@ -686,6 +829,14 @@ PlanBuildResult PlanBuilder::FreezeImpl(detail::PlanDraftData draft) {
         return Reject(PlanBuildError::INVALID_FIELD_PLAN, kInvalidPlanBuildIndex,
                       kInvalidPlanBuildIndex, message_index);
       }
+#if defined(PAE_ENABLE_SCHEMA_V08_VARIABLE_COMPILER)
+      if (message.bounded_payload.has_value() &&
+          !IsRangeWithin(offset, width,
+                         static_cast<std::size_t>(message.bounded_payload->header_length))) {
+        return Reject(PlanBuildError::INVALID_FIELD_PLAN, kInvalidPlanBuildIndex,
+                      kInvalidPlanBuildIndex, message_index);
+      }
+#endif
       field_intervals.push_back(ByteInterval{offset, offset + width, container_index});
       execution.bit_containers.push_back(
           BitContainerExecutionPlan{offset, width, container.byte_order, container.base_value});
@@ -709,6 +860,22 @@ PlanBuildResult PlanBuilder::FreezeImpl(detail::PlanDraftData draft) {
         return Reject(PlanBuildError::INVALID_FIELD_PLAN, kInvalidPlanBuildIndex,
                       kInvalidPlanBuildIndex, message_index, kInvalidPlanBuildIndex, field_index);
       }
+#if defined(PAE_ENABLE_SCHEMA_V08_VARIABLE_COMPILER)
+      if (message.bounded_payload.has_value()) {
+        const bool payload_field = field_index == message.bounded_payload->payload_field_index;
+        const std::size_t header = static_cast<std::size_t>(message.bounded_payload->header_length);
+        const std::size_t maximum_payload =
+            static_cast<std::size_t>(message.bounded_payload->max_payload_length);
+        if (payload_field
+                ? (field.value_type != ValueType::BYTES || field.wire_codec != WireCodec::BYTES ||
+                   offset != header || width != maximum_payload)
+                : (!bitfield && ((field.wire_codec == WireCodec::BYTES && width == 0U) ||
+                                 !IsRangeWithin(offset, width, header)))) {
+          return Reject(PlanBuildError::INVALID_FIELD_PLAN, kInvalidPlanBuildIndex,
+                        kInvalidPlanBuildIndex, message_index, kInvalidPlanBuildIndex, field_index);
+        }
+      }
+#endif
       if (bitfield) {
         const BitContainerPlan& container = message.bit_containers[field.bit_container_index];
         offset = static_cast<std::size_t>(container.byte_offset);
@@ -726,8 +893,13 @@ PlanBuildResult PlanBuilder::FreezeImpl(detail::PlanDraftData draft) {
            (field.encode_source == EncodeSource::CONSTANT && field.constant_value.has_value() &&
             FitsUnsignedWidth(*field.constant_value, width))
 #if defined(PAE_ENABLE_SCHEMA_V07_LENGTH_COMPILER)
-           || (draft.schema_version == "0.7" && field.encode_source == EncodeSource::COMPUTED &&
-               !field.constant_value.has_value() && message.computed_length.has_value() &&
+           || ((draft.schema_version == "0.7"
+#if defined(PAE_ENABLE_SCHEMA_V08_VARIABLE_COMPILER)
+                || draft.schema_version == "0.8"
+#endif
+                ) &&
+               field.encode_source == EncodeSource::COMPUTED && !field.constant_value.has_value() &&
+               message.computed_length.has_value() &&
                message.computed_length->field_index == field_index &&
                message.computed_length->storage_offset == field.byte_offset &&
                message.computed_length->storage_width == field.byte_width &&
@@ -743,6 +915,9 @@ PlanBuildResult PlanBuilder::FreezeImpl(detail::PlanDraftData draft) {
 #endif
 #if defined(PAE_ENABLE_SCHEMA_V07_LENGTH_COMPILER)
                                 || draft.schema_version == "0.7"
+#endif
+#if defined(PAE_ENABLE_SCHEMA_V08_VARIABLE_COMPILER)
+                                || draft.schema_version == "0.8"
 #endif
                                 ) &&
                                field.value_type == ValueType::INT64 &&
@@ -796,6 +971,9 @@ PlanBuildResult PlanBuilder::FreezeImpl(detail::PlanDraftData draft) {
 #endif
 #if defined(PAE_ENABLE_SCHEMA_V07_LENGTH_COMPILER)
             && draft.schema_version != "0.7"
+#endif
+#if defined(PAE_ENABLE_SCHEMA_V08_VARIABLE_COMPILER)
+            && draft.schema_version != "0.8"
 #endif
             ) &&
            has_conversion) ||
@@ -925,13 +1103,19 @@ PlanBuildResult PlanBuilder::FreezeImpl(detail::PlanDraftData draft) {
         integrity_storage_width = static_cast<std::size_t>(execution.integrity->crc_width / 8U);
       }
 #endif
-      for (const ByteInterval& interval : field_intervals) {
-        if (execution.integrity->storage_offset < interval.end &&
-            interval.begin < execution.integrity->storage_offset + integrity_storage_width) {
-          return Reject(PlanBuildError::INVALID_MESSAGE_PLAN, kInvalidPlanBuildIndex,
-                        kInvalidPlanBuildIndex, message_index);
+#if defined(PAE_ENABLE_SCHEMA_V08_VARIABLE_COMPILER)
+      if (!execution.integrity->storage_at_payload_end) {
+#endif
+        for (const ByteInterval& interval : field_intervals) {
+          if (execution.integrity->storage_offset < interval.end &&
+              interval.begin < execution.integrity->storage_offset + integrity_storage_width) {
+            return Reject(PlanBuildError::INVALID_MESSAGE_PLAN, kInvalidPlanBuildIndex,
+                          kInvalidPlanBuildIndex, message_index);
+          }
         }
+#if defined(PAE_ENABLE_SCHEMA_V08_VARIABLE_COMPILER)
       }
+#endif
     }
     execution.required_input_count = input_ordinal;
     execution_resource_layout.max_input_fields_per_message =
@@ -945,6 +1129,12 @@ PlanBuildResult PlanBuilder::FreezeImpl(detail::PlanDraftData draft) {
     for (std::size_t matcher_index = 0U; matcher_index < message.matchers.size(); ++matcher_index) {
       const MatcherPlan& matcher = message.matchers[matcher_index];
       if (matcher.kind == MatcherKind::FRAME_LENGTH_EQUALS) {
+#if defined(PAE_ENABLE_SCHEMA_V08_VARIABLE_COMPILER)
+        if (message.bounded_payload.has_value()) {
+          return Reject(PlanBuildError::INVALID_MATCHER_PLAN, kInvalidPlanBuildIndex,
+                        kInvalidPlanBuildIndex, message_index, matcher_index);
+        }
+#endif
         std::size_t matcher_length = 0U;
         if (!ToSize(matcher.length_bytes, matcher_length) || matcher_length != frame_size) {
           return Reject(PlanBuildError::INVALID_MATCHER_PLAN, kInvalidPlanBuildIndex,
@@ -955,7 +1145,13 @@ PlanBuildResult PlanBuilder::FreezeImpl(detail::PlanDraftData draft) {
       std::size_t matcher_offset = 0U;
       if (matcher.kind != MatcherKind::FIXED_BYTES ||
           !ToSize(matcher.byte_offset, matcher_offset) ||
-          !IsRangeWithin(matcher_offset, matcher.bytes.size(), frame_size)) {
+          !IsRangeWithin(matcher_offset, matcher.bytes.size(),
+#if defined(PAE_ENABLE_SCHEMA_V08_VARIABLE_COMPILER)
+                         message.bounded_payload.has_value()
+                             ? static_cast<std::size_t>(message.bounded_payload->header_length)
+                             :
+#endif
+                             frame_size)) {
         return Reject(PlanBuildError::INVALID_MATCHER_PLAN, kInvalidPlanBuildIndex,
                       kInvalidPlanBuildIndex, message_index, matcher_index);
       }
@@ -968,6 +1164,12 @@ PlanBuildResult PlanBuilder::FreezeImpl(detail::PlanDraftData draft) {
         }
       }
     }
+#if defined(PAE_ENABLE_SCHEMA_V08_VARIABLE_COMPILER)
+    if (message.bounded_payload.has_value() && fixed_bytes.empty()) {
+      return Reject(PlanBuildError::INVALID_MATCHER_PLAN, kInvalidPlanBuildIndex,
+                    kInvalidPlanBuildIndex, message_index);
+    }
+#endif
 #if defined(PAE_ENABLE_SCHEMA_V07_LENGTH_COMPILER)
     if (execution.computed_length.has_value()) {
       for (std::size_t index = 0U; index < execution.computed_length->storage_width; ++index) {
@@ -995,17 +1197,38 @@ PlanBuildResult PlanBuilder::FreezeImpl(detail::PlanDraftData draft) {
         integrity_storage_width = static_cast<std::size_t>(execution.integrity->crc_width / 8U);
       }
 #endif
-      for (std::size_t index = 0U; index < integrity_storage_width; ++index) {
-        if (fixed_bytes.find(execution.integrity->storage_offset + index) != fixed_bytes.end()) {
-          return Reject(PlanBuildError::INVALID_MESSAGE_PLAN, kInvalidPlanBuildIndex,
-                        kInvalidPlanBuildIndex, message_index);
+#if defined(PAE_ENABLE_SCHEMA_V08_VARIABLE_COMPILER)
+      if (!execution.integrity->storage_at_payload_end) {
+#endif
+        for (std::size_t index = 0U; index < integrity_storage_width; ++index) {
+          if (fixed_bytes.find(execution.integrity->storage_offset + index) != fixed_bytes.end()) {
+            return Reject(PlanBuildError::INVALID_MESSAGE_PLAN, kInvalidPlanBuildIndex,
+                          kInvalidPlanBuildIndex, message_index);
+          }
         }
+#if defined(PAE_ENABLE_SCHEMA_V08_VARIABLE_COMPILER)
+        coverage_intervals.push_back(ByteInterval{
+            execution.integrity->storage_offset,
+            execution.integrity->storage_offset + integrity_storage_width, kInvalidPlanBuildIndex});
       }
+#else
       coverage_intervals.push_back(ByteInterval{
           execution.integrity->storage_offset,
           execution.integrity->storage_offset + integrity_storage_width, kInvalidPlanBuildIndex});
+#endif
     }
-    if (!CoversWholeFrame(coverage_intervals, frame_size)) {
+    std::size_t required_coverage = frame_size;
+#if defined(PAE_ENABLE_SCHEMA_V08_VARIABLE_COMPILER)
+    if (message.bounded_payload.has_value()) {
+      required_coverage = static_cast<std::size_t>(message.bounded_payload->header_length);
+      coverage_intervals.erase(std::remove_if(coverage_intervals.begin(), coverage_intervals.end(),
+                                              [required_coverage](const ByteInterval& interval) {
+                                                return interval.begin >= required_coverage;
+                                              }),
+                               coverage_intervals.end());
+    }
+#endif
+    if (!CoversWholeFrame(coverage_intervals, required_coverage)) {
       return Reject(PlanBuildError::FRAME_NOT_FULLY_DEFINED, kInvalidPlanBuildIndex,
                     kInvalidPlanBuildIndex, message_index);
     }
@@ -1137,22 +1360,26 @@ PlanBuildResult PlanBuilder::FreezeImpl(detail::PlanDraftData draft) {
         return Reject(PlanBuildError::INVALID_PIPELINE_PLAN, kInvalidPlanBuildIndex, pipeline_index,
                       message_index);
       }
-      for (const auto& [frame_size, earlier_indices] : candidate_groups) {
-        if (frame_size != message_execution_plans[message_index].frame_size) {
-          continue;
-        }
-        for (const std::size_t earlier_index : earlier_indices) {
-          if (FixedMatchersCanIntersect(message_execution_plans[earlier_index],
-                                        message_execution_plans[message_index])) {
-            return Reject(PlanBuildError::AMBIGUOUS_MATCHER, kInvalidPlanBuildIndex, pipeline_index,
-                          message_index);
-          }
+      for (const std::size_t earlier_index : seen_message_indices) {
+        if (earlier_index != message_index &&
+            FixedMatchersCanIntersect(message_execution_plans[earlier_index],
+                                      message_execution_plans[message_index])) {
+          return Reject(PlanBuildError::AMBIGUOUS_MATCHER, kInvalidPlanBuildIndex, pipeline_index,
+                        message_index);
         }
       }
       const std::size_t word_index = message_index / kBitsPerAllowedMessageWord;
       const auto bit_index = static_cast<unsigned>(message_index % kBitsPerAllowedMessageWord);
       execution.allowed_message_words[word_index] |= std::uint64_t{1U} << bit_index;
-      candidate_groups[message_execution_plans[message_index].frame_size].push_back(message_index);
+#if defined(PAE_ENABLE_SCHEMA_V08_VARIABLE_COMPILER)
+      if (message_execution_plans[message_index].bounded_payload.has_value()) {
+        execution.variable_message_indices.push_back(message_index);
+      } else
+#endif
+      {
+        candidate_groups[message_execution_plans[message_index].frame_size].push_back(
+            message_index);
+      }
     }
     execution.candidate_groups.reserve(candidate_groups.size());
     for (auto& [frame_size, message_indices] : candidate_groups) {
@@ -1243,6 +1470,10 @@ PlanBuildResult PlanBuilder::FreezeImpl(detail::PlanDraftData draft) {
               integrity.range_offset = source.integrity->range_offset;
               integrity.range_length = source.integrity->range_length;
               integrity.storage_offset = source.integrity->storage_offset;
+#if defined(PAE_ENABLE_SCHEMA_V08_VARIABLE_COMPILER)
+              integrity.range_ends_at_payload = source.integrity->range_ends_at_payload;
+              integrity.storage_at_payload_end = source.integrity->storage_at_payload_end;
+#endif
 #if defined(PAE_ENABLE_SCHEMA_V06_CRC_COMPILER)
               integrity.crc_width = source.integrity->crc_width;
               integrity.crc_polynomial = source.integrity->crc_polynomial;
@@ -1254,6 +1485,9 @@ PlanBuildResult PlanBuilder::FreezeImpl(detail::PlanDraftData draft) {
 #endif
               output.integrity = integrity;
             }
+#if defined(PAE_ENABLE_SCHEMA_V08_VARIABLE_COMPILER)
+            output.bounded_payload = source.bounded_payload;
+#endif
 #if defined(PAE_ENABLE_SCHEMA_V07_LENGTH_COMPILER)
             output.computed_length = source.computed_length;
 #endif
@@ -1338,6 +1572,9 @@ PlanBuildResult PlanBuilder::FreezeImpl(detail::PlanDraftData draft) {
             output.frame_size = source.frame_size;
             output.required_input_count = source.required_input_count;
             output.integrity = source.integrity;
+#if defined(PAE_ENABLE_SCHEMA_V08_VARIABLE_COMPILER)
+            output.bounded_payload = source.bounded_payload;
+#endif
 #if defined(PAE_ENABLE_SCHEMA_V07_LENGTH_COMPILER)
             output.computed_length = source.computed_length;
 #endif
@@ -1367,6 +1604,12 @@ PlanBuildResult PlanBuilder::FreezeImpl(detail::PlanDraftData draft) {
                                 output.allowed_message_words)) {
               return false;
             }
+#if defined(PAE_ENABLE_SCHEMA_V08_VARIABLE_COMPILER)
+            if (!FreezePodArray(arena, source.variable_message_indices, PlanMemoryCategory::INDEX,
+                                output.variable_message_indices)) {
+              return false;
+            }
+#endif
             return FreezeObjectArray<CandidateGroupExecutionPlan>(
                 arena, source.candidate_groups.size(), PlanMemoryCategory::EXECUTION_DESCRIPTOR,
                 [&arena, &source](std::size_t group_index, CandidateGroupExecutionPlan& group) {

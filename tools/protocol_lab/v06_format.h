@@ -20,6 +20,11 @@ inline constexpr std::string_view kCrcFingerprintDomain = "pae.lab.fingerprint/0
 inline constexpr std::string_view kLengthResultFormat = "pae.lab.result/0.8";
 inline constexpr std::string_view kLengthFingerprintDomain = "pae.lab.fingerprint/0.8";
 #endif
+#if defined(PAE_ENABLE_SCHEMA_V08_VARIABLE_COMPILER)
+inline constexpr std::string_view kVariableValuesFormat = "pae.lab.values/0.5";
+inline constexpr std::string_view kVariableResultFormat = "pae.lab.result/0.9";
+inline constexpr std::string_view kVariableFingerprintDomain = "pae.lab.fingerprint/0.9";
+#endif
 
 struct Decimal64 {
   std::int64_t coefficient = 0;
@@ -38,6 +43,7 @@ struct ParsedValue {
 };
 
 struct ParsedValues {
+  std::string format_version;
   std::string pipeline_id;
   std::string message_id;
   std::vector<ParsedValue> fields;
@@ -86,7 +92,8 @@ bool ParseValues(std::string& text, ParsedValues& output, std::string& error);
 bool ParseResult(std::string& text, Result& output, std::string& error);
 Decimal64 NormalizeDecimal64(Decimal64 value) noexcept;
 bool ValidateResult(const Result& result, std::string& error);
-std::string EncodeFieldsCanonical(const std::vector<FieldResult>& fields, std::string& error);
+std::string EncodeFieldsCanonical(const std::vector<FieldResult>& fields,
+                                  std::string_view result_format, std::string& error);
 std::string EncodeFingerprintPayload(const Result& result, std::string& error);
 std::string FinalizeFingerprint(const Result& result, std::string& error);
 std::string SerializeResult(const Result& result, std::string& error);

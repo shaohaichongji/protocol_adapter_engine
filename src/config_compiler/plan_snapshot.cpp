@@ -209,8 +209,14 @@ std::string MakeDeterministicPlanSnapshot(const PlanBundle& plan) {
   const bool v06 = false;
   const bool v07 = false;
 #endif
+#if defined(PAE_ENABLE_SCHEMA_V08_VARIABLE_COMPILER)
+  const bool v08 = plan.SchemaVersion() == "0.8";
+#else
+  const bool v08 = false;
+#endif
   AppendStringProperty("snapshot_format",
-                       v07   ? "pae_plan_bundle_v0.7_length_slice"
+                       v08   ? "pae_plan_bundle_v0.8_bounded_variable_slice"
+                       : v07 ? "pae_plan_bundle_v0.7_length_slice"
                        : v06 ? "pae_plan_bundle_v0.6_crc_slice"
                        : v05 ? "pae_plan_bundle_v0.5_decimal_compiler_slice"
                        : v04 ? "pae_plan_bundle_v0.4_int64_slice"
@@ -242,24 +248,24 @@ std::string MakeDeterministicPlanSnapshot(const PlanBundle& plan) {
   AppendIntegerProperty("total_matcher_count", requirements.total_matcher_count, output);
   output.push_back(',');
   AppendIntegerProperty("total_enum_entry_count", requirements.total_enum_entry_count, output);
-  if (v02 || v03 || v04 || v05 || v06 || v07) {
+  if (v02 || v03 || v04 || v05 || v06 || v07 || v08) {
     output.push_back(',');
     AppendIntegerProperty("total_bit_container_count", requirements.total_bit_container_count,
                           output);
   }
-  if (v03 || v04 || v05 || v06 || v07) {
+  if (v03 || v04 || v05 || v06 || v07 || v08) {
     output.push_back(',');
     AppendIntegerProperty("total_integrity_rule_count", requirements.total_integrity_rule_count,
                           output);
   }
 #if defined(PAE_ENABLE_SCHEMA_V05_COMPILER)
-  if (v05 || v06 || v07) {
+  if (v05 || v06 || v07 || v08) {
     output.push_back(',');
     AppendIntegerProperty("total_conversion_count", requirements.total_conversion_count, output);
   }
 #endif
 #if defined(PAE_ENABLE_SCHEMA_V07_LENGTH_COMPILER)
-  if (v07) {
+  if (v07 || v08) {
     output.push_back(',');
     AppendIntegerProperty("total_computed_length_count", requirements.total_computed_length_count,
                           output);
@@ -268,7 +274,7 @@ std::string MakeDeterministicPlanSnapshot(const PlanBundle& plan) {
   output.push_back('}');
 
 #if defined(PAE_ENABLE_SCHEMA_V05_COMPILER)
-  if (v05 || v06 || v07) {
+  if (v05 || v06 || v07 || v08) {
     output.append(",\"conversions\":[");
     const auto& conversions = plan.Conversions();
     for (std::size_t index = 0U; index < conversions.size(); ++index) {
@@ -360,6 +366,31 @@ std::string MakeDeterministicPlanSnapshot(const PlanBundle& plan) {
     AppendStringProperty("direction_id", message.direction_id, output);
     output.push_back(',');
     AppendIntegerProperty("frame_length_bytes", message.frame_length_bytes, output);
+#if defined(PAE_ENABLE_SCHEMA_V08_VARIABLE_COMPILER)
+    if (v08) {
+      output.append(",\"bounded_payload\":");
+      if (!message.bounded_payload.has_value()) {
+        output.append("null");
+      } else {
+        const auto& bounded = *message.bounded_payload;
+        output.push_back('{');
+        AppendIntegerProperty("header_length", bounded.header_length, output);
+        output.push_back(',');
+        AppendIntegerProperty("payload_field_index", bounded.payload_field_index, output);
+        output.push_back(',');
+        AppendIntegerProperty("min_payload_length", bounded.min_payload_length, output);
+        output.push_back(',');
+        AppendIntegerProperty("max_payload_length", bounded.max_payload_length, output);
+        output.push_back(',');
+        AppendIntegerProperty("trailer_length", bounded.trailer_length, output);
+        output.push_back(',');
+        AppendIntegerProperty("min_frame_length", bounded.min_frame_length, output);
+        output.push_back(',');
+        AppendIntegerProperty("max_frame_length", bounded.max_frame_length, output);
+        output.push_back('}');
+      }
+    }
+#endif
 
     output.append(",\"matchers\":[");
     for (std::size_t matcher_index = 0U; matcher_index < message.matchers.size(); ++matcher_index) {
@@ -382,7 +413,7 @@ std::string MakeDeterministicPlanSnapshot(const PlanBundle& plan) {
     }
     output.push_back(']');
 
-    if (v02 || v03 || v04 || v05 || v06 || v07) {
+    if (v02 || v03 || v04 || v05 || v06 || v07 || v08) {
       output.append(",\"bit_containers\":[");
       for (std::size_t index = 0U; index < message.bit_containers.size(); ++index) {
         if (index != 0U) output.push_back(',');
@@ -404,7 +435,7 @@ std::string MakeDeterministicPlanSnapshot(const PlanBundle& plan) {
       output.push_back(']');
     }
 
-    if (v03 || v04 || v05 || v06 || v07) {
+    if (v03 || v04 || v05 || v06 || v07 || v08) {
       output.append(",\"integrity\":");
       if (!message.integrity.has_value()) {
         output.append("null");
@@ -424,6 +455,14 @@ std::string MakeDeterministicPlanSnapshot(const PlanBundle& plan) {
         AppendIntegerProperty("range_length", message.integrity->range_length, output);
         output.push_back(',');
         AppendIntegerProperty("storage_offset", message.integrity->storage_offset, output);
+#if defined(PAE_ENABLE_SCHEMA_V08_VARIABLE_COMPILER)
+        if (v08) {
+          output.append(",\"range_ends_at_payload\":");
+          output.append(message.integrity->range_ends_at_payload ? "true" : "false");
+          output.append(",\"storage_at_payload_end\":");
+          output.append(message.integrity->storage_at_payload_end ? "true" : "false");
+        }
+#endif
 #if defined(PAE_ENABLE_SCHEMA_V06_CRC_COMPILER)
         if (message.integrity->algorithm == protocol_plan::IntegrityAlgorithm::CRC) {
           output.push_back(',');
@@ -448,7 +487,7 @@ std::string MakeDeterministicPlanSnapshot(const PlanBundle& plan) {
     }
 
 #if defined(PAE_ENABLE_SCHEMA_V07_LENGTH_COMPILER)
-    if (v07) {
+    if (v07 || v08) {
       output.append(",\"computed_length\":");
       if (!message.computed_length.has_value()) {
         output.append("null");
@@ -463,10 +502,12 @@ std::string MakeDeterministicPlanSnapshot(const PlanBundle& plan) {
         output.push_back(',');
         AppendStringProperty("byte_order", ToString(computed.byte_order), output);
         output.push_back(',');
-        AppendStringProperty(
-            "scope",
-            computed.scope == protocol_plan::ComputedLengthScope::FRAME ? "frame" : "region",
-            output);
+        std::string_view scope =
+            computed.scope == protocol_plan::ComputedLengthScope::FRAME ? "frame" : "region";
+#if defined(PAE_ENABLE_SCHEMA_V08_VARIABLE_COMPILER)
+        if (computed.scope == protocol_plan::ComputedLengthScope::PAYLOAD) scope = "payload";
+#endif
+        AppendStringProperty("scope", scope, output);
         output.push_back(',');
         AppendIntegerProperty("range_offset", computed.range_offset, output);
         output.push_back(',');
@@ -507,7 +548,7 @@ std::string MakeDeterministicPlanSnapshot(const PlanBundle& plan) {
       output.push_back(',');
       AppendStringProperty("encode_source", ToString(field.encode_source), output);
 #if defined(PAE_ENABLE_SCHEMA_V05_COMPILER)
-      if ((v05 || v06 || v07) &&
+      if ((v05 || v06 || v07 || v08) &&
           field.conversion_index != (std::numeric_limits<std::size_t>::max)()) {
         output.push_back(',');
         AppendIntegerProperty("conversion_index", field.conversion_index, output);

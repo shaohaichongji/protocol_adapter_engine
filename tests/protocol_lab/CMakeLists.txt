@@ -294,6 +294,27 @@ if(WIN32)
                        WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
         )
     endif()
+    if(PAE_ENABLE_PROTOCOL_LAB_SCHEMA_V08_VARIABLE)
+        add_test(
+            NAME pae.tools.protocol_lab.variable_record_schema_contract
+            COMMAND
+                "${pae_powershell_executable}"
+                -NoProfile
+                -File "${CMAKE_CURRENT_SOURCE_DIR}/verify_variable_record_schema_contract.ps1"
+                -LabExecutable "$<TARGET_FILE:pae_protocol_lab>"
+                -SchemaPath "${PROJECT_SOURCE_DIR}/schema/pae.schema.json"
+                -ConfigPath "${PROJECT_SOURCE_DIR}/examples/config/synthetic_bounded_variable_record.pae.json"
+                -ValuesPath "${PROJECT_SOURCE_DIR}/examples/config/synthetic_bounded_variable_record.values.pae-lab.json"
+                -FixedConfigPath "${PROJECT_SOURCE_DIR}/examples/config/synthetic_length_slice.pae.json"
+                -FixedValuesPath "${PROJECT_SOURCE_DIR}/tests/protocol_lab_c3_cli/fixtures/length.values.pae-lab.json"
+                -TestRoot "${CMAKE_CURRENT_BINARY_DIR}/variable-record-schema-$<CONFIG>"
+        )
+        set_tests_properties(
+            pae.tools.protocol_lab.variable_record_schema_contract
+            PROPERTIES LABELS "tools;protocol_lab;offline;bounded_variable;schema" TIMEOUT 180
+                       WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
+        )
+    endif()
 
     add_executable(
         pae_protocol_lab_udp_exchange_tests

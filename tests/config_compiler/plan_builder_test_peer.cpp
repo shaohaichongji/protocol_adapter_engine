@@ -265,6 +265,131 @@ class PlanBuilderTestPeer final {
   }
 #endif
 
+#if defined(PAE_ENABLE_SCHEMA_V08_VARIABLE_COMPILER)
+  static BudgetedPlanDraft MakeVariableDraft() {
+    auto draft = std::make_unique<detail::PlanDraftData>();
+    draft->schema_version = "0.8";
+    draft->protocol_id = "variable_defense_test";
+    draft->protocol_version = "1";
+    draft->resource_profile = ResourceProfile::DESKTOP;
+    draft->resource_requirements.max_frame_bytes = 6U;
+    draft->resource_requirements.framing_profile_count = 1U;
+    draft->resource_requirements.pipeline_count = 1U;
+    draft->resource_requirements.message_count = 1U;
+    draft->resource_requirements.total_field_count = 2U;
+    draft->resource_requirements.total_matcher_count = 1U;
+    draft->resource_requirements.total_integrity_rule_count = 1U;
+    draft->resource_requirements.total_computed_length_count = 1U;
+    draft->framing_profiles.push_back(FramingPlan{"record", InputKind::COMPLETE_RECORD});
+    PipelinePlan pipeline;
+    pipeline.id = "pipeline";
+    pipeline.direction_id = "rx";
+    pipeline.message_indices.push_back(0U);
+    draft->pipelines.push_back(std::move(pipeline));
+    MessagePlan message;
+    message.id = "message";
+    message.direction_id = "rx";
+    message.frame_length_bytes = 6U;
+    MatcherPlan matcher;
+    matcher.kind = MatcherKind::FIXED_BYTES;
+    matcher.byte_offset = 0U;
+    matcher.bytes.push_back(0xA5U);
+    message.matchers.push_back(std::move(matcher));
+    FieldPlan length;
+    length.id = "record_length";
+    length.value_type = ValueType::UINT64;
+    length.wire_codec = WireCodec::UNSIGNED_INTEGER;
+    length.byte_offset = 1U;
+    length.byte_width = 1U;
+    length.byte_order = ByteOrder::NOT_APPLICABLE;
+    length.encode_source = EncodeSource::COMPUTED;
+    message.fields.push_back(std::move(length));
+    FieldPlan payload;
+    payload.id = "payload";
+    payload.value_type = ValueType::BYTES;
+    payload.wire_codec = WireCodec::BYTES;
+    payload.byte_offset = 2U;
+    payload.byte_width = 3U;
+    payload.encode_source = EncodeSource::INPUT;
+    message.fields.push_back(std::move(payload));
+    message.bounded_payload = BoundedPayloadPlan{1U, 2U, 0U, 3U, 1U, 3U, 6U};
+    message.computed_length = ComputedLengthPlan{
+        0U, 1U, 1U, ByteOrder::NOT_APPLICABLE, ComputedLengthScope::FRAME, 0U, 0U, 6U};
+    IntegrityPlan integrity{IntegrityAlgorithm::SUM8, 0U, 0U, 0U};
+    integrity.range_ends_at_payload = true;
+    integrity.storage_at_payload_end = true;
+    message.integrity = integrity;
+    draft->messages.push_back(std::move(message));
+    return BudgetedPlanDraft{std::move(draft)};
+  }
+
+  static BudgetedPlanDraft MakeCorruptedVariableDraft(
+      pae::test_support::VariableDraftMutation mutation) {
+    auto draft = MakeVariableDraft();
+    auto& message = draft.draft_->messages[0];
+    switch (mutation) {
+      case pae::test_support::VariableDraftMutation::INVALID_PAYLOAD_INDEX:
+        message.bounded_payload->payload_field_index = message.fields.size();
+        break;
+      case pae::test_support::VariableDraftMutation::REVERSED_PAYLOAD_RANGE:
+        message.bounded_payload->min_payload_length = 4U;
+        break;
+      case pae::test_support::VariableDraftMutation::INCORRECT_MAX_FRAME:
+        --message.bounded_payload->max_frame_length;
+        break;
+      case pae::test_support::VariableDraftMutation::INVALID_DYNAMIC_INTEGRITY:
+        message.integrity->storage_at_payload_end = false;
+        break;
+      case pae::test_support::VariableDraftMutation::LATE_BIT_CONTAINER:
+        message.bit_containers.push_back(BitContainerPlan{
+            "late_bits", 5U, 1U, ByteOrder::NOT_APPLICABLE, BitNumbering::LSB0, 0U});
+        draft.draft_->resource_requirements.total_bit_container_count = 1U;
+        break;
+      case pae::test_support::VariableDraftMutation::MISSING_COMPUTED_LENGTH:
+        message.fields.erase(message.fields.begin());
+        message.bounded_payload->payload_field_index = 0U;
+        message.computed_length.reset();
+        draft.draft_->resource_requirements.total_field_count = 1U;
+        draft.draft_->resource_requirements.total_computed_length_count = 0U;
+        break;
+      case pae::test_support::VariableDraftMutation::HEADER_GAP:
+        message.fields[1].byte_offset = 3U;
+        message.bounded_payload->header_length = 3U;
+        message.bounded_payload->min_frame_length = 4U;
+        message.bounded_payload->max_frame_length = 7U;
+        message.frame_length_bytes = 7U;
+        message.computed_length->expected_value = 7U;
+        draft.draft_->resource_requirements.max_frame_bytes = 7U;
+        break;
+      case pae::test_support::VariableDraftMutation::REGION_COMPUTED_LENGTH:
+        message.computed_length->scope = ComputedLengthScope::REGION;
+        message.computed_length->range_offset = 0U;
+        message.computed_length->range_length = 6U;
+        break;
+      case pae::test_support::VariableDraftMutation::TRAILER_LENGTH_MISMATCH:
+        message.bounded_payload->trailer_length = 2U;
+        message.bounded_payload->min_frame_length = 4U;
+        message.bounded_payload->max_frame_length = 7U;
+        message.frame_length_bytes = 7U;
+        message.computed_length->expected_value = 7U;
+        draft.draft_->resource_requirements.max_frame_bytes = 7U;
+        break;
+      case pae::test_support::VariableDraftMutation::TRAILER_WITHOUT_INTEGRITY:
+        message.integrity.reset();
+        draft.draft_->resource_requirements.total_integrity_rule_count = 0U;
+        break;
+      case pae::test_support::VariableDraftMutation::CRC16_TRAILER_MISMATCH:
+        message.integrity->algorithm = IntegrityAlgorithm::CRC;
+        message.integrity->crc_width = 16U;
+        message.integrity->crc_polynomial = 0x1021U;
+        message.integrity->crc_initial_value = 0xFFFFU;
+        message.integrity->storage_byte_order = ByteOrder::BIG;
+        break;
+    }
+    return draft;
+  }
+#endif
+
   static BudgetedPlanDraft MakeInt64DraftWithOutOfRangeConstant() {
     auto draft = MakeIntegrityDraft();
     draft.draft_->schema_version = "0.4";
@@ -421,6 +546,12 @@ protocol_plan::BudgetedPlanDraft MakeLengthDraftWithOldSchema() {
 
 protocol_plan::BudgetedPlanDraft MakeLengthDraftWithResourceCountMismatch() {
   return protocol_plan::test_only::PlanBuilderTestPeer::MakeLengthDraftWithResourceCountMismatch();
+}
+#endif
+
+#if defined(PAE_ENABLE_SCHEMA_V08_VARIABLE_COMPILER)
+protocol_plan::BudgetedPlanDraft MakeCorruptedVariableDraft(VariableDraftMutation mutation) {
+  return protocol_plan::test_only::PlanBuilderTestPeer::MakeCorruptedVariableDraft(mutation);
 }
 #endif
 

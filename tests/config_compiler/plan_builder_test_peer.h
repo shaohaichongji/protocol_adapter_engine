@@ -27,6 +27,22 @@ protocol_plan::BudgetedPlanDraft MakeLengthDraftWithInvalidScope();
 protocol_plan::BudgetedPlanDraft MakeLengthDraftWithOldSchema();
 protocol_plan::BudgetedPlanDraft MakeLengthDraftWithResourceCountMismatch();
 #endif
+#if defined(PAE_ENABLE_SCHEMA_V08_VARIABLE_COMPILER)
+enum class VariableDraftMutation {
+  INVALID_PAYLOAD_INDEX,
+  REVERSED_PAYLOAD_RANGE,
+  INCORRECT_MAX_FRAME,
+  INVALID_DYNAMIC_INTEGRITY,
+  LATE_BIT_CONTAINER,
+  MISSING_COMPUTED_LENGTH,
+  HEADER_GAP,
+  REGION_COMPUTED_LENGTH,
+  TRAILER_LENGTH_MISMATCH,
+  TRAILER_WITHOUT_INTEGRITY,
+  CRC16_TRAILER_MISMATCH,
+};
+protocol_plan::BudgetedPlanDraft MakeCorruptedVariableDraft(VariableDraftMutation mutation);
+#endif
 protocol_plan::BudgetedPlanDraft MakeInt64DraftWithOutOfRangeConstant();
 #if defined(PAE_ENABLE_SCHEMA_V05_COMPILER)
 enum class ConversionDraftMutation {

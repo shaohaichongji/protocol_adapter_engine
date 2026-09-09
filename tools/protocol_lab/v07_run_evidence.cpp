@@ -42,6 +42,12 @@ constexpr std::string_view kLengthRecordFile = "run_record_v0.9.json";
 constexpr std::string_view kLengthParentRecordFile = "history/parent_record_v0.9.json";
 constexpr std::string_view kLengthHistoricalResultFile = "history/result_summary_v0.8.json";
 #endif
+#if defined(PAE_ENABLE_SCHEMA_V08_VARIABLE_COMPILER)
+constexpr std::string_view kVariableResultFile = "result_summary_v0.9.json";
+constexpr std::string_view kVariableRecordFile = "run_record_v0.10.json";
+constexpr std::string_view kVariableParentRecordFile = "history/parent_record_v0.10.json";
+constexpr std::string_view kVariableHistoricalResultFile = "history/result_summary_v0.9.json";
+#endif
 
 bool IsCrcGeneration(const RunRecord& record) noexcept {
 #if defined(PAE_ENABLE_SCHEMA_V06_CRC_COMPILER)
@@ -61,7 +67,19 @@ bool IsLengthGeneration(const RunRecord& record) noexcept {
 #endif
 }
 
+bool IsVariableGeneration(const RunRecord& record) noexcept {
+#if defined(PAE_ENABLE_SCHEMA_V08_VARIABLE_COMPILER)
+  return record.format_version == kVariableRecordFormat;
+#else
+  static_cast<void>(record);
+  return false;
+#endif
+}
+
 std::string_view ResultFileFor([[maybe_unused]] const RunRecord& record) noexcept {
+#if defined(PAE_ENABLE_SCHEMA_V08_VARIABLE_COMPILER)
+  if (IsVariableGeneration(record)) return kVariableResultFile;
+#endif
 #if defined(PAE_ENABLE_SCHEMA_V07_LENGTH_COMPILER)
   if (IsLengthGeneration(record)) return kLengthResultFile;
 #endif
@@ -72,6 +90,9 @@ std::string_view ResultFileFor([[maybe_unused]] const RunRecord& record) noexcep
 }
 
 std::string_view RecordFileFor([[maybe_unused]] const RunRecord& record) noexcept {
+#if defined(PAE_ENABLE_SCHEMA_V08_VARIABLE_COMPILER)
+  if (IsVariableGeneration(record)) return kVariableRecordFile;
+#endif
 #if defined(PAE_ENABLE_SCHEMA_V07_LENGTH_COMPILER)
   if (IsLengthGeneration(record)) return kLengthRecordFile;
 #endif
@@ -82,6 +103,9 @@ std::string_view RecordFileFor([[maybe_unused]] const RunRecord& record) noexcep
 }
 
 std::string_view ParentRecordFileFor([[maybe_unused]] const RunRecord& record) noexcept {
+#if defined(PAE_ENABLE_SCHEMA_V08_VARIABLE_COMPILER)
+  if (IsVariableGeneration(record)) return kVariableParentRecordFile;
+#endif
 #if defined(PAE_ENABLE_SCHEMA_V07_LENGTH_COMPILER)
   if (IsLengthGeneration(record)) return kLengthParentRecordFile;
 #endif
@@ -92,6 +116,9 @@ std::string_view ParentRecordFileFor([[maybe_unused]] const RunRecord& record) n
 }
 
 std::string_view HistoricalResultFileFor([[maybe_unused]] const RunRecord& record) noexcept {
+#if defined(PAE_ENABLE_SCHEMA_V08_VARIABLE_COMPILER)
+  if (IsVariableGeneration(record)) return kVariableHistoricalResultFile;
+#endif
 #if defined(PAE_ENABLE_SCHEMA_V07_LENGTH_COMPILER)
   if (IsLengthGeneration(record)) return kLengthHistoricalResultFile;
 #endif
@@ -102,6 +129,9 @@ std::string_view HistoricalResultFileFor([[maybe_unused]] const RunRecord& recor
 }
 
 std::string_view FingerprintDomainFor([[maybe_unused]] const RunRecord& record) noexcept {
+#if defined(PAE_ENABLE_SCHEMA_V08_VARIABLE_COMPILER)
+  if (IsVariableGeneration(record)) return v06::kVariableFingerprintDomain;
+#endif
 #if defined(PAE_ENABLE_SCHEMA_V07_LENGTH_COMPILER)
   if (IsLengthGeneration(record)) return v06::kLengthFingerprintDomain;
 #endif
@@ -112,6 +142,9 @@ std::string_view FingerprintDomainFor([[maybe_unused]] const RunRecord& record) 
 }
 
 std::string_view ResultFormatFor([[maybe_unused]] const RunRecord& record) noexcept {
+#if defined(PAE_ENABLE_SCHEMA_V08_VARIABLE_COMPILER)
+  if (IsVariableGeneration(record)) return v06::kVariableResultFormat;
+#endif
 #if defined(PAE_ENABLE_SCHEMA_V07_LENGTH_COMPILER)
   if (IsLengthGeneration(record)) return v06::kLengthResultFormat;
 #endif
@@ -896,6 +929,11 @@ bool ParseHistoricalBaseline(yyjson_val* value, std::optional<HistoricalBaseline
             history.result_file == kLengthHistoricalResultFile &&
             history.fingerprint_domain == v06::kLengthFingerprintDomain)
 #endif
+#if defined(PAE_ENABLE_SCHEMA_V08_VARIABLE_COMPILER)
+        || (history.parent_record_file == kVariableParentRecordFile &&
+            history.result_file == kVariableHistoricalResultFile &&
+            history.fingerprint_domain == v06::kVariableFingerprintDomain)
+#endif
             ) ||
       !IsLowerHash(history.parent_record_sha256) || !IsLowerHash(history.result_sha256) ||
       history.deterministic_fingerprint.size() != 64U) {
@@ -945,6 +983,9 @@ bool ParseRecord(std::string& text, RunRecord& output, std::string& error) {
 #endif
 #if defined(PAE_ENABLE_SCHEMA_V07_LENGTH_COMPILER)
        && output.format_version != kLengthRecordFormat
+#endif
+#if defined(PAE_ENABLE_SCHEMA_V08_VARIABLE_COMPILER)
+       && output.format_version != kVariableRecordFormat
 #endif
        ) ||
       !ReadString(root, "run_id", output.run_id, error) || output.run_id.empty() ||
@@ -1435,26 +1476,38 @@ bool LoadRunBundleForTest(const std::filesystem::path& bundle, StoredRunBundle& 
 #else
   const bool has_length_record = false;
 #endif
-  const unsigned record_generation_count = static_cast<unsigned>(has_old_record) +
-                                           static_cast<unsigned>(has_crc_record) +
-                                           static_cast<unsigned>(has_length_record);
+#if defined(PAE_ENABLE_SCHEMA_V08_VARIABLE_COMPILER)
+  const bool has_variable_record =
+      manifest_paths.find(std::string{kVariableRecordFile}) != manifest_paths.end();
+#else
+  const bool has_variable_record = false;
+#endif
+  const unsigned record_generation_count =
+      static_cast<unsigned>(has_old_record) + static_cast<unsigned>(has_crc_record) +
+      static_cast<unsigned>(has_length_record) + static_cast<unsigned>(has_variable_record);
   if (record_generation_count != 1U) {
     error = "Run Bundle must contain exactly one supported Run Record generation";
     return false;
   }
-  const std::string_view record_file = has_length_record
-#if defined(PAE_ENABLE_SCHEMA_V07_LENGTH_COMPILER)
-                                           ? kLengthRecordFile
+  const std::string_view record_file = has_variable_record
+#if defined(PAE_ENABLE_SCHEMA_V08_VARIABLE_COMPILER)
+                                           ? kVariableRecordFile
 #else
                                            ? kRecordFile
 #endif
-                                           : has_crc_record
-#if defined(PAE_ENABLE_SCHEMA_V06_CRC_COMPILER)
-                                                 ? kCrcRecordFile
+                                           : has_length_record
+#if defined(PAE_ENABLE_SCHEMA_V07_LENGTH_COMPILER)
+                                                 ? kLengthRecordFile
 #else
                                                  ? kRecordFile
 #endif
-                                                 : kRecordFile;
+                                                 : has_crc_record
+#if defined(PAE_ENABLE_SCHEMA_V06_CRC_COMPILER)
+                                                       ? kCrcRecordFile
+#else
+                                                       ? kRecordFile
+#endif
+                                                       : kRecordFile;
   const std::set<std::string> mandatory{"COMPLETE", std::string{kConfigFile},
                                         std::string{kEventFile}, std::string{record_file}};
   if (!std::includes(manifest_paths.begin(), manifest_paths.end(), mandatory.begin(),

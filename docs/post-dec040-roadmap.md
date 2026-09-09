@@ -1,5 +1,17 @@
 # DEC-040 后续推进路线与当前状态
 
+2026-09-09当前推进：长度检查点`0179abc`、`7d2ef4f`均已Push；其后的
+[有界变长完整记录实施契约](bounded-variable-record-contract.md)已在当前工作树完成限定实现与
+Windows离线验证，正在等待总控审查，尚未Stage/Commit/Push。实现仍限定固定头部、一段有界
+BYTES、可选SUM8/CRC尾部，不包含流式切帧。
+空载荷证据收口在不升级Result/Record/Event的前提下增加Values 0.5：仅Schema 0.8可显式输入
+空BYTES，Result 0.9 Reader/Writer/指纹统一接受空配对，旧代保持拒绝。修复后仍待总控复核。
+《子任务推进》负责PAE主线和必要Lab离线兼容，《Lab应用推进》当前仅做UI方案修订及Qt官方
+资料核验。两者不并发改共享文件，不为Lab修改PAE协议语义；本轮不创建worktree。
+后续顺序仍为：有界变长审查收口 → 流式切帧 → 多实例/稳定接入；Lab应用支线独立。
+每个完整检查点默认一次集中审查及一次提交，Git操作仍另行授权。
+以下记录保留各批次时点，不代表当前交付状态。
+
 2026-09-09收口更新：[长度字段校验与自动回填](length-field-minimal-contract.md)已在当前工作树
 一次完成Compiler/Builder、Core、Lab、公开样例、业务嵌入和Windows离线验证；Schema 0.7使用
 Result/指纹0.8、Record 0.9并保持Event 0.7。初次Debug/Release离线矩阵各39/39、业务嵌入各1/1、

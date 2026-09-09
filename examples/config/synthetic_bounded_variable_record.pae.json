@@ -1,0 +1,76 @@
+{
+  "schema_version": "0.8",
+  "protocol_id": "synthetic_bounded_variable_record",
+  "protocol_version": "0.1-synthetic",
+  "display_name": "公开合成有界变长完整记录",
+  "description": "从零构造的有界变长完整记录样例，不对应任何真实协议。",
+  "source_ref": "SYNTHETIC_FROM_SCRATCH:bounded_variable_record_a5",
+  "resource_profile": "desktop",
+  "framing_profiles": [
+    {
+      "id": "complete_record",
+      "display_name": "完整记录",
+      "description": "调用方已切分完整记录。",
+      "source_ref": "SYNTHETIC_FROM_SCRATCH:bounded_variable_record_a5#framing",
+      "input_kind": "complete_record"
+    }
+  ],
+  "pipelines": [
+    {
+      "id": "synthetic_rx",
+      "display_name": "合成接收",
+      "description": "公开离线测试Pipeline。",
+      "source_ref": "SYNTHETIC_FROM_SCRATCH:bounded_variable_record_a5#pipeline",
+      "direction_id": "rx",
+      "input_framing_profile_id": "complete_record",
+      "message_ids": ["bounded_record"]
+    }
+  ],
+  "messages": [
+    {
+      "id": "bounded_record",
+      "display_name": "A5有界变长记录",
+      "description": "两字节固定头、零到三字节载荷、单字节SUM8尾。",
+      "source_ref": "SYNTHETIC_FROM_SCRATCH:bounded_variable_record_a5#message",
+      "direction_id": "rx",
+      "layout": {
+        "kind": "bounded_payload",
+        "header_length_bytes": 2,
+        "payload_field_id": "payload",
+        "min_payload_bytes": 0,
+        "max_payload_bytes": 3
+      },
+      "matcher": {
+        "all": [
+          {"kind": "fixed_bytes", "byte_offset": 0, "bytes": "A5"}
+        ]
+      },
+      "integrity": {
+        "algorithm": "sum8",
+        "range": {"byte_offset": 0, "end": "payload_end"},
+        "storage": {"anchor": "payload_end"}
+      },
+      "fields": [
+        {
+          "id": "record_length",
+          "display_name": "记录长度",
+          "description": "由引擎生成并验证的实际完整记录长度。",
+          "source_ref": "SYNTHETIC_FROM_SCRATCH:bounded_variable_record_a5#length",
+          "value_type": "UINT64",
+          "wire": {"codec": "unsigned_integer", "byte_offset": 1, "byte_width": 1},
+          "encode": {"source": "computed"},
+          "computed": {"kind": "length", "scope": "frame"}
+        },
+        {
+          "id": "payload",
+          "display_name": "变长载荷",
+          "description": "长度由本次BYTES输入或实际Frame推导。",
+          "source_ref": "SYNTHETIC_FROM_SCRATCH:bounded_variable_record_a5#payload",
+          "value_type": "BYTES",
+          "wire": {"codec": "bytes", "byte_offset": 2},
+          "encode": {"source": "input"}
+        }
+      ]
+    }
+  ]
+}

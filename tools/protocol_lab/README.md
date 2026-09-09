@@ -135,6 +135,12 @@ Event仍为0.7。Encode业务Values必须省略computed长度字段；Inspect在
 再验证SUM8/CRC。长度失败及其Replay保持退出5，比较EQUAL不改变当前失败状态；跨代Run Compare
 失败关闭。详见[长度字段契约](../../docs/length-field-minimal-contract.md)。
 
+Schema 0.8有界变长链使用Result/指纹0.9、Record 0.10及Event 0.7。旧Values 0.1～0.4
+继续保持原接受域；Values 0.5只新增显式空BYTES `"hex":""`，且仅可与Schema 0.8
+执行。Result 0.9对空BYTES要求raw/logical同为空串且enum_known为false；旧Result不放宽。
+空Encode/Inspect产物可读、可Compare并支持Replay A/B；Plan的非零最小载荷仍由Core
+拒绝。详见[有界变长契约](../../docs/bounded-variable-record-contract.md)。
+
 UDP V0.2事件在真实TX持久化、发送和RX持久化阶段采集，使用同一Run单调时钟原点。RX在Peer
 检查和Decode前写入并复核原始字节及来源Metadata。Replay保留历史Transport事实，但当前Codec
 执行与比较结论独立输出；`NO_CODEC_REEXECUTION`不会调用Codec，比较状态为`NOT_EVALUATED`。
