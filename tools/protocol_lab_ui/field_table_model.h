@@ -5,6 +5,7 @@
 #include <functional>
 #include <optional>
 #include <string>
+#include <unordered_map>
 
 #include "document_session.h"
 
@@ -20,6 +21,7 @@ class FieldTableModel final : public QAbstractTableModel {
     VALUE,
     RAW_RESULT,
     LOGICAL_RESULT,
+    PHYSICAL_LOCATION,
     COLUMN_COUNT,
   };
 
@@ -38,7 +40,8 @@ class FieldTableModel final : public QAbstractTableModel {
 
   using DraftChanged =
       std::function<bool(std::size_t field_index, TypedDraft value, QString& error)>;
-  using DraftInvalidated = std::function<void(std::size_t field_index)>;
+  using DraftInvalidated =
+      std::function<void(std::size_t field_index, std::string text, std::string validation_error)>;
 
   explicit FieldTableModel(QObject* parent = nullptr);
 
@@ -51,7 +54,9 @@ class FieldTableModel final : public QAbstractTableModel {
   bool setData(const QModelIndex& index, const QVariant& value, int role = Qt::EditRole) override;
 
   void Reset(const MessageDescriptor* message, DraftChanged draft_changed,
-             DraftInvalidated draft_invalidated = {});
+             DraftInvalidated draft_invalidated = {}, bool editable = true);
+  void ApplyDrafts(const std::unordered_map<std::size_t, TypedDraft>& drafts);
+  void ApplyInvalidDrafts(const std::unordered_map<std::size_t, InvalidDraftState>& invalid_drafts);
   void ClearResults();
   void ApplyResults(const std::vector<protocol_lab::v06::FieldResult>& results);
   void SetFailedField(std::optional<std::size_t> field_index);
@@ -78,6 +83,7 @@ class FieldTableModel final : public QAbstractTableModel {
   DraftChanged draft_changed_;
   DraftInvalidated draft_invalidated_;
   std::optional<std::size_t> failed_field_index_;
+  bool editable_ = true;
 };
 
 }  // namespace pae::protocol_lab_ui

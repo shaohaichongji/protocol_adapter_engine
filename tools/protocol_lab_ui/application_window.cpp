@@ -67,6 +67,17 @@ bool MatchesExpectation(const DocumentTab& document, const SmokeExpectation& exp
                      });
 }
 
+QString SpacedLowerHex(const std::vector<std::uint8_t>& frame) {
+  QString output;
+  for (std::size_t index = 0U; index < frame.size(); ++index) {
+    if (index != 0U) output += index % 4U == 0U ? QLatin1Char('\n') : QLatin1Char(' ');
+    output += QStringLiteral("%1")
+                  .arg(static_cast<unsigned int>(frame[index]), 2, 16, QLatin1Char('0'))
+                  .toLower();
+  }
+  return output;
+}
+
 std::array<qint64, 6> TimingValues(const EncodeTimingSnapshot& timing) {
   return {timing.exact_input_ns,    timing.main_codec_ns,  timing.review_decode_ns,
           timing.result_mapping_ns, timing.hex_replace_ns, timing.first_repaint_total_ns};
@@ -290,6 +301,95 @@ void ApplicationWindow::AdvanceSmoke() {
                              .arg(static_cast<qulonglong>(index + 1U)));
       return;
     }
+    const std::size_t verified_frame_bytes = document->PreviewFrameSizeForSmoke();
+    const std::size_t verified_highlighted_cells = document->HighlightedCellCountForSmoke();
+    if (!performance_mode_ && expected.has_value()) {
+      if (!document->InspectTextForSmoke(SpacedLowerHex(expected->frame), error) ||
+          document->InspectMatchedMessageForSmoke().isEmpty() ||
+          document->InspectFieldCountForSmoke() <= 0 ||
+          document->InspectRawValueForSmoke(0).isEmpty() ||
+          document->InspectLogicalValueForSmoke(0).isEmpty() ||
+          !document->SelectFirstMappableFieldForSmoke(error) ||
+          document->HighlightedCellCountForSmoke() == 0U ||
+          !MatchesExpectation(*document, *expected)) {
+        FinishSmoke(false,
+                    QStringLiteral("document %1: Inspect complete-record result, values or exact "
+                                   "highlight mask differs from independent expectation: %2")
+                        .arg(static_cast<qulonglong>(index + 1U))
+                        .arg(error));
+        return;
+      }
+      if (!document->VerifyInspectFailureForSmoke(QStringLiteral("AA:"), InspectFailureStage::INPUT,
+                                                  QString{}, 2U, QString{}, error) ||
+          document->PreviewFrameSizeForSmoke() != 0U ||
+          !document->InspectTextForSmoke(SpacedLowerHex(expected->frame), error)) {
+        FinishSmoke(false, QStringLiteral("document %1: Inspect lexical failure offset or recovery "
+                                          "differs: %2")
+                               .arg(static_cast<qulonglong>(index + 1U))
+                               .arg(error));
+        return;
+      }
+      const QString fixture_name = QFileInfo(document->ConfigPath()).fileName();
+      if (fixture_name == QStringLiteral("synthetic_ui_v05.pae.json") &&
+          (!document->VerifyInspectFailureForSmoke(
+               QStringLiteral("AA"), InspectFailureStage::STRUCTURAL_QUERY,
+               QStringLiteral("UNKNOWN_MESSAGE"), std::nullopt, QString{}, error) ||
+           document->PreviewFrameSizeForSmoke() != 1U)) {
+        FinishSmoke(false,
+                    QStringLiteral("document %1: structural failure presentation differs: %2")
+                        .arg(static_cast<qulonglong>(index + 1U))
+                        .arg(error));
+        return;
+      }
+      if (fixture_name == QStringLiteral("synthetic_ui_v05.pae.json") &&
+          !document->VerifyPipelineSwitchClearsInspectForSmoke(error)) {
+        FinishSmoke(false, QStringLiteral("document %1: Pipeline switch cleanup differs: %2")
+                               .arg(static_cast<qulonglong>(index + 1U))
+                               .arg(error));
+        return;
+      }
+      if (fixture_name == QStringLiteral("synthetic_ui_v06.pae.json")) {
+        auto bad_crc = expected->frame;
+        bad_crc[9] ^= 0x01U;
+        if (!document->VerifyInspectFailureForSmoke(
+                SpacedLowerHex(bad_crc), InspectFailureStage::CODEC,
+                QStringLiteral("INTEGRITY_FAILED"), std::nullopt, QString{}, error) ||
+            document->HighlightedCellCountForSmoke() != 2U ||
+            document->HighlightMaskForSmoke(9U) != 0xFFU ||
+            document->HighlightMaskForSmoke(10U) != 0xFFU) {
+          FinishSmoke(false, QStringLiteral("document %1: integrity failure region differs: %2")
+                                 .arg(static_cast<qulonglong>(index + 1U))
+                                 .arg(error));
+          return;
+        }
+        if (!document->SelectFirstMappableFieldForSmoke(error) ||
+            document->HighlightedCellCountForSmoke() != 2U ||
+            document->HighlightMaskForSmoke(9U) != 0xFFU ||
+            document->HighlightMaskForSmoke(10U) != 0xFFU) {
+          if (error.isEmpty()) {
+            error = QStringLiteral("integrity storage highlight changed after field selection");
+          }
+          FinishSmoke(false,
+                      QStringLiteral("document %1: integrity failure interaction differs: %2")
+                          .arg(static_cast<qulonglong>(index + 1U))
+                          .arg(error));
+          return;
+        }
+      }
+      if (fixture_name == QStringLiteral("synthetic_ui_v07.pae.json") &&
+          (!document->VerifyInspectFailureForSmoke(QStringLiteral("AA 00 05 00 00 55"),
+                                                   InspectFailureStage::CODEC,
+                                                   QStringLiteral("LENGTH_MISMATCH"), std::nullopt,
+                                                   QStringLiteral("record_length"), error) ||
+           document->HighlightedCellCountForSmoke() != 2U ||
+           document->HighlightMaskForSmoke(1U) != 0xFFU ||
+           document->HighlightMaskForSmoke(2U) != 0xFFU)) {
+        FinishSmoke(false, QStringLiteral("document %1: field-level length failure differs: %2")
+                               .arg(static_cast<qulonglong>(index + 1U))
+                               .arg(error));
+        return;
+      }
+    }
     const auto timing = document->LastTiming();
     if (performance_mode_) {
       if (performance_iteration_ >= performance_warmup_count_) {
@@ -300,8 +400,7 @@ void ApplicationWindow::AdvanceSmoke() {
                    "UI_SMOKE_DOCUMENT index=%zu frame_bytes=%zu highlighted_cells=%zu "
                    "input_ns=%lld core_ns=%lld review_ns=%lld map_ns=%lld hex_ns=%lld "
                    "repaint_total_ns=%lld\n",
-                   index + 1U, document->PreviewFrameSizeForSmoke(),
-                   document->HighlightedCellCountForSmoke(),
+                   index + 1U, verified_frame_bytes, verified_highlighted_cells,
                    static_cast<long long>(timing.exact_input_ns),
                    static_cast<long long>(timing.main_codec_ns),
                    static_cast<long long>(timing.review_decode_ns),
@@ -322,9 +421,9 @@ void ApplicationWindow::AdvanceSmoke() {
   if (!performance_mode_) {
     for (std::size_t index = 0; index < smoke_documents_.size(); ++index) {
       if (!smoke_documents_[index]->VerifyInvalidDraftRetentionForSmoke(error)) {
-        FinishSmoke(false, QStringLiteral("document %1: %2")
-                               .arg(static_cast<qulonglong>(index + 1U))
-                               .arg(error));
+        FinishSmoke(
+            false,
+            QStringLiteral("document %1: %2").arg(static_cast<qulonglong>(index + 1U)).arg(error));
         return;
       }
     }

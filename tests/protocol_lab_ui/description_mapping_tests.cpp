@@ -48,12 +48,20 @@ int main() {
   assert(v05.schema_version == "0.5");
   assert(v05.display_name == "Public UI typed fields");
   ExpectMasks(FindField(v05, "enabled"), {{1U, 0x01U}});
+  assert(pae::protocol_lab_ui::FormatPhysicalLocation(FindField(v05, "enabled")) ==
+         "byte[1] mask=0x01 bits={0} global_bits={8}");
   ExpectMasks(FindField(v05, "mode"), {{1U, 0x06U}});
   ExpectMasks(FindField(v05, "cross_bits"), {{0U, 0x0FU}, {1U, 0xF0U}});
+  assert(pae::protocol_lab_ui::FormatPhysicalLocation(FindField(v05, "cross_bits")) ==
+         "byte[0] mask=0x0F bits={0,1,2,3} global_bits={0,1,2,3}; "
+         "byte[1] mask=0xF0 bits={4,5,6,7} global_bits={12,13,14,15}");
   ExpectMasks(FindField(v05, "msb_bits"), {{2U, 0xC0U}, {3U, 0x7FU}});
   const std::optional<pae::protocol_lab_ui::ByteRange> expected_count_range{
       pae::protocol_lab_ui::ByteRange{4U, 1U}};
   assert(FindField(v05, "count").byte_range == expected_count_range);
+  assert(pae::protocol_lab_ui::FormatPhysicalLocation(FindField(v05, "count")) ==
+         "byte[4] mask=0xFF bits={0,1,2,3,4,5,6,7} "
+         "global_bits={32,33,34,35,36,37,38,39}");
   assert(FindField(v05, "marker").read_only_annotation == "constant; read-only");
 
   const auto v06 = Build("synthetic_ui_v06.pae.json");

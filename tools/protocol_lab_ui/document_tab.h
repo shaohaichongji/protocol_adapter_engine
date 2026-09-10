@@ -3,6 +3,7 @@
 #include <QWidget>
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <vector>
 
 #include "compile_worker.h"
@@ -11,6 +12,7 @@
 class QComboBox;
 class QLabel;
 class QLineEdit;
+class QPlainTextEdit;
 class QPushButton;
 class QTableView;
 class QTextBrowser;
@@ -46,8 +48,17 @@ class DocumentTab final : public QWidget {
 
   bool PopulateCanonicalDraftsForSmoke(QString& error);
   bool EncodeForSmoke(QString& error);
+  bool InspectTextForSmoke(const QString& text, QString& error);
+  bool VerifyInspectFailureForSmoke(const QString& text, InspectFailureStage stage,
+                                    const QString& status, std::optional<std::size_t> input_offset,
+                                    const QString& failed_field_id, QString& error);
+  QString InspectMatchedMessageForSmoke() const;
+  int InspectFieldCountForSmoke() const noexcept;
+  QString InspectRawValueForSmoke(int row) const;
+  QString InspectLogicalValueForSmoke(int row) const;
   bool SelectFirstMappableFieldForSmoke(QString& error);
   bool VerifyInvalidDraftRetentionForSmoke(QString& error);
+  bool VerifyPipelineSwitchClearsInspectForSmoke(QString& error);
   void InvalidatePreviewForSmoke();
   std::size_t PreviewFrameSizeForSmoke() const noexcept;
   const std::vector<std::uint8_t>& PreviewFrameForSmoke() const noexcept;
@@ -63,13 +74,19 @@ class DocumentTab final : public QWidget {
   void RebuildMessageSelector();
   void RefreshState();
   void RefreshPreview();
+  void RefreshInspect();
+  void RefreshModePresentation();
   void RefreshFieldDetails(int row);
   void SelectPipeline(int combo_index);
   void SelectMessage(int combo_index);
   void EncodeCurrent();
+  void InspectCurrent();
+  void SelectMode(int combo_index);
   void InvalidateEditedPreview();
   void InvalidateEditedDraft(std::size_t field_index);
+  std::vector<PhysicalBitMask> InspectFailureHighlights(const MessageDescriptor* message) const;
   const MessageDescriptor* CurrentMessage() const noexcept;
+  const MessageDescriptor* DisplayedMessage() const noexcept;
 
   CompileWorker& worker_;
   DocumentSession session_;
@@ -81,8 +98,13 @@ class DocumentTab final : public QWidget {
   QPushButton* load_button_ = nullptr;
   QLabel* identity_label_ = nullptr;
   QComboBox* pipeline_combo_ = nullptr;
+  QComboBox* mode_combo_ = nullptr;
   QComboBox* message_combo_ = nullptr;
   QPushButton* encode_button_ = nullptr;
+  QPushButton* inspect_button_ = nullptr;
+  QLabel* inspect_input_label_ = nullptr;
+  QPlainTextEdit* inspect_input_ = nullptr;
+  QLabel* result_kind_label_ = nullptr;
   QTableView* field_table_ = nullptr;
   FieldTableModel* field_model_ = nullptr;
   ExactValueDelegate* value_delegate_ = nullptr;

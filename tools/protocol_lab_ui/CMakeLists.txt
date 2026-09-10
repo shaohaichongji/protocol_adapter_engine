@@ -22,6 +22,8 @@ add_library(
         description_mapping.h
         document_session.cpp
         document_session.h
+        inspect_hex_input.cpp
+        inspect_hex_input.h
 )
 target_include_directories(
     pae_protocol_lab_ui_headless_internal

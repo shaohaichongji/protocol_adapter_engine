@@ -85,6 +85,7 @@ struct DocumentDescription {
   std::string display_name;
   std::string description;
   std::string source_ref;
+  std::size_t max_frame_bytes = 0U;
   std::vector<PipelineDescriptor> pipelines;
   std::vector<MessageDescriptor> messages;
 };
@@ -92,5 +93,7 @@ struct DocumentDescription {
 bool BuildDocumentDescription(const protocol_plan::PlanBundle& plan,
                               const config_compiler::UiDescriptionSidecar& sidecar,
                               DocumentDescription& output, std::string& error);
+
+std::string FormatPhysicalLocation(const FieldDescriptor& field);
 
 }  // namespace pae::protocol_lab_ui

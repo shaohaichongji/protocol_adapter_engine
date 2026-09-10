@@ -10,10 +10,12 @@
 #include <QHeaderView>
 #include <QLabel>
 #include <QLineEdit>
+#include <QPlainTextEdit>
 #include <QPushButton>
 #include <QSplitter>
 #include <QTableView>
 #include <QTextBrowser>
+#include <QTextCursor>
 #include <QVBoxLayout>
 #include <algorithm>
 #include <optional>
@@ -202,6 +204,7 @@ bool DocumentTab::PopulateCanonicalDraftsForSmoke(QString& error) {
 }
 
 bool DocumentTab::EncodeForSmoke(QString& error) {
+  mode_combo_->setCurrentIndex(0);
   EncodeCurrent();
   if (session_.state() != DocumentState::PREVIEW_VALID) {
     error = FromUtf8(session_.diagnostic_id()) + QStringLiteral(": ") +
@@ -209,6 +212,71 @@ bool DocumentTab::EncodeForSmoke(QString& error) {
     return false;
   }
   return true;
+}
+
+bool DocumentTab::InspectTextForSmoke(const QString& text, QString& error) {
+  mode_combo_->setCurrentIndex(1);
+  inspect_input_->setPlainText(text);
+  InspectCurrent();
+  if (!session_.inspect_result().has_value()) {
+    error = FromUtf8(session_.diagnostic_id()) + QStringLiteral(": ") +
+            FromUtf8(session_.diagnostic_detail());
+    return false;
+  }
+  return true;
+}
+
+bool DocumentTab::VerifyInspectFailureForSmoke(const QString& text, InspectFailureStage stage,
+                                               const QString& status,
+                                               std::optional<std::size_t> input_offset,
+                                               const QString& failed_field_id, QString& error) {
+  mode_combo_->setCurrentIndex(1);
+  inspect_input_->setPlainText(text);
+  InspectCurrent();
+  if (!session_.inspect_failure().has_value() || session_.inspect_result().has_value()) {
+    error = QStringLiteral("Inspect did not publish the expected failure-only state");
+    return false;
+  }
+  const auto& failure = *session_.inspect_failure();
+  if (failure.stage != stage || FromUtf8(failure.status) != status ||
+      failure.input_offset != input_offset ||
+      (failed_field_id.isEmpty() ? failure.failed_field_id.has_value()
+                                 : (!failure.failed_field_id.has_value() ||
+                                    FromUtf8(*failure.failed_field_id) != failed_field_id))) {
+    error = QStringLiteral("Inspect failure stage/status/offset/field identity differs");
+    return false;
+  }
+  if (failed_field_id.isEmpty() && (field_table_->currentIndex().isValid() ||
+                                    !field_table_->selectionModel()->selectedRows().isEmpty() ||
+                                    !details_view_->toPlainText().trimmed().isEmpty())) {
+    error =
+        QStringLiteral("Inspect failure without field identity retained stale selection/details");
+    return false;
+  }
+  if (!failed_field_id.isEmpty()) {
+    const auto* selected_field = field_model_->FieldAt(field_table_->currentIndex().row());
+    if (selected_field == nullptr || FromUtf8(selected_field->id) != failed_field_id ||
+        details_view_->toPlainText().trimmed().isEmpty()) {
+      error = QStringLiteral("Inspect field failure did not present its current field details");
+      return false;
+    }
+  }
+  return true;
+}
+
+QString DocumentTab::InspectMatchedMessageForSmoke() const {
+  return session_.inspect_result().has_value() ? FromUtf8(session_.inspect_result()->message_id)
+                                               : QString{};
+}
+
+int DocumentTab::InspectFieldCountForSmoke() const noexcept { return field_model_->rowCount(); }
+
+QString DocumentTab::InspectRawValueForSmoke(int row) const {
+  return field_model_->data(field_model_->index(row, FieldTableModel::RAW_RESULT)).toString();
+}
+
+QString DocumentTab::InspectLogicalValueForSmoke(int row) const {
+  return field_model_->data(field_model_->index(row, FieldTableModel::LOGICAL_RESULT)).toString();
 }
 
 bool DocumentTab::SelectFirstMappableFieldForSmoke(QString& error) {
@@ -226,9 +294,11 @@ bool DocumentTab::SelectFirstMappableFieldForSmoke(QString& error) {
 }
 
 bool DocumentTab::VerifyInvalidDraftRetentionForSmoke(QString& error) {
+  mode_combo_->setCurrentIndex(0);
   for (int row = 0; row < field_model_->rowCount(); ++row) {
     const auto* field = field_model_->FieldAt(row);
-    if (field == nullptr || field->encode_source != protocol_plan::EncodeSource::INPUT ||
+    if (field == nullptr || field->id != "count" ||
+        field->encode_source != protocol_plan::EncodeSource::INPUT ||
         field->value_type != protocol_plan::ValueType::UINT64
 #if defined(PAE_ENABLE_SCHEMA_V05_COMPILER)
         || field->conversion.has_value()
@@ -239,14 +309,68 @@ bool DocumentTab::VerifyInvalidDraftRetentionForSmoke(QString& error) {
     const auto index = field_model_->index(row, FieldTableModel::VALUE);
     if (field_model_->setData(index, QStringLiteral("01"), Qt::EditRole) ||
         field_model_->data(index, Qt::EditRole).toString() != QStringLiteral("01") ||
-        field_model_->ValidationError(row).isEmpty() || session_.preview().has_value() ||
-        session_.Encode()) {
-      error = QStringLiteral("invalid UINT64 text was not retained as an invalid draft");
+        !field_model_->ValidationError(row).contains(QStringLiteral("canonical UINT64")) ||
+        session_.preview().has_value()) {
+      error = QStringLiteral("Count=01 did not become a retained invalid editor state");
+      return false;
+    }
+    mode_combo_->setCurrentIndex(1);
+    mode_combo_->setCurrentIndex(0);
+    const auto restored = field_model_->index(row, FieldTableModel::VALUE);
+    if (field_model_->data(restored, Qt::EditRole).toString() != QStringLiteral("01") ||
+        !field_model_->ValidationError(row).contains(QStringLiteral("canonical UINT64"))) {
+      error = QStringLiteral("Count=01 or its reason was lost across Encode/Inspect/Encode");
+      return false;
+    }
+    EncodeCurrent();
+    if (session_.preview().has_value() ||
+        !FromUtf8(session_.diagnostic_detail()).contains(QStringLiteral("field=count")) ||
+        !FromUtf8(session_.diagnostic_detail()).contains(QStringLiteral("canonical UINT64")) ||
+        !diagnostic_label_->text().contains(QStringLiteral("field=count")) ||
+        !diagnostic_label_->text().contains(QStringLiteral("canonical UINT64"))) {
+      error = QStringLiteral("Encode did not surface Count and the canonical UINT64 reason");
+      return false;
+    }
+    if (!field_model_->setData(restored, QStringLiteral("1"), Qt::EditRole)) {
+      error = QStringLiteral("corrected Count draft was rejected");
+      return false;
+    }
+    EncodeCurrent();
+    if (!session_.preview().has_value() || !session_.diagnostic_id().empty() ||
+        !diagnostic_label_->text().isEmpty()) {
+      error = QStringLiteral("correcting Count did not produce a fresh valid Encode result");
       return false;
     }
     return true;
   }
   return true;
+}
+
+bool DocumentTab::VerifyPipelineSwitchClearsInspectForSmoke(QString& error) {
+  if (pipeline_combo_->count() < 2) {
+    error = QStringLiteral("Pipeline reset smoke requires two real Pipeline choices");
+    return false;
+  }
+  mode_combo_->setCurrentIndex(1);
+  inspect_input_->setPlainText(QStringLiteral("AA:00"));
+  InspectCurrent();
+  if (!session_.inspect_failure().has_value() || session_.diagnostic_id().empty() ||
+      session_.inspect_draft().empty()) {
+    error = QStringLiteral("precondition Inspect failure was not visible");
+    return false;
+  }
+  pipeline_combo_->setCurrentIndex(1);
+  if (!session_.inspect_draft().empty() || session_.inspect_result().has_value() ||
+      session_.inspect_failure().has_value() || !session_.diagnostic_id().empty() ||
+      !session_.diagnostic_detail().empty() || !inspect_input_->toPlainText().isEmpty() ||
+      !diagnostic_label_->text().isEmpty() || hex_view_->FrameSize() != 0U) {
+    error =
+        QStringLiteral("Pipeline switch retained Inspect input/result/failure/diagnostic state");
+    return false;
+  }
+  pipeline_combo_->setCurrentIndex(0);
+  mode_combo_->setCurrentIndex(0);
+  return PopulateCanonicalDraftsForSmoke(error);
 }
 
 void DocumentTab::InvalidatePreviewForSmoke() { InvalidateEditedPreview(); }
@@ -286,14 +410,34 @@ void DocumentTab::BuildUi() {
 
   auto* selection_row = new QHBoxLayout;
   pipeline_combo_ = new QComboBox(this);
+  mode_combo_ = new QComboBox(this);
+  mode_combo_->addItem(QStringLiteral("Encode"), static_cast<int>(OperationMode::ENCODE));
+  mode_combo_->addItem(QStringLiteral("Inspect"), static_cast<int>(OperationMode::INSPECT));
   message_combo_ = new QComboBox(this);
   encode_button_ = new QPushButton(QStringLiteral("Encode"), this);
+  inspect_button_ = new QPushButton(QStringLiteral("Inspect complete record"), this);
+  selection_row->addWidget(new QLabel(QStringLiteral("Mode"), this));
+  selection_row->addWidget(mode_combo_);
   selection_row->addWidget(new QLabel(QStringLiteral("Pipeline"), this));
   selection_row->addWidget(pipeline_combo_, 1);
-  selection_row->addWidget(new QLabel(QStringLiteral("Message"), this));
+  selection_row->addWidget(new QLabel(QStringLiteral("Encode Message"), this));
   selection_row->addWidget(message_combo_, 1);
   selection_row->addWidget(encode_button_);
+  selection_row->addWidget(inspect_button_);
   root->addLayout(selection_row);
+
+  inspect_input_label_ =
+      new QLabel(QStringLiteral("Raw input / 原始输入（Hex；允许大小写及 SP/HT/CR/LF）"), this);
+  inspect_input_ = new QPlainTextEdit(this);
+  inspect_input_->setPlaceholderText(
+      QStringLiteral("Paste one complete record, for example: AA 00 06 00 00 55"));
+  inspect_input_->setMaximumHeight(92);
+  root->addWidget(inspect_input_label_);
+  root->addWidget(inspect_input_);
+
+  result_kind_label_ = new QLabel(this);
+  result_kind_label_->setTextInteractionFlags(Qt::TextSelectableByMouse);
+  root->addWidget(result_kind_label_);
 
   auto* vertical_splitter = new QSplitter(Qt::Vertical, this);
   auto* upper_splitter = new QSplitter(Qt::Horizontal, vertical_splitter);
@@ -345,6 +489,26 @@ void DocumentTab::BuildUi() {
   connect(message_combo_, qOverload<int>(&QComboBox::currentIndexChanged), this,
           [this](int index) { SelectMessage(index); });
   connect(encode_button_, &QPushButton::clicked, this, [this] { EncodeCurrent(); });
+  connect(inspect_button_, &QPushButton::clicked, this, [this] { InspectCurrent(); });
+  connect(mode_combo_, qOverload<int>(&QComboBox::currentIndexChanged), this,
+          [this](int index) { SelectMode(index); });
+  connect(inspect_input_, &QPlainTextEdit::textChanged, this, [this] {
+    if (rebuilding_selectors_) return;
+    QString text = inspect_input_->toPlainText();
+    const std::size_t frame_budget = session_.InspectFrameBudget();
+    const int maximum_utf16_units =
+        static_cast<int>((std::min)(std::size_t{196609U},
+                                    frame_budget == 0U ? std::size_t{1U} : frame_budget * 3U + 1U));
+    if (text.size() > maximum_utf16_units) {
+      text.truncate(maximum_utf16_units);
+      rebuilding_selectors_ = true;
+      inspect_input_->setPlainText(text);
+      rebuilding_selectors_ = false;
+    }
+    session_.SetInspectDraft(Utf8(text));
+    RefreshInspect();
+    RefreshState();
+  });
   connect(field_table_->selectionModel(), &QItemSelectionModel::currentRowChanged, this,
           [this](const QModelIndex& current, const QModelIndex&) {
             RefreshFieldDetails(current.row());
@@ -409,6 +573,10 @@ void DocumentTab::ResetVisibleDocument() {
   details_view_->clear();
   timing_ = {};
   timing_label_->clear();
+  rebuilding_selectors_ = true;
+  inspect_input_->clear();
+  rebuilding_selectors_ = false;
+  result_kind_label_->clear();
 }
 
 void DocumentTab::RebuildSelectorsAndModel() {
@@ -481,9 +649,14 @@ void DocumentTab::RebuildMessageSelector() {
         RefreshState();
         return true;
       },
-      [this](std::size_t field_index) { InvalidateEditedDraft(field_index); });
+      [this](std::size_t field_index, std::string text, std::string validation_error) {
+        session_.SetInvalidDraft(field_index, std::move(text), std::move(validation_error));
+        RefreshPreview();
+        RefreshState();
+      });
   RefreshPreview();
   RefreshState();
+  RefreshModePresentation();
 }
 
 void DocumentTab::RefreshState() {
@@ -498,14 +671,96 @@ void DocumentTab::RefreshState() {
   }
   const bool loading = session_.state() == DocumentState::LOADING;
   pipeline_combo_->setEnabled(description != nullptr && !loading);
-  message_combo_->setEnabled(description != nullptr && !loading);
+  mode_combo_->setEnabled(description != nullptr && !loading);
+  const bool encode_mode = session_.mode() == OperationMode::ENCODE;
+  message_combo_->setEnabled(description != nullptr && !loading && encode_mode);
   encode_button_->setEnabled(description != nullptr && session_.selection().has_value() &&
-                             !loading);
+                             !loading && encode_mode);
+  inspect_button_->setEnabled(description != nullptr &&
+                              session_.selected_pipeline_index().has_value() && !loading &&
+                              !encode_mode);
   if (session_.diagnostic_id().empty() && session_.diagnostic_detail().empty()) {
     diagnostic_label_->clear();
   } else {
     diagnostic_label_->setText(QStringLiteral("%1: %2").arg(
         FromUtf8(session_.diagnostic_id()), FromUtf8(session_.diagnostic_detail())));
+  }
+}
+
+void DocumentTab::RefreshModePresentation() {
+  const bool inspect_mode = session_.mode() == OperationMode::INSPECT;
+  inspect_input_label_->setVisible(inspect_mode);
+  inspect_input_->setVisible(inspect_mode);
+  inspect_button_->setVisible(inspect_mode);
+  encode_button_->setVisible(!inspect_mode);
+  if (inspect_mode) {
+    RefreshInspect();
+  } else {
+    const auto* message = CurrentMessage();
+    field_model_->Reset(
+        message,
+        [this](std::size_t field_index, TypedDraft value, QString& error) {
+          if (!session_.SetDraft(field_index, std::move(value))) {
+            error = FromUtf8(session_.diagnostic_detail());
+            return false;
+          }
+          RefreshPreview();
+          RefreshState();
+          return true;
+        },
+        [this](std::size_t field_index, std::string text, std::string validation_error) {
+          session_.SetInvalidDraft(field_index, std::move(text), std::move(validation_error));
+          RefreshPreview();
+          RefreshState();
+        });
+    field_model_->ApplyDrafts(session_.drafts());
+    field_model_->ApplyInvalidDrafts(session_.invalid_drafts());
+    result_kind_label_->setText(
+        QStringLiteral("Valid encoded output / 有效编码输出（仅 Encode OK 时）"));
+    RefreshPreview();
+  }
+  RefreshState();
+}
+
+void DocumentTab::RefreshInspect() {
+  const auto* message = DisplayedMessage();
+  field_model_->Reset(message, {}, {}, false);
+  std::vector<std::uint8_t> frame;
+  std::vector<PhysicalBitMask> highlights;
+  std::optional<int> failed_detail_row;
+  if (session_.inspect_result().has_value()) {
+    frame = session_.inspect_result()->input_frame;
+    field_model_->ApplyResults(session_.inspect_result()->fields);
+    result_kind_label_->setText(
+        QStringLiteral("Valid decoded result / 有效解码结果 | matched Message: %1")
+            .arg(FromUtf8(session_.inspect_result()->message_id).toHtmlEscaped()));
+    const auto* field = field_model_->FieldAt(field_table_->currentIndex().row());
+    highlights = FieldHighlights(field);
+  } else if (session_.inspect_failure().has_value()) {
+    const auto& failure = *session_.inspect_failure();
+    frame = failure.input_frame;
+    result_kind_label_->setText(QStringLiteral("Failure location / 失败定位（非有效结果）"));
+    field_model_->SetFailedField(failure.failed_field_index);
+    highlights = InspectFailureHighlights(message);
+    if (message != nullptr && failure.failed_field_index.has_value() &&
+        *failure.failed_field_index < message->fields.size()) {
+      failed_detail_row = static_cast<int>(*failure.failed_field_index);
+    }
+  } else {
+    result_kind_label_->setText(QStringLiteral("Raw input / 原始输入（尚无有效解码结果）"));
+  }
+  if (frame.empty()) {
+    hex_view_->ClearFrame();
+  } else {
+    hex_view_->SetFrame(std::move(frame), highlights);
+  }
+  if (failed_detail_row.has_value()) {
+    field_table_->selectRow(*failed_detail_row);
+    RefreshFieldDetails(*failed_detail_row);
+  } else {
+    field_table_->clearSelection();
+    field_table_->setCurrentIndex(QModelIndex{});
+    details_view_->clear();
   }
 }
 
@@ -524,10 +779,17 @@ void DocumentTab::RefreshPreview() {
 
 void DocumentTab::RefreshFieldDetails(int row) {
   const auto* field = field_model_->FieldAt(row);
-  const auto* message = CurrentMessage();
+  const auto* message = DisplayedMessage();
   if (field == nullptr) {
     details_view_->clear();
-    RefreshPreview();
+    if (session_.mode() == OperationMode::INSPECT) {
+      std::vector<std::uint8_t> frame;
+      if (session_.inspect_result().has_value()) frame = session_.inspect_result()->input_frame;
+      if (session_.inspect_failure().has_value()) frame = session_.inspect_failure()->input_frame;
+      hex_view_->SetFrame(std::move(frame), {});
+    } else {
+      RefreshPreview();
+    }
     return;
   }
   QStringList details;
@@ -586,8 +848,26 @@ void DocumentTab::RefreshFieldDetails(int row) {
     details.push_back(QStringLiteral("<b>Physical bit cells</b>: %1")
                           .arg(static_cast<qulonglong>(field->physical_bits.size())));
   }
+  const auto physical = FormatPhysicalLocation(*field);
+  if (!physical.empty()) {
+    details.push_back(QStringLiteral("<b>Physical byte / bit / mask (zero-based, LSB0)</b>: %1")
+                          .arg(FromUtf8(physical).toHtmlEscaped()));
+  }
   details_view_->setHtml(details.join(QStringLiteral("<br/>")));
-  RefreshPreview();
+  if (session_.mode() == OperationMode::INSPECT) {
+    std::vector<std::uint8_t> frame;
+    std::vector<PhysicalBitMask> highlights;
+    if (session_.inspect_result().has_value()) {
+      frame = session_.inspect_result()->input_frame;
+      highlights = FieldHighlights(field);
+    } else if (session_.inspect_failure().has_value()) {
+      frame = session_.inspect_failure()->input_frame;
+      highlights = InspectFailureHighlights(message);
+    }
+    hex_view_->SetFrame(std::move(frame), highlights);
+  } else {
+    RefreshPreview();
+  }
 }
 
 void DocumentTab::SelectPipeline(int combo_index) {
@@ -598,9 +878,18 @@ void DocumentTab::SelectPipeline(int combo_index) {
           static_cast<std::size_t>(pipeline_combo_->itemData(combo_index).toULongLong()))) {
     field_model_->Reset(nullptr, {});
     hex_view_->ClearFrame();
+    rebuilding_selectors_ = true;
+    inspect_input_->clear();
+    rebuilding_selectors_ = false;
     RebuildMessageSelector();
   }
   RefreshState();
+}
+
+void DocumentTab::SelectMode(int combo_index) {
+  if (rebuilding_selectors_ || combo_index < 0) return;
+  const auto mode = static_cast<OperationMode>(mode_combo_->itemData(combo_index).toInt());
+  if (session_.SetMode(mode)) RefreshModePresentation();
 }
 
 void DocumentTab::SelectMessage(int combo_index) {
@@ -621,7 +910,11 @@ void DocumentTab::SelectMessage(int combo_index) {
           RefreshState();
           return true;
         },
-        [this](std::size_t field_index) { InvalidateEditedDraft(field_index); });
+        [this](std::size_t field_index, std::string text, std::string validation_error) {
+          session_.SetInvalidDraft(field_index, std::move(text), std::move(validation_error));
+          RefreshPreview();
+          RefreshState();
+        });
     hex_view_->ClearFrame();
   }
   RefreshState();
@@ -655,6 +948,31 @@ void DocumentTab::EncodeCurrent() {
   timing_label_->setText(TimingText(timing_));
 }
 
+void DocumentTab::InspectCurrent() {
+  field_table_->clearFocus();
+  QApplication::processEvents(QEventLoop::ExcludeUserInputEvents);
+  session_.SetInspectDraft(Utf8(inspect_input_->toPlainText()));
+  TimingObserver observer(timing_);
+  session_.Inspect(&observer);
+  if (session_.inspect_failure().has_value() &&
+      session_.inspect_failure()->input_offset.has_value()) {
+    const QString text = inspect_input_->toPlainText();
+    const QByteArray utf8 = text.toUtf8();
+    const auto bounded_offset = (std::min)(*session_.inspect_failure()->input_offset,
+                                           static_cast<std::size_t>(utf8.size()));
+    const int utf16_offset =
+        QString::fromUtf8(utf8.constData(), static_cast<int>(bounded_offset)).size();
+    QTextCursor cursor = inspect_input_->textCursor();
+    cursor.setPosition((std::min)(utf16_offset, text.size()));
+    if (cursor.position() < text.size())
+      cursor.movePosition(QTextCursor::NextCharacter, QTextCursor::KeepAnchor);
+    inspect_input_->setTextCursor(cursor);
+  }
+  RefreshInspect();
+  RefreshState();
+  hex_view_->viewport()->repaint();
+}
+
 void DocumentTab::InvalidateEditedPreview() {
   session_.InvalidateInput();
   field_model_->ClearResults();
@@ -671,6 +989,24 @@ void DocumentTab::InvalidateEditedDraft(std::size_t field_index) {
   RefreshState();
 }
 
+std::vector<PhysicalBitMask> DocumentTab::InspectFailureHighlights(
+    const MessageDescriptor* message) const {
+  std::vector<PhysicalBitMask> highlights;
+  if (message == nullptr || !session_.inspect_failure().has_value()) return highlights;
+  const auto& failure = *session_.inspect_failure();
+  if (failure.failed_field_index.has_value() &&
+      *failure.failed_field_index < message->fields.size()) {
+    return FieldHighlights(&message->fields[*failure.failed_field_index]);
+  }
+  if (failure.status == "INTEGRITY_FAILED" && message->integrity_storage.has_value()) {
+    highlights.reserve(message->integrity_storage->length);
+    for (std::size_t index = 0U; index < message->integrity_storage->length; ++index) {
+      highlights.push_back(PhysicalBitMask{message->integrity_storage->offset + index, 0xFFU});
+    }
+  }
+  return highlights;
+}
+
 const MessageDescriptor* DocumentTab::CurrentMessage() const noexcept {
   const auto* description = session_.description();
   if (description == nullptr || !session_.selection().has_value() ||
@@ -678,6 +1014,22 @@ const MessageDescriptor* DocumentTab::CurrentMessage() const noexcept {
     return nullptr;
   }
   return &description->messages[session_.selection()->message_index];
+}
+
+const MessageDescriptor* DocumentTab::DisplayedMessage() const noexcept {
+  if (session_.mode() == OperationMode::ENCODE) return CurrentMessage();
+  const auto* description = session_.description();
+  if (description == nullptr) return nullptr;
+  if (session_.inspect_result().has_value() &&
+      session_.inspect_result()->message_index < description->messages.size()) {
+    return &description->messages[session_.inspect_result()->message_index];
+  }
+  if (session_.inspect_failure().has_value() &&
+      session_.inspect_failure()->message_index.has_value() &&
+      *session_.inspect_failure()->message_index < description->messages.size()) {
+    return &description->messages[*session_.inspect_failure()->message_index];
+  }
+  return nullptr;
 }
 
 }  // namespace pae::protocol_lab_ui

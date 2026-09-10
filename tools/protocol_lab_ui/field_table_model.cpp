@@ -4,6 +4,7 @@
 #include <QColor>
 #include <QStringList>
 #include <limits>
+#include <type_traits>
 #include <utility>
 
 #include "../protocol_lab/exact_value_text_internal.h"
@@ -167,6 +168,10 @@ QVariant FieldTableModel::data(const QModelIndex& index, int role) const {
     case LOGICAL_RESULT:
       return QString::fromUtf8(row.logical_result.data(),
                                static_cast<int>(row.logical_result.size()));
+    case PHYSICAL_LOCATION: {
+      const auto location = FormatPhysicalLocation(*field);
+      return QString::fromUtf8(location.data(), static_cast<int>(location.size()));
+    }
     default:
       return {};
   }
@@ -176,14 +181,15 @@ QVariant FieldTableModel::headerData(int section, Qt::Orientation orientation, i
   if (orientation != Qt::Horizontal || role != Qt::DisplayRole) {
     return {};
   }
-  static const char* const labels[] = {"Id", "Name", "Type", "Source", "Value", "Raw", "Logical"};
+  static const char* const labels[] = {"Id",    "Name", "Type",    "Source",
+                                       "Value", "Raw",  "Logical", "Physical byte / bit / mask"};
   return section >= 0 && section < COLUMN_COUNT ? QString::fromLatin1(labels[section]) : QVariant{};
 }
 
 Qt::ItemFlags FieldTableModel::flags(const QModelIndex& index) const {
   auto result = QAbstractTableModel::flags(index);
   const auto* field = FieldAt(index.row());
-  if (field == nullptr || index.column() != VALUE ||
+  if (!editable_ || field == nullptr || index.column() != VALUE ||
       field->encode_source != protocol_plan::EncodeSource::INPUT) {
     return result;
   }
@@ -195,7 +201,7 @@ Qt::ItemFlags FieldTableModel::flags(const QModelIndex& index) const {
 }
 
 bool FieldTableModel::setData(const QModelIndex& index, const QVariant& value, int role) {
-  if (!index.isValid() || index.column() != VALUE) {
+  if (!editable_ || !index.isValid() || index.column() != VALUE) {
     return false;
   }
   TypedDraft draft;
@@ -208,10 +214,10 @@ bool FieldTableModel::setData(const QModelIndex& index, const QVariant& value, i
         field->value_type != protocol_plan::ValueType::ENUM) {
       row.draft_text = Utf8(value.toString());
     }
-    if (draft_invalidated_ && field != nullptr) {
-      draft_invalidated_(field->field_index);
-    }
     row.validation_error = error;
+    if (draft_invalidated_ && field != nullptr) {
+      draft_invalidated_(field->field_index, row.draft_text, Utf8(error));
+    }
     EmitValueChanged(index.row());
     return false;
   }
@@ -223,10 +229,10 @@ bool FieldTableModel::setData(const QModelIndex& index, const QVariant& value, i
         field->value_type != protocol_plan::ValueType::ENUM) {
       row.draft_text = Utf8(value.toString());
     }
-    if (draft_invalidated_ && field != nullptr) {
-      draft_invalidated_(field->field_index);
-    }
     row.validation_error = error;
+    if (draft_invalidated_ && field != nullptr) {
+      draft_invalidated_(field->field_index, row.draft_text, Utf8(error));
+    }
     EmitValueChanged(index.row());
     return false;
   }
@@ -248,14 +254,65 @@ bool FieldTableModel::setData(const QModelIndex& index, const QVariant& value, i
 }
 
 void FieldTableModel::Reset(const MessageDescriptor* message, DraftChanged draft_changed,
-                            DraftInvalidated draft_invalidated) {
+                            DraftInvalidated draft_invalidated, bool editable) {
   beginResetModel();
   message_ = message;
   rows_.assign(message_ == nullptr ? 0U : message_->fields.size(), RowState{});
   draft_changed_ = std::move(draft_changed);
   draft_invalidated_ = std::move(draft_invalidated);
+  editable_ = editable;
   failed_field_index_.reset();
   endResetModel();
+}
+
+void FieldTableModel::ApplyDrafts(const std::unordered_map<std::size_t, TypedDraft>& drafts) {
+  if (message_ == nullptr) return;
+  for (std::size_t row_index = 0U; row_index < message_->fields.size(); ++row_index) {
+    const auto found = drafts.find(message_->fields[row_index].field_index);
+    if (found == drafts.end()) continue;
+    auto& row = rows_[row_index];
+    std::visit(
+        [&row](const auto& item) {
+          using T = std::decay_t<decltype(item)>;
+          if constexpr (std::is_same_v<T, std::uint64_t> || std::is_same_v<T, std::int64_t>) {
+            row.draft_text = std::to_string(item);
+          } else if constexpr (std::is_same_v<T, std::vector<std::uint8_t>>) {
+            static const char digits[] = "0123456789ABCDEF";
+            for (const auto value : item) {
+              row.draft_text.push_back(digits[value >> 4U]);
+              row.draft_text.push_back(digits[value & 0x0FU]);
+            }
+          } else if constexpr (std::is_same_v<T, EnumSelection>) {
+            row.enum_entry_index = item.entry_index;
+            row.draft_text = item.entry_id;
+          } else if constexpr (std::is_same_v<T, bool>) {
+            row.bool_value = item;
+            row.has_bool_value = true;
+            row.draft_text = item ? "true" : "false";
+          } else if constexpr (std::is_same_v<T, protocol_lab::v06::Decimal64>) {
+            row.draft_text = std::to_string(item.coefficient) + "@" + std::to_string(item.scale);
+          }
+        },
+        found->second);
+  }
+  if (!rows_.empty()) emit dataChanged(index(0, VALUE), index(rowCount() - 1, VALUE));
+}
+
+void FieldTableModel::ApplyInvalidDrafts(
+    const std::unordered_map<std::size_t, InvalidDraftState>& invalid_drafts) {
+  if (message_ == nullptr) return;
+  for (std::size_t row_index = 0U; row_index < message_->fields.size(); ++row_index) {
+    const auto found = invalid_drafts.find(message_->fields[row_index].field_index);
+    if (found == invalid_drafts.end()) continue;
+    rows_[row_index].draft_text = found->second.text;
+    rows_[row_index].validation_error =
+        QString::fromUtf8(found->second.validation_error.data(),
+                          static_cast<int>(found->second.validation_error.size()));
+  }
+  if (!rows_.empty()) {
+    emit dataChanged(index(0, VALUE), index(rowCount() - 1, VALUE),
+                     {Qt::DisplayRole, Qt::EditRole, Qt::ToolTipRole});
+  }
 }
 
 void FieldTableModel::ClearResults() {

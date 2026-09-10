@@ -5,6 +5,7 @@ set(
         document_state
         dual_tab_isolation
         mailbox_ownership
+        inspect_state
 )
 
 foreach(pae_ui_test_name IN LISTS pae_protocol_lab_ui_headless_test_names)

@@ -21,13 +21,24 @@ std::string CopyResolved(const config_compiler::UiDescriptionSidecar& sidecar, S
   return std::string{sidecar.Resolve(span)};
 }
 
-void MergeBit(std::vector<PhysicalBitMask>& output, std::size_t byte_index,
-              std::uint8_t mask) {
+std::string BitSet(std::size_t byte_index, std::uint8_t mask, bool global) {
+  std::ostringstream output;
+  output << '{';
+  bool first = true;
+  for (std::size_t bit = 0U; bit < 8U; ++bit) {
+    if ((mask & static_cast<std::uint8_t>(1U << bit)) == 0U) continue;
+    if (!first) output << ',';
+    output << (global ? byte_index * 8U + bit : bit);
+    first = false;
+  }
+  output << '}';
+  return output.str();
+}
+
+void MergeBit(std::vector<PhysicalBitMask>& output, std::size_t byte_index, std::uint8_t mask) {
   const auto found = std::lower_bound(
       output.begin(), output.end(), byte_index,
-      [](const PhysicalBitMask& item, std::size_t value) {
-        return item.frame_byte_index < value;
-      });
+      [](const PhysicalBitMask& item, std::size_t value) { return item.frame_byte_index < value; });
   if (found != output.end() && found->frame_byte_index == byte_index) {
     found->uint8_mask = static_cast<std::uint8_t>(found->uint8_mask | mask);
     return;
@@ -109,6 +120,11 @@ bool BuildDocumentDescription(const protocol_plan::PlanBundle& plan,
   built.display_name = CopyResolved(sidecar, protocol_metadata.display_name);
   built.description = CopyResolved(sidecar, protocol_metadata.description);
   built.source_ref = CopyResolved(sidecar, protocol_metadata.source_ref);
+  if (!ToSize(plan.GetResourceRequirements().max_frame_bytes, built.max_frame_bytes) ||
+      built.max_frame_bytes == 0U) {
+    error = "Plan has no representable positive max_frame_bytes";
+    return false;
+  }
 
   built.pipelines.reserve(plan.Pipelines().size());
   for (std::size_t pipeline_index = 0U; pipeline_index < plan.Pipelines().size();
@@ -139,7 +155,8 @@ bool BuildDocumentDescription(const protocol_plan::PlanBundle& plan,
     const auto& metadata = message_metadata[message_index];
     if (metadata.field_begin > field_metadata.size() ||
         metadata.field_count > field_metadata.size() - metadata.field_begin ||
-        metadata.field_count != source.fields.size() || execution.fields.size() != source.fields.size()) {
+        metadata.field_count != source.fields.size() ||
+        execution.fields.size() != source.fields.size()) {
       error = "message field range does not match the Plan";
       return false;
     }
@@ -157,12 +174,13 @@ bool BuildDocumentDescription(const protocol_plan::PlanBundle& plan,
         error = "integrity storage offset is not representable";
         return false;
       }
-      const std::size_t width = source.integrity->algorithm == protocol_plan::IntegrityAlgorithm::SUM8
-                                    ? 1U
+      const std::size_t width =
+          source.integrity->algorithm == protocol_plan::IntegrityAlgorithm::SUM8
+              ? 1U
 #if defined(PAE_ENABLE_SCHEMA_V06_CRC_COMPILER)
-                                    : static_cast<std::size_t>(source.integrity->crc_width / 8U);
+              : static_cast<std::size_t>(source.integrity->crc_width / 8U);
 #else
-                                    : 0U;
+              : 0U;
 #endif
       item.integrity_storage = ByteRange{offset, width};
     }
@@ -235,6 +253,28 @@ bool BuildDocumentDescription(const protocol_plan::PlanBundle& plan,
   }
   output = std::move(built);
   return true;
+}
+
+std::string FormatPhysicalLocation(const FieldDescriptor& field) {
+  std::vector<PhysicalBitMask> masks = field.physical_bits;
+  if (masks.empty() && field.byte_range.has_value()) {
+    masks.reserve(field.byte_range->length);
+    for (std::size_t index = 0U; index < field.byte_range->length; ++index) {
+      masks.push_back(PhysicalBitMask{field.byte_range->offset + index, 0xFFU});
+    }
+  }
+  std::ostringstream output;
+  output << std::uppercase << std::hex;
+  for (std::size_t index = 0U; index < masks.size(); ++index) {
+    if (index != 0U) output << "; ";
+    const auto& item = masks[index];
+    output << std::dec << "byte[" << item.frame_byte_index << "] mask=0x" << std::hex;
+    if (item.uint8_mask < 0x10U) output << '0';
+    output << static_cast<unsigned int>(item.uint8_mask) << std::dec
+           << " bits=" << BitSet(item.frame_byte_index, item.uint8_mask, false)
+           << " global_bits=" << BitSet(item.frame_byte_index, item.uint8_mask, true);
+  }
+  return output.str();
 }
 
 }  // namespace pae::protocol_lab_ui
