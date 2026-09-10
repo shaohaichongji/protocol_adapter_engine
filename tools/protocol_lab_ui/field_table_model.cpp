@@ -169,7 +169,9 @@ QVariant FieldTableModel::data(const QModelIndex& index, int role) const {
       return QString::fromUtf8(row.logical_result.data(),
                                static_cast<int>(row.logical_result.size()));
     case PHYSICAL_LOCATION: {
-      const auto location = FormatPhysicalLocation(*field);
+      const auto location = message_ == nullptr
+                                ? FormatPhysicalLocation(*field)
+                                : FormatPhysicalLocation(*message_, *field, actual_frame_size_);
       return QString::fromUtf8(location.data(), static_cast<int>(location.size()));
     }
     default:
@@ -262,6 +264,7 @@ void FieldTableModel::Reset(const MessageDescriptor* message, DraftChanged draft
   draft_invalidated_ = std::move(draft_invalidated);
   editable_ = editable;
   failed_field_index_.reset();
+  actual_frame_size_.reset();
   endResetModel();
 }
 
@@ -352,6 +355,14 @@ void FieldTableModel::SetFailedField(std::optional<std::size_t> field_index) {
   }
 }
 
+void FieldTableModel::SetActualFrameSize(std::optional<std::size_t> frame_size) {
+  actual_frame_size_ = frame_size;
+  if (!rows_.empty()) {
+    emit dataChanged(index(0, PHYSICAL_LOCATION), index(rowCount() - 1, PHYSICAL_LOCATION),
+                     {Qt::DisplayRole});
+  }
+}
+
 const FieldDescriptor* FieldTableModel::FieldAt(int row) const noexcept {
   return message_ != nullptr && row >= 0 && static_cast<std::size_t>(row) < message_->fields.size()
              ? &message_->fields[static_cast<std::size_t>(row)]
@@ -431,15 +442,23 @@ bool FieldTableModel::ParseDraft(int row, const QVariant& value, int role, Typed
     return true;
   }
   if (field->value_type == protocol_plan::ValueType::BYTES) {
-    if (field->byte_width > std::numeric_limits<std::size_t>::max() / 2U ||
-        text.size() != field->byte_width * 2U) {
-      error = QStringLiteral("Expected exactly %1 uppercase Hex characters")
-                  .arg(static_cast<qulonglong>(field->byte_width * 2U));
+    std::vector<std::uint8_t> bytes;
+    if (!text.empty() && !protocol_lab::v06::internal::ParseCanonicalUpperHexText(text, bytes)) {
+      error = QStringLiteral("Expected uppercase Hex without separators");
       return false;
     }
-    std::vector<std::uint8_t> bytes;
-    if (!protocol_lab::v06::internal::ParseCanonicalUpperHexText(text, bytes)) {
-      error = QStringLiteral("Expected uppercase Hex without separators");
+    if (field->byte_length_bounds.has_value()) {
+      const auto& bounds = *field->byte_length_bounds;
+      if (bytes.size() < bounds.minimum || bytes.size() > bounds.maximum) {
+        error = QStringLiteral("Payload length must be %1..%2 bytes")
+                    .arg(static_cast<qulonglong>(bounds.minimum))
+                    .arg(static_cast<qulonglong>(bounds.maximum));
+        return false;
+      }
+    } else if (field->byte_width > std::numeric_limits<std::size_t>::max() / 2U ||
+               text.size() != field->byte_width * 2U) {
+      error = QStringLiteral("Expected exactly %1 uppercase Hex characters")
+                  .arg(static_cast<qulonglong>(field->byte_width * 2U));
       return false;
     }
     output = std::move(bytes);

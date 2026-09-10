@@ -1,0 +1,72 @@
+{
+  "schema_version": "0.8",
+  "protocol_id": "synthetic_ui_bounded_v08",
+  "protocol_version": "0.1-synthetic",
+  "display_name": "Public bounded complete-record UI",
+  "description": "Synthetic offline fixture for bounded variable complete-record UI behavior.",
+  "source_ref": "SYNTHETIC:UI_V08",
+  "resource_profile": "desktop",
+  "framing_profiles": [
+    {
+      "id": "complete_record",
+      "display_name": "Complete record",
+      "description": "The caller supplies one complete record.",
+      "source_ref": "SYNTHETIC:UI_V08#framing",
+      "input_kind": "complete_record"
+    }
+  ],
+  "pipelines": [
+    {
+      "id": "synthetic_rx",
+      "display_name": "Synthetic receive",
+      "description": "Offline bounded-record Pipeline.",
+      "source_ref": "SYNTHETIC:UI_V08#pipeline",
+      "direction_id": "rx",
+      "input_framing_profile_id": "complete_record",
+      "message_ids": ["bounded_record"]
+    }
+  ],
+  "messages": [
+    {
+      "id": "bounded_record",
+      "display_name": "A5 bounded record",
+      "description": "Two-byte header, zero-to-three-byte payload, and dynamic SUM8 trailer.",
+      "source_ref": "SYNTHETIC:UI_V08#message",
+      "direction_id": "rx",
+      "layout": {
+        "kind": "bounded_payload",
+        "header_length_bytes": 2,
+        "payload_field_id": "payload",
+        "min_payload_bytes": 0,
+        "max_payload_bytes": 3
+      },
+      "matcher": {"all": [{"kind": "fixed_bytes", "byte_offset": 0, "bytes": "A5"}]},
+      "integrity": {
+        "algorithm": "sum8",
+        "range": {"byte_offset": 0, "end": "payload_end"},
+        "storage": {"anchor": "payload_end"}
+      },
+      "fields": [
+        {
+          "id": "record_length",
+          "display_name": "Record length",
+          "description": "Actual frame length generated and verified by Core.",
+          "source_ref": "SYNTHETIC:UI_V08#length",
+          "value_type": "UINT64",
+          "wire": {"codec": "unsigned_integer", "byte_offset": 1, "byte_width": 1},
+          "encode": {"source": "computed"},
+          "computed": {"kind": "length", "scope": "frame"}
+        },
+        {
+          "id": "payload",
+          "display_name": "Variable payload",
+          "description": "Actual length comes from this BYTES input or the complete Frame.",
+          "source_ref": "SYNTHETIC:UI_V08#payload",
+          "value_type": "BYTES",
+          "wire": {"codec": "bytes", "byte_offset": 2},
+          "encode": {"source": "input"}
+        }
+      ]
+    }
+  ]
+}

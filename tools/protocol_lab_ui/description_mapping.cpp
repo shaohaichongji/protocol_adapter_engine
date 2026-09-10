@@ -168,6 +168,30 @@ bool BuildDocumentDescription(const protocol_plan::PlanBundle& plan,
     item.description = CopyResolved(sidecar, metadata.description);
     item.source_ref = CopyResolved(sidecar, metadata.source_ref);
     item.frame_size = execution.frame_size;
+#if defined(PAE_ENABLE_SCHEMA_V08_VARIABLE_COMPILER)
+    if (execution.bounded_payload.has_value()) {
+      const auto& bounded = *execution.bounded_payload;
+      BoundedPayloadDescriptor copied;
+      copied.payload_field_index = bounded.payload_field_index;
+      if (!ToSize(bounded.header_length, copied.header_length) ||
+          !ToSize(bounded.min_payload_length, copied.min_payload_length) ||
+          !ToSize(bounded.max_payload_length, copied.max_payload_length) ||
+          !ToSize(bounded.trailer_length, copied.trailer_length) ||
+          !ToSize(bounded.min_frame_length, copied.min_frame_length) ||
+          !ToSize(bounded.max_frame_length, copied.max_frame_length)) {
+        error = "bounded payload metadata is not representable";
+        return false;
+      }
+      item.bounded_payload = copied;
+      if (copied.payload_field_index >= source.fields.size() ||
+          bounded.min_payload_length > bounded.max_payload_length ||
+          bounded.min_frame_length > bounded.max_frame_length ||
+          copied.max_frame_length != execution.frame_size) {
+        error = "bounded payload metadata does not match the execution Plan";
+        return false;
+      }
+    }
+#endif
     if (source.integrity.has_value()) {
       std::size_t offset = 0U;
       if (!ToSize(source.integrity->storage_offset, offset)) {
@@ -183,6 +207,10 @@ bool BuildDocumentDescription(const protocol_plan::PlanBundle& plan,
               : 0U;
 #endif
       item.integrity_storage = ByteRange{offset, width};
+#if defined(PAE_ENABLE_SCHEMA_V08_VARIABLE_COMPILER)
+      item.integrity_range_ends_at_payload = source.integrity->range_ends_at_payload;
+      item.integrity_storage_at_payload_end = source.integrity->storage_at_payload_end;
+#endif
     }
 #if defined(PAE_ENABLE_SCHEMA_V07_LENGTH_COMPILER)
     if (source.computed_length.has_value()) {
@@ -235,6 +263,13 @@ bool BuildDocumentDescription(const protocol_plan::PlanBundle& plan,
       }
 #endif
       if (!BuildPhysicalMapping(field, field_execution, execution, field_item, error)) return false;
+#if defined(PAE_ENABLE_SCHEMA_V08_VARIABLE_COMPILER)
+      if (item.bounded_payload.has_value() &&
+          item.bounded_payload->payload_field_index == field_index) {
+        field_item.byte_length_bounds = ByteLengthBounds{item.bounded_payload->min_payload_length,
+                                                         item.bounded_payload->max_payload_length};
+      }
+#endif
       if (field.encode_source != protocol_plan::EncodeSource::INPUT) {
         std::ostringstream annotation;
 #if defined(PAE_ENABLE_SCHEMA_V07_LENGTH_COMPILER)
@@ -275,6 +310,72 @@ std::string FormatPhysicalLocation(const FieldDescriptor& field) {
            << " global_bits=" << BitSet(item.frame_byte_index, item.uint8_mask, true);
   }
   return output.str();
+}
+
+std::optional<ByteRange> ResolveActualFieldRange(const MessageDescriptor& message,
+                                                 const FieldDescriptor& field,
+                                                 std::size_t actual_frame_size) noexcept {
+  if (!message.bounded_payload.has_value() ||
+      message.bounded_payload->payload_field_index != field.field_index) {
+    return field.byte_range;
+  }
+  const auto& bounded = *message.bounded_payload;
+  if (actual_frame_size < bounded.min_frame_length ||
+      actual_frame_size > bounded.max_frame_length ||
+      actual_frame_size < bounded.header_length + bounded.trailer_length) {
+    return std::nullopt;
+  }
+  const std::size_t payload_length =
+      actual_frame_size - bounded.header_length - bounded.trailer_length;
+  if (payload_length < bounded.min_payload_length || payload_length > bounded.max_payload_length) {
+    return std::nullopt;
+  }
+  return ByteRange{bounded.header_length, payload_length};
+}
+
+std::optional<ByteRange> ResolveActualIntegrityStorage(const MessageDescriptor& message,
+                                                       std::size_t actual_frame_size) noexcept {
+  if (!message.integrity_storage.has_value()) return std::nullopt;
+  if (!message.integrity_storage_at_payload_end) return message.integrity_storage;
+  if (!message.bounded_payload.has_value()) return std::nullopt;
+  const auto& bounded = *message.bounded_payload;
+  if (actual_frame_size < bounded.min_frame_length ||
+      actual_frame_size > bounded.max_frame_length ||
+      actual_frame_size < bounded.header_length + bounded.trailer_length) {
+    return std::nullopt;
+  }
+  const std::size_t payload_length =
+      actual_frame_size - bounded.header_length - bounded.trailer_length;
+  if (payload_length < bounded.min_payload_length || payload_length > bounded.max_payload_length ||
+      message.integrity_storage->length > bounded.trailer_length) {
+    return std::nullopt;
+  }
+  return ByteRange{bounded.header_length + payload_length, message.integrity_storage->length};
+}
+
+std::string FormatPhysicalLocation(const MessageDescriptor& message, const FieldDescriptor& field,
+                                   std::optional<std::size_t> actual_frame_size) {
+  if (field.byte_length_bounds.has_value()) {
+    if (!actual_frame_size.has_value()) {
+      std::ostringstream output;
+      output << "dynamic byte[" << field.byte_offset << "..], payload length "
+             << field.byte_length_bounds->minimum << ".." << field.byte_length_bounds->maximum
+             << " bytes; current range unavailable";
+      return output.str();
+    }
+    const auto actual = ResolveActualFieldRange(message, field, *actual_frame_size);
+    if (!actual.has_value()) return "current range unavailable";
+    if (actual->length == 0U) {
+      std::ostringstream output;
+      output << "byte[" << actual->offset << "] length=0 (empty payload)";
+      return output.str();
+    }
+    FieldDescriptor resolved = field;
+    resolved.physical_bits.clear();
+    resolved.byte_range = actual;
+    return FormatPhysicalLocation(resolved);
+  }
+  return FormatPhysicalLocation(field);
 }
 
 }  // namespace pae::protocol_lab_ui

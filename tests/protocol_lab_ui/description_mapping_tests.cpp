@@ -76,5 +76,14 @@ int main() {
   assert(v07.messages.front().computed_length_storage->length == 2U);
 #endif
   assert(FindField(v07, "record_length").read_only_annotation == "computed length; read-only");
+
+  const auto v08 = Build("synthetic_ui_v08.pae.json");
+  assert(v08.schema_version == "0.8");
+  assert(v08.messages.front().bounded_payload.has_value());
+  assert(v08.messages.front().integrity_range_ends_at_payload);
+  assert(v08.messages.front().integrity_storage_at_payload_end);
+  assert(FindField(v08, "payload").byte_length_bounds ==
+         std::optional<pae::protocol_lab_ui::ByteLengthBounds>(
+             pae::protocol_lab_ui::ByteLengthBounds{0U, 3U}));
   return 0;
 }

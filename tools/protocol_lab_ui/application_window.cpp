@@ -49,6 +49,9 @@ std::optional<SmokeExpectation> ExpectedPublicFixture(const QString& path) {
   if (name == QStringLiteral("synthetic_ui_v07.pae.json")) {
     return SmokeExpectation{{0xAAU, 0x00U, 0x06U, 0x00U, 0x00U, 0x55U}, {{1U, 0xFFU}, {2U, 0xFFU}}};
   }
+  if (name == QStringLiteral("synthetic_ui_v08.pae.json")) {
+    return SmokeExpectation{{0xA5U, 0x06U, 0x00U, 0x00U, 0x00U, 0xABU}, {{1U, 0xFFU}}};
+  }
   if (name == QStringLiteral("synthetic_ui_max.pae.json")) {
     return SmokeExpectation{std::vector<std::uint8_t>(65536U, 0U), {{0U, 0xFFU}}};
   }
@@ -385,6 +388,13 @@ void ApplicationWindow::AdvanceSmoke() {
            document->HighlightMaskForSmoke(1U) != 0xFFU ||
            document->HighlightMaskForSmoke(2U) != 0xFFU)) {
         FinishSmoke(false, QStringLiteral("document %1: field-level length failure differs: %2")
+                               .arg(static_cast<qulonglong>(index + 1U))
+                               .arg(error));
+        return;
+      }
+      if (fixture_name == QStringLiteral("synthetic_ui_v08.pae.json") &&
+          !document->VerifyBoundedV08ForSmoke(error)) {
+        FinishSmoke(false, QStringLiteral("document %1: bounded Schema 0.8 UI state differs: %2")
                                .arg(static_cast<qulonglong>(index + 1U))
                                .arg(error));
         return;

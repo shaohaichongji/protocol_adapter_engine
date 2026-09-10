@@ -1,3 +1,10 @@
+if(NOT PAE_ENABLE_SCHEMA_V08_VARIABLE_COMPILER)
+    message(
+        FATAL_ERROR
+        "PAE_BUILD_PROTOCOL_LAB_UI requires PAE_ENABLE_SCHEMA_V08_VARIABLE_COMPILER=ON for the Schema 0.5-0.8 UI contract."
+    )
+endif()
+
 set(
     pae_protocol_lab_ui_max_fixture
     "${PROJECT_BINARY_DIR}/generated/protocol_lab_ui/synthetic_ui_max.pae.json"
@@ -81,5 +88,6 @@ pae_configure_protocol_lab_ui_deployment(
         "${PROJECT_SOURCE_DIR}/tests/protocol_lab_ui/fixtures/synthetic_ui_v05.pae.json"
         "${PROJECT_SOURCE_DIR}/tests/protocol_lab_ui/fixtures/synthetic_ui_v06.pae.json"
         "${PROJECT_SOURCE_DIR}/tests/protocol_lab_ui/fixtures/synthetic_ui_v07.pae.json"
+        "${PROJECT_SOURCE_DIR}/tests/protocol_lab_ui/fixtures/synthetic_ui_v08.pae.json"
         "${pae_protocol_lab_ui_max_fixture}"
 )
