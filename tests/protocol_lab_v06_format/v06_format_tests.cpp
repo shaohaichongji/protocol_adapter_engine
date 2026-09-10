@@ -4,7 +4,9 @@
 #include <limits>
 #include <string>
 #include <string_view>
+#include <vector>
 
+#include "exact_value_text_internal.h"
 #include "sha256.h"
 #include "v06_format.h"
 
@@ -26,6 +28,45 @@ bool ExpectParse(std::string text, bool expected, std::string_view label) {
   const bool parsed = pae::protocol_lab::v06::ParseValues(text, values, error);
   return Expect(parsed == expected, label) &&
          Expect(expected || !error.empty(), "rejected Values must provide a diagnostic");
+}
+
+bool TestExactValueText() {
+  using pae::protocol_lab::v06::internal::ParseCanonicalInt64Text;
+  using pae::protocol_lab::v06::internal::ParseCanonicalUint64Text;
+  using pae::protocol_lab::v06::internal::ParseCanonicalUpperHexText;
+  std::uint64_t unsigned_value = 7U;
+  std::int64_t signed_value = 7;
+  std::vector<std::uint8_t> bytes{0xAAU};
+  if (!Expect(ParseCanonicalUint64Text("0", unsigned_value) && unsigned_value == 0U,
+              "exact UINT64 accepts zero") ||
+      !Expect(ParseCanonicalUint64Text("18446744073709551615", unsigned_value) &&
+                  unsigned_value == (std::numeric_limits<std::uint64_t>::max)(),
+              "exact UINT64 accepts max") ||
+      !Expect(!ParseCanonicalUint64Text("01", unsigned_value) &&
+                  unsigned_value == (std::numeric_limits<std::uint64_t>::max)(),
+              "exact UINT64 rejects leading zero without changing output") ||
+      !Expect(!ParseCanonicalUint64Text("18446744073709551616", unsigned_value),
+              "exact UINT64 rejects overflow") ||
+      !Expect(ParseCanonicalInt64Text("-9223372036854775808", signed_value) &&
+                  signed_value == (std::numeric_limits<std::int64_t>::min)(),
+              "exact INT64 accepts min") ||
+      !Expect(ParseCanonicalInt64Text("9223372036854775807", signed_value) &&
+                  signed_value == (std::numeric_limits<std::int64_t>::max)(),
+              "exact INT64 accepts max") ||
+      !Expect(!ParseCanonicalInt64Text("-0", signed_value) &&
+                  signed_value == (std::numeric_limits<std::int64_t>::max)(),
+              "exact INT64 rejects negative zero without changing output") ||
+      !Expect(!ParseCanonicalInt64Text("+1", signed_value), "exact INT64 rejects plus sign") ||
+      !Expect(ParseCanonicalUpperHexText("00AF", bytes) && bytes.size() == 2U &&
+                  bytes[0] == 0x00U && bytes[1] == 0xAFU,
+              "exact Hex accepts uppercase pairs") ||
+      !Expect(!ParseCanonicalUpperHexText("00af", bytes) && bytes.size() == 2U && bytes[1] == 0xAFU,
+              "exact Hex rejects lowercase without changing output") ||
+      !Expect(!ParseCanonicalUpperHexText("", bytes),
+              "canonical Values 0.4 Hex rejects empty input")) {
+    return false;
+  }
+  return true;
 }
 
 std::string ValuesWithDecimal(std::string_view coefficient, std::string_view scale) {
@@ -517,8 +558,9 @@ bool TestFingerprintDifferences() {
 }  // namespace
 
 int main() {
-  if (!TestValuesV04() || !TestCanonicalEncoding() || !TestResultSerializationAndValidation() ||
-      !TestReplayModeAndFailureIdentityValidation() || !TestFingerprintDifferences()
+  if (!TestExactValueText() || !TestValuesV04() || !TestCanonicalEncoding() ||
+      !TestResultSerializationAndValidation() || !TestReplayModeAndFailureIdentityValidation() ||
+      !TestFingerprintDifferences()
 #if defined(PAE_ENABLE_SCHEMA_V08_VARIABLE_COMPILER)
       || !TestValuesV05AndVariableEmptyResult()
 #endif

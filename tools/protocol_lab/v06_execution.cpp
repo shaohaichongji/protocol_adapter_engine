@@ -361,15 +361,14 @@ MaterializationFailure MaterializeFields(const PlanBundle& plan, ExecutionWorksp
 }  // namespace
 
 struct ExecutionBridge::Impl {
-  Impl(std::string text, protocol_plan::PlanOwner owner)
-      : config_text(std::move(text)),
-        config_hash(protocol_lab::HashBytes(config_text)),
+  Impl(std::string hash, protocol_plan::PlanOwner owner)
+      : config_hash(std::move(hash)),
         plan(std::move(owner)),
         main_workspace(*plan),
         review_workspace(*plan) {}
 
-  std::string config_text;
   std::string config_hash;
+  // Member destruction is reverse declaration order: review, main, then the unique Plan owner.
   protocol_plan::PlanOwner plan;
   ExecutionWorkspace main_workspace;
   ExecutionWorkspace review_workspace;
@@ -392,6 +391,18 @@ std::unique_ptr<ExecutionBridge> ExecutionBridge::Prepare(std::string_view confi
     return nullptr;
   }
   auto plan = std::move(compiled).TakePlan();
+  return AdoptCompiledPlan(std::move(plan), protocol_lab::HashBytes(config_text), failure);
+}
+
+std::unique_ptr<ExecutionBridge> ExecutionBridge::AdoptCompiledPlan(protocol_plan::PlanOwner plan,
+                                                                    std::string config_sha256,
+                                                                    PreparationFailure& failure) {
+  failure = PreparationFailure{};
+  if (!plan) {
+    failure.diagnostic_id = "PAE_LAB_C1_PLAN_INVALID";
+    failure.detail = "C1 execution cannot adopt an empty compiled Plan";
+    return nullptr;
+  }
   if (plan->SchemaVersion() != "0.5"
 #if defined(PAE_ENABLE_SCHEMA_V06_CRC_COMPILER)
       && plan->SchemaVersion() != "0.6"
@@ -407,8 +418,12 @@ std::unique_ptr<ExecutionBridge> ExecutionBridge::Prepare(std::string_view confi
     failure.detail = "C1 execution accepts only an enabled Schema 0.5 through 0.8 Plan";
     return nullptr;
   }
-  auto implementation = std::make_unique<Impl>(std::string{config_text}, std::move(plan));
+  auto implementation = std::make_unique<Impl>(std::move(config_sha256), std::move(plan));
   return std::unique_ptr<ExecutionBridge>{new ExecutionBridge{std::move(implementation)}};
+}
+
+const PlanBundle* ExecutionBridge::Plan() const noexcept {
+  return implementation_ == nullptr ? nullptr : implementation_->plan.get();
 }
 
 ExecutionOutcome ExecutionBridge::Inspect(const std::vector<std::uint8_t>& frame

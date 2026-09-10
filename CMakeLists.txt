@@ -32,6 +32,11 @@ option(
     OFF
 )
 option(
+    PAE_BUILD_PROTOCOL_LAB_UI
+    "Build the internal offline Qt Protocol Lab Encode Inspector"
+    OFF
+)
+option(
     PAE_ENABLE_SCHEMA_V05_COMPILER
     "Enable the internal Schema 0.5 compiler and Core DEC-042B slices"
     OFF
@@ -76,6 +81,28 @@ option(
     "Build the internal minimal business embedding example"
     OFF
 )
+
+if(PAE_BUILD_PROTOCOL_LAB_UI)
+    foreach(
+        pae_ui_required_option
+        IN ITEMS
+            PAE_BUILD_LOADER_SCHEMA_IR_SLICE
+            PAE_BUILD_COMPLETE_RECORD_CODEC_SLICE
+            PAE_ENABLE_SCHEMA_V05_COMPILER
+            PAE_ENABLE_SCHEMA_V06_CRC_COMPILER
+            PAE_ENABLE_SCHEMA_V07_LENGTH_COMPILER
+    )
+        if(NOT ${pae_ui_required_option})
+            message(STATUS "PAE_BUILD_PROTOCOL_LAB_UI enables ${pae_ui_required_option}.")
+            set(${pae_ui_required_option} ON CACHE BOOL "Enabled by PAE_BUILD_PROTOCOL_LAB_UI" FORCE)
+        endif()
+    endforeach()
+    unset(pae_ui_required_option)
+
+    include("${PROJECT_SOURCE_DIR}/cmake/PaeQt513.cmake")
+    pae_require_protocol_lab_ui_toolchain()
+    pae_import_qt513_widgets()
+endif()
 
 if(PAE_BUILD_BUSINESS_EMBEDDING_EXAMPLE AND NOT PAE_ENABLE_SCHEMA_V05_COMPILER)
     message(
@@ -281,6 +308,7 @@ endif()
 if(PAE_BUILD_LOADER_SCHEMA_IR_SLICE OR
    PAE_BUILD_COMPLETE_RECORD_CODEC_SLICE OR
    PAE_BUILD_PROTOCOL_LAB OR
+   PAE_BUILD_PROTOCOL_LAB_UI OR
    PAE_BUILD_BUSINESS_EMBEDDING_EXAMPLE)
     add_subdirectory(src/protocol_plan)
 endif()
@@ -288,6 +316,7 @@ endif()
 if(PAE_BUILD_LOADER_SCHEMA_IR_SLICE OR
    (PAE_BUILD_COMPLETE_RECORD_CODEC_SLICE AND PAE_BUILD_TESTING) OR
    PAE_BUILD_PROTOCOL_LAB OR
+   PAE_BUILD_PROTOCOL_LAB_UI OR
    PAE_BUILD_BUSINESS_EMBEDDING_EXAMPLE)
     add_subdirectory(src/config_compiler)
 endif()
@@ -301,6 +330,7 @@ endif()
 
 if(PAE_BUILD_COMPLETE_RECORD_CODEC_SLICE OR
    PAE_BUILD_PROTOCOL_LAB OR
+   PAE_BUILD_PROTOCOL_LAB_UI OR
    PAE_BUILD_BUSINESS_EMBEDDING_EXAMPLE)
     add_subdirectory(src/protocol_core)
 endif()
@@ -317,10 +347,17 @@ if(PAE_BUILD_COMPLETE_RECORD_CODEC_SLICE AND PAE_BUILD_TESTING)
     add_subdirectory(tools/protocol_conformance_runner)
 endif()
 
-if(PAE_BUILD_PROTOCOL_LAB)
+if(PAE_BUILD_PROTOCOL_LAB OR PAE_BUILD_PROTOCOL_LAB_UI)
     add_subdirectory(tools/protocol_lab)
-    if(PAE_BUILD_TESTING)
+    if(PAE_BUILD_PROTOCOL_LAB AND PAE_BUILD_TESTING)
         add_subdirectory(tests/protocol_lab)
+    endif()
+endif()
+
+if(PAE_BUILD_PROTOCOL_LAB_UI)
+    add_subdirectory(tools/protocol_lab_ui)
+    if(PAE_BUILD_TESTING)
+        add_subdirectory(tests/protocol_lab_ui)
     endif()
 endif()
 

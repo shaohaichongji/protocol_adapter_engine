@@ -10,6 +10,7 @@ set(
 add_executable(
     pae_protocol_lab_v06_execution_tests
     v06_execution_tests.cpp
+    "${PROJECT_SOURCE_DIR}/tools/protocol_lab/exact_value_text_internal.cpp"
     "${PROJECT_SOURCE_DIR}/tools/protocol_lab/v06_execution.cpp"
     "${PROJECT_SOURCE_DIR}/tools/protocol_lab/v06_values_compat_internal.cpp"
     "${PROJECT_SOURCE_DIR}/tools/protocol_lab/v06_format.cpp"

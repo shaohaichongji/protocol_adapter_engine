@@ -1,0 +1,21 @@
+{
+  "schema_version": "0.7",
+  "protocol_id": "synthetic_ui_v07",
+  "protocol_version": "1.0-public",
+  "display_name": "Public UI length record",
+  "description": "Synthetic offline UI fixture for computed length annotation and encode review.",
+  "source_ref": "SYNTHETIC_FROM_SCRATCH:pae_ui_c1_v07",
+  "resource_profile": "desktop",
+  "framing_profiles": [{"id": "record", "display_name": "Record", "description": "Complete record.", "source_ref": "SYNTHETIC:v07#framing", "input_kind": "complete_record"}],
+  "pipelines": [{"id": "ui_pipeline", "display_name": "UI pipeline", "description": "Offline synthetic pipeline.", "source_ref": "SYNTHETIC:v07#pipeline", "direction_id": "synthetic", "input_framing_profile_id": "record", "message_ids": ["length_record"]}],
+  "messages": [{
+    "id": "length_record", "display_name": "Length record", "description": "Six byte record with a computed frame length.",
+    "source_ref": "SYNTHETIC:v07#message", "direction_id": "synthetic", "frame_length_bytes": 6,
+    "matcher": {"all": [{"kind": "frame_length_equals", "length_bytes": 6}, {"kind": "fixed_bytes", "byte_offset": 0, "bytes": "AA"}, {"kind": "fixed_bytes", "byte_offset": 5, "bytes": "55"}]},
+    "fields": [
+      {"id": "record_length", "display_name": "Record length", "description": "Engine-generated frame length.", "source_ref": "SYNTHETIC:v07#length", "value_type": "UINT64", "wire": {"codec": "unsigned_integer", "byte_offset": 1, "byte_width": 2, "byte_order": "big_endian"}, "encode": {"source": "computed"}, "computed": {"kind": "length", "scope": "frame"}},
+      {"id": "value", "display_name": "Value", "description": "Unsigned input.", "source_ref": "SYNTHETIC:v07#value", "value_type": "UINT64", "wire": {"codec": "unsigned_integer", "byte_offset": 3, "byte_width": 1}, "encode": {"source": "input"}},
+      {"id": "payload", "display_name": "Payload", "description": "One byte payload.", "source_ref": "SYNTHETIC:v07#payload", "value_type": "BYTES", "wire": {"codec": "bytes", "byte_offset": 4, "byte_length": 1}, "encode": {"source": "input"}}
+    ]
+  }]
+}

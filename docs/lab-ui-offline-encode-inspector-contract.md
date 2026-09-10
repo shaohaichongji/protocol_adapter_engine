@@ -1,6 +1,6 @@
 # Protocol Lab 离线 Encode Inspector 首检查点契约
 
-状态：已确认方向，已授权独立工作区实施，尚未实现或验收
+状态：独立工作区已限定实现并完成Windows自动验证及Release基础人工离线操作核对，待提交收口；完整验收边界见验证报告。
 
 历史设计参考基线：`7d2ef4f343b1924df3eb052f4a8a128525d7dc37`
 
@@ -1063,4 +1063,4 @@ Owner：UI validation owner、Integrator 和总控。
 - sidecar最终derived memory limit；
 - 同步Encode交互性能门限。
 
-正式实施基线：由总控指定包含 `3ae4df7` 与本契约的最终精确提交，不得使用未提交工作树。2026-09-10 已获首检查点独立工作区实施授权；尚未实施或验收。
+正式实施基线：`51db6d2621f4e2ceb1dbaa90cfe046d50228acee`，包含 `3ae4df7` 与本契约。2026-09-10 已获首检查点独立工作区实施授权；当前已在该基线之上限定实现，Windows自动验证及Release基础人工离线操作已核对。未提交工作树不是已交付版本；具体通过项及未验证边界见[验证报告](lab-ui-offline-encode-inspector-validation.md)。

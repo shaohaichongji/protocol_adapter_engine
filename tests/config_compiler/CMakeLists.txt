@@ -5,6 +5,24 @@ add_executable(
     plan_builder_test_peer.h
 )
 
+add_executable(
+    pae_config_compiler_ui_description_tests
+    ui_description_tests.cpp
+)
+
+target_include_directories(
+    pae_config_compiler_ui_description_tests
+    PRIVATE
+        ${PROJECT_SOURCE_DIR}/src/config_compiler
+)
+
+target_link_libraries(
+    pae_config_compiler_ui_description_tests
+    PRIVATE
+        pae_config_compiler
+        pae::project_options
+)
+
 set(CMAKE_TRY_COMPILE_TARGET_TYPE STATIC_LIBRARY)
 
 function(pae_expect_capability_compile case_name source_name should_compile)
@@ -86,6 +104,27 @@ if(PAE_ENABLE_SCHEMA_V08_VARIABLE_COMPILER)
     )
 endif()
 
+if(PAE_ENABLE_SCHEMA_V05_COMPILER)
+    target_compile_definitions(
+        pae_config_compiler_ui_description_tests PRIVATE PAE_ENABLE_SCHEMA_V05_COMPILER=1
+    )
+endif()
+if(PAE_ENABLE_SCHEMA_V06_CRC_COMPILER)
+    target_compile_definitions(
+        pae_config_compiler_ui_description_tests PRIVATE PAE_ENABLE_SCHEMA_V06_CRC_COMPILER=1
+    )
+endif()
+if(PAE_ENABLE_SCHEMA_V07_LENGTH_COMPILER)
+    target_compile_definitions(
+        pae_config_compiler_ui_description_tests PRIVATE PAE_ENABLE_SCHEMA_V07_LENGTH_COMPILER=1
+    )
+endif()
+if(PAE_ENABLE_SCHEMA_V08_VARIABLE_COMPILER)
+    target_compile_definitions(
+        pae_config_compiler_ui_description_tests PRIVATE PAE_ENABLE_SCHEMA_V08_VARIABLE_COMPILER=1
+    )
+endif()
+
 set(pae_config_compiler_test_data_dir ${CMAKE_CURRENT_BINARY_DIR}/data)
 file(MAKE_DIRECTORY ${pae_config_compiler_test_data_dir})
 file(
@@ -101,6 +140,21 @@ configure_file(
     ${pae_config_compiler_test_data_dir}/synthetic_lab_exchange_slice.pae.json
     COPYONLY
 )
+configure_file(
+    ${CMAKE_CURRENT_SOURCE_DIR}/fixtures/valid/minimal_complete_record.pae.json
+    ${pae_config_compiler_test_data_dir}/minimal_complete_record.pae.json
+    COPYONLY
+)
+foreach(pae_ui_description_example
+        synthetic_crc_slice.pae.json
+        synthetic_length_slice.pae.json
+        synthetic_bounded_variable_record.pae.json)
+    configure_file(
+        ${PROJECT_SOURCE_DIR}/examples/config/${pae_ui_description_example}
+        ${pae_config_compiler_test_data_dir}/${pae_ui_description_example}
+        COPYONLY
+    )
+endforeach()
 if(PAE_ENABLE_SCHEMA_V05_COMPILER)
     configure_file(
         ${PROJECT_SOURCE_DIR}/examples/config/synthetic_decimal_compile_slice.pae.json
@@ -112,6 +166,11 @@ endif()
 add_test(
     NAME pae.config_compiler.contract
     COMMAND pae_config_compiler_contract_tests data
+)
+
+add_test(
+    NAME pae.config_compiler.ui_description
+    COMMAND pae_config_compiler_ui_description_tests data
 )
 
 if(WIN32 AND PAE_ENABLE_SCHEMA_V05_COMPILER)
@@ -139,6 +198,13 @@ set_tests_properties(
     pae.config_compiler.contract
     PROPERTIES
         LABELS "config_compiler;loader_schema_ir"
+        TIMEOUT 180
+        WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
+)
+set_tests_properties(
+    pae.config_compiler.ui_description
+    PROPERTIES
+        LABELS "config_compiler;ui_description"
         TIMEOUT 180
         WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
 )

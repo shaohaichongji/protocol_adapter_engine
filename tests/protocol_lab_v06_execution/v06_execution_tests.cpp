@@ -9,6 +9,7 @@
 #include <string_view>
 #include <vector>
 
+#include "config_compiler.h"
 #include "sha256.h"
 #include "v06_execution.h"
 
@@ -106,6 +107,31 @@ bool IsPreparationFailure(const ExecutionOutcome& outcome, std::string_view diag
          outcome.counts.review_decode_calls == 0U &&
          outcome.preparation_failure.diagnostic_id == diagnostic &&
          outcome.preparation_failure.value_index == value_index;
+}
+
+bool TestAdoptCompiledPlan(std::string_view config) {
+  auto compiled = pae::config_compiler::CompileJsonToPlan(config);
+  if (!Expect(compiled.Succeeded(), "adopt fixture compiles independently")) return false;
+  auto owner = std::move(compiled).TakePlan();
+  const auto* original_plan = owner.get();
+  PreparationFailure failure;
+  auto bridge = ExecutionBridge::AdoptCompiledPlan(std::move(owner), HashBytes(config), failure);
+  if (!Expect(!owner && bridge != nullptr && bridge->Plan() == original_plan,
+              "Adopt transfers the unique Plan owner into the bridge") ||
+      !Expect(failure.diagnostic_id.empty(), "successful Adopt clears preparation failure")) {
+    return false;
+  }
+  const ExecutionOutcome encoded = bridge->EncodeParsed(ValidDecimalValues());
+  if (!Expect(encoded.result.has_value() && encoded.encoded_frame.size() == 34U &&
+                  encoded.counts.encode_calls == 1U && encoded.counts.review_decode_calls == 1U,
+              "adopted Plan executes Core Encode plus independent review Decode")) {
+    return false;
+  }
+
+  pae::protocol_plan::PlanOwner empty;
+  auto rejected = ExecutionBridge::AdoptCompiledPlan(std::move(empty), "IGNORED", failure);
+  return Expect(rejected == nullptr && failure.diagnostic_id == "PAE_LAB_C1_PLAN_INVALID",
+                "Adopt rejects and consumes an empty Plan deterministically");
 }
 
 bool TestSuccessAndLifetime(std::string_view config) {
@@ -703,6 +729,7 @@ int main(int argc, char** argv) {
   if (!Expect(argc == 2, "decimal Core fixture path is required")) return 1;
   const std::string config = ReadText(argv[1]);
   bool passed = true;
+  passed = TestAdoptCompiledPlan(config) && passed;
   passed = TestSuccessAndLifetime(config) && passed;
   passed = TestInheritedTypeMapping() && passed;
   passed = TestLegacyValuesCompatibility() && passed;

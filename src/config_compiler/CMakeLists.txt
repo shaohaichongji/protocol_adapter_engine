@@ -9,6 +9,9 @@ add_library(
         config_compiler.h
         plan_snapshot.cpp
         schema_ir.h
+        ui_description.cpp
+        ui_description.h
+        ui_description_internal.h
         validation_pipeline_internal.h
 )
 

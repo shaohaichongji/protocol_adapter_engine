@@ -73,6 +73,8 @@ class PlanDraftAssembler final {
 
 CompileResult FreezeBudgetedPlanDraft(protocol_plan::BudgetedPlanDraft draft);
 
+std::size_t JsonParserPoolUpperBoundForTest(std::size_t input_size) noexcept;
+
 #if defined(PAE_ENABLE_SCHEMA_V05_COMPILER)
 CompileResult CompileJsonToPlanWithPlanMemoryLimitForTest(std::string_view json_bytes,
                                                           std::size_t plan_memory_limit_bytes);

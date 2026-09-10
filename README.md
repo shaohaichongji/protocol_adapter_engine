@@ -57,8 +57,11 @@ B阶段已在默认关闭的隔离目标中实现Evidence 0.6事务写入与严�
 Debug/Release限定验证，见[B阶段报告](docs/windows-msvc-2026-dec042b-lab-v06-evidence-stage-b.md)；
 尚未接入普通CLI、Core或Replay/Compare。历史生成物清理暂缓，未删除。
 
-配套工具方向已确认：保留CLI并增加独立Qt UI，Qt不进入Core依赖链；UI尚未实现，
-安排在当前Lab第三段之后。暂不复制现有Qt包，先核验依赖并选择版本。
+配套工具保留CLI并增加独立Qt UI，Qt不进入Core依赖链；PAE-UI-C1已在独立worktree完成
+限定实现和Windows验证，已完成Release基础人工离线操作核对，当前进入提交前收口；精确bit掩码人工显示、
+编译中关闭竞态及性能阈值仍未获人工验收结论，尚未Stage、
+Commit或Push。Qt仅部署到构建目录，不复制进源码树，见[实施契约](docs/lab-ui-offline-encode-inspector-contract.md)
+和[验证报告](docs/lab-ui-offline-encode-inspector-validation.md)。
 Lab指纹0.6精确编码与A阶段纯格式隔离测试方案已完成限定实现和Windows隔离验证，见
 [DEC-042B契约第12～13节](docs/pae-dec-042b-decimal-conversion-contract-draft.md)。
 Config Compiler、Protocol Lab及yyjson Spike现统一使用随仓的yyjson 0.12.0最小源码与唯一锁；

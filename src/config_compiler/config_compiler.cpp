@@ -25,6 +25,7 @@
 #include "../protocol_plan/plan_draft_internal.h"
 #include "../protocol_plan/plan_memory.h"
 #include "schema_ir.h"
+#include "ui_description_internal.h"
 #include "validation_pipeline_internal.h"
 
 namespace pae::config_compiler {
@@ -42,7 +43,7 @@ struct JsonAuditLimits {
   std::size_t max_array_elements = 16384U;
   std::size_t max_string_bytes = 64U * 1024U;
   std::size_t max_number_token_bytes = 128U;
-  std::size_t max_total_decoded_string_bytes = 2U * 1024U * 1024U;
+  std::size_t max_total_decoded_string_bytes = kCompilerDecodedStringHardLimitBytes;
 };
 
 struct JsonAuditStats {
@@ -3299,72 +3300,80 @@ CompileResult FreezeBudgetedPlanDraft(protocol_plan::BudgetedPlanDraft draft) {
       "validated configuration violated the frozen plan construction contract"});
 }
 
+static ResourceBudgetResult CompileJsonToBudgetedSchema(
+    std::string_view json_bytes, std::optional<std::size_t> plan_memory_limit) {
+  const JsonAuditLimits limits;
+  CompileDiagnostic diagnostic;
+  if (!RunStrictPrecheck(json_bytes, limits, diagnostic)) {
+    return ResourceBudgetResult::Failure(std::move(diagnostic));
+  }
+
+  SchemaIr schema;
+  {
+    const std::size_t parser_memory_bytes =
+        yyjson_read_max_memory_usage(json_bytes.size(), kReadFlags);
+    if (parser_memory_bytes == 0U || parser_memory_bytes > limits.max_parser_memory_bytes) {
+      return ResourceBudgetResult::Failure(CompileDiagnostic{
+          CompileStage::JSON_RESOURCE, CompileError::JSON_PARSER_MEMORY_LIMIT_EXCEEDED, "",
+          std::nullopt, "yyjson candidate memory upper bound exceeds the 64 MiB hard limit"});
+    }
+    std::unique_ptr<unsigned char[]> parser_pool{
+        new (std::nothrow) unsigned char[parser_memory_bytes]};
+    if (parser_pool == nullptr) {
+      return ResourceBudgetResult::Failure(CompileDiagnostic{
+          CompileStage::JSON_RESOURCE, CompileError::JSON_ALLOCATION_FAILED, "", std::nullopt,
+          "failed to reserve the bounded yyjson candidate memory pool"});
+    }
+    yyjson_alc parser_allocator{};
+    if (!yyjson_alc_pool_init(&parser_allocator, parser_pool.get(), parser_memory_bytes)) {
+      return ResourceBudgetResult::Failure(CompileDiagnostic{
+          CompileStage::JSON_RESOURCE, CompileError::JSON_ALLOCATION_FAILED, "", std::nullopt,
+          "failed to initialize the bounded yyjson candidate memory pool"});
+    }
+
+    yyjson_read_err error{};
+    DocumentPtr document{yyjson_read_opts(const_cast<char*>(json_bytes.data()), json_bytes.size(),
+                                          kReadFlags, &parser_allocator, &error)};
+    if (document == nullptr) {
+      const bool allocation_failure = error.code == YYJSON_READ_ERROR_MEMORY_ALLOCATION;
+      return ResourceBudgetResult::Failure(CompileDiagnostic{
+          allocation_failure ? CompileStage::JSON_RESOURCE : CompileStage::JSON_SYNTAX,
+          allocation_failure ? CompileError::JSON_ALLOCATION_FAILED
+                             : CompileError::JSON_SYNTAX_ERROR,
+          "", allocation_failure ? std::nullopt : std::optional<std::size_t>{error.pos},
+          allocation_failure ? "yyjson candidate allocation failed"
+                             : "yyjson candidate rejected JSON syntax"});
+    }
+    yyjson_val* root = yyjson_doc_get_root(document.get());
+    if (root == nullptr) {
+      return ResourceBudgetResult::Failure(
+          CompileDiagnostic{CompileStage::JSON_SYNTAX, CompileError::JSON_SYNTAX_ERROR, "",
+                            std::nullopt, "yyjson candidate produced no root value"});
+    }
+
+    JsonAuditStats stats;
+    std::string pointer;
+    if (!AuditJsonValue(root, 1U, pointer, limits, stats, diagnostic) ||
+        !BuildSchemaIr(root, schema, diagnostic)) {
+      return ResourceBudgetResult::Failure(std::move(diagnostic));
+    }
+  }
+
+  DomainValidationResult validated = DomainValidator::Validate(std::move(schema));
+  if (!validated.Succeeded()) {
+    return ResourceBudgetResult::Failure(std::move(validated).TakeDiagnostic());
+  }
+
+  return plan_memory_limit.has_value()
+             ? ResourceBudgetValidator::ValidateForTest(std::move(validated).TakeCapability(),
+                                                        *plan_memory_limit)
+             : ResourceBudgetValidator::Validate(std::move(validated).TakeCapability());
+}
+
 CompileResult CompileJsonToPlanImpl(std::string_view json_bytes,
                                     std::optional<std::size_t> plan_memory_limit) {
   try {
-    const JsonAuditLimits limits;
-    CompileDiagnostic diagnostic;
-    if (!RunStrictPrecheck(json_bytes, limits, diagnostic)) {
-      return CompileResult::Failure(std::move(diagnostic));
-    }
-
-    SchemaIr schema;
-    {
-      const std::size_t parser_memory_bytes =
-          yyjson_read_max_memory_usage(json_bytes.size(), kReadFlags);
-      if (parser_memory_bytes == 0U || parser_memory_bytes > limits.max_parser_memory_bytes) {
-        return Reject(CompileStage::JSON_RESOURCE, CompileError::JSON_PARSER_MEMORY_LIMIT_EXCEEDED,
-                      "", "yyjson candidate memory upper bound exceeds the 64 MiB hard limit");
-      }
-      std::unique_ptr<unsigned char[]> parser_pool{
-          new (std::nothrow) unsigned char[parser_memory_bytes]};
-      if (parser_pool == nullptr) {
-        return Reject(CompileStage::JSON_RESOURCE, CompileError::JSON_ALLOCATION_FAILED, "",
-                      "failed to reserve the bounded yyjson candidate memory pool");
-      }
-      yyjson_alc parser_allocator{};
-      if (!yyjson_alc_pool_init(&parser_allocator, parser_pool.get(), parser_memory_bytes)) {
-        return Reject(CompileStage::JSON_RESOURCE, CompileError::JSON_ALLOCATION_FAILED, "",
-                      "failed to initialize the bounded yyjson candidate memory pool");
-      }
-
-      yyjson_read_err error{};
-      DocumentPtr document{yyjson_read_opts(const_cast<char*>(json_bytes.data()), json_bytes.size(),
-                                            kReadFlags, &parser_allocator, &error)};
-      if (document == nullptr) {
-        const bool allocation_failure = error.code == YYJSON_READ_ERROR_MEMORY_ALLOCATION;
-        return Reject(allocation_failure ? CompileStage::JSON_RESOURCE : CompileStage::JSON_SYNTAX,
-                      allocation_failure ? CompileError::JSON_ALLOCATION_FAILED
-                                         : CompileError::JSON_SYNTAX_ERROR,
-                      "",
-                      allocation_failure ? "yyjson candidate allocation failed"
-                                         : "yyjson candidate rejected JSON syntax",
-                      allocation_failure ? std::nullopt : std::optional<std::size_t>{error.pos});
-      }
-      yyjson_val* root = yyjson_doc_get_root(document.get());
-      if (root == nullptr) {
-        return Reject(CompileStage::JSON_SYNTAX, CompileError::JSON_SYNTAX_ERROR, "",
-                      "yyjson candidate produced no root value");
-      }
-
-      JsonAuditStats stats;
-      std::string pointer;
-      if (!AuditJsonValue(root, 1U, pointer, limits, stats, diagnostic) ||
-          !BuildSchemaIr(root, schema, diagnostic)) {
-        return CompileResult::Failure(std::move(diagnostic));
-      }
-    }
-
-    DomainValidationResult validated = DomainValidator::Validate(std::move(schema));
-    if (!validated.Succeeded()) {
-      return CompileResult::Failure(std::move(validated).TakeDiagnostic());
-    }
-
-    ResourceBudgetResult budgeted =
-        plan_memory_limit.has_value()
-            ? ResourceBudgetValidator::ValidateForTest(std::move(validated).TakeCapability(),
-                                                       *plan_memory_limit)
-            : ResourceBudgetValidator::Validate(std::move(validated).TakeCapability());
+    ResourceBudgetResult budgeted = CompileJsonToBudgetedSchema(json_bytes, plan_memory_limit);
     if (!budgeted.Succeeded()) {
       return CompileResult::Failure(std::move(budgeted).TakeDiagnostic());
     }
@@ -3386,6 +3395,52 @@ CompileResult CompileJsonToPlanImpl(std::string_view json_bytes,
 
 CompileResult CompileJsonToPlan(std::string_view json_bytes) {
   return CompileJsonToPlanImpl(json_bytes, std::nullopt);
+}
+
+std::size_t JsonParserPoolUpperBoundForTest(std::size_t input_size) noexcept {
+  return yyjson_read_max_memory_usage(input_size, kReadFlags);
+}
+
+CompileUiArtifactsResult CompileJsonToPlanWithUiDescription(
+    std::string_view json_bytes, std::size_t description_memory_limit_bytes) {
+  try {
+    ResourceBudgetResult budgeted = CompileJsonToBudgetedSchema(json_bytes, std::nullopt);
+    if (!budgeted.Succeeded()) {
+      return CompileUiArtifactsResult::Failure(std::move(budgeted).TakeDiagnostic());
+    }
+    BudgetedSchemaIr budgeted_capability = std::move(budgeted).TakeCapability();
+    UiDescriptionSidecar sidecar;
+    CompileDiagnostic diagnostic;
+    if (!UiDescriptionBuilder::Build(budgeted_capability, description_memory_limit_bytes, sidecar,
+                                     diagnostic)) {
+      return CompileUiArtifactsResult::Failure(std::move(diagnostic));
+    }
+    PlanDraftAssemblyResult assembled =
+        PlanDraftAssembler::Assemble(std::move(budgeted_capability));
+    if (!assembled.Succeeded()) {
+      return CompileUiArtifactsResult::Failure(std::move(assembled).TakeDiagnostic());
+    }
+    if (!UiDescriptionPlanFreezeAllowedForTest(diagnostic)) {
+      return CompileUiArtifactsResult::Failure(std::move(diagnostic));
+    }
+    CompileResult frozen = FreezeBudgetedPlanDraft(std::move(assembled).TakeCapability());
+    if (!frozen.Succeeded()) {
+      return CompileUiArtifactsResult::Failure(*frozen.Diagnostic());
+    }
+    protocol_plan::PlanOwner plan = std::move(frozen).TakePlan();
+    if (!UiDescriptionBuilder::Audit(*plan, sidecar, diagnostic)) {
+      return CompileUiArtifactsResult::Failure(std::move(diagnostic));
+    }
+    return CompileUiArtifactsResult::Success(std::move(plan), std::move(sidecar));
+  } catch (const std::bad_alloc&) {
+    return CompileUiArtifactsResult::Failure(CompileDiagnostic{
+        CompileStage::INTERNAL, CompileError::COMPILER_ALLOCATION_FAILED, "", std::nullopt,
+        "memory allocation failed during UI configuration compilation"});
+  } catch (...) {
+    return CompileUiArtifactsResult::Failure(CompileDiagnostic{
+        CompileStage::INTERNAL, CompileError::INTERNAL_CONTRACT_VIOLATION, "", std::nullopt,
+        "unexpected exception escaped an internal UI compiler stage"});
+  }
 }
 
 #if defined(PAE_ENABLE_SCHEMA_V05_COMPILER)

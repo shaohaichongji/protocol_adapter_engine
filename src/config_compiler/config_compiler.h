@@ -8,6 +8,7 @@
 
 #include "../protocol_plan/plan_bundle.h"
 #include "schema_ir.h"
+#include "ui_description.h"
 
 namespace pae::config_compiler {
 
@@ -83,6 +84,7 @@ enum class CompileError {
 enum class ResourceKind {
   NONE,
   PLAN_ACCOUNTED_MEMORY,
+  UI_DESCRIPTION_ACCOUNTED_MEMORY,
 };
 
 struct CompileDiagnostic {
@@ -133,8 +135,79 @@ class CompileResult final {
   std::optional<CompileDiagnostic> diagnostic_;
 };
 
+class CompiledUiArtifacts final {
+ public:
+  CompiledUiArtifacts() = delete;
+  CompiledUiArtifacts(const CompiledUiArtifacts&) = delete;
+  CompiledUiArtifacts& operator=(const CompiledUiArtifacts&) = delete;
+  CompiledUiArtifacts(CompiledUiArtifacts&&) noexcept = default;
+  CompiledUiArtifacts& operator=(CompiledUiArtifacts&&) noexcept = default;
+  ~CompiledUiArtifacts() = default;
+
+  const PlanBundle* Plan() const noexcept { return plan_.get(); }
+  const UiDescriptionSidecar& Description() const noexcept { return description_; }
+  const DescriptionMemoryReport& DescriptionMemory() const noexcept { return description_memory_; }
+  protocol_plan::PlanOwner TakePlan() noexcept { return std::move(plan_); }
+  UiDescriptionSidecar TakeDescription() noexcept { return std::move(description_); }
+
+ private:
+  friend class CompileUiArtifactsResult;
+
+  CompiledUiArtifacts(protocol_plan::PlanOwner plan, UiDescriptionSidecar description) noexcept
+      : plan_(std::move(plan)),
+        description_memory_(description.MemoryReport()),
+        description_(std::move(description)) {}
+
+  protocol_plan::PlanOwner plan_;
+  DescriptionMemoryReport description_memory_;
+  UiDescriptionSidecar description_;
+};
+
+class CompileUiArtifactsResult final {
+ public:
+  CompileUiArtifactsResult() = delete;
+  CompileUiArtifactsResult(const CompileUiArtifactsResult&) = delete;
+  CompileUiArtifactsResult& operator=(const CompileUiArtifactsResult&) = delete;
+  CompileUiArtifactsResult(CompileUiArtifactsResult&&) noexcept = default;
+  CompileUiArtifactsResult& operator=(CompileUiArtifactsResult&&) noexcept = default;
+  ~CompileUiArtifactsResult() = default;
+
+  static CompileUiArtifactsResult Success(protocol_plan::PlanOwner plan,
+                                          UiDescriptionSidecar description) {
+    if (!plan || description.empty()) {
+      return Failure(CompileDiagnostic{CompileStage::INTERNAL,
+                                       CompileError::INTERNAL_CONTRACT_VIOLATION, "", std::nullopt,
+                                       "UI compiler success result is incomplete"});
+    }
+    return CompileUiArtifactsResult{CompiledUiArtifacts{std::move(plan), std::move(description)}};
+  }
+  static CompileUiArtifactsResult Failure(CompileDiagnostic diagnostic) {
+    return CompileUiArtifactsResult{std::move(diagnostic)};
+  }
+
+  bool Succeeded() const noexcept { return artifacts_.has_value() && !diagnostic_.has_value(); }
+  const CompiledUiArtifacts* Artifacts() const noexcept {
+    return artifacts_.has_value() ? &*artifacts_ : nullptr;
+  }
+  const CompileDiagnostic* Diagnostic() const noexcept {
+    return diagnostic_.has_value() ? &*diagnostic_ : nullptr;
+  }
+  CompiledUiArtifacts TakeArtifacts() && { return std::move(*artifacts_); }
+
+ private:
+  explicit CompileUiArtifactsResult(CompiledUiArtifacts artifacts)
+      : artifacts_(std::move(artifacts)) {}
+  explicit CompileUiArtifactsResult(CompileDiagnostic diagnostic)
+      : diagnostic_(std::move(diagnostic)) {}
+
+  std::optional<CompiledUiArtifacts> artifacts_;
+  std::optional<CompileDiagnostic> diagnostic_;
+};
+
 // Internal V0.1 vertical slice. This is deliberately not installed or exported.
 CompileResult CompileJsonToPlan(std::string_view json_bytes);
+CompileUiArtifactsResult CompileJsonToPlanWithUiDescription(
+    std::string_view json_bytes, std::size_t description_memory_limit_bytes);
 std::string MakeDeterministicPlanSnapshot(const PlanBundle& plan);
 
 }  // namespace pae::config_compiler

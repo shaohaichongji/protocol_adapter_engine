@@ -8,6 +8,7 @@
 #include <string_view>
 #include <vector>
 
+#include "../../src/protocol_plan/plan_memory.h"
 #include "v06_format.h"
 
 namespace pae::protocol_lab::v06 {
@@ -90,6 +91,9 @@ class ExecutionBridge final {
  public:
   static std::unique_ptr<ExecutionBridge> Prepare(std::string_view config_text,
                                                   PreparationFailure& failure);
+  static std::unique_ptr<ExecutionBridge> AdoptCompiledPlan(protocol_plan::PlanOwner plan,
+                                                            std::string config_sha256,
+                                                            PreparationFailure& failure);
 
   ExecutionBridge(const ExecutionBridge&) = delete;
   ExecutionBridge& operator=(const ExecutionBridge&) = delete;
@@ -126,6 +130,10 @@ class ExecutionBridge final {
 #endif
                                 ,
                                 ExecutionObserver* observer = nullptr);
+
+  // Borrowed only for immediate descriptor/model construction. The pointer remains valid only
+  // while this bridge is alive and must not be retained by UI models.
+  const protocol_plan::PlanBundle* Plan() const noexcept;
 
  private:
   struct Impl;

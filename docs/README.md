@@ -33,6 +33,8 @@
 - [PAE-DEC-042B Lab 0.6执行桥接C1阶段Windows验证报告](windows-msvc-2026-dec042b-lab-v06-execution-stage-c1.md)
 - [PAE-DEC-042B Lab C3 CLI Windows验证报告](windows-msvc-2026-dec042b-lab-c3-cli.md)
 - [PAE-DEC-042B C3人工离线验收单（NOT_EVALUATED）](manual-dec042b-c3-offline-acceptance.md)
+- [PAE-UI-C1 离线Encode Inspector实施契约](lab-ui-offline-encode-inspector-contract.md)
+- [PAE-UI-C1 离线Encode Inspector Windows及Release基础人工验证报告](lab-ui-offline-encode-inspector-validation.md)
 - [参数化CRC-16/32最小检查点确认契约](crc-minimal-contract-draft.md)
 - [固定完整记录长度字段确认契约（已提交并Push）](length-field-minimal-contract.md)
 - [有界变长完整记录实施契约（已限定实现，待总控审查）](bounded-variable-record-contract.md)

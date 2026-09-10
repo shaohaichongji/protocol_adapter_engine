@@ -214,6 +214,7 @@ struct ResolvedPipelineIr {
 class DomainValidator;
 class ResourceBudgetValidator;
 class PlanDraftAssembler;
+class UiDescriptionBuilder;
 
 // Internal capability state: only DomainValidator can create it. This type is deliberately
 // move-only so validation authority cannot be copied or synthesized by setting a public flag.
@@ -247,6 +248,7 @@ class ValidatedSchemaIr final {
   friend class DomainValidator;
   friend class ResourceBudgetValidator;
   friend class PlanDraftAssembler;
+  friend class UiDescriptionBuilder;
 
   std::unique_ptr<Payload> payload_;
 };
@@ -270,6 +272,7 @@ class BudgetedSchemaIr final {
 
   friend class ResourceBudgetValidator;
   friend class PlanDraftAssembler;
+  friend class UiDescriptionBuilder;
 
   std::unique_ptr<ValidatedSchemaIr> validated_;
   protocol_plan::PlanMemoryReport plan_memory_;

@@ -1,0 +1,18 @@
+{
+  "schema_version": "0.6",
+  "protocol_id": "synthetic_ui_v06",
+  "protocol_version": "1.0-public",
+  "display_name": "Public UI CRC record",
+  "description": "Synthetic offline UI fixture for CRC annotation and encode review.",
+  "source_ref": "SYNTHETIC_FROM_SCRATCH:pae_ui_c1_v06",
+  "resource_profile": "desktop",
+  "framing_profiles": [{"id": "record", "display_name": "Record", "description": "Complete record.", "source_ref": "SYNTHETIC:v06#framing", "input_kind": "complete_record"}],
+  "pipelines": [{"id": "ui_pipeline", "display_name": "UI pipeline", "description": "Offline synthetic pipeline.", "source_ref": "SYNTHETIC:v06#pipeline", "direction_id": "synthetic", "input_framing_profile_id": "record", "message_ids": ["crc_record"]}],
+  "messages": [{
+    "id": "crc_record", "display_name": "CRC record", "description": "Nine payload bytes, CRC-16 and a fixed marker.",
+    "source_ref": "SYNTHETIC:v06#message", "direction_id": "synthetic", "frame_length_bytes": 12,
+    "matcher": {"all": [{"kind": "frame_length_equals", "length_bytes": 12}, {"kind": "fixed_bytes", "byte_offset": 11, "bytes": "AA"}]},
+    "integrity": {"algorithm": "crc", "parameters": {"width": 16, "poly": "1021", "init": "FFFF", "refin": false, "refout": false, "xorout": "0000"}, "range": {"byte_offset": 0, "byte_length": 9}, "storage": {"byte_offset": 9, "byte_order": "big_endian"}},
+    "fields": [{"id": "payload", "display_name": "Payload", "description": "Canonical public CRC input 123456789.", "source_ref": "SYNTHETIC:v06#payload", "value_type": "BYTES", "wire": {"codec": "bytes", "byte_offset": 0, "byte_length": 9}, "encode": {"source": "input"}}]
+  }]
+}

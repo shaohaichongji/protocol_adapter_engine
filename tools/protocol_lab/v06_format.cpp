@@ -10,6 +10,7 @@
 #include <sstream>
 #include <utility>
 
+#include "exact_value_text_internal.h"
 #include "sha256.h"
 
 namespace pae::protocol_lab::v06 {
@@ -20,62 +21,9 @@ struct DocumentDeleter {
 };
 using DocumentPtr = std::unique_ptr<yyjson_doc, DocumentDeleter>;
 
-bool ParseUint64(std::string_view text, std::uint64_t& output) noexcept {
-  if (text.empty() || (text.size() > 1U && text.front() == '0')) return false;
-  std::uint64_t value = 0U;
-  for (const char character : text) {
-    if (character < '0' || character > '9') return false;
-    const auto digit = static_cast<std::uint64_t>(character - '0');
-    if (value > ((std::numeric_limits<std::uint64_t>::max)() - digit) / 10U) return false;
-    value = value * 10U + digit;
-  }
-  output = value;
-  return true;
-}
-
-bool ParseInt64(std::string_view text, std::int64_t& output) noexcept {
-  if (text.empty() || text.front() == '+' || text == "-0") return false;
-  const bool negative = text.front() == '-';
-  const std::string_view digits = negative ? text.substr(1U) : text;
-  if (digits.empty() || (digits.size() > 1U && digits.front() == '0')) return false;
-  const std::uint64_t negative_limit = std::uint64_t{1U} << 63U;
-  const std::uint64_t limit =
-      negative ? negative_limit
-               : static_cast<std::uint64_t>((std::numeric_limits<std::int64_t>::max)());
-  std::uint64_t magnitude = 0U;
-  for (const char character : digits) {
-    if (character < '0' || character > '9') return false;
-    const auto digit = static_cast<std::uint64_t>(character - '0');
-    if (magnitude > (limit - digit) / 10U) return false;
-    magnitude = magnitude * 10U + digit;
-  }
-  if (!negative) {
-    output = static_cast<std::int64_t>(magnitude);
-  } else if (magnitude == negative_limit) {
-    output = (std::numeric_limits<std::int64_t>::min)();
-  } else {
-    output = -static_cast<std::int64_t>(magnitude);
-  }
-  return true;
-}
-
-bool ParseUpperHex(std::string_view text, std::vector<std::uint8_t>& output) {
-  if (text.empty() || text.size() % 2U != 0U) return false;
-  output.clear();
-  output.reserve(text.size() / 2U);
-  auto nibble = [](char value) {
-    if (value >= '0' && value <= '9') return value - '0';
-    if (value >= 'A' && value <= 'F') return value - 'A' + 10;
-    return -1;
-  };
-  for (std::size_t index = 0U; index < text.size(); index += 2U) {
-    const int high = nibble(text[index]);
-    const int low = nibble(text[index + 1U]);
-    if (high < 0 || low < 0) return false;
-    output.push_back(static_cast<std::uint8_t>((high << 4U) | low));
-  }
-  return true;
-}
+using internal::ParseCanonicalInt64Text;
+using internal::ParseCanonicalUint64Text;
+using internal::ParseCanonicalUpperHexText;
 
 bool IsObjectWithKeys(yyjson_val* value, const std::set<std::string_view>& allowed,
                       const std::set<std::string_view>& required, std::string_view pointer,
@@ -200,13 +148,13 @@ bool ValidateField(const FieldResult& field, bool allow_empty_bytes, std::string
     }
     if (*field.raw_kind == "INT64") {
       std::int64_t ignored = 0;
-      if (!ParseInt64(field.raw_value, ignored)) {
+      if (!ParseCanonicalInt64Text(field.raw_value, ignored)) {
         error = "DECIMAL64 raw_value is not canonical INT64";
         return false;
       }
     } else if (*field.raw_kind == "UINT64") {
       std::uint64_t ignored = 0U;
-      if (!ParseUint64(field.raw_value, ignored)) {
+      if (!ParseCanonicalUint64Text(field.raw_value, ignored)) {
         error = "DECIMAL64 raw_value is not canonical UINT64";
         return false;
       }
@@ -227,15 +175,15 @@ bool ValidateField(const FieldResult& field, bool allow_empty_bytes, std::string
   }
   if (field.kind == "UINT64") {
     std::uint64_t ignored = 0U;
-    if (!ParseUint64(field.raw_value, ignored) || field.logical_value != field.raw_value ||
-        field.enum_known) {
+    if (!ParseCanonicalUint64Text(field.raw_value, ignored) ||
+        field.logical_value != field.raw_value || field.enum_known) {
       error = "UINT64 result field has an invalid legacy tuple";
       return false;
     }
   } else if (field.kind == "INT64") {
     std::int64_t ignored = 0;
-    if (!ParseInt64(field.raw_value, ignored) || field.logical_value != field.raw_value ||
-        field.enum_known) {
+    if (!ParseCanonicalInt64Text(field.raw_value, ignored) ||
+        field.logical_value != field.raw_value || field.enum_known) {
       error = "INT64 result field has an invalid legacy tuple";
       return false;
     }
@@ -261,7 +209,7 @@ bool ValidateField(const FieldResult& field, bool allow_empty_bytes, std::string
           return (character >= 'a' && character <= 'z') || (character >= '0' && character <= '9') ||
                  character == '_';
         });
-    if (!ParseUint64(field.raw_value, ignored) ||
+    if (!ParseCanonicalUint64Text(field.raw_value, ignored) ||
         (!field.enum_known && field.logical_value != field.raw_value) ||
         (field.enum_known && !valid_known_id)) {
       error = "ENUM result field has an invalid legacy tuple";
@@ -370,7 +318,8 @@ bool ParseValues(std::string& text, ParsedValues& output, std::string& error) {
       exact.insert("uint64");
       std::string raw;
       if (!IsObjectWithKeys(value, exact, exact, pointer, error) ||
-          !ReadString(value, "uint64", raw, error) || !ParseUint64(raw, parsed.uint64_value)) {
+          !ReadString(value, "uint64", raw, error) ||
+          !ParseCanonicalUint64Text(raw, parsed.uint64_value)) {
         if (error.empty()) error = pointer + ".uint64 is not canonical UINT64";
         return false;
       }
@@ -378,7 +327,8 @@ bool ParseValues(std::string& text, ParsedValues& output, std::string& error) {
       exact.insert("int64");
       std::string raw;
       if (!IsObjectWithKeys(value, exact, exact, pointer, error) ||
-          !ReadString(value, "int64", raw, error) || !ParseInt64(raw, parsed.int64_value)) {
+          !ReadString(value, "int64", raw, error) ||
+          !ParseCanonicalInt64Text(raw, parsed.int64_value)) {
         if (error.empty()) error = pointer + ".int64 is not canonical INT64";
         return false;
       }
@@ -393,7 +343,7 @@ bool ParseValues(std::string& text, ParsedValues& output, std::string& error) {
 #else
                ? true
 #endif
-               : !ParseUpperHex(raw, parsed.bytes))) {
+               : !ParseCanonicalUpperHexText(raw, parsed.bytes))) {
         if (error.empty()) error = pointer + ".hex is not canonical uppercase bytes";
         return false;
       }
@@ -419,8 +369,8 @@ bool ParseValues(std::string& text, ParsedValues& output, std::string& error) {
       if (!IsObjectWithKeys(value, exact, exact, pointer, error) ||
           !IsObjectWithKeys(decimal, decimal_keys, decimal_keys, pointer + ".decimal64", error) ||
           !ReadString(decimal, "coefficient", coefficient, error) ||
-          !ParseInt64(coefficient, parsed.decimal64_value.coefficient) || !yyjson_is_int(scale) ||
-          yyjson_get_sint(scale) < 0 || yyjson_get_sint(scale) > 18) {
+          !ParseCanonicalInt64Text(coefficient, parsed.decimal64_value.coefficient) ||
+          !yyjson_is_int(scale) || yyjson_get_sint(scale) < 0 || yyjson_get_sint(scale) > 18) {
         if (error.empty()) error = pointer + ".decimal64 is not a valid Values 0.4 Decimal64";
         return false;
       }
@@ -568,7 +518,7 @@ bool ParseResult(std::string& text, Result& output, std::string& error) {
       std::int64_t coefficient_value = 0;
       if (!IsObjectWithKeys(decimal, decimal_keys, decimal_keys, pointer + ".decimal64", error) ||
           !ReadString(decimal, "coefficient", coefficient, error) ||
-          !ParseInt64(coefficient, coefficient_value) || !yyjson_is_int(scale) ||
+          !ParseCanonicalInt64Text(coefficient, coefficient_value) || !yyjson_is_int(scale) ||
           yyjson_get_sint(scale) < 0 || yyjson_get_sint(scale) > 18 ||
           !ReadString(node, "raw_kind", raw_kind, error)) {
         if (error.empty()) error = pointer + ".decimal64 is invalid";

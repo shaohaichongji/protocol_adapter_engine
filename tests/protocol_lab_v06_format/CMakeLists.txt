@@ -5,6 +5,7 @@ pae_add_yyjson()
 add_executable(
     pae_protocol_lab_v06_format_tests
     v06_format_tests.cpp
+    "${PROJECT_SOURCE_DIR}/tools/protocol_lab/exact_value_text_internal.cpp"
     "${PROJECT_SOURCE_DIR}/tools/protocol_lab/v06_format.cpp"
     "${PROJECT_SOURCE_DIR}/tools/protocol_lab/sha256.cpp"
 )

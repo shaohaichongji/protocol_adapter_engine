@@ -1,0 +1,39 @@
+{
+  "schema_version": "0.5",
+  "protocol_id": "synthetic_ui_v05",
+  "protocol_version": "1.0-public",
+  "display_name": "Public UI typed fields",
+  "description": "Synthetic offline UI fixture with typed inputs and physical bit mappings.",
+  "source_ref": "SYNTHETIC_FROM_SCRATCH:pae_ui_c1_v05",
+  "resource_profile": "desktop",
+  "framing_profiles": [{
+    "id": "record", "display_name": "Record", "description": "Complete record.",
+    "source_ref": "SYNTHETIC_FROM_SCRATCH:pae_ui_c1_v05#framing", "input_kind": "complete_record"
+  }],
+  "pipelines": [{
+    "id": "ui_pipeline", "display_name": "UI pipeline", "description": "Offline synthetic pipeline.",
+    "source_ref": "SYNTHETIC_FROM_SCRATCH:pae_ui_c1_v05#pipeline", "direction_id": "synthetic",
+    "input_framing_profile_id": "record", "message_ids": ["typed_record"]
+  }],
+  "messages": [{
+    "id": "typed_record", "display_name": "Typed record", "description": "All first-checkpoint input editor families.",
+    "source_ref": "SYNTHETIC_FROM_SCRATCH:pae_ui_c1_v05#message", "direction_id": "synthetic",
+    "frame_length_bytes": 10,
+    "matcher": {"all": [{"kind": "frame_length_equals", "length_bytes": 10}]},
+    "bit_containers": [
+      {"id": "be_lsb", "container_offset": 0, "container_width": 2, "byte_order": "big_endian", "bit_numbering": "lsb0", "base_value": 32776},
+      {"id": "le_msb", "container_offset": 2, "container_width": 2, "byte_order": "little_endian", "bit_numbering": "msb0", "base_value": 3}
+    ],
+    "fields": [
+      {"id": "enabled", "display_name": "Enabled", "description": "First numeric bit.", "source_ref": "SYNTHETIC:v05#enabled", "value_type": "BOOL", "wire": {"codec": "bitfield", "container_id": "be_lsb", "bit_offset": 0, "bit_width": 1}, "encode": {"source": "input"}},
+      {"id": "mode", "display_name": "Mode", "description": "Enumerated adjacent bits.", "source_ref": "SYNTHETIC:v05#mode", "value_type": "ENUM", "wire": {"codec": "bitfield", "container_id": "be_lsb", "bit_offset": 1, "bit_width": 2}, "encode": {"source": "input"}, "unknown_enum_policy": "reject", "enum_entries": [{"id": "idle", "display_name": "Idle", "raw_value": 0}, {"id": "active", "display_name": "Active", "raw_value": 2}]},
+      {"id": "cross_bits", "display_name": "Cross bits", "description": "Cross-byte LSB0 field.", "source_ref": "SYNTHETIC:v05#cross", "value_type": "UINT64", "wire": {"codec": "bitfield", "container_id": "be_lsb", "bit_offset": 4, "bit_width": 8}, "encode": {"source": "input"}},
+      {"id": "msb_bits", "display_name": "MSB bits", "description": "Cross-byte MSB0 field.", "source_ref": "SYNTHETIC:v05#msb", "value_type": "UINT64", "wire": {"codec": "bitfield", "container_id": "le_msb", "bit_offset": 1, "bit_width": 9}, "encode": {"source": "input"}},
+      {"id": "count", "display_name": "Count", "description": "Unsigned input.", "source_ref": "SYNTHETIC:v05#count", "value_type": "UINT64", "wire": {"codec": "unsigned_integer", "byte_offset": 4, "byte_width": 1}, "encode": {"source": "input"}},
+      {"id": "delta", "display_name": "Delta", "description": "Signed input.", "source_ref": "SYNTHETIC:v05#delta", "value_type": "INT64", "wire": {"codec": "unsigned_integer", "byte_offset": 5, "byte_width": 1}, "encode": {"source": "input"}},
+      {"id": "payload", "display_name": "Payload", "description": "Two byte input.", "source_ref": "SYNTHETIC:v05#payload", "value_type": "BYTES", "wire": {"codec": "bytes", "byte_offset": 6, "byte_length": 2}, "encode": {"source": "input"}},
+      {"id": "temperature", "display_name": "Temperature", "description": "Identity decimal input.", "source_ref": "SYNTHETIC:v05#temperature", "value_type": "INT64", "wire": {"codec": "unsigned_integer", "byte_offset": 8, "byte_width": 1}, "encode": {"source": "input"}, "conversion": {"kind": "linear", "output_type": "DECIMAL64", "scale": {"numerator": 1, "denominator": 1}, "bias": {"numerator": 0, "denominator": 1}}},
+      {"id": "marker", "display_name": "Marker", "description": "Read-only constant.", "source_ref": "SYNTHETIC:v05#marker", "value_type": "UINT64", "wire": {"codec": "unsigned_integer", "byte_offset": 9, "byte_width": 1}, "encode": {"source": "constant", "value": 90}}
+    ]
+  }]
+}
