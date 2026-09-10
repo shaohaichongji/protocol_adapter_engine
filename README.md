@@ -6,6 +6,13 @@ PAE 的目标是通过严格配置完成工业二进制协议的有方向 Decode
 
 ## 当前状态
 
+2026-09-10当前交付基线：`main@4a04afb`已合并并Push，包含有界流式切帧及Lab离线Inspect。
+集成Windows Debug/Release各10/10通过；Lab UI仍只接受Schema 0.5～0.7，不支持流式UI。
+下一轮[流式宿主接入与Lab Schema 0.8 UI三组八项](docs/post-stream-host-and-ui-v08-checkpoint.md)
+已获整体授权并完成候选实现：PAE宿主示例位于当前工作树，Lab 0.8 UI位于独立工作分支，
+均待提交及集成交付；实际自动化与限定人工证据见该契约。尚未执行本轮Git交付。
+以下“当前工作树/待提交”等叙述均保留其历史时点，不覆盖上述当前状态。
+
 2026-09-09当前工作树：在已交付基线`7d2ef4f`上完成
 [有界变长完整记录](docs/bounded-variable-record-contract.md)限定实现，新增默认关闭Schema 0.8、
 固定头部加单段有界BYTES、frame/payload计算长度、动态SUM8/CRC尾部、Core双向执行、

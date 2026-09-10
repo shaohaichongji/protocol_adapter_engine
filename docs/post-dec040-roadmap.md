@@ -1,5 +1,17 @@
 # DEC-040 后续推进路线与当前状态
 
+## 2026-09-10 当前入口
+
+`main@4a04afb`已合并并Push：PAE有界流式切帧、Lab离线Inspect集成交付完成。
+集成Windows Debug/Release各10/10通过，未升级网络、Linux、Golden或现场结论。
+下一轮[三组八项确认契约](post-stream-host-and-ui-v08-checkpoint.md)：PAE完善流式宿主示例，
+Lab开放Schema 0.8有界变长完整记录UI；整体授权后的两侧候选已完成，待提交与集成交付。
+PAE初批受影响Debug/Release各14/14、字段增量后宿主各1/1；Lab初批UI各10/10，详情刷新
+修复后专项各1/1。限定人工确认见Lab分支验证报告；共享产品接口未改，超长输入截断风险保留。
+之后再评估离线流式观察、单连接UDP，最后TCP/串口；这些远期项未获实施授权。
+
+## 历史推进记录（保留原时点）
+
 2026-09-09当前推进：长度检查点`0179abc`、`7d2ef4f`均已Push；其后的
 [有界变长完整记录实施契约](bounded-variable-record-contract.md)已在当前工作树完成限定实现与
 Windows离线验证，正在等待总控审查，尚未Stage/Commit/Push。实现仍限定固定头部、一段有界
