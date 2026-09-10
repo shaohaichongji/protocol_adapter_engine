@@ -183,6 +183,12 @@ bool IsSchemaV05(const std::filesystem::path& path, bool route_unclassified) {
                  : std::string_view{};
   const bool known_legacy = schema_version == "0.1" || schema_version == "0.2" ||
                             schema_version == "0.3" || schema_version == "0.4";
+#if defined(PAE_ENABLE_SCHEMA_V09_STREAM_FRAMING)
+  if (schema_version == "0.9") {
+    yyjson_doc_free(document);
+    return false;
+  }
+#endif
   const bool matches = schema_version == "0.5"
 #if defined(PAE_ENABLE_PROTOCOL_LAB_SCHEMA_V06_CRC)
                        || schema_version == "0.6"

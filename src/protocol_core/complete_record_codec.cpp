@@ -624,6 +624,9 @@ bool ConversionPlanValid(const PlanBundle& plan, const FieldExecutionPlan& field
 #if defined(PAE_ENABLE_SCHEMA_V08_VARIABLE_COMPILER)
           || plan.SchemaVersion() == "0.8"
 #endif
+#if defined(PAE_ENABLE_SCHEMA_V09_STREAM_FRAMING)
+          || plan.SchemaVersion() == "0.9"
+#endif
           ) &&
          field.conversion_index < plan.Conversions().size() &&
          field.conversion_slot != kInvalidIndex && field.bit_container_index == kInvalidIndex &&
@@ -724,6 +727,9 @@ CodecStatus PrepareEncodeInputs(const PlanBundle& plan, const MessageExecutionPl
 #if defined(PAE_ENABLE_SCHEMA_V08_VARIABLE_COMPILER)
                                         || plan.SchemaVersion() == "0.8"
 #endif
+#if defined(PAE_ENABLE_SCHEMA_V09_STREAM_FRAMING)
+                                        || plan.SchemaVersion() == "0.9"
+#endif
         ;
     if (!defer_value_validation && !ValueKindMatches(value.value_kind, field.value_type)) {
       return CodecStatus::TYPE_MISMATCH;
@@ -790,6 +796,9 @@ CodecStatus PrepareEncodeInputs(const PlanBundle& plan, const MessageExecutionPl
 #endif
 #if defined(PAE_ENABLE_SCHEMA_V08_VARIABLE_COMPILER)
       || plan.SchemaVersion() == "0.8"
+#endif
+#if defined(PAE_ENABLE_SCHEMA_V09_STREAM_FRAMING)
+      || plan.SchemaVersion() == "0.9"
 #endif
   ) {
     for (std::size_t field_index = 0U; field_index < message.fields.size(); ++field_index) {
@@ -1089,6 +1098,9 @@ bool internal::SupportsCompleteRecordSchema(std::string_view schema_version) noe
 #if defined(PAE_ENABLE_SCHEMA_V08_VARIABLE_COMPILER)
   if (schema_version == "0.8") return true;
 #endif
+#if defined(PAE_ENABLE_SCHEMA_V09_STREAM_FRAMING)
+  if (schema_version == "0.9") return true;
+#endif
 #endif
   return false;
 }
@@ -1338,6 +1350,9 @@ DecodeResult DecodeCompleteRecord(const PlanBundle& plan, ExecutionWorkspace& wo
 #endif
 #if defined(PAE_ENABLE_SCHEMA_V08_VARIABLE_COMPILER)
         || plan.SchemaVersion() == "0.8"
+#endif
+#if defined(PAE_ENABLE_SCHEMA_V09_STREAM_FRAMING)
+        || plan.SchemaVersion() == "0.9"
 #endif
     ) {
       if (!ConversionPlanValid(plan, field)) {

@@ -6,6 +6,45 @@ configure_file(
     "${pae_protocol_lab_test_data_dir}/synthetic_lab_exchange_slice.pae.json"
     COPYONLY
 )
+if(PAE_ENABLE_SCHEMA_V09_STREAM_FRAMING)
+    configure_file(
+        "${PROJECT_SOURCE_DIR}/examples/config/synthetic_stream_framing_slice.pae.json"
+        "${pae_protocol_lab_test_data_dir}/synthetic_stream_framing_slice.pae.json"
+        COPYONLY
+    )
+    add_test(
+        NAME pae.tools.protocol_lab.schema_v09_rejection_gate
+        COMMAND
+            "${CMAKE_COMMAND}"
+            "-DPAE_LAB_EXECUTABLE=$<TARGET_FILE:pae_protocol_lab>"
+            "-DPAE_LAB_DATA_DIR=${pae_protocol_lab_test_data_dir}"
+            "-DPAE_LAB_RUN_ROOT=${CMAKE_CURRENT_BINARY_DIR}/v09-gate-$<CONFIG>"
+            -P "${CMAKE_CURRENT_SOURCE_DIR}/verify_schema_v09_rejection_gate.cmake"
+    )
+    set_tests_properties(
+        pae.tools.protocol_lab.schema_v09_rejection_gate
+        PROPERTIES LABELS "tools;protocol_lab;offline;schema_v09;rejection_gate" TIMEOUT 30
+                   WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
+    )
+    add_executable(pae_protocol_lab_schema_v09_gate_tests schema_v09_gate_tests.cpp)
+    target_include_directories(
+        pae_protocol_lab_schema_v09_gate_tests PRIVATE "${PROJECT_SOURCE_DIR}/tools/protocol_lab"
+    )
+    target_link_libraries(
+        pae_protocol_lab_schema_v09_gate_tests
+        PRIVATE pae_protocol_lab_internal pae_config_compiler pae::project_options
+    )
+    add_test(
+        NAME pae.tools.protocol_lab.schema_v09_zero_execution
+        COMMAND pae_protocol_lab_schema_v09_gate_tests
+                "${pae_protocol_lab_test_data_dir}"
+                "${CMAKE_CURRENT_BINARY_DIR}/v09-zero-execution-$<CONFIG>"
+    )
+    set_tests_properties(
+        pae.tools.protocol_lab.schema_v09_zero_execution
+        PROPERTIES LABELS "tools;protocol_lab;offline;schema_v09;rejection_gate" TIMEOUT 30
+    )
+endif()
 configure_file(
     "${PROJECT_SOURCE_DIR}/examples/config/synthetic_bitfield_slice.pae.json"
     "${pae_protocol_lab_test_data_dir}/synthetic_bitfield_slice.pae.json"

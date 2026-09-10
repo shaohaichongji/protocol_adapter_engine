@@ -13,6 +13,15 @@ class PlanBuilderTestPeer final {
     draft.draft_->schema_version = version;
     return draft;
   }
+  static BudgetedPlanDraft SetFramingLengthOffset(BudgetedPlanDraft draft, std::uint64_t offset) {
+    draft.draft_->framing_profiles[0].length_field_offset = offset;
+    return draft;
+  }
+  static BudgetedPlanDraft SetFramingLengthByteOrder(BudgetedPlanDraft draft,
+                                                     ByteOrder byte_order) {
+    draft.draft_->framing_profiles[0].length_field_byte_order = byte_order;
+    return draft;
+  }
   static BudgetedPlanDraft InjectSignedConstant(BudgetedPlanDraft draft) {
     draft.draft_->messages[0].fields[1].signed_constant_value = -1;
     return draft;
@@ -187,6 +196,39 @@ class PlanBuilderTestPeer final {
   static BudgetedPlanDraft MakeCrcDraftWithOldSchema() {
     auto draft = MakeCrcDraft();
     draft.draft_->schema_version = "0.5";
+    return draft;
+  }
+#endif
+
+#if defined(PAE_ENABLE_SCHEMA_V09_STREAM_FRAMING)
+  static BudgetedPlanDraft MakeCorruptedStreamDraft(
+      pae::test_support::StreamDraftMutation mutation) {
+    auto draft = MakeVariableDraft();
+    draft.draft_->schema_version = "0.9";
+    auto& framing = draft.draft_->framing_profiles[0];
+    framing.input_kind = InputKind::STREAM_CHUNK;
+    framing.strategy = FramingStrategy::SYNC_LENGTH_FIELD;
+    framing.sync_bytes = {0xA5U};
+    framing.sync_prefix_table = {0U};
+    framing.length_field_offset = 1U;
+    framing.length_field_width = 1U;
+    framing.length_field_byte_order = ByteOrder::NOT_APPLICABLE;
+    framing.minimum_frame_length = 3U;
+    framing.maximum_frame_length = 6U;
+    draft.draft_->resource_requirements.max_stream_frame_bytes = 6U;
+    draft.draft_->resource_requirements.max_sync_bytes = 1U;
+    draft.draft_->resource_requirements.max_framing_buffer_bytes = 6U;
+    switch (mutation) {
+      case pae::test_support::StreamDraftMutation::INVALID_STRATEGY_UNION:
+        framing.frame_length_bytes = 6U;
+        break;
+      case pae::test_support::StreamDraftMutation::CORRUPTED_PREFIX_TABLE:
+        framing.sync_prefix_table[0] = 1U;
+        break;
+      case pae::test_support::StreamDraftMutation::MESSAGE_LENGTH_MISMATCH:
+        framing.length_field_offset = 2U;
+        break;
+    }
     return draft;
   }
 #endif
@@ -467,6 +509,16 @@ protocol_plan::BudgetedPlanDraft SetDraftSchemaVersion(protocol_plan::BudgetedPl
   return protocol_plan::test_only::PlanBuilderTestPeer::SetDraftSchemaVersion(std::move(draft),
                                                                               version);
 }
+protocol_plan::BudgetedPlanDraft SetFramingLengthOffset(protocol_plan::BudgetedPlanDraft draft,
+                                                        std::uint64_t offset) {
+  return protocol_plan::test_only::PlanBuilderTestPeer::SetFramingLengthOffset(std::move(draft),
+                                                                               offset);
+}
+protocol_plan::BudgetedPlanDraft SetFramingLengthByteOrder(protocol_plan::BudgetedPlanDraft draft,
+                                                           protocol_plan::ByteOrder byte_order) {
+  return protocol_plan::test_only::PlanBuilderTestPeer::SetFramingLengthByteOrder(std::move(draft),
+                                                                                  byte_order);
+}
 protocol_plan::BudgetedPlanDraft InjectSignedConstant(protocol_plan::BudgetedPlanDraft draft) {
   return protocol_plan::test_only::PlanBuilderTestPeer::InjectSignedConstant(std::move(draft));
 }
@@ -558,6 +610,12 @@ protocol_plan::BudgetedPlanDraft MakeCorruptedVariableDraft(VariableDraftMutatio
 protocol_plan::BudgetedPlanDraft MakeInt64DraftWithOutOfRangeConstant() {
   return protocol_plan::test_only::PlanBuilderTestPeer::MakeInt64DraftWithOutOfRangeConstant();
 }
+
+#if defined(PAE_ENABLE_SCHEMA_V09_STREAM_FRAMING)
+protocol_plan::BudgetedPlanDraft MakeCorruptedStreamDraft(StreamDraftMutation mutation) {
+  return protocol_plan::test_only::PlanBuilderTestPeer::MakeCorruptedStreamDraft(mutation);
+}
+#endif
 
 #if defined(PAE_ENABLE_SCHEMA_V05_COMPILER)
 protocol_plan::BudgetedPlanDraft MutateConversionDraft(protocol_plan::BudgetedPlanDraft draft,

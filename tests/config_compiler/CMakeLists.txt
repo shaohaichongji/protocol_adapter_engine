@@ -103,6 +103,12 @@ if(PAE_ENABLE_SCHEMA_V08_VARIABLE_COMPILER)
         PRIVATE PAE_ENABLE_SCHEMA_V08_VARIABLE_COMPILER=1
     )
 endif()
+if(PAE_ENABLE_SCHEMA_V09_STREAM_FRAMING)
+    target_compile_definitions(
+        pae_config_compiler_contract_tests
+        PRIVATE PAE_ENABLE_SCHEMA_V09_STREAM_FRAMING=1
+    )
+endif()
 
 if(PAE_ENABLE_SCHEMA_V05_COMPILER)
     target_compile_definitions(
@@ -122,6 +128,11 @@ endif()
 if(PAE_ENABLE_SCHEMA_V08_VARIABLE_COMPILER)
     target_compile_definitions(
         pae_config_compiler_ui_description_tests PRIVATE PAE_ENABLE_SCHEMA_V08_VARIABLE_COMPILER=1
+    )
+endif()
+if(PAE_ENABLE_SCHEMA_V09_STREAM_FRAMING)
+    target_compile_definitions(
+        pae_config_compiler_ui_description_tests PRIVATE PAE_ENABLE_SCHEMA_V09_STREAM_FRAMING=1
     )
 endif()
 

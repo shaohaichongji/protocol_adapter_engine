@@ -1,0 +1,146 @@
+{
+  "schema_version": "0.9",
+  "protocol_id": "synthetic_stream_framing",
+  "protocol_version": "0.1-synthetic",
+  "display_name": "Public bounded stream framing vectors",
+  "description": "Independent synthetic profiles for the three bounded stream framing strategies.",
+  "source_ref": "SYNTHETIC_FROM_SCRATCH:bounded_stream_framing",
+  "resource_profile": "desktop",
+  "framing_profiles": [
+    {
+      "id": "fixed_three",
+      "display_name": "Fixed three-byte frames",
+      "description": "No synchronization recovery.",
+      "source_ref": "SYNTHETIC_FROM_SCRATCH:bounded_stream_framing#fixed",
+      "input_kind": "stream_chunk",
+      "strategy": "fixed_length",
+      "frame_length_bytes": 3
+    },
+    {
+      "id": "sync_fixed_four",
+      "display_name": "Synchronized four-byte frames",
+      "description": "Two-byte synchronization header and fixed total length.",
+      "source_ref": "SYNTHETIC_FROM_SCRATCH:bounded_stream_framing#sync_fixed",
+      "input_kind": "stream_chunk",
+      "strategy": "sync_fixed_length",
+      "sync_bytes": "A5 5A",
+      "frame_length_bytes": 4
+    },
+    {
+      "id": "sync_length_six",
+      "display_name": "Synchronized declared-length frames",
+      "description": "One-byte total-frame length with bounded recovery.",
+      "source_ref": "SYNTHETIC_FROM_SCRATCH:bounded_stream_framing#sync_length",
+      "input_kind": "stream_chunk",
+      "strategy": "sync_length_field",
+      "sync_bytes": "C3 3C",
+      "length_field": {"byte_offset": 2, "byte_width": 1},
+      "minimum_frame_length": 4,
+      "maximum_frame_length": 8
+    }
+  ],
+  "pipelines": [
+    {
+      "id": "fixed_rx",
+      "display_name": "Fixed receive",
+      "description": "Synthetic fixed framing pipeline.",
+      "source_ref": "SYNTHETIC_FROM_SCRATCH:bounded_stream_framing#fixed_pipeline",
+      "direction_id": "fixed_rx",
+      "input_framing_profile_id": "fixed_three",
+      "message_ids": ["fixed_message"]
+    },
+    {
+      "id": "sync_fixed_rx",
+      "display_name": "Sync fixed receive",
+      "description": "Synthetic synchronized fixed framing pipeline.",
+      "source_ref": "SYNTHETIC_FROM_SCRATCH:bounded_stream_framing#sync_fixed_pipeline",
+      "direction_id": "sync_fixed_rx",
+      "input_framing_profile_id": "sync_fixed_four",
+      "message_ids": ["sync_fixed_message"]
+    },
+    {
+      "id": "sync_length_rx",
+      "display_name": "Sync length receive",
+      "description": "Synthetic synchronized declared-length framing pipeline.",
+      "source_ref": "SYNTHETIC_FROM_SCRATCH:bounded_stream_framing#sync_length_pipeline",
+      "direction_id": "sync_length_rx",
+      "input_framing_profile_id": "sync_length_six",
+      "message_ids": ["sync_length_message"]
+    }
+  ],
+  "messages": [
+    {
+      "id": "fixed_message",
+      "display_name": "Fixed message",
+      "description": "Three-byte public fixed vector.",
+      "source_ref": "SYNTHETIC_FROM_SCRATCH:bounded_stream_framing#fixed_message",
+      "direction_id": "fixed_rx",
+      "frame_length_bytes": 3,
+      "matcher": {"all": [{"kind": "fixed_bytes", "byte_offset": 0, "bytes": "AA"}]},
+      "fields": [
+        {
+          "id": "fixed_payload",
+          "display_name": "Fixed payload",
+          "description": "Two-byte input payload.",
+          "source_ref": "SYNTHETIC_FROM_SCRATCH:bounded_stream_framing#fixed_payload",
+          "value_type": "UINT64",
+          "wire": {"codec": "unsigned_integer", "byte_offset": 1, "byte_width": 2, "byte_order": "big_endian"},
+          "encode": {"source": "input"}
+        }
+      ]
+    },
+    {
+      "id": "sync_fixed_message",
+      "display_name": "Sync fixed message",
+      "description": "Four-byte public synchronized vector.",
+      "source_ref": "SYNTHETIC_FROM_SCRATCH:bounded_stream_framing#sync_fixed_message",
+      "direction_id": "sync_fixed_rx",
+      "frame_length_bytes": 4,
+      "matcher": {"all": [{"kind": "fixed_bytes", "byte_offset": 0, "bytes": "A5 5A"}]},
+      "fields": [
+        {
+          "id": "sync_fixed_payload",
+          "display_name": "Sync fixed payload",
+          "description": "Two-byte input payload.",
+          "source_ref": "SYNTHETIC_FROM_SCRATCH:bounded_stream_framing#sync_fixed_payload",
+          "value_type": "UINT64",
+          "wire": {"codec": "unsigned_integer", "byte_offset": 2, "byte_width": 2, "byte_order": "big_endian"},
+          "encode": {"source": "input"}
+        }
+      ]
+    },
+    {
+      "id": "sync_length_message",
+      "display_name": "Sync declared-length message",
+      "description": "Six-byte public declared-length vector.",
+      "source_ref": "SYNTHETIC_FROM_SCRATCH:bounded_stream_framing#sync_length_message",
+      "direction_id": "sync_length_rx",
+      "frame_length_bytes": 6,
+      "matcher": {"all": [
+        {"kind": "fixed_bytes", "byte_offset": 0, "bytes": "C3 3C"},
+        {"kind": "fixed_bytes", "byte_offset": 5, "bytes": "55"}
+      ]},
+      "fields": [
+        {
+          "id": "declared_length",
+          "display_name": "Declared total length",
+          "description": "Computed total frame length.",
+          "source_ref": "SYNTHETIC_FROM_SCRATCH:bounded_stream_framing#declared_length",
+          "value_type": "UINT64",
+          "wire": {"codec": "unsigned_integer", "byte_offset": 2, "byte_width": 1},
+          "encode": {"source": "computed"},
+          "computed": {"kind": "length", "scope": "frame"}
+        },
+        {
+          "id": "length_payload",
+          "display_name": "Declared-length payload",
+          "description": "Two-byte input payload.",
+          "source_ref": "SYNTHETIC_FROM_SCRATCH:bounded_stream_framing#length_payload",
+          "value_type": "UINT64",
+          "wire": {"codec": "unsigned_integer", "byte_offset": 3, "byte_width": 2, "byte_order": "big_endian"},
+          "encode": {"source": "input"}
+        }
+      ]
+    }
+  ]
+}

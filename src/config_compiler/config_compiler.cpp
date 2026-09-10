@@ -645,15 +645,23 @@ bool ReadEnumToken(yyjson_val* value, std::string_view pointer,
   return true;
 }
 
-bool ParseFramingProfile(yyjson_val* value, std::string_view pointer, FramingProfileIr& output,
-                         CompileDiagnostic& diagnostic) {
+bool ParseFramingProfile(yyjson_val* value, std::string_view pointer, bool supports_stream,
+                         FramingProfileIr& output, CompileDiagnostic& diagnostic) {
   if (!yyjson_is_obj(value)) {
     return SetDiagnostic(diagnostic, CompileStage::STRUCTURAL, CompileError::TYPE_MISMATCH,
                          std::string(pointer), "framing profile must be an object");
   }
-  if (!ValidateObjectProperties(value, pointer,
-                                {"id", "display_name", "description", "source_ref", "input_kind"},
-                                diagnostic)) {
+  if (!ValidateObjectProperties(
+          value, pointer,
+          supports_stream
+              ? std::initializer_list<std::string_view>{"id", "display_name", "description",
+                                                        "source_ref", "input_kind", "strategy",
+                                                        "frame_length_bytes", "sync_bytes",
+                                                        "length_field", "minimum_frame_length",
+                                                        "maximum_frame_length"}
+              : std::initializer_list<std::string_view>{"id", "display_name", "description",
+                                                        "source_ref", "input_kind"},
+          diagnostic)) {
     return false;
   }
   if (!ReadRequiredId(value, "id", pointer, output.id, diagnostic) ||
@@ -666,11 +674,130 @@ bool ParseFramingProfile(yyjson_val* value, std::string_view pointer, FramingPro
   }
   yyjson_val* input_kind = RequiredProperty(value, "input_kind", pointer, diagnostic);
   std::string input_kind_token;
-  if (input_kind == nullptr || !ReadEnumToken(input_kind, ChildPointer(pointer, "input_kind"),
-                                              {"complete_record"}, input_kind_token, diagnostic)) {
+  if (input_kind == nullptr ||
+      !ReadEnumToken(input_kind, ChildPointer(pointer, "input_kind"),
+                     supports_stream ? std::initializer_list<std::string_view>{"complete_record",
+                                                                               "stream_chunk"}
+                                     : std::initializer_list<std::string_view>{"complete_record"},
+                     input_kind_token, diagnostic)) {
     return false;
   }
   output.input_kind = InputKind::COMPLETE_RECORD;
+#if defined(PAE_ENABLE_SCHEMA_V09_STREAM_FRAMING)
+  if (input_kind_token == "stream_chunk") {
+    output.input_kind = InputKind::STREAM_CHUNK;
+    yyjson_val* strategy_value = RequiredProperty(value, "strategy", pointer, diagnostic);
+    std::string strategy;
+    if (strategy_value == nullptr ||
+        !ReadEnumToken(strategy_value, ChildPointer(pointer, "strategy"),
+                       {"fixed_length", "sync_fixed_length", "sync_length_field"}, strategy,
+                       diagnostic)) {
+      return false;
+    }
+    if (strategy == "fixed_length" || strategy == "sync_fixed_length") {
+      output.strategy = strategy == "fixed_length" ? FramingStrategy::FIXED_LENGTH
+                                                   : FramingStrategy::SYNC_FIXED_LENGTH;
+      if (!ReadRequiredUint64(value, "frame_length_bytes", pointer, output.frame_length_bytes,
+                              diagnostic)) {
+        return false;
+      }
+      const auto reject_foreign_member = [&](std::string_view name) {
+        return SetDiagnostic(diagnostic, CompileStage::STRUCTURAL, CompileError::UNKNOWN_PROPERTY,
+                             ChildPointer(pointer, name),
+                             "framing strategy contains a member from another strategy");
+      };
+      if (yyjson_obj_get(value, "length_field") != nullptr)
+        return reject_foreign_member("length_field");
+      if (yyjson_obj_get(value, "minimum_frame_length") != nullptr)
+        return reject_foreign_member("minimum_frame_length");
+      if (yyjson_obj_get(value, "maximum_frame_length") != nullptr)
+        return reject_foreign_member("maximum_frame_length");
+      if (strategy == "fixed_length" && yyjson_obj_get(value, "sync_bytes") != nullptr)
+        return reject_foreign_member("sync_bytes");
+    } else {
+      output.strategy = FramingStrategy::SYNC_LENGTH_FIELD;
+      if (yyjson_obj_get(value, "frame_length_bytes") != nullptr) {
+        return SetDiagnostic(diagnostic, CompileStage::STRUCTURAL, CompileError::UNKNOWN_PROPERTY,
+                             ChildPointer(pointer, "frame_length_bytes"),
+                             "framing strategy contains a member from another strategy");
+      }
+      if (!ReadRequiredUint64(value, "minimum_frame_length", pointer, output.minimum_frame_length,
+                              diagnostic) ||
+          !ReadRequiredUint64(value, "maximum_frame_length", pointer, output.maximum_frame_length,
+                              diagnostic)) {
+        return false;
+      }
+      yyjson_val* length_field = RequiredProperty(value, "length_field", pointer, diagnostic);
+      const std::string length_pointer = ChildPointer(pointer, "length_field");
+      if (length_field == nullptr || !yyjson_is_obj(length_field)) {
+        return length_field == nullptr ? false
+                                       : SetDiagnostic(diagnostic, CompileStage::STRUCTURAL,
+                                                       CompileError::TYPE_MISMATCH, length_pointer,
+                                                       "length_field must be an object");
+      }
+      if (!ValidateObjectProperties(length_field, length_pointer,
+                                    {"byte_offset", "byte_width", "byte_order"}, diagnostic) ||
+          !ReadRequiredUint64(length_field, "byte_offset", length_pointer,
+                              output.length_field_offset, diagnostic) ||
+          !ReadRequiredUint64(length_field, "byte_width", length_pointer, output.length_field_width,
+                              diagnostic)) {
+        return false;
+      }
+      if (output.length_field_width != 1U && output.length_field_width != 2U &&
+          output.length_field_width != 4U) {
+        return SetDiagnostic(diagnostic, CompileStage::STRUCTURAL, CompileError::INVALID_ENUM_VALUE,
+                             ChildPointer(length_pointer, "byte_width"),
+                             "stream length_field byte_width must be 1, 2, or 4");
+      }
+      yyjson_val* byte_order = yyjson_obj_get(length_field, "byte_order");
+      if (output.length_field_width == 1U) {
+        if (byte_order != nullptr) {
+          return SetDiagnostic(diagnostic, CompileStage::STRUCTURAL, CompileError::UNKNOWN_PROPERTY,
+                               ChildPointer(length_pointer, "byte_order"),
+                               "one-byte length_field must omit byte_order");
+        }
+      } else {
+        std::string order;
+        if (byte_order == nullptr ||
+            !ReadEnumToken(byte_order, ChildPointer(length_pointer, "byte_order"),
+                           {"big_endian", "little_endian"}, order, diagnostic)) {
+          return byte_order == nullptr
+                     ? SetDiagnostic(diagnostic, CompileStage::STRUCTURAL,
+                                     CompileError::MISSING_PROPERTY,
+                                     ChildPointer(length_pointer, "byte_order"),
+                                     "multi-byte length_field requires byte_order")
+                     : false;
+        }
+        output.length_field_byte_order = order == "big_endian" ? ByteOrder::BIG : ByteOrder::LITTLE;
+      }
+    }
+    if (strategy != "fixed_length") {
+      yyjson_val* sync = RequiredProperty(value, "sync_bytes", pointer, diagnostic);
+      std::string sync_text;
+      if (sync == nullptr || !ReadString(sync, ChildPointer(pointer, "sync_bytes"), 1U,
+                                         3U * 64U - 1U, sync_text, diagnostic)) {
+        return false;
+      }
+      if (!ParseHexBytes(sync_text, output.sync_bytes) || output.sync_bytes.empty()) {
+        return SetDiagnostic(diagnostic, CompileStage::STRUCTURAL, CompileError::INVALID_HEX_BYTES,
+                             ChildPointer(pointer, "sync_bytes"),
+                             "sync_bytes must be a non-empty canonical hex byte string");
+      }
+    }
+  } else {
+    for (const std::string_view name :
+         {"strategy", "frame_length_bytes", "sync_bytes", "length_field", "minimum_frame_length",
+          "maximum_frame_length"}) {
+      if (yyjson_obj_get(value, std::string{name}.c_str()) != nullptr) {
+        return SetDiagnostic(diagnostic, CompileStage::STRUCTURAL, CompileError::UNKNOWN_PROPERTY,
+                             ChildPointer(pointer, name),
+                             "complete_record framing profile cannot contain stream members");
+      }
+    }
+  }
+#else
+  static_cast<void>(supports_stream);
+#endif
   output.origin.json_pointer = std::string{pointer};
   return true;
 }
@@ -1832,6 +1959,9 @@ bool BuildSchemaIr(yyjson_val* root, SchemaIr& output, CompileDiagnostic& diagno
 #if defined(PAE_ENABLE_SCHEMA_V08_VARIABLE_COMPILER)
                                 || output.schema_version == "0.8"
 #endif
+#if defined(PAE_ENABLE_SCHEMA_V09_STREAM_FRAMING)
+                                || output.schema_version == "0.9"
+#endif
       ;
 #else
   const bool supported_schema = output.schema_version == "0.1" || output.schema_version == "0.2" ||
@@ -1864,8 +1994,14 @@ bool BuildSchemaIr(yyjson_val* root, SchemaIr& output, CompileDiagnostic& diagno
   if (framing_profiles == nullptr || pipelines == nullptr || messages == nullptr) {
     return false;
   }
-  return ParseObjectArray(framing_profiles, "/framing_profiles", output.framing_profiles,
-                          ParseFramingProfile, diagnostic) &&
+  return ParseObjectArray(
+             framing_profiles, "/framing_profiles", output.framing_profiles,
+             [&output](yyjson_val* value, std::string_view pointer, FramingProfileIr& framing,
+                       CompileDiagnostic& item_diagnostic) {
+               return ParseFramingProfile(value, pointer, output.schema_version == "0.9", framing,
+                                          item_diagnostic);
+             },
+             diagnostic) &&
          ParseObjectArray(pipelines, "/pipelines", output.pipelines, ParsePipeline, diagnostic) &&
          ParseObjectArray(
              messages, "/messages", output.messages,
@@ -1875,16 +2011,20 @@ bool BuildSchemaIr(yyjson_val* root, SchemaIr& output, CompileDiagnostic& diagno
                    value, pointer, output.schema_version != "0.1",
                    output.schema_version == "0.3" || output.schema_version == "0.4" ||
                        output.schema_version == "0.5" || output.schema_version == "0.6" ||
-                       output.schema_version == "0.7" || output.schema_version == "0.8",
+                       output.schema_version == "0.7" || output.schema_version == "0.8" ||
+                       output.schema_version == "0.9",
                    output.schema_version == "0.6" || output.schema_version == "0.7" ||
-                       output.schema_version == "0.8",
+                       output.schema_version == "0.8" || output.schema_version == "0.9",
                    output.schema_version == "0.4" || output.schema_version == "0.5" ||
                        output.schema_version == "0.6" || output.schema_version == "0.7" ||
-                       output.schema_version == "0.8",
+                       output.schema_version == "0.8" || output.schema_version == "0.9",
                    output.schema_version == "0.5" || output.schema_version == "0.6" ||
-                       output.schema_version == "0.7" || output.schema_version == "0.8",
-                   output.schema_version == "0.7" || output.schema_version == "0.8",
-                   output.schema_version == "0.8", message, item_diagnostic);
+                       output.schema_version == "0.7" || output.schema_version == "0.8" ||
+                       output.schema_version == "0.9",
+                   output.schema_version == "0.7" || output.schema_version == "0.8" ||
+                       output.schema_version == "0.9",
+                   output.schema_version == "0.8" || output.schema_version == "0.9", message,
+                   item_diagnostic);
              },
              diagnostic);
 }
@@ -1914,6 +2054,109 @@ bool AddSizeChecked(std::size_t value, std::size_t& total) noexcept {
   total += value;
   return true;
 }
+
+#if defined(PAE_ENABLE_SCHEMA_V09_STREAM_FRAMING)
+std::pair<std::uint64_t, std::uint64_t> MessageFrameBounds(const MessageIr& message) noexcept {
+#if defined(PAE_ENABLE_SCHEMA_V08_VARIABLE_COMPILER)
+  if (message.bounded_payload.has_value()) {
+    return {message.bounded_payload->min_frame_length, message.bounded_payload->max_frame_length};
+  }
+#endif
+  return {message.frame_length_bytes, message.frame_length_bytes};
+}
+
+bool MessageHasSyncMatcher(const MessageIr& message,
+                           const std::vector<std::uint8_t>& sync) noexcept {
+  for (std::size_t offset = 0U; offset < sync.size(); ++offset) {
+    bool matched = false;
+    for (const MatcherClauseIr& matcher : message.matcher_clauses) {
+      if (matcher.kind != MatcherKind::FIXED_BYTES || offset < matcher.byte_offset ||
+          offset - matcher.byte_offset >= matcher.bytes.size()) {
+        continue;
+      }
+      matched = matcher.bytes[offset - matcher.byte_offset] == sync[offset];
+      break;
+    }
+    if (!matched) {
+      return false;
+    }
+  }
+  return true;
+}
+
+bool MessageHasLengthField(const MessageIr& message, const FramingProfileIr& framing) noexcept {
+#if defined(PAE_ENABLE_SCHEMA_V07_LENGTH_COMPILER)
+  for (const FieldIr& field : message.fields) {
+    if (field.value_type == ValueType::UINT64 && field.computed_length.has_value() &&
+        field.computed_length->scope == ComputedLengthScope::FRAME &&
+        field.wire.codec == WireCodec::UNSIGNED_INTEGER &&
+        field.wire.byte_offset == framing.length_field_offset &&
+        field.wire.byte_width == framing.length_field_width &&
+        field.wire.byte_order == framing.length_field_byte_order) {
+      return true;
+    }
+  }
+#endif
+  return false;
+}
+
+bool ValidateStreamFramingLocal(const FramingProfileIr& framing, CompileDiagnostic& diagnostic) {
+  if (framing.input_kind == InputKind::COMPLETE_RECORD) {
+    return framing.strategy == FramingStrategy::COMPLETE_RECORD;
+  }
+  if (framing.strategy == FramingStrategy::FIXED_LENGTH) {
+    if (framing.frame_length_bytes == 0U) {
+      return SetDiagnostic(diagnostic, CompileStage::DOMAIN_VALIDATION,
+                           CompileError::INTEGER_OUT_OF_RANGE,
+                           ChildPointer(framing.origin.json_pointer, "frame_length_bytes"),
+                           "fixed stream frame length must be greater than zero");
+    }
+    return true;
+  }
+  if (framing.strategy == FramingStrategy::SYNC_FIXED_LENGTH) {
+    if (framing.frame_length_bytes == 0U || framing.sync_bytes.empty() ||
+        framing.sync_bytes.size() > framing.frame_length_bytes) {
+      return SetDiagnostic(diagnostic, CompileStage::DOMAIN_VALIDATION,
+                           CompileError::FIELD_OUT_OF_BOUNDS, framing.origin.json_pointer,
+                           "sync header must fit inside the fixed stream frame");
+    }
+    return true;
+  }
+  if (framing.strategy != FramingStrategy::SYNC_LENGTH_FIELD || framing.sync_bytes.empty() ||
+      (framing.length_field_width != 1U && framing.length_field_width != 2U &&
+       framing.length_field_width != 4U) ||
+      (framing.length_field_width == 1U &&
+       framing.length_field_byte_order != ByteOrder::NOT_APPLICABLE) ||
+      (framing.length_field_width != 1U && framing.length_field_byte_order != ByteOrder::BIG &&
+       framing.length_field_byte_order != ByteOrder::LITTLE) ||
+      framing.minimum_frame_length == 0U ||
+      framing.minimum_frame_length > framing.maximum_frame_length ||
+      framing.length_field_offset >
+          (std::numeric_limits<std::uint64_t>::max)() - framing.length_field_width ||
+      framing.length_field_offset + framing.length_field_width > framing.minimum_frame_length) {
+    return SetDiagnostic(diagnostic, CompileStage::DOMAIN_VALIDATION,
+                         CompileError::FIELD_OUT_OF_BOUNDS, framing.origin.json_pointer,
+                         "stream length field and frame bounds are inconsistent");
+  }
+  const std::uint64_t length_end = framing.length_field_offset + framing.length_field_width;
+  if (framing.length_field_offset < framing.sync_bytes.size() && length_end > 0U) {
+    return SetDiagnostic(diagnostic, CompileStage::DOMAIN_VALIDATION, CompileError::FIELD_OVERLAP,
+                         ChildPointer(framing.origin.json_pointer, "length_field"),
+                         "stream length field overlaps the offset-zero sync header");
+  }
+  const std::uint64_t representable =
+      framing.length_field_width == 1U
+          ? 0xFFU
+          : (framing.length_field_width == 2U ? 0xFFFFU : 0xFFFFFFFFULL);
+  if (framing.maximum_frame_length > representable) {
+    return SetDiagnostic(diagnostic, CompileStage::DOMAIN_VALIDATION,
+                         CompileError::VALUE_NOT_REPRESENTABLE,
+                         ChildPointer(framing.origin.json_pointer, "maximum_frame_length"),
+                         "maximum stream frame length does not fit the length field");
+  }
+  return true;
+}
+#endif
 
 bool FitsUnsignedWidth(std::uint64_t value, std::uint64_t byte_width) noexcept {
   if (byte_width >= 8U) {
@@ -2760,6 +3003,29 @@ DomainValidationResult DomainValidator::Validate(SchemaIr schema) {
   requirements.framing_profile_count = schema.framing_profiles.size();
   requirements.pipeline_count = schema.pipelines.size();
   requirements.message_count = schema.messages.size();
+#if defined(PAE_ENABLE_SCHEMA_V09_STREAM_FRAMING)
+  for (const FramingProfileIr& framing : schema.framing_profiles) {
+    if (!ValidateStreamFramingLocal(framing, diagnostic)) {
+      return DomainValidationResult::Failure(std::move(diagnostic));
+    }
+    if (framing.input_kind == InputKind::STREAM_CHUNK) {
+      const std::uint64_t frame_limit = framing.strategy == FramingStrategy::SYNC_LENGTH_FIELD
+                                            ? framing.maximum_frame_length
+                                            : framing.frame_length_bytes;
+      if (frame_limit > (std::numeric_limits<std::size_t>::max)()) {
+        SetDiagnostic(diagnostic, CompileStage::DOMAIN_VALIDATION,
+                      CompileError::INTEGER_OUT_OF_RANGE, framing.origin.json_pointer,
+                      "stream frame limit cannot be represented by this build");
+        return DomainValidationResult::Failure(std::move(diagnostic));
+      }
+      requirements.max_stream_frame_bytes =
+          (std::max)(requirements.max_stream_frame_bytes, static_cast<std::size_t>(frame_limit));
+      requirements.max_sync_bytes =
+          (std::max)(requirements.max_sync_bytes, framing.sync_bytes.size());
+    }
+  }
+  requirements.max_framing_buffer_bytes = requirements.max_stream_frame_bytes;
+#endif
   for (MessageIr& message : schema.messages) {
     if (!ValidateMessageDomain(message, requirements, diagnostic)) {
       return DomainValidationResult::Failure(std::move(diagnostic));
@@ -2820,6 +3086,44 @@ DomainValidationResult DomainValidator::Validate(SchemaIr schema) {
       }
       resolved.message_indices.push_back(message->second);
     }
+#if defined(PAE_ENABLE_SCHEMA_V09_STREAM_FRAMING)
+    const FramingProfileIr& framing_profile = schema.framing_profiles[framing->second];
+    if (framing_profile.input_kind == InputKind::STREAM_CHUNK) {
+      for (const std::size_t resolved_message_index : resolved.message_indices) {
+        const MessageIr& message = schema.messages[resolved_message_index];
+        const auto bounds = MessageFrameBounds(message);
+        if ((framing_profile.strategy == FramingStrategy::FIXED_LENGTH ||
+             framing_profile.strategy == FramingStrategy::SYNC_FIXED_LENGTH) &&
+            (bounds.first != framing_profile.frame_length_bytes ||
+             bounds.second != framing_profile.frame_length_bytes)) {
+          SetDiagnostic(
+              diagnostic, CompileStage::DOMAIN_VALIDATION, CompileError::FIELD_OUT_OF_BOUNDS,
+              ChildPointer(pipeline.origin.json_pointer, "message_ids"),
+              "fixed stream profile requires every message to have the same exact length");
+          return DomainValidationResult::Failure(std::move(diagnostic));
+        }
+        if (framing_profile.strategy != FramingStrategy::FIXED_LENGTH &&
+            !MessageHasSyncMatcher(message, framing_profile.sync_bytes)) {
+          SetDiagnostic(
+              diagnostic, CompileStage::DOMAIN_VALIDATION, CompileError::MATCHER_CONFLICT,
+              ChildPointer(pipeline.origin.json_pointer, "message_ids"),
+              "stream message matcher does not contain the complete offset-zero sync header");
+          return DomainValidationResult::Failure(std::move(diagnostic));
+        }
+        if (framing_profile.strategy == FramingStrategy::SYNC_LENGTH_FIELD &&
+            (bounds.first < framing_profile.minimum_frame_length ||
+             bounds.second > framing_profile.maximum_frame_length ||
+             !MessageHasLengthField(message, framing_profile))) {
+          SetDiagnostic(diagnostic, CompileStage::DOMAIN_VALIDATION,
+                        CompileError::FIELD_OUT_OF_BOUNDS,
+                        ChildPointer(pipeline.origin.json_pointer, "message_ids"),
+                        "length-field stream profile and referenced message bounds or computed "
+                        "length differ");
+          return DomainValidationResult::Failure(std::move(diagnostic));
+        }
+      }
+    }
+#endif
     resolved_pipelines.push_back(std::move(resolved));
   }
 
@@ -2858,7 +3162,13 @@ bool EstimateSchemaPlanMemory(const SchemaIr& schema,
     return false;
   }
   for (const FramingProfileIr& framing : schema.framing_profiles) {
-    if (!AddStringLayout(layout, framing.id)) {
+    if (!AddStringLayout(layout, framing.id)
+#if defined(PAE_ENABLE_SCHEMA_V09_STREAM_FRAMING)
+        ||
+        !layout.AddArray<std::uint8_t>(framing.sync_bytes.size(), PlanMemoryCategory::EXTENSION) ||
+        !layout.AddArray<std::size_t>(framing.sync_bytes.size(), PlanMemoryCategory::EXTENSION)
+#endif
+    ) {
       return false;
     }
   }
@@ -3044,6 +3354,27 @@ ResourceBudgetResult ResourceBudgetValidator::ValidateImpl(
                   "/messages", "maximum frame length exceeds the selected resource profile");
     return ResourceBudgetResult::Failure(std::move(diagnostic));
   }
+#if defined(PAE_ENABLE_SCHEMA_V09_STREAM_FRAMING)
+  if (requirements.max_stream_frame_bytes > budget->max_frame_bytes ||
+      requirements.max_stream_frame_bytes > protocol_plan::kMaxStreamFrameBytesHardLimit) {
+    SetDiagnostic(diagnostic, CompileStage::RESOURCE_BUDGET, CompileError::RESOURCE_LIMIT_EXCEEDED,
+                  "/framing_profiles", "stream frame length exceeds the selected resource profile");
+    return ResourceBudgetResult::Failure(std::move(diagnostic));
+  }
+  if (requirements.max_sync_bytes > budget->max_sync_bytes ||
+      requirements.max_sync_bytes > protocol_plan::kMaxStreamSyncBytesHardLimit) {
+    SetDiagnostic(diagnostic, CompileStage::RESOURCE_BUDGET, CompileError::RESOURCE_LIMIT_EXCEEDED,
+                  "/framing_profiles", "sync header length exceeds the selected resource profile");
+    return ResourceBudgetResult::Failure(std::move(diagnostic));
+  }
+  if (requirements.max_framing_buffer_bytes > budget->max_session_memory_bytes ||
+      requirements.max_framing_buffer_bytes >
+          protocol_plan::kMaxStreamSessionMemoryBytesHardLimit) {
+    SetDiagnostic(diagnostic, CompileStage::RESOURCE_BUDGET, CompileError::RESOURCE_LIMIT_EXCEEDED,
+                  "/framing_profiles", "framing buffer bytes exceed the per-stream memory limit");
+    return ResourceBudgetResult::Failure(std::move(diagnostic));
+  }
+#endif
   if (!CheckResourceCount(
           requirements.framing_profile_count, budget->max_framing_profiles, "/framing_profiles",
           "framing profile count exceeds the selected resource profile", diagnostic) ||
@@ -3131,7 +3462,30 @@ PlanDraftAssemblyResult PlanDraftAssembler::Assemble(BudgetedSchemaIr budgeted) 
   std::vector<FramingPlan> framing_plans;
   framing_plans.reserve(schema.framing_profiles.size());
   for (const FramingProfileIr& framing : schema.framing_profiles) {
-    framing_plans.push_back(FramingPlan{framing.id, framing.input_kind});
+    FramingPlan plan;
+    plan.id = framing.id;
+    plan.input_kind = framing.input_kind;
+#if defined(PAE_ENABLE_SCHEMA_V09_STREAM_FRAMING)
+    plan.strategy = framing.strategy;
+    plan.frame_length_bytes = framing.frame_length_bytes;
+    plan.sync_bytes = framing.sync_bytes;
+    plan.sync_prefix_table.resize(plan.sync_bytes.size(), 0U);
+    for (std::size_t index = 1U, prefix = 0U; index < plan.sync_bytes.size(); ++index) {
+      while (prefix != 0U && plan.sync_bytes[index] != plan.sync_bytes[prefix]) {
+        prefix = plan.sync_prefix_table[prefix - 1U];
+      }
+      if (plan.sync_bytes[index] == plan.sync_bytes[prefix]) {
+        ++prefix;
+      }
+      plan.sync_prefix_table[index] = prefix;
+    }
+    plan.length_field_offset = framing.length_field_offset;
+    plan.length_field_width = framing.length_field_width;
+    plan.length_field_byte_order = framing.length_field_byte_order;
+    plan.minimum_frame_length = framing.minimum_frame_length;
+    plan.maximum_frame_length = framing.maximum_frame_length;
+#endif
+    framing_plans.push_back(std::move(plan));
   }
 
   std::vector<PipelinePlan> pipeline_plans;

@@ -20,6 +20,17 @@ class PlanBuilder;
 struct FramingPlan {
   std::string id;
   InputKind input_kind = InputKind::COMPLETE_RECORD;
+#if defined(PAE_ENABLE_SCHEMA_V09_STREAM_FRAMING)
+  FramingStrategy strategy = FramingStrategy::COMPLETE_RECORD;
+  std::uint64_t frame_length_bytes = 0U;
+  std::vector<std::uint8_t> sync_bytes;
+  std::vector<std::size_t> sync_prefix_table;
+  std::uint64_t length_field_offset = 0U;
+  std::uint64_t length_field_width = 0U;
+  ByteOrder length_field_byte_order = ByteOrder::NOT_APPLICABLE;
+  std::uint64_t minimum_frame_length = 0U;
+  std::uint64_t maximum_frame_length = 0U;
+#endif
 };
 
 struct MatcherPlan {
@@ -134,6 +145,17 @@ struct PipelinePlan {
 struct FrozenFramingPlan {
   FrozenString id;
   InputKind input_kind = InputKind::COMPLETE_RECORD;
+#if defined(PAE_ENABLE_SCHEMA_V09_STREAM_FRAMING)
+  FramingStrategy strategy = FramingStrategy::COMPLETE_RECORD;
+  std::uint64_t frame_length_bytes = 0U;
+  FrozenArray<std::uint8_t> sync_bytes;
+  FrozenArray<std::size_t> sync_prefix_table;
+  std::uint64_t length_field_offset = 0U;
+  std::uint64_t length_field_width = 0U;
+  ByteOrder length_field_byte_order = ByteOrder::NOT_APPLICABLE;
+  std::uint64_t minimum_frame_length = 0U;
+  std::uint64_t maximum_frame_length = 0U;
+#endif
 };
 
 struct FrozenMatcherPlan {

@@ -732,6 +732,16 @@ bool CompileConfig(const std::filesystem::path& path, std::string& text,
     return true;
   }
   plan = std::move(compiled).TakePlan();
+#if defined(PAE_ENABLE_SCHEMA_V09_STREAM_FRAMING)
+  if (plan->SchemaVersion() == "0.9") {
+    result.status = "CONFIG_COMPILE_FAILED";
+    result.diagnostic_id = "PAE_LAB_CONFIG_COMPILE_FAILED";
+    result.diagnostic_detail = "Protocol Lab does not execute Schema 0.9 stream framing plans";
+    plan = protocol_plan::PlanOwner{};
+    text.clear();
+    return true;
+  }
+#endif
   return true;
 }
 

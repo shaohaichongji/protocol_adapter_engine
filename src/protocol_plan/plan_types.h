@@ -24,13 +24,54 @@ struct ResourceProfileLimits {
   std::size_t max_total_enum_entries = 0U;
   std::size_t max_session_memory_bytes = 0U;
   std::size_t max_plan_memory_bytes = 0U;
+#if defined(PAE_ENABLE_SCHEMA_V09_STREAM_FRAMING)
+  std::size_t max_submit_bytes = 0U;
+  std::size_t max_frames_per_submit = 0U;
+  std::size_t max_sync_bytes = 0U;
+  std::size_t max_framer_work_units = 0U;
+#endif
 };
 
-inline constexpr ResourceProfileLimits kDesktopResourceProfileLimits{
-    64U * 1024U, 32U,   32U,   64U,    2048U,        8192U,
-    64U,         4096U, 4096U, 65536U, 512U * 1024U, 128U * 1024U * 1024U};
-inline constexpr ResourceProfileLimits kConstrainedResourceProfileLimits{
-    4U * 1024U, 8U, 8U, 16U, 256U, 1024U, 32U, 512U, 256U, 4096U, 128U * 1024U, 8U * 1024U * 1024U};
+inline constexpr ResourceProfileLimits kDesktopResourceProfileLimits{64U * 1024U,
+                                                                     32U,
+                                                                     32U,
+                                                                     64U,
+                                                                     2048U,
+                                                                     8192U,
+                                                                     64U,
+                                                                     4096U,
+                                                                     4096U,
+                                                                     65536U,
+                                                                     512U * 1024U,
+                                                                     128U * 1024U * 1024U
+#if defined(PAE_ENABLE_SCHEMA_V09_STREAM_FRAMING)
+                                                                     ,
+                                                                     1024U * 1024U,
+                                                                     1024U,
+                                                                     16U,
+                                                                     4U * 1024U * 1024U
+#endif
+};
+inline constexpr ResourceProfileLimits kConstrainedResourceProfileLimits{4U * 1024U,
+                                                                         8U,
+                                                                         8U,
+                                                                         16U,
+                                                                         256U,
+                                                                         1024U,
+                                                                         32U,
+                                                                         512U,
+                                                                         256U,
+                                                                         4096U,
+                                                                         128U * 1024U,
+                                                                         8U * 1024U * 1024U
+#if defined(PAE_ENABLE_SCHEMA_V09_STREAM_FRAMING)
+                                                                         ,
+                                                                         64U * 1024U,
+                                                                         64U,
+                                                                         8U,
+                                                                         256U * 1024U
+#endif
+};
 
 inline constexpr std::size_t kV01MaxPlanMemoryHardLimit = 256U * 1024U * 1024U;
 
@@ -46,7 +87,26 @@ constexpr const ResourceProfileLimits* GetResourceProfileLimits(ResourceProfile 
 
 enum class InputKind {
   COMPLETE_RECORD,
+#if defined(PAE_ENABLE_SCHEMA_V09_STREAM_FRAMING)
+  STREAM_CHUNK,
+#endif
 };
+
+#if defined(PAE_ENABLE_SCHEMA_V09_STREAM_FRAMING)
+inline constexpr std::size_t kMaxStreamFrameBytesHardLimit = 1024U * 1024U;
+inline constexpr std::size_t kMaxStreamSubmitBytesHardLimit = 4U * 1024U * 1024U;
+inline constexpr std::size_t kMaxStreamFramesPerSubmitHardLimit = 4096U;
+inline constexpr std::size_t kMaxStreamSessionMemoryBytesHardLimit = 2U * 1024U * 1024U;
+inline constexpr std::size_t kMaxStreamSyncBytesHardLimit = 64U;
+inline constexpr std::size_t kMaxStreamWorkUnitsHardLimit = 16U * 1024U * 1024U;
+
+enum class FramingStrategy {
+  COMPLETE_RECORD,
+  FIXED_LENGTH,
+  SYNC_FIXED_LENGTH,
+  SYNC_LENGTH_FIELD,
+};
+#endif
 
 enum class MatcherKind {
   FRAME_LENGTH_EQUALS,
@@ -123,6 +183,11 @@ struct ResourceRequirements {
 #endif
 #if defined(PAE_ENABLE_SCHEMA_V05_COMPILER)
   std::size_t total_conversion_count = 0U;
+#endif
+#if defined(PAE_ENABLE_SCHEMA_V09_STREAM_FRAMING)
+  std::size_t max_stream_frame_bytes = 0U;
+  std::size_t max_sync_bytes = 0U;
+  std::size_t max_framing_buffer_bytes = 0U;
 #endif
 };
 

@@ -163,6 +163,11 @@ bool RequirementsEqual(const ResourceRequirements& left,
 #if defined(PAE_ENABLE_SCHEMA_V05_COMPILER)
          && left.total_conversion_count == right.total_conversion_count
 #endif
+#if defined(PAE_ENABLE_SCHEMA_V09_STREAM_FRAMING)
+         && left.max_stream_frame_bytes == right.max_stream_frame_bytes &&
+         left.max_sync_bytes == right.max_sync_bytes &&
+         left.max_framing_buffer_bytes == right.max_framing_buffer_bytes
+#endif
       ;
 }
 
@@ -253,7 +258,13 @@ bool EstimatePreparedPlanMemory(
     return false;
   }
   for (const FramingPlan& framing : draft.framing_profiles) {
-    if (!AddStringLayout(layout, framing.id)) {
+    if (!AddStringLayout(layout, framing.id)
+#if defined(PAE_ENABLE_SCHEMA_V09_STREAM_FRAMING)
+        ||
+        !layout.AddArray<std::uint8_t>(framing.sync_bytes.size(), PlanMemoryCategory::EXTENSION) ||
+        !layout.AddArray<std::size_t>(framing.sync_bytes.size(), PlanMemoryCategory::EXTENSION)
+#endif
+    ) {
       return false;
     }
   }
@@ -438,6 +449,9 @@ PlanBuildResult PlanBuilder::FreezeImpl(detail::PlanDraftData draft) {
 #if defined(PAE_ENABLE_SCHEMA_V08_VARIABLE_COMPILER)
        && draft.schema_version != "0.8"
 #endif
+#if defined(PAE_ENABLE_SCHEMA_V09_STREAM_FRAMING)
+       && draft.schema_version != "0.9"
+#endif
        ) ||
       !IsStableId(draft.protocol_id) || draft.protocol_version.empty() || limits == nullptr ||
       draft.framing_profiles.empty() || draft.pipelines.empty() || draft.messages.empty()) {
@@ -464,6 +478,9 @@ PlanBuildResult PlanBuilder::FreezeImpl(detail::PlanDraftData draft) {
 #endif
 #if defined(PAE_ENABLE_SCHEMA_V08_VARIABLE_COMPILER)
          && draft.schema_version != "0.8"
+#endif
+#if defined(PAE_ENABLE_SCHEMA_V09_STREAM_FRAMING)
+         && draft.schema_version != "0.9"
 #endif
          ) ||
         (conversion.raw_value_type != ValueType::UINT64 &&
@@ -520,19 +537,111 @@ PlanBuildResult PlanBuilder::FreezeImpl(detail::PlanDraftData draft) {
       }
     }
   }
-  if (!RequirementsEqual(draft.resource_requirements, actual_requirements)) {
-    return Reject(PlanBuildError::RESOURCE_REQUIREMENTS_MISMATCH);
-  }
-
   std::unordered_set<std::string> framing_ids;
   framing_ids.reserve(draft.framing_profiles.size());
   for (std::size_t framing_index = 0U; framing_index < draft.framing_profiles.size();
        ++framing_index) {
     const FramingPlan& framing = draft.framing_profiles[framing_index];
-    if (!IsStableId(framing.id) || framing.input_kind != InputKind::COMPLETE_RECORD ||
-        !framing_ids.emplace(framing.id).second) {
+    if (!IsStableId(framing.id) || !framing_ids.emplace(framing.id).second) {
       return Reject(PlanBuildError::INVALID_FRAMING_PLAN, framing_index);
     }
+#if defined(PAE_ENABLE_SCHEMA_V09_STREAM_FRAMING)
+    if (framing.sync_prefix_table.size() != framing.sync_bytes.size()) {
+      return Reject(PlanBuildError::INVALID_FRAMING_PLAN, framing_index);
+    }
+    std::size_t expected_prefix = 0U;
+    for (std::size_t index = 0U; index < framing.sync_bytes.size(); ++index) {
+      if (index != 0U) {
+        while (expected_prefix != 0U &&
+               framing.sync_bytes[index] != framing.sync_bytes[expected_prefix]) {
+          expected_prefix = framing.sync_prefix_table[expected_prefix - 1U];
+        }
+        if (framing.sync_bytes[index] == framing.sync_bytes[expected_prefix]) {
+          ++expected_prefix;
+        }
+      }
+      if (framing.sync_prefix_table[index] != expected_prefix || expected_prefix > index) {
+        return Reject(PlanBuildError::INVALID_FRAMING_PLAN, framing_index);
+      }
+    }
+    if (framing.input_kind == InputKind::COMPLETE_RECORD) {
+      if (framing.strategy != FramingStrategy::COMPLETE_RECORD ||
+          framing.frame_length_bytes != 0U || !framing.sync_bytes.empty() ||
+          framing.length_field_offset != 0U || framing.length_field_width != 0U ||
+          framing.length_field_byte_order != ByteOrder::NOT_APPLICABLE ||
+          framing.minimum_frame_length != 0U || framing.maximum_frame_length != 0U) {
+        return Reject(PlanBuildError::INVALID_FRAMING_PLAN, framing_index);
+      }
+      continue;
+    }
+    std::uint64_t max_frame = 0U;
+    if (draft.schema_version != "0.9" || framing.input_kind != InputKind::STREAM_CHUNK ||
+        framing.sync_bytes.size() > limits->max_sync_bytes ||
+        framing.sync_bytes.size() > kMaxStreamSyncBytesHardLimit) {
+      return Reject(PlanBuildError::INVALID_FRAMING_PLAN, framing_index);
+    }
+    if (framing.strategy == FramingStrategy::FIXED_LENGTH) {
+      if (framing.frame_length_bytes == 0U || !framing.sync_bytes.empty() ||
+          framing.length_field_offset != 0U || framing.length_field_width != 0U ||
+          framing.length_field_byte_order != ByteOrder::NOT_APPLICABLE ||
+          framing.minimum_frame_length != 0U || framing.maximum_frame_length != 0U) {
+        return Reject(PlanBuildError::INVALID_FRAMING_PLAN, framing_index);
+      }
+      max_frame = framing.frame_length_bytes;
+    } else if (framing.strategy == FramingStrategy::SYNC_FIXED_LENGTH) {
+      if (framing.frame_length_bytes == 0U || framing.sync_bytes.empty() ||
+          framing.sync_bytes.size() > framing.frame_length_bytes ||
+          framing.length_field_offset != 0U || framing.length_field_width != 0U ||
+          framing.length_field_byte_order != ByteOrder::NOT_APPLICABLE ||
+          framing.minimum_frame_length != 0U || framing.maximum_frame_length != 0U) {
+        return Reject(PlanBuildError::INVALID_FRAMING_PLAN, framing_index);
+      }
+      max_frame = framing.frame_length_bytes;
+    } else if (framing.strategy == FramingStrategy::SYNC_LENGTH_FIELD) {
+      const bool width_valid = framing.length_field_width == 1U ||
+                               framing.length_field_width == 2U || framing.length_field_width == 4U;
+      if (framing.frame_length_bytes != 0U || framing.sync_bytes.empty() || !width_valid ||
+          framing.minimum_frame_length == 0U ||
+          framing.minimum_frame_length > framing.maximum_frame_length ||
+          framing.length_field_offset >
+              (std::numeric_limits<std::uint64_t>::max)() - framing.length_field_width ||
+          framing.length_field_offset + framing.length_field_width > framing.minimum_frame_length ||
+          framing.length_field_offset < framing.sync_bytes.size() ||
+          (framing.length_field_width == 1U &&
+           framing.length_field_byte_order != ByteOrder::NOT_APPLICABLE) ||
+          (framing.length_field_width != 1U && framing.length_field_byte_order != ByteOrder::BIG &&
+           framing.length_field_byte_order != ByteOrder::LITTLE)) {
+        return Reject(PlanBuildError::INVALID_FRAMING_PLAN, framing_index);
+      }
+      const std::uint64_t representable =
+          framing.length_field_width == 1U
+              ? 0xFFU
+              : (framing.length_field_width == 2U ? 0xFFFFU : 0xFFFFFFFFULL);
+      if (framing.maximum_frame_length > representable) {
+        return Reject(PlanBuildError::INVALID_FRAMING_PLAN, framing_index);
+      }
+      max_frame = framing.maximum_frame_length;
+    } else {
+      return Reject(PlanBuildError::INVALID_FRAMING_PLAN, framing_index);
+    }
+    if (max_frame > limits->max_frame_bytes || max_frame > kMaxStreamFrameBytesHardLimit ||
+        max_frame > (std::numeric_limits<std::size_t>::max)()) {
+      return Reject(PlanBuildError::RESOURCE_LIMIT_EXCEEDED, framing_index);
+    }
+    actual_requirements.max_stream_frame_bytes =
+        (std::max)(actual_requirements.max_stream_frame_bytes, static_cast<std::size_t>(max_frame));
+    actual_requirements.max_sync_bytes =
+        (std::max)(actual_requirements.max_sync_bytes, framing.sync_bytes.size());
+    actual_requirements.max_framing_buffer_bytes = actual_requirements.max_stream_frame_bytes;
+#else
+    if (framing.input_kind != InputKind::COMPLETE_RECORD) {
+      return Reject(PlanBuildError::INVALID_FRAMING_PLAN, framing_index);
+    }
+#endif
+  }
+
+  if (!RequirementsEqual(draft.resource_requirements, actual_requirements)) {
+    return Reject(PlanBuildError::RESOURCE_REQUIREMENTS_MISMATCH);
   }
 
   ExecutionResourceLayout execution_resource_layout;
@@ -584,7 +693,12 @@ PlanBuildResult PlanBuilder::FreezeImpl(detail::PlanDraftData draft) {
                         kInvalidPlanBuildIndex, message_index);
         }
       }
-      if (draft.schema_version != "0.8" || !message.computed_length.has_value() ||
+      if ((draft.schema_version != "0.8"
+#if defined(PAE_ENABLE_SCHEMA_V09_STREAM_FRAMING)
+           && draft.schema_version != "0.9"
+#endif
+           ) ||
+          !message.computed_length.has_value() ||
           bounded.payload_field_index >= message.fields.size() ||
           !ToSize(bounded.header_length, header) || header == 0U ||
           !ToSize(bounded.min_payload_length, minimum_payload) ||
@@ -604,7 +718,11 @@ PlanBuildResult PlanBuilder::FreezeImpl(detail::PlanDraftData draft) {
                       kInvalidPlanBuildIndex, message_index);
       }
       execution.bounded_payload = bounded;
-    } else if (draft.schema_version == "0.8") {
+    } else if (draft.schema_version == "0.8"
+#if defined(PAE_ENABLE_SCHEMA_V09_STREAM_FRAMING)
+               || draft.schema_version == "0.9"
+#endif
+    ) {
       // Schema 0.8 also permits fixed-layout messages.
     }
 #endif
@@ -627,6 +745,9 @@ PlanBuildResult PlanBuilder::FreezeImpl(detail::PlanDraftData draft) {
 #endif
 #if defined(PAE_ENABLE_SCHEMA_V08_VARIABLE_COMPILER)
                               || draft.schema_version == "0.8"
+#endif
+#if defined(PAE_ENABLE_SCHEMA_V09_STREAM_FRAMING)
+                              || draft.schema_version == "0.9"
 #endif
                               ) &&
                              (integrity.crc_width == 16U || integrity.crc_width == 32U) &&
@@ -651,6 +772,9 @@ PlanBuildResult PlanBuilder::FreezeImpl(detail::PlanDraftData draft) {
 #if defined(PAE_ENABLE_SCHEMA_V08_VARIABLE_COMPILER)
            && draft.schema_version != "0.8"
 #endif
+#if defined(PAE_ENABLE_SCHEMA_V09_STREAM_FRAMING)
+           && draft.schema_version != "0.9"
+#endif
            ) ||
 #if defined(PAE_ENABLE_SCHEMA_V06_CRC_COMPILER)
           (integrity.algorithm != IntegrityAlgorithm::SUM8 && !crc_valid) ||
@@ -661,6 +785,9 @@ PlanBuildResult PlanBuilder::FreezeImpl(detail::PlanDraftData draft) {
 #endif
 #if defined(PAE_ENABLE_SCHEMA_V08_VARIABLE_COMPILER)
             || draft.schema_version == "0.8"
+#endif
+#if defined(PAE_ENABLE_SCHEMA_V09_STREAM_FRAMING)
+            || draft.schema_version == "0.9"
 #endif
             ) &&
            (integrity.crc_width != 0U ||
@@ -748,6 +875,9 @@ PlanBuildResult PlanBuilder::FreezeImpl(detail::PlanDraftData draft) {
       if ((draft.schema_version != "0.7"
 #if defined(PAE_ENABLE_SCHEMA_V08_VARIABLE_COMPILER)
            && draft.schema_version != "0.8"
+#endif
+#if defined(PAE_ENABLE_SCHEMA_V09_STREAM_FRAMING)
+           && draft.schema_version != "0.9"
 #endif
            ) ||
           computed.field_index >= message.fields.size() ||
@@ -897,6 +1027,9 @@ PlanBuildResult PlanBuilder::FreezeImpl(detail::PlanDraftData draft) {
 #if defined(PAE_ENABLE_SCHEMA_V08_VARIABLE_COMPILER)
                 || draft.schema_version == "0.8"
 #endif
+#if defined(PAE_ENABLE_SCHEMA_V09_STREAM_FRAMING)
+                || draft.schema_version == "0.9"
+#endif
                 ) &&
                field.encode_source == EncodeSource::COMPUTED && !field.constant_value.has_value() &&
                message.computed_length.has_value() &&
@@ -918,6 +1051,9 @@ PlanBuildResult PlanBuilder::FreezeImpl(detail::PlanDraftData draft) {
 #endif
 #if defined(PAE_ENABLE_SCHEMA_V08_VARIABLE_COMPILER)
                                 || draft.schema_version == "0.8"
+#endif
+#if defined(PAE_ENABLE_SCHEMA_V09_STREAM_FRAMING)
+                                || draft.schema_version == "0.9"
 #endif
                                 ) &&
                                field.value_type == ValueType::INT64 &&
@@ -974,6 +1110,9 @@ PlanBuildResult PlanBuilder::FreezeImpl(detail::PlanDraftData draft) {
 #endif
 #if defined(PAE_ENABLE_SCHEMA_V08_VARIABLE_COMPILER)
             && draft.schema_version != "0.8"
+#endif
+#if defined(PAE_ENABLE_SCHEMA_V09_STREAM_FRAMING)
+            && draft.schema_version != "0.9"
 #endif
             ) &&
            has_conversion) ||
@@ -1342,11 +1481,10 @@ PlanBuildResult PlanBuilder::FreezeImpl(detail::PlanDraftData draft) {
     const PipelinePlan& pipeline = draft.pipelines[pipeline_index];
     if (!IsStableId(pipeline.id) || !IsStableId(pipeline.direction_id) ||
         !pipeline_ids.emplace(pipeline.id).second || pipeline.message_indices.empty() ||
-        pipeline.framing_profile_index >= draft.framing_profiles.size() ||
-        draft.framing_profiles[pipeline.framing_profile_index].input_kind !=
-            InputKind::COMPLETE_RECORD) {
+        pipeline.framing_profile_index >= draft.framing_profiles.size()) {
       return Reject(PlanBuildError::INVALID_PIPELINE_PLAN, kInvalidPlanBuildIndex, pipeline_index);
     }
+    const FramingPlan& framing = draft.framing_profiles[pipeline.framing_profile_index];
     detail::PreparedPipelineExecutionPlan execution;
     execution.framing_profile_index = pipeline.framing_profile_index;
     execution.allowed_message_words.assign(allowed_word_count, 0U);
@@ -1360,6 +1498,59 @@ PlanBuildResult PlanBuilder::FreezeImpl(detail::PlanDraftData draft) {
         return Reject(PlanBuildError::INVALID_PIPELINE_PLAN, kInvalidPlanBuildIndex, pipeline_index,
                       message_index);
       }
+#if defined(PAE_ENABLE_SCHEMA_V09_STREAM_FRAMING)
+      if (framing.input_kind == InputKind::STREAM_CHUNK) {
+        const MessagePlan& message = draft.messages[message_index];
+        const auto& prepared = message_execution_plans[message_index];
+        const std::size_t minimum =
+#if defined(PAE_ENABLE_SCHEMA_V08_VARIABLE_COMPILER)
+            prepared.bounded_payload.has_value()
+                ? static_cast<std::size_t>(prepared.bounded_payload->min_frame_length)
+                :
+#endif
+                prepared.frame_size;
+        const std::size_t maximum =
+#if defined(PAE_ENABLE_SCHEMA_V08_VARIABLE_COMPILER)
+            prepared.bounded_payload.has_value()
+                ? static_cast<std::size_t>(prepared.bounded_payload->max_frame_length)
+                :
+#endif
+                prepared.frame_size;
+        if ((framing.strategy == FramingStrategy::FIXED_LENGTH ||
+             framing.strategy == FramingStrategy::SYNC_FIXED_LENGTH) &&
+            (minimum != framing.frame_length_bytes || maximum != framing.frame_length_bytes)) {
+          return Reject(PlanBuildError::INVALID_PIPELINE_PLAN, kInvalidPlanBuildIndex,
+                        pipeline_index, message_index);
+        }
+        if (framing.strategy != FramingStrategy::FIXED_LENGTH) {
+          for (std::size_t offset = 0U; offset < framing.sync_bytes.size(); ++offset) {
+            const auto found = std::find_if(
+                prepared.fixed_bytes.begin(), prepared.fixed_bytes.end(),
+                [offset](const FixedByteExecutionPlan& item) { return item.offset == offset; });
+            if (found == prepared.fixed_bytes.end() || found->value != framing.sync_bytes[offset]) {
+              return Reject(PlanBuildError::INVALID_PIPELINE_PLAN, kInvalidPlanBuildIndex,
+                            pipeline_index, message_index);
+            }
+          }
+        }
+        if (framing.strategy == FramingStrategy::SYNC_LENGTH_FIELD) {
+          if (minimum < framing.minimum_frame_length || maximum > framing.maximum_frame_length ||
+              !message.computed_length.has_value() ||
+              message.computed_length->scope != ComputedLengthScope::FRAME ||
+              message.computed_length->storage_offset != framing.length_field_offset ||
+              message.computed_length->storage_width != framing.length_field_width ||
+              message.computed_length->byte_order != framing.length_field_byte_order) {
+            return Reject(PlanBuildError::INVALID_PIPELINE_PLAN, kInvalidPlanBuildIndex,
+                          pipeline_index, message_index);
+          }
+        }
+      }
+#else
+      if (framing.input_kind != InputKind::COMPLETE_RECORD) {
+        return Reject(PlanBuildError::INVALID_PIPELINE_PLAN, kInvalidPlanBuildIndex, pipeline_index,
+                      message_index);
+      }
+#endif
       for (const std::size_t earlier_index : seen_message_indices) {
         if (earlier_index != message_index &&
             FixedMatchersCanIntersect(message_execution_plans[earlier_index],
@@ -1436,8 +1627,25 @@ PlanBuildResult PlanBuilder::FreezeImpl(detail::PlanDraftData draft) {
   if (!FreezeObjectArray<FrozenFramingPlan>(
           arena, draft.framing_profiles.size(), PlanMemoryCategory::METADATA_CONTAINER,
           [&arena, &draft](std::size_t index, FrozenFramingPlan& output) {
-            output.input_kind = draft.framing_profiles[index].input_kind;
-            return FreezeString(arena, draft.framing_profiles[index].id, output.id);
+            const FramingPlan& source = draft.framing_profiles[index];
+            output.input_kind = source.input_kind;
+#if defined(PAE_ENABLE_SCHEMA_V09_STREAM_FRAMING)
+            output.strategy = source.strategy;
+            output.frame_length_bytes = source.frame_length_bytes;
+            output.length_field_offset = source.length_field_offset;
+            output.length_field_width = source.length_field_width;
+            output.length_field_byte_order = source.length_field_byte_order;
+            output.minimum_frame_length = source.minimum_frame_length;
+            output.maximum_frame_length = source.maximum_frame_length;
+#endif
+            return FreezeString(arena, source.id, output.id)
+#if defined(PAE_ENABLE_SCHEMA_V09_STREAM_FRAMING)
+                   && FreezePodArray(arena, source.sync_bytes, PlanMemoryCategory::EXTENSION,
+                                     output.sync_bytes) &&
+                   FreezePodArray(arena, source.sync_prefix_table, PlanMemoryCategory::EXTENSION,
+                                  output.sync_prefix_table)
+#endif
+                ;
           },
           frozen_framings)) {
     return Reject(PlanBuildError::ALLOCATION_FAILED);

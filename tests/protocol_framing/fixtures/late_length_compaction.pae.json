@@ -1,0 +1,75 @@
+{
+  "schema_version": "0.9",
+  "protocol_id": "synthetic_late_length_compaction",
+  "protocol_version": "0.1-synthetic",
+  "display_name": "Synthetic late-length compaction",
+  "description": "Adversarial recovery vector with a late length field and overlapping compaction.",
+  "source_ref": "SYNTHETIC_FROM_SCRATCH:late_length_compaction",
+  "resource_profile": "desktop",
+  "framing_profiles": [
+    {
+      "id": "late_length",
+      "display_name": "Late length field",
+      "description": "Two-byte synchronization header and a two-byte length field at offset eight.",
+      "source_ref": "SYNTHETIC_FROM_SCRATCH:late_length_compaction#framing",
+      "input_kind": "stream_chunk",
+      "strategy": "sync_length_field",
+      "sync_bytes": "C3 3C",
+      "length_field": {"byte_offset": 8, "byte_width": 2, "byte_order": "big_endian"},
+      "minimum_frame_length": 12,
+      "maximum_frame_length": 16
+    }
+  ],
+  "pipelines": [
+    {
+      "id": "rx",
+      "display_name": "Synthetic receive",
+      "description": "Single synthetic stream pipeline.",
+      "source_ref": "SYNTHETIC_FROM_SCRATCH:late_length_compaction#pipeline",
+      "direction_id": "rx",
+      "input_framing_profile_id": "late_length",
+      "message_ids": ["record"]
+    }
+  ],
+  "messages": [
+    {
+      "id": "record",
+      "display_name": "Synthetic record",
+      "description": "Twelve-byte record used by the bounded recovery contract test.",
+      "source_ref": "SYNTHETIC_FROM_SCRATCH:late_length_compaction#message",
+      "direction_id": "rx",
+      "frame_length_bytes": 12,
+      "matcher": {"all": [{"kind": "fixed_bytes", "byte_offset": 0, "bytes": "C3 3C"}]},
+      "fields": [
+        {
+          "id": "body",
+          "display_name": "Body",
+          "description": "Six-byte body.",
+          "source_ref": "SYNTHETIC_FROM_SCRATCH:late_length_compaction#body",
+          "value_type": "UINT64",
+          "wire": {"codec": "unsigned_integer", "byte_offset": 2, "byte_width": 6, "byte_order": "big_endian"},
+          "encode": {"source": "input"}
+        },
+        {
+          "id": "record_length",
+          "display_name": "Record length",
+          "description": "Computed total record length.",
+          "source_ref": "SYNTHETIC_FROM_SCRATCH:late_length_compaction#length",
+          "value_type": "UINT64",
+          "wire": {"codec": "unsigned_integer", "byte_offset": 8, "byte_width": 2, "byte_order": "big_endian"},
+          "encode": {"source": "computed"},
+          "computed": {"kind": "length", "scope": "frame"}
+        },
+        {
+          "id": "tail",
+          "display_name": "Tail",
+          "description": "Two-byte tail.",
+          "source_ref": "SYNTHETIC_FROM_SCRATCH:late_length_compaction#tail",
+          "value_type": "UINT64",
+          "wire": {"codec": "unsigned_integer", "byte_offset": 10, "byte_width": 2, "byte_order": "big_endian"},
+          "encode": {"source": "input"}
+        }
+      ]
+    }
+  ]
+}

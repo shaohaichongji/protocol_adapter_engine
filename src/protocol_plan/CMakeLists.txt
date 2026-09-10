@@ -41,6 +41,9 @@ endif()
 if(PAE_ENABLE_SCHEMA_V08_VARIABLE_COMPILER)
     target_compile_definitions(pae_protocol_plan PUBLIC PAE_ENABLE_SCHEMA_V08_VARIABLE_COMPILER=1)
 endif()
+if(PAE_ENABLE_SCHEMA_V09_STREAM_FRAMING)
+    target_compile_definitions(pae_protocol_plan PUBLIC PAE_ENABLE_SCHEMA_V09_STREAM_FRAMING=1)
+endif()
 
 set_target_properties(
     pae_protocol_plan

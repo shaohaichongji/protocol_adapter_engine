@@ -57,6 +57,21 @@ option(
     OFF
 )
 option(
+    PAE_ENABLE_SCHEMA_V09_STREAM_FRAMING
+    "Enable the internal Schema 0.9 bounded stream Framing compiler and Plan slice"
+    OFF
+)
+option(
+    PAE_BUILD_STREAM_FRAMING_SLICE
+    "Build the internal bounded stream Framing execution slice"
+    OFF
+)
+option(
+    PAE_BUILD_STREAM_FRAMING_EXAMPLE
+    "Build the bounded stream Framing host-push example"
+    OFF
+)
+option(
     PAE_ENABLE_PROTOCOL_LAB_SCHEMA_V05
     "Enable the dedicated offline Protocol Lab Schema 0.5 C3 command chain"
     OFF
@@ -203,6 +218,24 @@ if(PAE_ENABLE_SCHEMA_V08_VARIABLE_COMPILER AND
         "PAE_ENABLE_SCHEMA_V08_VARIABLE_COMPILER requires the Loader, Core, and explicit Schema 0.7 length compiler slice."
     )
 endif()
+if(PAE_ENABLE_SCHEMA_V09_STREAM_FRAMING AND
+   (NOT PAE_ENABLE_SCHEMA_V08_VARIABLE_COMPILER OR
+    NOT PAE_BUILD_LOADER_SCHEMA_IR_SLICE OR
+    NOT PAE_BUILD_COMPLETE_RECORD_CODEC_SLICE))
+    message(
+        FATAL_ERROR
+        "PAE_ENABLE_SCHEMA_V09_STREAM_FRAMING requires the Loader, Core, and explicit Schema 0.8 compiler slice."
+    )
+endif()
+if(PAE_BUILD_STREAM_FRAMING_SLICE AND NOT PAE_ENABLE_SCHEMA_V09_STREAM_FRAMING)
+    message(
+        FATAL_ERROR
+        "PAE_BUILD_STREAM_FRAMING_SLICE requires PAE_ENABLE_SCHEMA_V09_STREAM_FRAMING=ON."
+    )
+endif()
+if(PAE_BUILD_STREAM_FRAMING_EXAMPLE AND NOT PAE_BUILD_STREAM_FRAMING_SLICE)
+    message(FATAL_ERROR "PAE_BUILD_STREAM_FRAMING_EXAMPLE requires the Framing slice.")
+endif()
 
 if(PROJECT_IS_TOP_LEVEL)
     include(CTest)
@@ -309,7 +342,8 @@ if(PAE_BUILD_LOADER_SCHEMA_IR_SLICE OR
    PAE_BUILD_COMPLETE_RECORD_CODEC_SLICE OR
    PAE_BUILD_PROTOCOL_LAB OR
    PAE_BUILD_PROTOCOL_LAB_UI OR
-   PAE_BUILD_BUSINESS_EMBEDDING_EXAMPLE)
+   PAE_BUILD_BUSINESS_EMBEDDING_EXAMPLE OR
+   PAE_BUILD_STREAM_FRAMING_SLICE)
     add_subdirectory(src/protocol_plan)
 endif()
 
@@ -317,8 +351,13 @@ if(PAE_BUILD_LOADER_SCHEMA_IR_SLICE OR
    (PAE_BUILD_COMPLETE_RECORD_CODEC_SLICE AND PAE_BUILD_TESTING) OR
    PAE_BUILD_PROTOCOL_LAB OR
    PAE_BUILD_PROTOCOL_LAB_UI OR
-   PAE_BUILD_BUSINESS_EMBEDDING_EXAMPLE)
+   PAE_BUILD_BUSINESS_EMBEDDING_EXAMPLE OR
+   PAE_BUILD_STREAM_FRAMING_SLICE)
     add_subdirectory(src/config_compiler)
+endif()
+
+if(PAE_BUILD_STREAM_FRAMING_SLICE)
+    add_subdirectory(src/protocol_framing)
 endif()
 
 if((PAE_BUILD_LOADER_SCHEMA_IR_SLICE OR
@@ -333,6 +372,14 @@ if(PAE_BUILD_COMPLETE_RECORD_CODEC_SLICE OR
    PAE_BUILD_PROTOCOL_LAB_UI OR
    PAE_BUILD_BUSINESS_EMBEDDING_EXAMPLE)
     add_subdirectory(src/protocol_core)
+endif()
+
+if(PAE_BUILD_STREAM_FRAMING_SLICE AND PAE_BUILD_TESTING)
+    add_subdirectory(tests/protocol_framing)
+endif()
+
+if(PAE_BUILD_STREAM_FRAMING_EXAMPLE)
+    add_subdirectory(examples/stream_framing)
 endif()
 
 if(PAE_BUILD_BUSINESS_EMBEDDING_EXAMPLE)

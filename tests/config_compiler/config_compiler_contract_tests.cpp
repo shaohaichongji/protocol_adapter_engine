@@ -37,6 +37,7 @@ using pae::config_compiler::MakeDeterministicPlanSnapshot;
 #if defined(PAE_ENABLE_SCHEMA_V05_COMPILER)
 using pae::config_compiler::LinearConversionIr;
 #endif
+
 using pae::config_compiler::MatcherClauseIr;
 using pae::config_compiler::MatcherKind;
 using pae::config_compiler::MessageIr;
@@ -54,6 +55,9 @@ using pae::protocol_plan::BitNumbering;
 using pae::protocol_plan::BudgetedPlanDraft;
 using pae::protocol_plan::ByteOrder;
 using pae::protocol_plan::EncodeSource;
+#if defined(PAE_ENABLE_SCHEMA_V09_STREAM_FRAMING)
+using pae::protocol_plan::FramingStrategy;
+#endif
 using pae::protocol_plan::InputKind;
 using pae::protocol_plan::PlanBuildDiagnostic;
 using pae::protocol_plan::PlanBuilder;
@@ -211,6 +215,9 @@ class TestRunner final {
 #if defined(PAE_ENABLE_SCHEMA_V08_VARIABLE_COMPILER)
                                                     + 11U
 #endif
+#if defined(PAE_ENABLE_SCHEMA_V09_STREAM_FRAMING)
+                                                    + 13U
+#endif
       ;
 #else
   static constexpr std::size_t kExpectedCaseCount = 84U;
@@ -325,9 +332,10 @@ SchemaIr MakeCapabilityContractSchema() {
   return schema;
 }
 
-std::unique_ptr<BudgetedPlanDraft> AssembleCapabilityDraft(
-    std::optional<std::size_t> plan_memory_limit, CompileDiagnostic& diagnostic) {
-  auto validated = DomainValidator::Validate(MakeCapabilityContractSchema());
+std::unique_ptr<BudgetedPlanDraft> AssembleSchemaDraft(SchemaIr schema,
+                                                       std::optional<std::size_t> plan_memory_limit,
+                                                       CompileDiagnostic& diagnostic) {
+  auto validated = DomainValidator::Validate(std::move(schema));
   if (!validated.Succeeded()) {
     diagnostic = *validated.Diagnostic();
     return nullptr;
@@ -346,6 +354,11 @@ std::unique_ptr<BudgetedPlanDraft> AssembleCapabilityDraft(
     return nullptr;
   }
   return std::make_unique<BudgetedPlanDraft>(std::move(assembled).TakeCapability());
+}
+
+std::unique_ptr<BudgetedPlanDraft> AssembleCapabilityDraft(
+    std::optional<std::size_t> plan_memory_limit, CompileDiagnostic& diagnostic) {
+  return AssembleSchemaDraft(MakeCapabilityContractSchema(), plan_memory_limit, diagnostic);
 }
 
 bool MemoryReportIsAccounted(const PlanMemoryReport& report) noexcept {
@@ -697,6 +710,132 @@ void RunPlanBuilderVariableDefenseCases(TestRunner& runner) {
          pae::test_support::VariableDraftMutation::TRAILER_WITHOUT_INTEGRITY);
   reject("variable_builder_crc16_trailer_width_defense",
          pae::test_support::VariableDraftMutation::CRC16_TRAILER_MISMATCH);
+}
+#endif
+
+#if defined(PAE_ENABLE_SCHEMA_V09_STREAM_FRAMING)
+SchemaIr MakeStreamBuilderDefenseSchema(FramingStrategy strategy) {
+  SchemaIr schema = MakeCapabilityContractSchema();
+  schema.schema_version = "0.9";
+  auto& framing = schema.framing_profiles[0];
+  framing.input_kind = InputKind::STREAM_CHUNK;
+  framing.strategy = strategy;
+  framing.frame_length_bytes = 2U;
+  if (strategy == FramingStrategy::SYNC_FIXED_LENGTH) {
+    framing.sync_bytes.push_back(0xA5U);
+  }
+  return schema;
+}
+
+void RunPlanBuilderStreamDefenseCases(TestRunner& runner) {
+  const auto reject = [&runner](std::string_view case_id,
+                                pae::test_support::StreamDraftMutation mutation,
+                                PlanBuildError expected) {
+    const auto result = PlanBuilder::Freeze(pae::test_support::MakeCorruptedStreamDraft(mutation));
+    if (result.Succeeded() || result.Diagnostic() == nullptr ||
+        result.Diagnostic()->code != expected) {
+      runner.Fail(case_id, "PlanBuilder accepted a corrupted stream framing descriptor");
+      return;
+    }
+    runner.Pass(case_id);
+  };
+  reject("stream_builder_strategy_union_defense",
+         pae::test_support::StreamDraftMutation::INVALID_STRATEGY_UNION,
+         PlanBuildError::INVALID_FRAMING_PLAN);
+  reject("stream_builder_prefix_table_defense",
+         pae::test_support::StreamDraftMutation::CORRUPTED_PREFIX_TABLE,
+         PlanBuildError::INVALID_FRAMING_PLAN);
+  reject("stream_builder_message_length_binding_defense",
+         pae::test_support::StreamDraftMutation::MESSAGE_LENGTH_MISMATCH,
+         PlanBuildError::INVALID_PIPELINE_PLAN);
+
+  const auto expect_success = [&runner](std::string_view case_id, SchemaIr schema,
+                                        std::string_view expected_version,
+                                        InputKind expected_input_kind) {
+    CompileDiagnostic diagnostic;
+    auto draft = AssembleSchemaDraft(std::move(schema), std::nullopt, diagnostic);
+    if (!draft) {
+      runner.Fail(case_id, "failed to assemble a valid budgeted control Draft");
+      return;
+    }
+    const auto result = PlanBuilder::Freeze(std::move(*draft));
+    if (!result.Succeeded() || result.Plan() == nullptr ||
+        result.Plan()->SchemaVersion() != expected_version ||
+        result.Plan()->FramingProfiles()[0].input_kind != expected_input_kind) {
+      runner.Fail(case_id, "PlanBuilder rejected a valid framing-version control Draft");
+      return;
+    }
+    runner.Pass(case_id);
+  };
+  expect_success("stream_builder_v09_fixed_control",
+                 MakeStreamBuilderDefenseSchema(FramingStrategy::FIXED_LENGTH), "0.9",
+                 InputKind::STREAM_CHUNK);
+  expect_success("stream_builder_v09_sync_fixed_control",
+                 MakeStreamBuilderDefenseSchema(FramingStrategy::SYNC_FIXED_LENGTH), "0.9",
+                 InputKind::STREAM_CHUNK);
+  SchemaIr old_complete_control = MakeCapabilityContractSchema();
+  old_complete_control.schema_version = "0.8";
+  expect_success("stream_builder_v08_complete_record_control", std::move(old_complete_control),
+                 "0.8", InputKind::COMPLETE_RECORD);
+
+  const auto expect_budgeted_rejection = [&runner](std::string_view case_id, SchemaIr schema,
+                                                   auto mutate) {
+    CompileDiagnostic diagnostic;
+    auto draft = AssembleSchemaDraft(std::move(schema), std::nullopt, diagnostic);
+    if (!draft) {
+      runner.Fail(case_id, "failed to assemble the valid budgeted Draft before mutation");
+      return;
+    }
+    const auto result = PlanBuilder::Freeze(mutate(std::move(*draft)));
+    if (result.Succeeded() || result.Diagnostic() == nullptr ||
+        result.Diagnostic()->code != PlanBuildError::INVALID_FRAMING_PLAN ||
+        result.Diagnostic()->framing_index != 0U) {
+      runner.Fail(case_id, "PlanBuilder accepted a framing version or union residue");
+      return;
+    }
+    runner.Pass(case_id);
+  };
+  expect_budgeted_rejection(
+      "stream_builder_v08_stream_version_defense",
+      MakeStreamBuilderDefenseSchema(FramingStrategy::FIXED_LENGTH), [](BudgetedPlanDraft draft) {
+        return pae::test_support::SetDraftSchemaVersion(std::move(draft), "0.8");
+      });
+  expect_budgeted_rejection(
+      "stream_builder_fixed_length_offset_residue_defense",
+      MakeStreamBuilderDefenseSchema(FramingStrategy::FIXED_LENGTH), [](BudgetedPlanDraft draft) {
+        return pae::test_support::SetFramingLengthOffset(std::move(draft), 1U);
+      });
+  expect_budgeted_rejection(
+      "stream_builder_fixed_length_order_residue_defense",
+      MakeStreamBuilderDefenseSchema(FramingStrategy::FIXED_LENGTH), [](BudgetedPlanDraft draft) {
+        return pae::test_support::SetFramingLengthByteOrder(std::move(draft), ByteOrder::BIG);
+      });
+  expect_budgeted_rejection("stream_builder_sync_fixed_offset_residue_defense",
+                            MakeStreamBuilderDefenseSchema(FramingStrategy::SYNC_FIXED_LENGTH),
+                            [](BudgetedPlanDraft draft) {
+                              return pae::test_support::SetFramingLengthOffset(std::move(draft),
+                                                                               1U);
+                            });
+  expect_budgeted_rejection("stream_builder_sync_fixed_order_residue_defense",
+                            MakeStreamBuilderDefenseSchema(FramingStrategy::SYNC_FIXED_LENGTH),
+                            [](BudgetedPlanDraft draft) {
+                              return pae::test_support::SetFramingLengthByteOrder(std::move(draft),
+                                                                                  ByteOrder::BIG);
+                            });
+  SchemaIr complete_offset = MakeCapabilityContractSchema();
+  complete_offset.schema_version = "0.8";
+  expect_budgeted_rejection("stream_builder_complete_record_offset_residue_defense",
+                            std::move(complete_offset), [](BudgetedPlanDraft draft) {
+                              return pae::test_support::SetFramingLengthOffset(std::move(draft),
+                                                                               1U);
+                            });
+  SchemaIr complete_order = MakeCapabilityContractSchema();
+  complete_order.schema_version = "0.8";
+  expect_budgeted_rejection("stream_builder_complete_record_order_residue_defense",
+                            std::move(complete_order), [](BudgetedPlanDraft draft) {
+                              return pae::test_support::SetFramingLengthByteOrder(std::move(draft),
+                                                                                  ByteOrder::BIG);
+                            });
 }
 #endif
 
@@ -1544,6 +1683,9 @@ int main(int argc, char** argv) {
 #endif
 #if defined(PAE_ENABLE_SCHEMA_V08_VARIABLE_COMPILER)
   RunPlanBuilderVariableDefenseCases(runner);
+#endif
+#if defined(PAE_ENABLE_SCHEMA_V09_STREAM_FRAMING)
+  RunPlanBuilderStreamDefenseCases(runner);
 #endif
   RunPlanBuilderInt64DefenseCase(runner);
   RunPlanMemoryContractCases(runner);

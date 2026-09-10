@@ -440,11 +440,29 @@ Result 0.9允许空BYTES的raw/logical同为空串且enum_known为false，旧Res
 旧格式及指纹不重写，跨代Run Compare失败关闭。公开合成证据见
 [`windows-msvc-2026-bounded-variable-record-slice.md`](../docs/windows-msvc-2026-bounded-variable-record-slice.md)。
 
-## 12. 当前不覆盖的完整 V0.1 能力
+## 12. Schema 0.9有界流式切帧内部切片
+
+Schema 0.9在既有完整记录Codec之前增加内部`protocol_framing`层，仅接受
+`input_kind=stream_chunk`的`fixed_length`、`sync_fixed_length`和`sync_length_field`三种严格联合。
+长度字段为1/2/4字节无符号总帧长度；1字节省略`byte_order`，2/4字节必须显式指定大小端。
+同步头锚定帧偏移0，Compiler与Builder共同复核Pipeline、Message、Matcher、长度字段和同步搜索表。
+
+每逻辑流使用独立`StreamFramingWorkspace`。Workspace按所绑定Pipeline的最大帧一次性分配缓存，
+创建结果精确报告对象本体加缓存容量；Plan资源报告另以`max_framing_buffer_bytes`明确表示最大可变
+缓存，不冒充完整对象大小。首次及后续push不分配，submit、回调数、同步头、单流内存和工作单位
+均在冻结Profile及Hard Limit内失败关闭。`bytes_consumed`只表示本次输入中已处理或已复制的前缀；
+sink返回STOP后未消费后缀仍归宿主，工作/回调预算留下的内部状态可由empty submit继续。
+
+Framer只交付完整候选帧，随后宿主同步调用既有`DecodeCompleteRecord`。下游UNKNOWN、AMBIGUOUS、
+长度、完整性或字段错误不触发Framer回扫。Protocol Lab不执行Schema 0.9，也不新增Result/Record/
+Event格式；它在配置成功编译后、输入/Codec/网络/证据动作前以既有配置编译失败类别统一拒绝。
+公开实现及Windows离线证据见`docs/bounded-stream-framing-contract.md`和
+`docs/windows-msvc-2026-bounded-stream-framing-slice.md`。
+
+## 13. 当前不覆盖的完整 V0.1 能力
 
 完成本切片不能宣称完成完整Schema V0.1。至少仍缺少：
 
-- STREAM_CHUNK及`fixed_length`、`sync_fixed_length`、`sync_length_field`；
 - REAL64、STRING/ASCII和Packed BCD；有符号位字段仍未实现；
 - 比例/偏置的Values/Lab证据、raw/value constraints及稳定公共接口；
 - `default`及长度以外的通用`computed`作者格式；
@@ -453,7 +471,7 @@ Result 0.9允许空BYTES的raw/logical同为空串且enum_known为false，旧Res
 - 稳定公共API、C ABI和字符串键值适配层；
 - 三个PoC（Proof of Concept，概念验证）的正式协议独立Golden Vector；当前只有人工实验协议的两条Synthetic引擎向量。
 
-## 13. 验证边界
+## 14. 验证边界
 
 截至2026-09-02，Loader/Compiler与Frozen Execution Plan内部切片已有以下执行证据：
 
@@ -471,10 +489,11 @@ Result 0.9允许空BYTES的raw/logical同为空串且enum_known为false，旧Res
 - Linux、目标板、硬件或现场行为；
 - 人工样例与任何生产协议、真实报文或设备行为之间存在等价关系。
 
-## 14. 修订记录
+## 15. 修订记录
 
 | 文档版本 | 日期 | 说明 |
 | --- | --- | --- |
+| 0.1.16 | 2026-09-10 | 同步Schema 0.9有界流式切帧、三策略、精确消费/背压、Plan与Workspace资源边界、Lab早拒绝及Windows离线验证边界 |
 | 0.1.15 | 2026-09-09 | 收口Schema 0.8空BYTES：增加仅新代可用的Values 0.5，Result 0.9 Reader/Writer/指纹统一接受空配对，旧代不变 |
 | 0.1.14 | 2026-09-09 | 同步Schema 0.8有界变长完整记录、实际尺寸执行、动态完整性、Lab 0.9/Record 0.10及Windows离线边界 |
 | 0.1.13 | 2026-09-09 | 同步Schema 0.7固定完整记录长度字段、Builder重算、Core执行顺序、Lab 0.8/Record 0.9及Windows离线边界 |

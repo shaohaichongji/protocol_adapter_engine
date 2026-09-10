@@ -1,9 +1,9 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "urn:pae:schema:protocol-package:0.8:bounded-variable-slice",
-  "title": "PAE ProtocolPackage V0.1-V0.8 Bounded Variable Record Slice",
-  "description": "Schema 0.8在既有能力上增加有界单BYTES载荷完整记录。",
-  "x-pae-status": "BOUNDED VARIABLE COMPLETE RECORD MINIMAL SLICE",
+  "$id": "urn:pae:schema:protocol-package:0.9:bounded-stream-framing-slice",
+  "title": "PAE ProtocolPackage V0.1-V0.9 Bounded Stream Framing Slice",
+  "description": "Schema 0.9在既有完整记录能力上增加有界流式切帧。",
+  "x-pae-status": "BOUNDED STREAM FRAMING MINIMAL SLICE",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -19,7 +19,7 @@
   ],
   "properties": {
     "schema_version": {
-      "enum": ["0.1", "0.2", "0.3", "0.4", "0.5", "0.6", "0.7", "0.8"]
+      "enum": ["0.1", "0.2", "0.3", "0.4", "0.5", "0.6", "0.7", "0.8", "0.9"]
     },
     "protocol_id": {
       "$ref": "#/$defs/stable_id"
@@ -47,9 +47,7 @@
     "framing_profiles": {
       "type": "array",
       "minItems": 1,
-      "items": {
-        "$ref": "#/$defs/framing_profile"
-      }
+      "items": true
     },
     "pipelines": {
       "type": "array",
@@ -93,6 +91,19 @@
               }
             }
           }
+        }
+      }
+    },
+    {
+      "if": {"properties": {"schema_version": {"const": "0.9"}}},
+      "then": {
+        "properties": {
+          "framing_profiles": {"items": {"$ref": "#/$defs/framing_profile_v09"}}
+        }
+      },
+      "else": {
+        "properties": {
+          "framing_profiles": {"items": {"$ref": "#/$defs/framing_profile"}}
         }
       }
     }
@@ -144,6 +155,92 @@
           "const": "complete_record"
         }
       }
+    },
+    "framing_profile_v09": {
+      "oneOf": [
+        {"$ref": "#/$defs/framing_profile"},
+        {"$ref": "#/$defs/framing_profile_v09_fixed"},
+        {"$ref": "#/$defs/framing_profile_v09_sync_fixed"},
+        {"$ref": "#/$defs/framing_profile_v09_sync_length"}
+      ]
+    },
+    "framing_profile_metadata": {
+      "type": "object",
+      "properties": {
+        "id": {"$ref": "#/$defs/stable_id"},
+        "display_name": {"$ref": "#/$defs/display_name"},
+        "description": {"$ref": "#/$defs/description"},
+        "source_ref": {"$ref": "#/$defs/source_ref"}
+      }
+    },
+    "framing_profile_v09_fixed": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "display_name", "description", "source_ref", "input_kind", "strategy", "frame_length_bytes"],
+      "properties": {
+        "id": {"$ref": "#/$defs/stable_id"},
+        "display_name": {"$ref": "#/$defs/display_name"},
+        "description": {"$ref": "#/$defs/description"},
+        "source_ref": {"$ref": "#/$defs/source_ref"},
+        "input_kind": {"const": "stream_chunk"},
+        "strategy": {"const": "fixed_length"},
+        "frame_length_bytes": {"type": "integer", "minimum": 1}
+      }
+    },
+    "framing_profile_v09_sync_fixed": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "display_name", "description", "source_ref", "input_kind", "strategy", "sync_bytes", "frame_length_bytes"],
+      "properties": {
+        "id": {"$ref": "#/$defs/stable_id"},
+        "display_name": {"$ref": "#/$defs/display_name"},
+        "description": {"$ref": "#/$defs/description"},
+        "source_ref": {"$ref": "#/$defs/source_ref"},
+        "input_kind": {"const": "stream_chunk"},
+        "strategy": {"const": "sync_fixed_length"},
+        "sync_bytes": {"type": "string", "pattern": "^[0-9A-F]{2}( [0-9A-F]{2})*$"},
+        "frame_length_bytes": {"type": "integer", "minimum": 1}
+      }
+    },
+    "framing_profile_v09_sync_length": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "display_name", "description", "source_ref", "input_kind", "strategy", "sync_bytes", "length_field", "minimum_frame_length", "maximum_frame_length"],
+      "properties": {
+        "id": {"$ref": "#/$defs/stable_id"},
+        "display_name": {"$ref": "#/$defs/display_name"},
+        "description": {"$ref": "#/$defs/description"},
+        "source_ref": {"$ref": "#/$defs/source_ref"},
+        "input_kind": {"const": "stream_chunk"},
+        "strategy": {"const": "sync_length_field"},
+        "sync_bytes": {"type": "string", "pattern": "^[0-9A-F]{2}( [0-9A-F]{2})*$"},
+        "length_field": {"$ref": "#/$defs/stream_length_field"},
+        "minimum_frame_length": {"type": "integer", "minimum": 1},
+        "maximum_frame_length": {"type": "integer", "minimum": 1}
+      }
+    },
+    "stream_length_field": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["byte_offset", "byte_width"],
+          "properties": {
+            "byte_offset": {"type": "integer", "minimum": 0},
+            "byte_width": {"const": 1}
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["byte_offset", "byte_width", "byte_order"],
+          "properties": {
+            "byte_offset": {"type": "integer", "minimum": 0},
+            "byte_width": {"enum": [2, 4]},
+            "byte_order": {"enum": ["big_endian", "little_endian"]}
+          }
+        }
+      ]
     },
     "pipeline": {
       "type": "object",

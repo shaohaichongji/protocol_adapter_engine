@@ -43,6 +43,14 @@ enum class VariableDraftMutation {
 };
 protocol_plan::BudgetedPlanDraft MakeCorruptedVariableDraft(VariableDraftMutation mutation);
 #endif
+#if defined(PAE_ENABLE_SCHEMA_V09_STREAM_FRAMING)
+enum class StreamDraftMutation {
+  INVALID_STRATEGY_UNION,
+  CORRUPTED_PREFIX_TABLE,
+  MESSAGE_LENGTH_MISMATCH,
+};
+protocol_plan::BudgetedPlanDraft MakeCorruptedStreamDraft(StreamDraftMutation mutation);
+#endif
 protocol_plan::BudgetedPlanDraft MakeInt64DraftWithOutOfRangeConstant();
 #if defined(PAE_ENABLE_SCHEMA_V05_COMPILER)
 enum class ConversionDraftMutation {
@@ -62,6 +70,10 @@ protocol_plan::BudgetedPlanDraft MutateConversionDraft(protocol_plan::BudgetedPl
 #endif
 protocol_plan::BudgetedPlanDraft SetDraftSchemaVersion(protocol_plan::BudgetedPlanDraft draft,
                                                        const char* version);
+protocol_plan::BudgetedPlanDraft SetFramingLengthOffset(protocol_plan::BudgetedPlanDraft draft,
+                                                        std::uint64_t offset);
+protocol_plan::BudgetedPlanDraft SetFramingLengthByteOrder(protocol_plan::BudgetedPlanDraft draft,
+                                                           protocol_plan::ByteOrder byte_order);
 protocol_plan::BudgetedPlanDraft InjectSignedConstant(protocol_plan::BudgetedPlanDraft draft);
 
 protocol_plan::BudgetedPlanDraft ConfigurePlanMemoryFailure(

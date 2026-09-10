@@ -19,6 +19,9 @@ using protocol_plan::ComputedLengthScope;
 #endif
 using protocol_plan::EncodeSource;
 using protocol_plan::InputKind;
+#if defined(PAE_ENABLE_SCHEMA_V09_STREAM_FRAMING)
+using protocol_plan::FramingStrategy;
+#endif
 using protocol_plan::IntegrityAlgorithm;
 using protocol_plan::MatcherKind;
 using protocol_plan::ResourceProfile;
@@ -37,6 +40,16 @@ struct FramingProfileIr {
   std::string description;
   std::string source_ref;
   InputKind input_kind = InputKind::COMPLETE_RECORD;
+#if defined(PAE_ENABLE_SCHEMA_V09_STREAM_FRAMING)
+  FramingStrategy strategy = FramingStrategy::COMPLETE_RECORD;
+  std::uint64_t frame_length_bytes = 0U;
+  std::vector<std::uint8_t> sync_bytes;
+  std::uint64_t length_field_offset = 0U;
+  std::uint64_t length_field_width = 0U;
+  ByteOrder length_field_byte_order = ByteOrder::NOT_APPLICABLE;
+  std::uint64_t minimum_frame_length = 0U;
+  std::uint64_t maximum_frame_length = 0U;
+#endif
   ConfigOrigin origin;
 };
 
