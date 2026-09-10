@@ -37,18 +37,26 @@ std::string Utf8(const QString& value) {
   return std::string(bytes.constData(), static_cast<std::size_t>(bytes.size()));
 }
 
-std::vector<PhysicalBitMask> FieldHighlights(const FieldDescriptor* field) {
-  if (field == nullptr) {
+std::vector<PhysicalBitMask> FieldHighlights(const MessageDescriptor* message,
+                                             const FieldDescriptor* field,
+                                             std::optional<std::size_t> actual_frame_size) {
+  if (message == nullptr || field == nullptr) {
     return {};
   }
   if (!field->physical_bits.empty()) {
     return field->physical_bits;
   }
   std::vector<PhysicalBitMask> output;
-  if (field->byte_range.has_value()) {
-    output.reserve(field->byte_range->length);
-    for (std::size_t index = 0; index < field->byte_range->length; ++index) {
-      output.push_back(PhysicalBitMask{field->byte_range->offset + index, 0xFFU});
+  auto range = field->byte_range;
+  if (field->byte_length_bounds.has_value()) {
+    range = actual_frame_size.has_value()
+                ? ResolveActualFieldRange(*message, *field, *actual_frame_size)
+                : std::nullopt;
+  }
+  if (range.has_value()) {
+    output.reserve(range->length);
+    for (std::size_t index = 0; index < range->length; ++index) {
+      output.push_back(PhysicalBitMask{range->offset + index, 0xFFU});
     }
   }
   return output;
@@ -342,6 +350,112 @@ bool DocumentTab::VerifyInvalidDraftRetentionForSmoke(QString& error) {
       return false;
     }
     return true;
+  }
+  return true;
+}
+
+bool DocumentTab::VerifyBoundedV08ForSmoke(QString& error) {
+  const auto* message = CurrentMessage();
+  if (message == nullptr || !message->bounded_payload.has_value()) return true;
+  const int payload_row = static_cast<int>(message->bounded_payload->payload_field_index);
+  const auto payload_index = field_model_->index(payload_row, FieldTableModel::VALUE);
+  const auto physical_index = field_model_->index(payload_row, FieldTableModel::PHYSICAL_LOCATION);
+  mode_combo_->setCurrentIndex(0);
+  field_table_->selectRow(payload_row);
+  RefreshFieldDetails(payload_row);
+
+  if (!field_model_->setData(payload_index, QString{}, Qt::EditRole)) {
+    error = QStringLiteral("legal empty bounded payload was rejected: %1")
+                .arg(field_model_->ValidationError(payload_row));
+    return false;
+  }
+  EncodeCurrent();
+  const std::vector<std::uint8_t> empty_expected{0xA5U, 0x03U, 0xA8U};
+  if (PreviewFrameForSmoke() != empty_expected || HighlightedCellCountForSmoke() != 0U ||
+      !field_model_->data(physical_index).toString().contains(QStringLiteral("length=0")) ||
+      !details_view_->toPlainText().contains(QStringLiteral("Actual byte range: 2 + 0")) ||
+      !details_view_->toPlainText().contains(QStringLiteral("Integrity storage: 2 + 1"))) {
+    error = QStringLiteral("empty payload frame, zero-length range, or dynamic trailer differs");
+    return false;
+  }
+
+  if (!field_model_->setData(payload_index, QStringLiteral("1020"), Qt::EditRole)) {
+    error = QStringLiteral("two-byte bounded payload was rejected");
+    return false;
+  }
+  EncodeCurrent();
+  const std::vector<std::uint8_t> two_expected{0xA5U, 0x05U, 0x10U, 0x20U, 0xDAU};
+  if (PreviewFrameForSmoke() != two_expected || HighlightedCellCountForSmoke() != 2U ||
+      HighlightMaskForSmoke(2U) != 0xFFU || HighlightMaskForSmoke(3U) != 0xFFU ||
+      !details_view_->toPlainText().contains(QStringLiteral("Actual byte range: 2 + 2")) ||
+      !details_view_->toPlainText().contains(QStringLiteral("Integrity storage: 4 + 1"))) {
+    error = QStringLiteral("two-byte actual payload range or dynamic trailer differs");
+    return false;
+  }
+
+  if (!field_model_->setData(payload_index, QStringLiteral("00FF01"), Qt::EditRole)) {
+    error = QStringLiteral("three-byte bounded payload was rejected");
+    return false;
+  }
+  EncodeCurrent();
+  const std::vector<std::uint8_t> three_expected{0xA5U, 0x06U, 0x00U, 0xFFU, 0x01U, 0xABU};
+  if (PreviewFrameForSmoke() != three_expected || HighlightedCellCountForSmoke() != 3U ||
+      HighlightMaskForSmoke(2U) != 0xFFU || HighlightMaskForSmoke(3U) != 0xFFU ||
+      HighlightMaskForSmoke(4U) != 0xFFU ||
+      !details_view_->toPlainText().contains(QStringLiteral("Actual byte range: 2 + 3")) ||
+      !details_view_->toPlainText().contains(QStringLiteral("Integrity storage: 5 + 1"))) {
+    error = QStringLiteral("three-byte actual payload range or dynamic trailer differs");
+    return false;
+  }
+
+  if (field_model_->setData(payload_index, QStringLiteral("GG"), Qt::EditRole) ||
+      !field_model_->ValidationError(payload_row).contains(QStringLiteral("uppercase Hex")) ||
+      session_.preview().has_value() || HighlightedCellCountForSmoke() != 0U ||
+      !field_model_->data(physical_index)
+           .toString()
+           .contains(QStringLiteral("current range unavailable")) ||
+      !details_view_->toPlainText().contains(QStringLiteral("current range unavailable")) ||
+      details_view_->toPlainText().contains(QStringLiteral("Actual byte range:"))) {
+    error = QStringLiteral("lexical BYTES error was not distinct or cleared stale output");
+    return false;
+  }
+  if (field_model_->setData(payload_index, QStringLiteral("01020304"), Qt::EditRole) ||
+      !field_model_->ValidationError(payload_row).contains(QStringLiteral("0..3 bytes")) ||
+      session_.preview().has_value() || HighlightedCellCountForSmoke() != 0U ||
+      !field_model_->data(physical_index)
+           .toString()
+           .contains(QStringLiteral("current range unavailable"))) {
+    error = QStringLiteral("bounded payload overflow was not reported as a length violation");
+    return false;
+  }
+  if (!field_model_->setData(payload_index, QStringLiteral("1020"), Qt::EditRole)) {
+    error = QStringLiteral("corrected bounded payload was rejected");
+    return false;
+  }
+  EncodeCurrent();
+  if (PreviewFrameForSmoke() != two_expected || HighlightedCellCountForSmoke() != 2U ||
+      HighlightMaskForSmoke(2U) != 0xFFU || HighlightMaskForSmoke(3U) != 0xFFU ||
+      !details_view_->toPlainText().contains(QStringLiteral("Integrity storage: 4 + 1"))) {
+    error = QStringLiteral("two-byte actual payload range or dynamic trailer differs");
+    return false;
+  }
+
+  if (!VerifyInspectFailureForSmoke(QStringLiteral("A5 05 10 20 DB"), InspectFailureStage::CODEC,
+                                    QStringLiteral("INTEGRITY_FAILED"), std::nullopt, QString{},
+                                    error) ||
+      HighlightedCellCountForSmoke() != 0U) {
+    if (error.isEmpty()) {
+      error = QStringLiteral("dynamic trailer failure used an unproven current location");
+    }
+    return false;
+  }
+  if (!InspectTextForSmoke(QStringLiteral("A5 05 10 20 DA"), error)) return false;
+  field_table_->selectRow(payload_row);
+  RefreshFieldDetails(payload_row);
+  if (HighlightedCellCountForSmoke() != 2U || HighlightMaskForSmoke(2U) != 0xFFU ||
+      HighlightMaskForSmoke(3U) != 0xFFU) {
+    error = QStringLiteral("valid Inspect recovery did not restore the actual payload highlight");
+    return false;
   }
   return true;
 }
@@ -730,12 +844,13 @@ void DocumentTab::RefreshInspect() {
   std::optional<int> failed_detail_row;
   if (session_.inspect_result().has_value()) {
     frame = session_.inspect_result()->input_frame;
+    field_model_->SetActualFrameSize(frame.size());
     field_model_->ApplyResults(session_.inspect_result()->fields);
     result_kind_label_->setText(
         QStringLiteral("Valid decoded result / 有效解码结果 | matched Message: %1")
             .arg(FromUtf8(session_.inspect_result()->message_id).toHtmlEscaped()));
     const auto* field = field_model_->FieldAt(field_table_->currentIndex().row());
-    highlights = FieldHighlights(field);
+    highlights = FieldHighlights(message, field, frame.size());
   } else if (session_.inspect_failure().has_value()) {
     const auto& failure = *session_.inspect_failure();
     frame = failure.input_frame;
@@ -766,22 +881,29 @@ void DocumentTab::RefreshInspect() {
 
 void DocumentTab::RefreshPreview() {
   field_model_->SetFailedField(std::nullopt);
+  const int current_row = field_table_->currentIndex().row();
   if (!session_.preview().has_value()) {
+    field_model_->SetActualFrameSize(std::nullopt);
     field_model_->ClearResults();
     hex_view_->ClearFrame();
+    RefreshFieldDetails(current_row, false);
     return;
   }
+  field_model_->SetActualFrameSize(session_.preview()->encoded_frame.size());
   field_model_->ApplyResults(session_.preview()->fields);
-  const auto current = field_table_->currentIndex().row();
-  const auto* field = field_model_->FieldAt(current);
-  hex_view_->SetFrame(session_.preview()->encoded_frame, FieldHighlights(field));
+  const auto* field = field_model_->FieldAt(current_row);
+  hex_view_->SetFrame(
+      session_.preview()->encoded_frame,
+      FieldHighlights(CurrentMessage(), field, session_.preview()->encoded_frame.size()));
+  RefreshFieldDetails(current_row, false);
 }
 
-void DocumentTab::RefreshFieldDetails(int row) {
+void DocumentTab::RefreshFieldDetails(int row, bool refresh_frame) {
   const auto* field = field_model_->FieldAt(row);
   const auto* message = DisplayedMessage();
   if (field == nullptr) {
     details_view_->clear();
+    if (!refresh_frame) return;
     if (session_.mode() == OperationMode::INSPECT) {
       std::vector<std::uint8_t> frame;
       if (session_.inspect_result().has_value()) frame = session_.inspect_result()->input_frame;
@@ -805,9 +927,23 @@ void DocumentTab::RefreshFieldDetails(int row) {
                             .arg(FromUtf8(message->source_ref).toHtmlEscaped()));
     }
     if (message->integrity_storage.has_value()) {
-      details.push_back(QStringLiteral("<b>Integrity storage</b>: %1 + %2")
-                            .arg(static_cast<qulonglong>(message->integrity_storage->offset))
-                            .arg(static_cast<qulonglong>(message->integrity_storage->length)));
+      const auto actual_storage = ActualFrameSize().has_value()
+                                      ? ResolveActualIntegrityStorage(*message, *ActualFrameSize())
+                                      : std::optional<ByteRange>{};
+      if (message->integrity_storage_at_payload_end && !actual_storage.has_value()) {
+        details.push_back(QStringLiteral(
+            "<b>Integrity storage</b>: dynamic at payload end; current range unavailable"));
+      } else {
+        const auto& storage =
+            actual_storage.has_value() ? *actual_storage : *message->integrity_storage;
+        details.push_back(QStringLiteral("<b>Integrity storage</b>: %1 + %2")
+                              .arg(static_cast<qulonglong>(storage.offset))
+                              .arg(static_cast<qulonglong>(storage.length)));
+      }
+      if (message->integrity_range_ends_at_payload) {
+        details.push_back(QStringLiteral(
+            "<b>Integrity coverage</b>: configured range ends at actual payload end"));
+      }
     }
 #if defined(PAE_ENABLE_SCHEMA_V07_LENGTH_COMPILER)
     if (message->computed_length_storage.has_value()) {
@@ -839,7 +975,19 @@ void DocumentTab::RefreshFieldDetails(int row) {
                        "logical/raw representability checks"));
   }
 #endif
-  if (field->byte_range.has_value()) {
+  if (field->byte_length_bounds.has_value()) {
+    details.push_back(QStringLiteral("<b>Payload length bounds</b>: %1..%2 bytes")
+                          .arg(static_cast<qulonglong>(field->byte_length_bounds->minimum))
+                          .arg(static_cast<qulonglong>(field->byte_length_bounds->maximum)));
+    if (ActualFrameSize().has_value()) {
+      const auto range = ResolveActualFieldRange(*message, *field, *ActualFrameSize());
+      if (range.has_value()) {
+        details.push_back(QStringLiteral("<b>Actual byte range</b>: %1 + %2")
+                              .arg(static_cast<qulonglong>(range->offset))
+                              .arg(static_cast<qulonglong>(range->length)));
+      }
+    }
+  } else if (field->byte_range.has_value()) {
     details.push_back(QStringLiteral("<b>Byte range</b>: %1 + %2")
                           .arg(static_cast<qulonglong>(field->byte_range->offset))
                           .arg(static_cast<qulonglong>(field->byte_range->length)));
@@ -848,18 +996,21 @@ void DocumentTab::RefreshFieldDetails(int row) {
     details.push_back(QStringLiteral("<b>Physical bit cells</b>: %1")
                           .arg(static_cast<qulonglong>(field->physical_bits.size())));
   }
-  const auto physical = FormatPhysicalLocation(*field);
+  const auto physical = message == nullptr
+                            ? FormatPhysicalLocation(*field)
+                            : FormatPhysicalLocation(*message, *field, ActualFrameSize());
   if (!physical.empty()) {
     details.push_back(QStringLiteral("<b>Physical byte / bit / mask (zero-based, LSB0)</b>: %1")
                           .arg(FromUtf8(physical).toHtmlEscaped()));
   }
   details_view_->setHtml(details.join(QStringLiteral("<br/>")));
+  if (!refresh_frame) return;
   if (session_.mode() == OperationMode::INSPECT) {
     std::vector<std::uint8_t> frame;
     std::vector<PhysicalBitMask> highlights;
     if (session_.inspect_result().has_value()) {
       frame = session_.inspect_result()->input_frame;
-      highlights = FieldHighlights(field);
+      highlights = FieldHighlights(message, field, frame.size());
     } else if (session_.inspect_failure().has_value()) {
       frame = session_.inspect_failure()->input_frame;
       highlights = InspectFailureHighlights(message);
@@ -996,15 +1147,26 @@ std::vector<PhysicalBitMask> DocumentTab::InspectFailureHighlights(
   const auto& failure = *session_.inspect_failure();
   if (failure.failed_field_index.has_value() &&
       *failure.failed_field_index < message->fields.size()) {
-    return FieldHighlights(&message->fields[*failure.failed_field_index]);
+    return FieldHighlights(message, &message->fields[*failure.failed_field_index], std::nullopt);
   }
-  if (failure.status == "INTEGRITY_FAILED" && message->integrity_storage.has_value()) {
+  if (failure.status == "INTEGRITY_FAILED" && message->integrity_storage.has_value() &&
+      !message->integrity_storage_at_payload_end) {
     highlights.reserve(message->integrity_storage->length);
     for (std::size_t index = 0U; index < message->integrity_storage->length; ++index) {
       highlights.push_back(PhysicalBitMask{message->integrity_storage->offset + index, 0xFFU});
     }
   }
   return highlights;
+}
+
+std::optional<std::size_t> DocumentTab::ActualFrameSize() const noexcept {
+  if (session_.mode() == OperationMode::ENCODE && session_.preview().has_value()) {
+    return session_.preview()->encoded_frame.size();
+  }
+  if (session_.mode() == OperationMode::INSPECT && session_.inspect_result().has_value()) {
+    return session_.inspect_result()->input_frame.size();
+  }
+  return std::nullopt;
 }
 
 const MessageDescriptor* DocumentTab::CurrentMessage() const noexcept {

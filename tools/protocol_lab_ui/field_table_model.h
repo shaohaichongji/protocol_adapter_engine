@@ -59,6 +59,7 @@ class FieldTableModel final : public QAbstractTableModel {
   void ApplyInvalidDrafts(const std::unordered_map<std::size_t, InvalidDraftState>& invalid_drafts);
   void ClearResults();
   void ApplyResults(const std::vector<protocol_lab::v06::FieldResult>& results);
+  void SetActualFrameSize(std::optional<std::size_t> frame_size);
   void SetFailedField(std::optional<std::size_t> field_index);
   const FieldDescriptor* FieldAt(int row) const noexcept;
   QString ValidationError(int row) const;
@@ -84,6 +85,7 @@ class FieldTableModel final : public QAbstractTableModel {
   DraftInvalidated draft_invalidated_;
   std::optional<std::size_t> failed_field_index_;
   bool editable_ = true;
+  std::optional<std::size_t> actual_frame_size_;
 };
 
 }  // namespace pae::protocol_lab_ui

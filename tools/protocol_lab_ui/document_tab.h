@@ -58,6 +58,7 @@ class DocumentTab final : public QWidget {
   QString InspectLogicalValueForSmoke(int row) const;
   bool SelectFirstMappableFieldForSmoke(QString& error);
   bool VerifyInvalidDraftRetentionForSmoke(QString& error);
+  bool VerifyBoundedV08ForSmoke(QString& error);
   bool VerifyPipelineSwitchClearsInspectForSmoke(QString& error);
   void InvalidatePreviewForSmoke();
   std::size_t PreviewFrameSizeForSmoke() const noexcept;
@@ -76,7 +77,7 @@ class DocumentTab final : public QWidget {
   void RefreshPreview();
   void RefreshInspect();
   void RefreshModePresentation();
-  void RefreshFieldDetails(int row);
+  void RefreshFieldDetails(int row, bool refresh_frame = true);
   void SelectPipeline(int combo_index);
   void SelectMessage(int combo_index);
   void EncodeCurrent();
@@ -85,6 +86,7 @@ class DocumentTab final : public QWidget {
   void InvalidateEditedPreview();
   void InvalidateEditedDraft(std::size_t field_index);
   std::vector<PhysicalBitMask> InspectFailureHighlights(const MessageDescriptor* message) const;
+  std::optional<std::size_t> ActualFrameSize() const noexcept;
   const MessageDescriptor* CurrentMessage() const noexcept;
   const MessageDescriptor* DisplayedMessage() const noexcept;
 

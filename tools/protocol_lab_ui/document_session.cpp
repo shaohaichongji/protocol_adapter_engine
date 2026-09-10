@@ -33,8 +33,13 @@ bool DraftMatches(const FieldDescriptor& field, const TypedDraft& value) noexcep
     case protocol_plan::ValueType::INT64:
       return std::holds_alternative<std::int64_t>(value);
     case protocol_plan::ValueType::BYTES:
-      return std::holds_alternative<std::vector<std::uint8_t>>(value) &&
-             std::get<std::vector<std::uint8_t>>(value).size() == field.byte_width;
+      if (!std::holds_alternative<std::vector<std::uint8_t>>(value)) return false;
+      if (field.byte_length_bounds.has_value()) {
+        const std::size_t size = std::get<std::vector<std::uint8_t>>(value).size();
+        return size >= field.byte_length_bounds->minimum &&
+               size <= field.byte_length_bounds->maximum;
+      }
+      return std::get<std::vector<std::uint8_t>>(value).size() == field.byte_width;
     case protocol_plan::ValueType::ENUM:
       return std::holds_alternative<EnumSelection>(value);
     case protocol_plan::ValueType::BOOL:
@@ -116,8 +121,8 @@ bool DocumentSession::ApplyCompileCompletion(std::unique_ptr<CompileCompletion> 
     return false;
   }
   const std::string schema{plan->SchemaVersion()};
-  if (schema != "0.5" && schema != "0.6" && schema != "0.7") {
-    SetDiagnostic("UI_SCHEMA_UNSUPPORTED", "the UI supports Schema 0.5, 0.6 and 0.7 only");
+  if (schema != "0.5" && schema != "0.6" && schema != "0.7" && schema != "0.8") {
+    SetDiagnostic("UI_SCHEMA_UNSUPPORTED", "the UI supports Schema 0.5 through 0.8 only");
     state_ = DocumentState::CONFIG_ERROR;
     return false;
   }
@@ -315,7 +320,9 @@ bool DocumentSession::Encode(protocol_lab::v06::ExecutionObserver* observer,
     input_materialization_timer->Start();
   }
   protocol_lab::v06::ParsedValues values;
-  values.format_version = std::string{protocol_lab::v06::kValuesFormat};
+  values.format_version = description_->schema_version == "0.8"
+                              ? std::string{protocol_lab::v06::kVariableValuesFormat}
+                              : std::string{protocol_lab::v06::kValuesFormat};
   values.pipeline_id = selection_->pipeline_id;
   values.message_id = selection_->message_id;
   for (const auto& field : message->fields) {
