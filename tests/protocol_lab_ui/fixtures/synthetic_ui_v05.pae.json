@@ -14,6 +14,10 @@
     "id": "ui_pipeline", "display_name": "UI pipeline", "description": "Offline synthetic pipeline.",
     "source_ref": "SYNTHETIC_FROM_SCRATCH:pae_ui_c1_v05#pipeline", "direction_id": "synthetic",
     "input_framing_profile_id": "record", "message_ids": ["typed_record"]
+  }, {
+    "id": "alternate_pipeline", "display_name": "Alternate pipeline", "description": "Second Pipeline for UI state reset checks.",
+    "source_ref": "SYNTHETIC_FROM_SCRATCH:pae_ui_c1_v05#alternate_pipeline", "direction_id": "synthetic",
+    "input_framing_profile_id": "record", "message_ids": ["alternate_record"]
   }],
   "messages": [{
     "id": "typed_record", "display_name": "Typed record", "description": "All first-checkpoint input editor families.",
@@ -34,6 +38,14 @@
       {"id": "payload", "display_name": "Payload", "description": "Two byte input.", "source_ref": "SYNTHETIC:v05#payload", "value_type": "BYTES", "wire": {"codec": "bytes", "byte_offset": 6, "byte_length": 2}, "encode": {"source": "input"}},
       {"id": "temperature", "display_name": "Temperature", "description": "Identity decimal input.", "source_ref": "SYNTHETIC:v05#temperature", "value_type": "INT64", "wire": {"codec": "unsigned_integer", "byte_offset": 8, "byte_width": 1}, "encode": {"source": "input"}, "conversion": {"kind": "linear", "output_type": "DECIMAL64", "scale": {"numerator": 1, "denominator": 1}, "bias": {"numerator": 0, "denominator": 1}}},
       {"id": "marker", "display_name": "Marker", "description": "Read-only constant.", "source_ref": "SYNTHETIC:v05#marker", "value_type": "UINT64", "wire": {"codec": "unsigned_integer", "byte_offset": 9, "byte_width": 1}, "encode": {"source": "constant", "value": 90}}
+    ]
+  }, {
+    "id": "alternate_record", "display_name": "Alternate record", "description": "Small record used only for Pipeline switching checks.",
+    "source_ref": "SYNTHETIC_FROM_SCRATCH:pae_ui_c1_v05#alternate_message", "direction_id": "synthetic",
+    "frame_length_bytes": 2,
+    "matcher": {"all": [{"kind": "frame_length_equals", "length_bytes": 2}, {"kind": "fixed_bytes", "byte_offset": 0, "bytes": "C3"}]},
+    "fields": [
+      {"id": "alternate_value", "display_name": "Alternate value", "description": "Pipeline reset value.", "source_ref": "SYNTHETIC:v05#alternate_value", "value_type": "UINT64", "wire": {"codec": "unsigned_integer", "byte_offset": 1, "byte_width": 1}, "encode": {"source": "input"}}
     ]
   }]
 }

@@ -1,0 +1,44 @@
+{
+  "schema_version": "0.5",
+  "protocol_id": "synthetic_ui_inspect_multi_v05",
+  "protocol_version": "1.0-public",
+  "display_name": "Public UI Inspect selector isolation",
+  "description": "Synthetic offline fixture proving Inspect ignores the Encode Message selector.",
+  "source_ref": "SYNTHETIC_FROM_SCRATCH:pae_ui_inspect_multi_v05",
+  "resource_profile": "desktop",
+  "framing_profiles": [{
+    "id": "record",
+    "display_name": "Record",
+    "description": "Complete record.",
+    "source_ref": "SYNTHETIC:inspect_multi#framing",
+    "input_kind": "complete_record"
+  }],
+  "pipelines": [{
+    "id": "ui_pipeline",
+    "display_name": "UI pipeline",
+    "description": "Two structurally distinct Messages.",
+    "source_ref": "SYNTHETIC:inspect_multi#pipeline",
+    "direction_id": "synthetic",
+    "input_framing_profile_id": "record",
+    "message_ids": ["message_a", "message_b"]
+  }],
+  "messages": [{
+    "id": "message_a",
+    "display_name": "Message A",
+    "description": "First selector candidate.",
+    "source_ref": "SYNTHETIC:inspect_multi#a",
+    "direction_id": "synthetic",
+    "frame_length_bytes": 2,
+    "matcher": {"all": [{"kind": "frame_length_equals", "length_bytes": 2}, {"kind": "fixed_bytes", "byte_offset": 0, "bytes": "A1"}]},
+    "fields": [{"id": "value_a", "display_name": "Value A", "description": "A value.", "source_ref": "SYNTHETIC:inspect_multi#a_value", "value_type": "UINT64", "wire": {"codec": "unsigned_integer", "byte_offset": 1, "byte_width": 1}, "encode": {"source": "input"}}]
+  }, {
+    "id": "message_b",
+    "display_name": "Message B",
+    "description": "Second selector candidate.",
+    "source_ref": "SYNTHETIC:inspect_multi#b",
+    "direction_id": "synthetic",
+    "frame_length_bytes": 2,
+    "matcher": {"all": [{"kind": "frame_length_equals", "length_bytes": 2}, {"kind": "fixed_bytes", "byte_offset": 0, "bytes": "B2"}]},
+    "fields": [{"id": "value_b", "display_name": "Value B", "description": "B value.", "source_ref": "SYNTHETIC:inspect_multi#b_value", "value_type": "UINT64", "wire": {"codec": "unsigned_integer", "byte_offset": 1, "byte_width": 1}, "encode": {"source": "input"}}]
+  }]
+}
