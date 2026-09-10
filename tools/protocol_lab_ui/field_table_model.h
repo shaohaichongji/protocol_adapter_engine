@@ -36,6 +36,7 @@ class FieldTableModel final : public QAbstractTableModel {
     FieldSourceRefRole,
     ReadOnlyAnnotationRole,
     HasConversionRole,
+    EditorCapacityRejectedRole,
   };
 
   using DraftChanged =

@@ -206,6 +206,16 @@ bool FieldTableModel::setData(const QModelIndex& index, const QVariant& value, i
   if (!editable_ || !index.isValid() || index.column() != VALUE) {
     return false;
   }
+  if (role == EditorCapacityRejectedRole) {
+    auto& row = rows_[static_cast<std::size_t>(index.row())];
+    const auto* field = FieldAt(index.row());
+    row.validation_error = value.toString();
+    if (draft_invalidated_ && field != nullptr) {
+      draft_invalidated_(field->field_index, row.draft_text, Utf8(row.validation_error));
+    }
+    EmitValueChanged(index.row());
+    return false;
+  }
   TypedDraft draft;
   QString canonical;
   QString error;

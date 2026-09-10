@@ -5,9 +5,13 @@
 #include <QLineEdit>
 #include <QSignalBlocker>
 #include <QSpinBox>
+#include <QToolTip>
+#include <QValidator>
 #include <limits>
+#include <optional>
 #include <utility>
 
+#include "../../src/protocol_plan/plan_types.h"
 #include "field_table_model.h"
 
 namespace pae::protocol_lab_ui {
@@ -30,6 +34,35 @@ class DecimalEditor final : public QWidget {
   QLineEdit* coefficient = nullptr;
   QSpinBox* scale = nullptr;
 };
+
+class EditCapacityValidator final : public QValidator {
+ public:
+  EditCapacityValidator(int capacity, QObject* parent) : QValidator(parent), capacity_(capacity) {}
+
+  State validate(QString& input, int&) const override {
+    return input.size() <= capacity_ ? Acceptable : Invalid;
+  }
+
+ private:
+  int capacity_ = 0;
+};
+
+std::optional<int> ByteEditorCapacity(qulonglong protocol_byte_width) {
+  constexpr qulonglong kExtraRejectedByteCharacters = 2U;
+  constexpr qulonglong kMaximumCapacity =
+      static_cast<qulonglong>(protocol_plan::kDesktopResourceProfileLimits.max_frame_bytes) * 2U +
+      kExtraRejectedByteCharacters;
+  if (protocol_byte_width >
+      static_cast<qulonglong>(protocol_plan::kDesktopResourceProfileLimits.max_frame_bytes)) {
+    return std::nullopt;
+  }
+  const qulonglong capacity = protocol_byte_width * 2U + kExtraRejectedByteCharacters;
+  if (capacity > kMaximumCapacity ||
+      capacity > static_cast<qulonglong>(std::numeric_limits<int>::max())) {
+    return std::nullopt;
+  }
+  return static_cast<int>(capacity);
+}
 
 }  // namespace
 
@@ -76,10 +109,39 @@ QWidget* ExactValueDelegate::createEditor(QWidget* parent, const QStyleOptionVie
   const auto field_index = index.data(FieldTableModel::FieldIndexRole).toULongLong();
   if (value_type == protocol_plan::ValueType::BYTES) {
     const auto width = index.data(FieldTableModel::ByteWidthRole).toULongLong();
-    if (width <= static_cast<qulonglong>(std::numeric_limits<int>::max() / 2)) {
-      line_edit->setMaxLength(static_cast<int>(width * 2U));
+    const auto capacity = ByteEditorCapacity(width);
+    if (!capacity.has_value()) {
+      delete line_edit;
+      return nullptr;
     }
+    line_edit->setMaxLength((std::numeric_limits<int>::max)());
+    line_edit->setValidator(new EditCapacityValidator(*capacity, line_edit));
+    line_edit->setProperty("paeEditCapacity", *capacity);
+    line_edit->setProperty("paeCapacityRejected", false);
     line_edit->setPlaceholderText(QStringLiteral("uppercase Hex"));
+    const QPersistentModelIndex persistent_index{index};
+    QObject::connect(
+        line_edit, &QLineEdit::inputRejected, line_edit,
+        [line_edit, persistent_index, capacity = *capacity] {
+          const QString feedback = QStringLiteral(
+                                       "Input exceeds bounded editor capacity (%1 Hex "
+                                       "characters); entire edit rejected")
+                                       .arg(capacity);
+          line_edit->setProperty("paeCapacityRejected", true);
+          line_edit->setToolTip(feedback);
+          line_edit->setStyleSheet(QStringLiteral("QLineEdit { background-color: #FFE4E4; }"));
+          QToolTip::showText(line_edit->mapToGlobal(line_edit->rect().bottomLeft()), feedback,
+                             line_edit);
+          if (persistent_index.isValid()) {
+            auto* model = const_cast<QAbstractItemModel*>(persistent_index.model());
+            model->setData(persistent_index, feedback, FieldTableModel::EditorCapacityRejectedRole);
+          }
+        });
+    QObject::connect(line_edit, &QLineEdit::textEdited, line_edit, [line_edit](const QString&) {
+      line_edit->setProperty("paeCapacityRejected", false);
+      line_edit->setToolTip(QString{});
+      line_edit->setStyleSheet(QString{});
+    });
   } else {
     line_edit->setPlaceholderText(value_type == protocol_plan::ValueType::UINT64
                                       ? QStringLiteral("canonical unsigned decimal")
@@ -124,6 +186,7 @@ void ExactValueDelegate::setModelData(QWidget* editor, QAbstractItemModel* model
     return;
   }
   if (auto* line_edit = qobject_cast<QLineEdit*>(editor)) {
+    if (line_edit->property("paeCapacityRejected").toBool()) return;
     model->setData(index, line_edit->text());
   }
 }

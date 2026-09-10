@@ -1,6 +1,7 @@
 #include "document_tab.h"
 
 #include <QApplication>
+#include <QClipboard>
 #include <QComboBox>
 #include <QElapsedTimer>
 #include <QFile>
@@ -8,8 +9,10 @@
 #include <QFileInfo>
 #include <QFormLayout>
 #include <QHeaderView>
+#include <QKeyEvent>
 #include <QLabel>
 #include <QLineEdit>
+#include <QMimeData>
 #include <QPlainTextEdit>
 #include <QPushButton>
 #include <QSplitter>
@@ -121,6 +124,52 @@ class QtInputMaterializationTimer final : public InputMaterializationTimer {
  private:
   QElapsedTimer timer_;
 };
+
+class ClipboardMimeGuard final {
+ public:
+  ClipboardMimeGuard() {
+    const auto* original = QApplication::clipboard()->mimeData();
+    if (original == nullptr) return;
+    for (const auto& format : original->formats()) {
+      original_data_.push_back({format, original->data(format)});
+    }
+  }
+  ~ClipboardMimeGuard() {
+    auto* restored = new QMimeData;
+    for (const auto& item : original_data_) restored->setData(item.first, item.second);
+    QApplication::clipboard()->setMimeData(restored);
+  }
+
+ private:
+  std::vector<std::pair<QString, QByteArray>> original_data_;
+};
+
+void ReplaceEditorTextByKeyboard(QLineEdit& editor, const QString& text) {
+  editor.selectAll();
+  for (const QChar character : text) {
+    QKeyEvent event{QEvent::KeyPress, static_cast<int>(character.unicode()), Qt::NoModifier,
+                    QString{character}};
+    QApplication::sendEvent(&editor, &event);
+  }
+  QApplication::processEvents(QEventLoop::ExcludeUserInputEvents);
+}
+
+void ReplaceEditorTextByPaste(QLineEdit& editor, const QString& text) {
+  QApplication::clipboard()->setText(text);
+  editor.selectAll();
+  QKeyEvent event{QEvent::KeyPress, Qt::Key_V, Qt::ControlModifier};
+  QApplication::sendEvent(&editor, &event);
+  QApplication::processEvents(QEventLoop::ExcludeUserInputEvents);
+}
+
+void CommitEditorByKey(QLineEdit& editor, int key) {
+  QKeyEvent press{QEvent::KeyPress, key, Qt::NoModifier};
+  QApplication::sendEvent(&editor, &press);
+  QKeyEvent release{QEvent::KeyRelease, key, Qt::NoModifier};
+  QApplication::sendEvent(&editor, &release);
+  QApplication::processEvents(QEventLoop::ExcludeUserInputEvents);
+  QApplication::sendPostedEvents(nullptr, QEvent::DeferredDelete);
+}
 
 }  // namespace
 
@@ -363,6 +412,128 @@ bool DocumentTab::VerifyBoundedV08ForSmoke(QString& error) {
   mode_combo_->setCurrentIndex(0);
   field_table_->selectRow(payload_row);
   RefreshFieldDetails(payload_row);
+
+  ClipboardMimeGuard clipboard_guard;
+  const auto open_editor = [&]() -> QLineEdit* {
+    field_table_->setCurrentIndex(payload_index);
+    field_table_->edit(payload_index);
+    QApplication::processEvents(QEventLoop::ExcludeUserInputEvents);
+    auto* line_edit = qobject_cast<QLineEdit*>(QApplication::focusWidget());
+    if (line_edit != nullptr && field_table_->isAncestorOf(line_edit)) return line_edit;
+    for (auto* candidate : field_table_->viewport()->findChildren<QLineEdit*>()) {
+      if (candidate->isVisible()) return candidate;
+    }
+    return nullptr;
+  };
+
+  auto* editor = open_editor();
+  if (editor == nullptr || editor->property("paeEditCapacity").toInt() != 8) {
+    error = QStringLiteral("bounded BYTES editor capacity is not the expected 8 Hex characters");
+    return false;
+  }
+  ReplaceEditorTextByKeyboard(*editor, QStringLiteral("1020"));
+  CommitEditorByKey(*editor, Qt::Key_Return);
+  if (field_model_->data(payload_index, Qt::EditRole).toString() != QStringLiteral("1020")) {
+    error = QStringLiteral("Enter did not commit legal BYTES through the table delegate");
+    return false;
+  }
+
+  EncodeCurrent();
+  if (!session_.preview().has_value() ||
+      session_.preview()->encoded_frame !=
+          std::vector<std::uint8_t>({0xA5U, 0x05U, 0x10U, 0x20U, 0xDAU})) {
+    error = QStringLiteral("Enter-committed legal BYTES did not Encode correctly");
+    return false;
+  }
+
+  editor = open_editor();
+  if (editor == nullptr) {
+    error = QStringLiteral("failed to reopen table editor for Tab submission");
+    return false;
+  }
+  ReplaceEditorTextByKeyboard(*editor, QStringLiteral("01020304"));
+  if (editor->text() != QStringLiteral("01020304") || session_.preview().has_value()) {
+    error = QStringLiteral("keyboard over-protocol draft was truncated or retained old output");
+    return false;
+  }
+  CommitEditorByKey(*editor, Qt::Key_Tab);
+  if (!field_model_->ValidationError(payload_row).contains(QStringLiteral("0..3 bytes")) ||
+      field_model_->data(payload_index, Qt::EditRole).toString() != QStringLiteral("01020304") ||
+      session_.preview().has_value()) {
+    error = QStringLiteral("Tab did not submit the complete over-protocol keyboard draft");
+    return false;
+  }
+
+  editor = open_editor();
+  if (editor == nullptr) {
+    error = QStringLiteral("failed to reopen table editor for paste submission");
+    return false;
+  }
+  ReplaceEditorTextByPaste(*editor, QStringLiteral("01020304"));
+  if (editor->text() != QStringLiteral("01020304")) {
+    error = QStringLiteral("paste over-protocol draft was truncated before submission");
+    return false;
+  }
+  CommitEditorByKey(*editor, Qt::Key_Return);
+  if (!field_model_->ValidationError(payload_row).contains(QStringLiteral("0..3 bytes")) ||
+      field_model_->data(payload_index, Qt::EditRole).toString() != QStringLiteral("01020304")) {
+    error = QStringLiteral("Enter did not submit the complete over-protocol pasted draft");
+    return false;
+  }
+
+  editor = open_editor();
+  if (editor == nullptr) {
+    error = QStringLiteral("failed to reopen table editor for focus-out recovery");
+    return false;
+  }
+  ReplaceEditorTextByKeyboard(*editor, QStringLiteral("010203"));
+  encode_button_->setFocus(Qt::OtherFocusReason);
+  QApplication::processEvents(QEventLoop::ExcludeUserInputEvents);
+  QApplication::sendPostedEvents(nullptr, QEvent::DeferredDelete);
+  if (field_model_->data(payload_index, Qt::EditRole).toString() != QStringLiteral("010203")) {
+    error = QStringLiteral("focus-out did not commit corrected legal BYTES");
+    return false;
+  }
+  EncodeCurrent();
+  if (!session_.preview().has_value()) {
+    error = QStringLiteral("focus-out correction did not recover a valid Encode result");
+    return false;
+  }
+
+  editor = open_editor();
+  if (editor == nullptr) {
+    error = QStringLiteral("failed to open BYTES editor for capacity rejection");
+    return false;
+  }
+  ReplaceEditorTextByPaste(*editor, QStringLiteral("0102030405"));
+  if (editor->text() != QStringLiteral("010203") ||
+      !editor->property("paeCapacityRejected").toBool() || editor->toolTip().isEmpty() ||
+      session_.preview().has_value() ||
+      !field_model_->ValidationError(payload_row)
+           .contains(QStringLiteral("editor capacity (8 Hex characters)"))) {
+    error = QStringLiteral("over-capacity paste was not wholly rejected with visible feedback");
+    return false;
+  }
+  CommitEditorByKey(*editor, Qt::Key_Return);
+  if (session_.preview().has_value()) {
+    error = QStringLiteral("rejected capacity operation was committed as a new success");
+    return false;
+  }
+
+  editor = open_editor();
+  if (editor == nullptr) {
+    error = QStringLiteral("failed to reopen table editor after capacity rejection");
+    return false;
+  }
+  ReplaceEditorTextByKeyboard(*editor, QStringLiteral("1020"));
+  CommitEditorByKey(*editor, Qt::Key_Return);
+  EncodeCurrent();
+  if (!session_.preview().has_value() ||
+      session_.preview()->encoded_frame !=
+          std::vector<std::uint8_t>({0xA5U, 0x05U, 0x10U, 0x20U, 0xDAU})) {
+    error = QStringLiteral("capacity rejection correction did not recover expected Encode");
+    return false;
+  }
 
   if (!field_model_->setData(payload_index, QString{}, Qt::EditRole)) {
     error = QStringLiteral("legal empty bounded payload was rejected: %1")
