@@ -1,6 +1,7 @@
 #include "document_tab.h"
 
 #include <QApplication>
+#include <QClipboard>
 #include <QComboBox>
 #include <QElapsedTimer>
 #include <QFile>
@@ -8,8 +9,10 @@
 #include <QFileInfo>
 #include <QFormLayout>
 #include <QHeaderView>
+#include <QKeyEvent>
 #include <QLabel>
 #include <QLineEdit>
+#include <QMimeData>
 #include <QPlainTextEdit>
 #include <QPushButton>
 #include <QSplitter>
@@ -18,6 +21,7 @@
 #include <QTextCursor>
 #include <QVBoxLayout>
 #include <algorithm>
+#include <limits>
 #include <optional>
 #include <utility>
 
@@ -35,6 +39,16 @@ QString FromUtf8(const std::string& value) {
 std::string Utf8(const QString& value) {
   const auto bytes = value.toUtf8();
   return std::string(bytes.constData(), static_cast<std::size_t>(bytes.size()));
+}
+
+std::u16string Utf16(const QString& value) {
+  const auto* begin = reinterpret_cast<const char16_t*>(value.utf16());
+  return std::u16string(begin, begin + value.size());
+}
+
+QString FromUtf16(const std::u16string& value) {
+  return QString::fromUtf16(reinterpret_cast<const ushort*>(value.data()),
+                            static_cast<int>(value.size()));
 }
 
 std::vector<PhysicalBitMask> FieldHighlights(const MessageDescriptor* message,
@@ -60,6 +74,36 @@ std::vector<PhysicalBitMask> FieldHighlights(const MessageDescriptor* message,
     }
   }
   return output;
+}
+
+std::vector<PhysicalBitMask> ActualFieldHighlights(const std::vector<UiFieldResult>& results,
+                                                   const FieldDescriptor* field) {
+  if (field == nullptr) return {};
+  const auto found = std::find_if(results.begin(), results.end(), [&](const auto& result) {
+    return result.field_index == field->field_index && result.id == field->id;
+  });
+  if (found == results.end() || !found->actual_range.has_value() ||
+      found->actual_range->length == 0U) {
+    return {};
+  }
+  std::vector<PhysicalBitMask> highlights;
+  highlights.reserve(found->actual_range->length);
+  for (std::size_t index = 0U; index < found->actual_range->length; ++index) {
+    highlights.push_back({found->actual_range->offset + index, 0xFFU});
+  }
+  return highlights;
+}
+
+std::optional<int> InspectEditorCapacity(std::size_t maximum_bytes,
+                                         ByteRepresentation representation) {
+  const std::size_t multiplier = representation == ByteRepresentation::ASCII_ESCAPED ? 4U : 3U;
+  const std::size_t headroom = representation == ByteRepresentation::ASCII_ESCAPED ? 4U : 1U;
+  if (maximum_bytes > ((std::numeric_limits<std::size_t>::max)() - headroom) / multiplier) {
+    return std::nullopt;
+  }
+  const std::size_t capacity = maximum_bytes * multiplier + headroom;
+  if (capacity > static_cast<std::size_t>((std::numeric_limits<int>::max)())) return std::nullopt;
+  return static_cast<int>(capacity);
 }
 
 QString TimingText(const EncodeTimingSnapshot& timing) {
@@ -121,6 +165,52 @@ class QtInputMaterializationTimer final : public InputMaterializationTimer {
  private:
   QElapsedTimer timer_;
 };
+
+class ClipboardMimeGuard final {
+ public:
+  ClipboardMimeGuard() {
+    const auto* original = QApplication::clipboard()->mimeData();
+    if (original == nullptr) return;
+    for (const auto& format : original->formats()) {
+      original_data_.push_back({format, original->data(format)});
+    }
+  }
+  ~ClipboardMimeGuard() {
+    auto* restored = new QMimeData;
+    for (const auto& item : original_data_) restored->setData(item.first, item.second);
+    QApplication::clipboard()->setMimeData(restored);
+  }
+
+ private:
+  std::vector<std::pair<QString, QByteArray>> original_data_;
+};
+
+void ReplaceEditorTextByKeyboard(QLineEdit& editor, const QString& text) {
+  editor.selectAll();
+  for (const QChar character : text) {
+    QKeyEvent event{QEvent::KeyPress, static_cast<int>(character.unicode()), Qt::NoModifier,
+                    QString{character}};
+    QApplication::sendEvent(&editor, &event);
+  }
+  QApplication::processEvents(QEventLoop::ExcludeUserInputEvents);
+}
+
+void ReplaceEditorTextByPaste(QLineEdit& editor, const QString& text) {
+  QApplication::clipboard()->setText(text);
+  editor.selectAll();
+  QKeyEvent event{QEvent::KeyPress, Qt::Key_V, Qt::ControlModifier};
+  QApplication::sendEvent(&editor, &event);
+  QApplication::processEvents(QEventLoop::ExcludeUserInputEvents);
+}
+
+void CommitEditorByKey(QLineEdit& editor, int key) {
+  QKeyEvent press{QEvent::KeyPress, key, Qt::NoModifier};
+  QApplication::sendEvent(&editor, &press);
+  QKeyEvent release{QEvent::KeyRelease, key, Qt::NoModifier};
+  QApplication::sendEvent(&editor, &release);
+  QApplication::processEvents(QEventLoop::ExcludeUserInputEvents);
+  QApplication::sendPostedEvents(nullptr, QEvent::DeferredDelete);
+}
 
 }  // namespace
 
@@ -189,7 +279,11 @@ bool DocumentTab::PopulateCanonicalDraftsForSmoke(QString& error) {
             field->value_type == protocol_plan::ValueType::INT64) {
       value = QStringLiteral("0");
     } else if (field->value_type == protocol_plan::ValueType::BYTES) {
-      value = QString(static_cast<int>(field->byte_width * 2U), QLatin1Char('0'));
+      const std::size_t byte_count = field->ascii_text && field->byte_length_bounds.has_value()
+                                         ? field->byte_length_bounds->minimum
+                                         : field->byte_width;
+      value = field->ascii_text ? QStringLiteral("41").repeated(static_cast<int>(byte_count))
+                                : QString(static_cast<int>(byte_count * 2U), QLatin1Char('0'));
     } else if (field->value_type == protocol_plan::ValueType::ENUM) {
       if (field->enum_entries.empty()) {
         error = QStringLiteral("enum field has no configured entries");
@@ -364,6 +458,128 @@ bool DocumentTab::VerifyBoundedV08ForSmoke(QString& error) {
   field_table_->selectRow(payload_row);
   RefreshFieldDetails(payload_row);
 
+  ClipboardMimeGuard clipboard_guard;
+  const auto open_editor = [&]() -> QLineEdit* {
+    field_table_->setCurrentIndex(payload_index);
+    field_table_->edit(payload_index);
+    QApplication::processEvents(QEventLoop::ExcludeUserInputEvents);
+    auto* line_edit = qobject_cast<QLineEdit*>(QApplication::focusWidget());
+    if (line_edit != nullptr && field_table_->isAncestorOf(line_edit)) return line_edit;
+    for (auto* candidate : field_table_->viewport()->findChildren<QLineEdit*>()) {
+      if (candidate->isVisible()) return candidate;
+    }
+    return nullptr;
+  };
+
+  auto* editor = open_editor();
+  if (editor == nullptr || editor->property("paeEditCapacity").toInt() != 8) {
+    error = QStringLiteral("bounded BYTES editor capacity is not the expected 8 Hex characters");
+    return false;
+  }
+  ReplaceEditorTextByKeyboard(*editor, QStringLiteral("1020"));
+  CommitEditorByKey(*editor, Qt::Key_Return);
+  if (field_model_->data(payload_index, Qt::EditRole).toString() != QStringLiteral("1020")) {
+    error = QStringLiteral("Enter did not commit legal BYTES through the table delegate");
+    return false;
+  }
+
+  EncodeCurrent();
+  if (!session_.preview().has_value() ||
+      session_.preview()->encoded_frame !=
+          std::vector<std::uint8_t>({0xA5U, 0x05U, 0x10U, 0x20U, 0xDAU})) {
+    error = QStringLiteral("Enter-committed legal BYTES did not Encode correctly");
+    return false;
+  }
+
+  editor = open_editor();
+  if (editor == nullptr) {
+    error = QStringLiteral("failed to reopen table editor for Tab submission");
+    return false;
+  }
+  ReplaceEditorTextByKeyboard(*editor, QStringLiteral("01020304"));
+  if (editor->text() != QStringLiteral("01020304") || session_.preview().has_value()) {
+    error = QStringLiteral("keyboard over-protocol draft was truncated or retained old output");
+    return false;
+  }
+  CommitEditorByKey(*editor, Qt::Key_Tab);
+  if (!field_model_->ValidationError(payload_row).contains(QStringLiteral("0..3 bytes")) ||
+      field_model_->data(payload_index, Qt::EditRole).toString() != QStringLiteral("01020304") ||
+      session_.preview().has_value()) {
+    error = QStringLiteral("Tab did not submit the complete over-protocol keyboard draft");
+    return false;
+  }
+
+  editor = open_editor();
+  if (editor == nullptr) {
+    error = QStringLiteral("failed to reopen table editor for paste submission");
+    return false;
+  }
+  ReplaceEditorTextByPaste(*editor, QStringLiteral("01020304"));
+  if (editor->text() != QStringLiteral("01020304")) {
+    error = QStringLiteral("paste over-protocol draft was truncated before submission");
+    return false;
+  }
+  CommitEditorByKey(*editor, Qt::Key_Return);
+  if (!field_model_->ValidationError(payload_row).contains(QStringLiteral("0..3 bytes")) ||
+      field_model_->data(payload_index, Qt::EditRole).toString() != QStringLiteral("01020304")) {
+    error = QStringLiteral("Enter did not submit the complete over-protocol pasted draft");
+    return false;
+  }
+
+  editor = open_editor();
+  if (editor == nullptr) {
+    error = QStringLiteral("failed to reopen table editor for focus-out recovery");
+    return false;
+  }
+  ReplaceEditorTextByKeyboard(*editor, QStringLiteral("010203"));
+  encode_button_->setFocus(Qt::OtherFocusReason);
+  QApplication::processEvents(QEventLoop::ExcludeUserInputEvents);
+  QApplication::sendPostedEvents(nullptr, QEvent::DeferredDelete);
+  if (field_model_->data(payload_index, Qt::EditRole).toString() != QStringLiteral("010203")) {
+    error = QStringLiteral("focus-out did not commit corrected legal BYTES");
+    return false;
+  }
+  EncodeCurrent();
+  if (!session_.preview().has_value()) {
+    error = QStringLiteral("focus-out correction did not recover a valid Encode result");
+    return false;
+  }
+
+  editor = open_editor();
+  if (editor == nullptr) {
+    error = QStringLiteral("failed to open BYTES editor for capacity rejection");
+    return false;
+  }
+  ReplaceEditorTextByPaste(*editor, QStringLiteral("0102030405"));
+  if (editor->text() != QStringLiteral("010203") ||
+      !editor->property("paeCapacityRejected").toBool() || editor->toolTip().isEmpty() ||
+      session_.preview().has_value() ||
+      !field_model_->ValidationError(payload_row)
+           .contains(QStringLiteral("editor capacity (8 Hex characters)"))) {
+    error = QStringLiteral("over-capacity paste was not wholly rejected with visible feedback");
+    return false;
+  }
+  CommitEditorByKey(*editor, Qt::Key_Return);
+  if (session_.preview().has_value()) {
+    error = QStringLiteral("rejected capacity operation was committed as a new success");
+    return false;
+  }
+
+  editor = open_editor();
+  if (editor == nullptr) {
+    error = QStringLiteral("failed to reopen table editor after capacity rejection");
+    return false;
+  }
+  ReplaceEditorTextByKeyboard(*editor, QStringLiteral("1020"));
+  CommitEditorByKey(*editor, Qt::Key_Return);
+  EncodeCurrent();
+  if (!session_.preview().has_value() ||
+      session_.preview()->encoded_frame !=
+          std::vector<std::uint8_t>({0xA5U, 0x05U, 0x10U, 0x20U, 0xDAU})) {
+    error = QStringLiteral("capacity rejection correction did not recover expected Encode");
+    return false;
+  }
+
   if (!field_model_->setData(payload_index, QString{}, Qt::EditRole)) {
     error = QStringLiteral("legal empty bounded payload was rejected: %1")
                 .arg(field_model_->ValidationError(payload_row));
@@ -460,6 +676,242 @@ bool DocumentTab::VerifyBoundedV08ForSmoke(QString& error) {
   return true;
 }
 
+bool DocumentTab::VerifyAsciiForSmoke(QString& error) {
+  if (!session_.IsAsciiDocument()) {
+    error = QStringLiteral("document is not Schema 0.10 ASCII");
+    return false;
+  }
+  const auto* message = CurrentMessage();
+  if (message == nullptr) {
+    error = QStringLiteral("ASCII document has no selected Message");
+    return false;
+  }
+
+  mode_combo_->setCurrentIndex(0);
+  RefreshState();
+  if (encode_button_->isEnabled() != session_.EncodeAvailable()) {
+    error = QStringLiteral("Encode button availability differs from the action description");
+    return false;
+  }
+  mode_combo_->setCurrentIndex(1);
+  RefreshState();
+  if (inspect_button_->isEnabled() != session_.InspectAvailable()) {
+    error = QStringLiteral("Inspect button availability differs from Pipeline Decode candidates");
+    return false;
+  }
+  if (!message->encode_available) {
+    mode_combo_->setCurrentIndex(0);
+    if (session_.Encode() || session_.diagnostic_id() != "OPERATION_NOT_SUPPORTED") {
+      error = QStringLiteral("Decode-only Message did not enforce session Encode rejection");
+      return false;
+    }
+    representation_combo_->setCurrentIndex(1);
+    return InspectTextForSmoke(QStringLiteral("PING\\r\\n"), error);
+  }
+  if (!session_.InspectAvailable()) {
+    if (!EncodeForSmoke(error)) return false;
+    mode_combo_->setCurrentIndex(1);
+    if (inspect_button_->isEnabled()) {
+      error = QStringLiteral("Encode-only Pipeline left Inspect enabled");
+      return false;
+    }
+    session_.SetInspectDraft("50494E470D0A");
+    if (session_.Inspect() || !session_.inspect_failure().has_value() ||
+        session_.inspect_failure()->status != "OPERATION_NOT_SUPPORTED") {
+      error = QStringLiteral("Encode-only Pipeline did not enforce session Inspect rejection");
+      return false;
+    }
+    return true;
+  }
+
+  if (message->fields.empty()) {
+    if (!EncodeForSmoke(error) || !session_.preview().has_value() ||
+        !session_.preview()->zero_field_success ||
+        !result_kind_label_->text().contains(QStringLiteral("成功，0 个字段")) ||
+        HighlightedCellCountForSmoke() != 0U) {
+      if (error.isEmpty())
+        error = QStringLiteral("literal-only Encode did not show 0-field success");
+      return false;
+    }
+    representation_combo_->setCurrentIndex(1);
+    if (!InspectTextForSmoke(QStringLiteral("PING\\r\\n"), error) ||
+        !session_.inspect_result()->zero_field_success ||
+        !result_kind_label_->text().contains(QStringLiteral("成功，0 个字段")) ||
+        HighlightedCellCountForSmoke() != 0U) {
+      if (error.isEmpty())
+        error = QStringLiteral("literal-only Inspect did not show 0-field success");
+      return false;
+    }
+    return true;
+  }
+
+  ClipboardMimeGuard clipboard_guard;
+
+  const int name_row = 0;
+  representation_combo_->setCurrentIndex(1);
+  mode_combo_->setCurrentIndex(0);
+  QModelIndex name_index = field_model_->index(name_row, FieldTableModel::VALUE);
+  field_table_->setCurrentIndex(name_index);
+  field_table_->edit(name_index);
+  QApplication::processEvents(QEventLoop::ExcludeUserInputEvents);
+  auto* editor = qobject_cast<QLineEdit*>(QApplication::focusWidget());
+  if (editor == nullptr || editor->property("paeEditCapacity").toInt() != 36 ||
+      editor->property("paeByteRepresentation").toInt() !=
+          static_cast<int>(ByteRepresentation::ASCII_ESCAPED)) {
+    error = QStringLiteral("ASCII table editor did not expose expected escaped capacity=36");
+    return false;
+  }
+  ReplaceEditorTextByKeyboard(*editor, QStringLiteral("ALICE"));
+  encode_button_->setFocus(Qt::OtherFocusReason);
+  QApplication::processEvents(QEventLoop::ExcludeUserInputEvents);
+  QApplication::sendPostedEvents(nullptr, QEvent::DeferredDelete);
+  EncodeCurrent();
+  const std::vector<std::uint8_t> expected{'T', 'X', ' ', 'A', 'L',  'I',
+                                           'C', 'E', '!', 'A', '\r', '\n'};
+  if (!session_.preview().has_value() || session_.preview()->encoded_frame != expected ||
+      !session_.preview()->tx_template_review) {
+    error = QStringLiteral("ASCII Enter commit did not produce independent TX template bytes");
+    return false;
+  }
+  if (!timing_label_->text().contains(QStringLiteral("review kind TX_TEMPLATE"))) {
+    error = QStringLiteral("successful ASCII Encode did not publish TX_TEMPLATE timing context");
+    return false;
+  }
+  if (field_model_->data(field_model_->index(1, FieldTableModel::SOURCE)).toString() !=
+          QStringLiteral("not referenced") ||
+      field_model_->data(field_model_->index(1, FieldTableModel::VALUE)).toString() !=
+          QStringLiteral("not referenced by Encode action") ||
+      field_model_->data(field_model_->index(2, FieldTableModel::SOURCE)).toString() !=
+          QStringLiteral("input")) {
+    error = QStringLiteral("ASCII Encode action/source annotations are inconsistent");
+    return false;
+  }
+  field_table_->selectRow(name_row);
+  RefreshFieldDetails(name_row);
+  if (HighlightedCellCountForSmoke() != 5U || HighlightMaskForSmoke(3U) != 0xFFU ||
+      HighlightMaskForSmoke(7U) != 0xFFU) {
+    error = QStringLiteral("ASCII Encode actual field range was not highlighted");
+    return false;
+  }
+  representation_combo_->setCurrentIndex(0);
+  if (!timing_label_->text().isEmpty() || session_.preview().has_value()) {
+    error = QStringLiteral("representation switch retained stale ASCII Encode timing/result");
+    return false;
+  }
+  representation_combo_->setCurrentIndex(1);
+  name_index = field_model_->index(name_row, FieldTableModel::VALUE);
+  EncodeCurrent();
+  if (!session_.preview().has_value()) {
+    error =
+        QStringLiteral("ASCII Encode did not recover after byte-equivalent representation switch");
+    return false;
+  }
+
+  field_table_->edit(name_index);
+  QApplication::processEvents(QEventLoop::ExcludeUserInputEvents);
+  editor = qobject_cast<QLineEdit*>(QApplication::focusWidget());
+  if (editor == nullptr) {
+    error = QStringLiteral("failed to reopen ASCII table editor");
+    return false;
+  }
+  ReplaceEditorTextByPaste(*editor, QStringLiteral("ABCDEFGHI"));
+  CommitEditorByKey(*editor, Qt::Key_Tab);
+  if (!field_model_->ValidationError(name_row).contains(QStringLiteral("1..8 bytes")) ||
+      session_.preview().has_value()) {
+    error = QStringLiteral("ASCII over-protocol pasted draft was not retained as invalid");
+    return false;
+  }
+  field_table_->edit(name_index);
+  QApplication::processEvents(QEventLoop::ExcludeUserInputEvents);
+  editor = qobject_cast<QLineEdit*>(QApplication::focusWidget());
+  if (editor == nullptr) return false;
+  ReplaceEditorTextByPaste(*editor, QString(37, QLatin1Char('A')));
+  if (editor->text() != QStringLiteral("ABCDEFGHI") ||
+      !editor->property("paeCapacityRejected").toBool()) {
+    error = QStringLiteral("ASCII over-capacity paste was not wholly rejected");
+    return false;
+  }
+  ReplaceEditorTextByKeyboard(*editor, QStringLiteral("ALICE"));
+  CommitEditorByKey(*editor, Qt::Key_Return);
+  EncodeCurrent();
+  if (!session_.preview().has_value()) {
+    error = QStringLiteral("ASCII field did not recover after invalid/capacity input");
+    return false;
+  }
+
+  if (!InspectTextForSmoke(QStringLiteral("RX ALICE!OK\\r\\n"), error)) return false;
+  field_table_->selectRow(name_row);
+  RefreshFieldDetails(name_row);
+  if (session_.inspect_result()->message_id != "greeting" ||
+      session_.inspect_result()->fields.size() != 2U || HighlightedCellCountForSmoke() != 5U ||
+      !timing_label_->text().isEmpty()) {
+    error = QStringLiteral("ASCII Inspect did not publish Core match, fields and actual range");
+    return false;
+  }
+  const QModelIndex rx_source = field_model_->index(1, FieldTableModel::SOURCE);
+  const QModelIndex rx_value = field_model_->index(1, FieldTableModel::VALUE);
+  const QModelIndex rx_raw = field_model_->index(1, FieldTableModel::RAW_RESULT);
+  const QModelIndex rx_logical = field_model_->index(1, FieldTableModel::LOGICAL_RESULT);
+  const QModelIndex rx_physical = field_model_->index(1, FieldTableModel::PHYSICAL_LOCATION);
+  const QModelIndex tx_source = field_model_->index(2, FieldTableModel::SOURCE);
+  const QModelIndex tx_value = field_model_->index(2, FieldTableModel::VALUE);
+  const QModelIndex tx_raw = field_model_->index(2, FieldTableModel::RAW_RESULT);
+  if (field_model_->data(rx_source).toString() != QStringLiteral("decoded") ||
+      !field_model_->data(rx_value).toString().isEmpty() ||
+      field_model_->data(rx_raw).toString() != QStringLiteral("4F4B") ||
+      field_model_->data(rx_logical).toString() != QStringLiteral("OK") ||
+      field_model_->data(rx_physical).toString() != QStringLiteral("9 + 2") ||
+      field_model_->data(tx_source).toString() != QStringLiteral("not referenced") ||
+      field_model_->data(tx_value).toString() !=
+          QStringLiteral("not referenced by Decode action") ||
+      !field_model_->data(tx_raw).toString().isEmpty()) {
+    error = QStringLiteral("ASCII Inspect action/source/result annotations are inconsistent");
+    return false;
+  }
+  field_table_->selectRow(1);
+  RefreshFieldDetails(1);
+  const QString rx_details = details_view_->toPlainText();
+  if (!rx_details.contains(QStringLiteral("Actual byte range: 9 + 2")) ||
+      !rx_details.contains(
+          QStringLiteral("Actual physical bytes (zero-based): [9, 11), full-byte range")) ||
+      rx_details.contains(QStringLiteral("current range unavailable"))) {
+    error = QStringLiteral("ASCII Inspect details contradict the adapter actual byte range");
+    return false;
+  }
+  if (!VerifyInspectFailureForSmoke(QStringLiteral("RX ALICE!OK\\q"), InspectFailureStage::INPUT,
+                                    QString{}, 11U, QString{}, error) ||
+      !diagnostic_label_->text().contains(
+          QStringLiteral("input_utf16_code_unit_offset=11 (zero-based)")) ||
+      !timing_label_->text().isEmpty()) {
+    if (error.isEmpty()) {
+      error = QStringLiteral("ASCII escape failure omitted UTF-16 offset or retained timing");
+    }
+    return false;
+  }
+  if (!VerifyInspectFailureForSmoke(QStringLiteral("RX A\n!OK\\r\\n"), InspectFailureStage::INPUT,
+                                    QString{}, 4U, QString{}, error) ||
+      session_.diagnostic_id() != "UI_ASCII_INPUT_INVALID") {
+    if (error.isEmpty()) error = QStringLiteral("ASCII actual-control failure differs");
+    return false;
+  }
+  if (!InspectTextForSmoke(QStringLiteral("RX ALICE!OK\\r\\n"), error)) return false;
+  representation_combo_->setCurrentIndex(0);
+  const QString converted_hex = inspect_input_->toPlainText();
+  if (converted_hex != QStringLiteral("525820414C494345214F4B0D0A") ||
+      session_.inspect_result().has_value()) {
+    error = QStringLiteral("ASCII-to-Hex switch did not preserve bytes and clear result");
+    return false;
+  }
+  inspect_input_->setPlainText(QStringLiteral("80"));
+  representation_combo_->setCurrentIndex(1);
+  if (session_.representation() != ByteRepresentation::HEX ||
+      inspect_input_->toPlainText() != QStringLiteral("80")) {
+    error = QStringLiteral("non-ASCII Hex incorrectly switched representation or lost draft");
+    return false;
+  }
+  return true;
+}
+
 bool DocumentTab::VerifyPipelineSwitchClearsInspectForSmoke(QString& error) {
   if (pipeline_combo_->count() < 2) {
     error = QStringLiteral("Pipeline reset smoke requires two real Pipeline choices");
@@ -528,6 +980,10 @@ void DocumentTab::BuildUi() {
   mode_combo_->addItem(QStringLiteral("Encode"), static_cast<int>(OperationMode::ENCODE));
   mode_combo_->addItem(QStringLiteral("Inspect"), static_cast<int>(OperationMode::INSPECT));
   message_combo_ = new QComboBox(this);
+  representation_combo_ = new QComboBox(this);
+  representation_combo_->addItem(QStringLiteral("Hex"), static_cast<int>(ByteRepresentation::HEX));
+  representation_combo_->addItem(QStringLiteral("ASCII (escaped)"),
+                                 static_cast<int>(ByteRepresentation::ASCII_ESCAPED));
   encode_button_ = new QPushButton(QStringLiteral("Encode"), this);
   inspect_button_ = new QPushButton(QStringLiteral("Inspect complete record"), this);
   selection_row->addWidget(new QLabel(QStringLiteral("Mode"), this));
@@ -536,6 +992,8 @@ void DocumentTab::BuildUi() {
   selection_row->addWidget(pipeline_combo_, 1);
   selection_row->addWidget(new QLabel(QStringLiteral("Encode Message"), this));
   selection_row->addWidget(message_combo_, 1);
+  selection_row->addWidget(new QLabel(QStringLiteral("Representation"), this));
+  selection_row->addWidget(representation_combo_);
   selection_row->addWidget(encode_button_);
   selection_row->addWidget(inspect_button_);
   root->addLayout(selection_row);
@@ -606,20 +1064,25 @@ void DocumentTab::BuildUi() {
   connect(inspect_button_, &QPushButton::clicked, this, [this] { InspectCurrent(); });
   connect(mode_combo_, qOverload<int>(&QComboBox::currentIndexChanged), this,
           [this](int index) { SelectMode(index); });
+  connect(representation_combo_, qOverload<int>(&QComboBox::currentIndexChanged), this,
+          [this](int index) { SelectRepresentation(index); });
   connect(inspect_input_, &QPlainTextEdit::textChanged, this, [this] {
     if (rebuilding_selectors_) return;
-    QString text = inspect_input_->toPlainText();
-    const std::size_t frame_budget = session_.InspectFrameBudget();
-    const int maximum_utf16_units =
-        static_cast<int>((std::min)(std::size_t{196609U},
-                                    frame_budget == 0U ? std::size_t{1U} : frame_budget * 3U + 1U));
-    if (text.size() > maximum_utf16_units) {
-      text.truncate(maximum_utf16_units);
+    timing_label_->clear();
+    const QString text = inspect_input_->toPlainText();
+    const auto capacity =
+        InspectEditorCapacity(session_.InspectFrameBudget(), session_.representation());
+    if (!capacity.has_value() || text.size() > *capacity) {
       rebuilding_selectors_ = true;
-      inspect_input_->setPlainText(text);
+      inspect_input_->setPlainText(accepted_inspect_text_);
       rebuilding_selectors_ = false;
+      session_.RejectInspectCapacity(capacity.value_or(0));
+      RefreshInspect();
+      RefreshState();
+      return;
     }
-    session_.SetInspectDraft(Utf8(text));
+    accepted_inspect_text_ = text;
+    session_.SetInspectDraftUtf16(Utf16(text));
     RefreshInspect();
     RefreshState();
   });
@@ -689,7 +1152,9 @@ void DocumentTab::ResetVisibleDocument() {
   timing_label_->clear();
   rebuilding_selectors_ = true;
   inspect_input_->clear();
+  representation_combo_->setCurrentIndex(0);
   rebuilding_selectors_ = false;
+  accepted_inspect_text_.clear();
   result_kind_label_->clear();
 }
 
@@ -734,9 +1199,17 @@ void DocumentTab::RebuildMessageSelector() {
       continue;
     }
     const auto& message = description->messages[message_index];
-    const auto& label = message.display_name.empty() ? message.id : message.display_name;
-    message_combo_->addItem(FromUtf8(label),
-                            QVariant::fromValue(static_cast<qulonglong>(message_index)));
+    const auto& base_label = message.display_name.empty() ? message.id : message.display_name;
+    QString label = FromUtf8(base_label);
+    if (description->layout == DocumentLayout::ASCII_TEXT) {
+      label +=
+          QStringLiteral(" [%1%2]")
+              .arg(message.encode_available ? QStringLiteral("Encode") : QStringLiteral(""))
+              .arg(message.decode_available ? (message.encode_available ? QStringLiteral("/Decode")
+                                                                        : QStringLiteral("Decode"))
+                                            : QStringLiteral(""));
+    }
+    message_combo_->addItem(label, QVariant::fromValue(static_cast<qulonglong>(message_index)));
   }
   if (!session_.selection().has_value() && message_combo_->count() > 0) {
     session_.SelectMessage(static_cast<std::size_t>(message_combo_->itemData(0).toULongLong()));
@@ -763,11 +1236,12 @@ void DocumentTab::RebuildMessageSelector() {
         RefreshState();
         return true;
       },
-      [this](std::size_t field_index, std::string text, std::string validation_error) {
-        session_.SetInvalidDraft(field_index, std::move(text), std::move(validation_error));
+      [this](std::size_t field_index, std::u16string text, std::string validation_error) {
+        session_.SetInvalidDraftUtf16(field_index, std::move(text), std::move(validation_error));
         RefreshPreview();
         RefreshState();
-      });
+      },
+      true, session_.representation());
   RefreshPreview();
   RefreshState();
   RefreshModePresentation();
@@ -786,13 +1260,15 @@ void DocumentTab::RefreshState() {
   const bool loading = session_.state() == DocumentState::LOADING;
   pipeline_combo_->setEnabled(description != nullptr && !loading);
   mode_combo_->setEnabled(description != nullptr && !loading);
+  representation_combo_->setVisible(session_.IsAsciiDocument());
+  representation_combo_->setEnabled(session_.IsAsciiDocument() && !loading);
   const bool encode_mode = session_.mode() == OperationMode::ENCODE;
   message_combo_->setEnabled(description != nullptr && !loading && encode_mode);
   encode_button_->setEnabled(description != nullptr && session_.selection().has_value() &&
-                             !loading && encode_mode);
+                             session_.EncodeAvailable() && !loading && encode_mode);
   inspect_button_->setEnabled(description != nullptr &&
-                              session_.selected_pipeline_index().has_value() && !loading &&
-                              !encode_mode);
+                              session_.selected_pipeline_index().has_value() &&
+                              session_.InspectAvailable() && !loading && !encode_mode);
   if (session_.diagnostic_id().empty() && session_.diagnostic_detail().empty()) {
     diagnostic_label_->clear();
   } else {
@@ -803,6 +1279,10 @@ void DocumentTab::RefreshState() {
 
 void DocumentTab::RefreshModePresentation() {
   const bool inspect_mode = session_.mode() == OperationMode::INSPECT;
+  inspect_input_label_->setText(
+      session_.IsAsciiDocument() && session_.representation() == ByteRepresentation::ASCII_ESCAPED
+          ? QStringLiteral("Raw input / 原始输入（ASCII escaped；实际控制字符和非ASCII被拒绝）")
+          : QStringLiteral("Raw input / 原始输入（Hex；允许大小写及 SP/HT/CR/LF）"));
   inspect_input_label_->setVisible(inspect_mode);
   inspect_input_->setVisible(inspect_mode);
   inspect_button_->setVisible(inspect_mode);
@@ -822,15 +1302,18 @@ void DocumentTab::RefreshModePresentation() {
           RefreshState();
           return true;
         },
-        [this](std::size_t field_index, std::string text, std::string validation_error) {
-          session_.SetInvalidDraft(field_index, std::move(text), std::move(validation_error));
+        [this](std::size_t field_index, std::u16string text, std::string validation_error) {
+          session_.SetInvalidDraftUtf16(field_index, std::move(text), std::move(validation_error));
           RefreshPreview();
           RefreshState();
-        });
+        },
+        true, session_.representation());
     field_model_->ApplyDrafts(session_.drafts());
     field_model_->ApplyInvalidDrafts(session_.invalid_drafts());
     result_kind_label_->setText(
-        QStringLiteral("Valid encoded output / 有效编码输出（仅 Encode OK 时）"));
+        session_.IsAsciiDocument()
+            ? QStringLiteral("ASCII Encode output / 待执行")
+            : QStringLiteral("Valid encoded output / 有效编码输出（仅 Encode OK 时）"));
     RefreshPreview();
   }
   RefreshState();
@@ -838,7 +1321,8 @@ void DocumentTab::RefreshModePresentation() {
 
 void DocumentTab::RefreshInspect() {
   const auto* message = DisplayedMessage();
-  field_model_->Reset(message, {}, {}, false);
+  field_model_->Reset(message, {}, {}, false, session_.representation(),
+                      FieldPresentationAction::INSPECT);
   std::vector<std::uint8_t> frame;
   std::vector<PhysicalBitMask> highlights;
   std::optional<int> failed_detail_row;
@@ -847,10 +1331,14 @@ void DocumentTab::RefreshInspect() {
     field_model_->SetActualFrameSize(frame.size());
     field_model_->ApplyResults(session_.inspect_result()->fields);
     result_kind_label_->setText(
-        QStringLiteral("Valid decoded result / 有效解码结果 | matched Message: %1")
-            .arg(FromUtf8(session_.inspect_result()->message_id).toHtmlEscaped()));
+        QStringLiteral(
+            "Valid decoded result / 有效解码结果 | matched Message: %1 | 成功，%2 个字段")
+            .arg(FromUtf8(session_.inspect_result()->message_id).toHtmlEscaped())
+            .arg(session_.inspect_result()->fields.size()));
     const auto* field = field_model_->FieldAt(field_table_->currentIndex().row());
-    highlights = FieldHighlights(message, field, frame.size());
+    highlights = session_.IsAsciiDocument()
+                     ? ActualFieldHighlights(session_.inspect_result()->fields, field)
+                     : FieldHighlights(message, field, frame.size());
   } else if (session_.inspect_failure().has_value()) {
     const auto& failure = *session_.inspect_failure();
     frame = failure.input_frame;
@@ -894,7 +1382,16 @@ void DocumentTab::RefreshPreview() {
   const auto* field = field_model_->FieldAt(current_row);
   hex_view_->SetFrame(
       session_.preview()->encoded_frame,
-      FieldHighlights(CurrentMessage(), field, session_.preview()->encoded_frame.size()));
+      session_.IsAsciiDocument()
+          ? ActualFieldHighlights(session_.preview()->fields, field)
+          : FieldHighlights(CurrentMessage(), field, session_.preview()->encoded_frame.size()));
+  if (session_.IsAsciiDocument()) {
+    result_kind_label_->setText(
+        QStringLiteral("Valid ASCII Encode / 成功，%1 个字段 | review kind: %2")
+            .arg(session_.preview()->fields.size())
+            .arg(session_.preview()->tx_template_review ? QStringLiteral("TX_TEMPLATE")
+                                                        : QStringLiteral("NOT_APPLICABLE")));
+  }
   RefreshFieldDetails(current_row, false);
 }
 
@@ -964,7 +1461,13 @@ void DocumentTab::RefreshFieldDetails(int row, bool refresh_frame) {
     details.push_back(
         QStringLiteral("<b>Source</b>: %1").arg(FromUtf8(field->source_ref).toHtmlEscaped()));
   }
-  if (!field->read_only_annotation.empty()) {
+  if (field->ascii_text) {
+    details.push_back(QStringLiteral("<b>Action participation</b>: Decode %1; Encode %2")
+                          .arg(field->decode_referenced ? QStringLiteral("referenced")
+                                                        : QStringLiteral("not referenced"),
+                               field->encode_referenced ? QStringLiteral("referenced")
+                                                        : QStringLiteral("not referenced")));
+  } else if (!field->read_only_annotation.empty()) {
     details.push_back(QStringLiteral("<b>Storage / integrity / conversion</b>: %1")
                           .arg(FromUtf8(field->read_only_annotation).toHtmlEscaped()));
   }
@@ -975,11 +1478,29 @@ void DocumentTab::RefreshFieldDetails(int row, bool refresh_frame) {
                        "logical/raw representability checks"));
   }
 #endif
+  std::optional<ByteRange> ascii_actual_range;
+  if (session_.IsAsciiDocument()) {
+    const std::vector<UiFieldResult>* results = nullptr;
+    if (session_.mode() == OperationMode::ENCODE && session_.preview().has_value())
+      results = &session_.preview()->fields;
+    if (session_.mode() == OperationMode::INSPECT && session_.inspect_result().has_value())
+      results = &session_.inspect_result()->fields;
+    if (results != nullptr) {
+      const auto found = std::find_if(results->begin(), results->end(), [&](const auto& result) {
+        return result.field_index == field->field_index && result.id == field->id;
+      });
+      if (found != results->end()) ascii_actual_range = found->actual_range;
+    }
+  }
   if (field->byte_length_bounds.has_value()) {
     details.push_back(QStringLiteral("<b>Payload length bounds</b>: %1..%2 bytes")
                           .arg(static_cast<qulonglong>(field->byte_length_bounds->minimum))
                           .arg(static_cast<qulonglong>(field->byte_length_bounds->maximum)));
-    if (ActualFrameSize().has_value()) {
+    if (ascii_actual_range.has_value()) {
+      details.push_back(QStringLiteral("<b>Actual byte range</b>: %1 + %2")
+                            .arg(static_cast<qulonglong>(ascii_actual_range->offset))
+                            .arg(static_cast<qulonglong>(ascii_actual_range->length)));
+    } else if (!session_.IsAsciiDocument() && ActualFrameSize().has_value()) {
       const auto range = ResolveActualFieldRange(*message, *field, *ActualFrameSize());
       if (range.has_value()) {
         details.push_back(QStringLiteral("<b>Actual byte range</b>: %1 + %2")
@@ -996,12 +1517,22 @@ void DocumentTab::RefreshFieldDetails(int row, bool refresh_frame) {
     details.push_back(QStringLiteral("<b>Physical bit cells</b>: %1")
                           .arg(static_cast<qulonglong>(field->physical_bits.size())));
   }
-  const auto physical = message == nullptr
-                            ? FormatPhysicalLocation(*field)
-                            : FormatPhysicalLocation(*message, *field, ActualFrameSize());
-  if (!physical.empty()) {
-    details.push_back(QStringLiteral("<b>Physical byte / bit / mask (zero-based, LSB0)</b>: %1")
-                          .arg(FromUtf8(physical).toHtmlEscaped()));
+  if (session_.IsAsciiDocument()) {
+    if (ascii_actual_range.has_value()) {
+      details.push_back(QStringLiteral("<b>Actual physical bytes (zero-based)</b>: [%1, %2), "
+                                       "full-byte range")
+                            .arg(static_cast<qulonglong>(ascii_actual_range->offset))
+                            .arg(static_cast<qulonglong>(ascii_actual_range->offset +
+                                                         ascii_actual_range->length)));
+    }
+  } else {
+    const auto physical = message == nullptr
+                              ? FormatPhysicalLocation(*field)
+                              : FormatPhysicalLocation(*message, *field, ActualFrameSize());
+    if (!physical.empty()) {
+      details.push_back(QStringLiteral("<b>Physical byte / bit / mask (zero-based, LSB0)</b>: %1")
+                            .arg(FromUtf8(physical).toHtmlEscaped()));
+    }
   }
   details_view_->setHtml(details.join(QStringLiteral("<br/>")));
   if (!refresh_frame) return;
@@ -1010,7 +1541,9 @@ void DocumentTab::RefreshFieldDetails(int row, bool refresh_frame) {
     std::vector<PhysicalBitMask> highlights;
     if (session_.inspect_result().has_value()) {
       frame = session_.inspect_result()->input_frame;
-      highlights = FieldHighlights(message, field, frame.size());
+      highlights = session_.IsAsciiDocument()
+                       ? ActualFieldHighlights(session_.inspect_result()->fields, field)
+                       : FieldHighlights(message, field, frame.size());
     } else if (session_.inspect_failure().has_value()) {
       frame = session_.inspect_failure()->input_frame;
       highlights = InspectFailureHighlights(message);
@@ -1027,11 +1560,13 @@ void DocumentTab::SelectPipeline(int combo_index) {
   }
   if (session_.SelectPipeline(
           static_cast<std::size_t>(pipeline_combo_->itemData(combo_index).toULongLong()))) {
+    timing_label_->clear();
     field_model_->Reset(nullptr, {});
     hex_view_->ClearFrame();
     rebuilding_selectors_ = true;
     inspect_input_->clear();
     rebuilding_selectors_ = false;
+    accepted_inspect_text_.clear();
     RebuildMessageSelector();
   }
   RefreshState();
@@ -1040,7 +1575,31 @@ void DocumentTab::SelectPipeline(int combo_index) {
 void DocumentTab::SelectMode(int combo_index) {
   if (rebuilding_selectors_ || combo_index < 0) return;
   const auto mode = static_cast<OperationMode>(mode_combo_->itemData(combo_index).toInt());
-  if (session_.SetMode(mode)) RefreshModePresentation();
+  if (session_.SetMode(mode)) {
+    timing_label_->clear();
+    RefreshModePresentation();
+  }
+}
+
+void DocumentTab::SelectRepresentation(int combo_index) {
+  if (rebuilding_selectors_ || combo_index < 0 || !session_.IsAsciiDocument()) return;
+  const auto requested =
+      static_cast<ByteRepresentation>(representation_combo_->itemData(combo_index).toInt());
+  if (!session_.SetRepresentation(requested)) {
+    rebuilding_selectors_ = true;
+    representation_combo_->setCurrentIndex(
+        representation_combo_->findData(static_cast<int>(session_.representation())));
+    rebuilding_selectors_ = false;
+    RefreshState();
+    return;
+  }
+  timing_label_->clear();
+  rebuilding_selectors_ = true;
+  inspect_input_->setPlainText(FromUtf16(session_.inspect_draft_utf16()));
+  accepted_inspect_text_ = inspect_input_->toPlainText();
+  rebuilding_selectors_ = false;
+  RebuildMessageSelector();
+  RefreshModePresentation();
 }
 
 void DocumentTab::SelectMessage(int combo_index) {
@@ -1049,6 +1608,7 @@ void DocumentTab::SelectMessage(int combo_index) {
   }
   if (session_.SelectMessage(
           static_cast<std::size_t>(message_combo_->itemData(combo_index).toULongLong()))) {
+    timing_label_->clear();
     const auto* message = CurrentMessage();
     field_model_->Reset(
         message,
@@ -1061,11 +1621,12 @@ void DocumentTab::SelectMessage(int combo_index) {
           RefreshState();
           return true;
         },
-        [this](std::size_t field_index, std::string text, std::string validation_error) {
-          session_.SetInvalidDraft(field_index, std::move(text), std::move(validation_error));
+        [this](std::size_t field_index, std::u16string text, std::string validation_error) {
+          session_.SetInvalidDraftUtf16(field_index, std::move(text), std::move(validation_error));
           RefreshPreview();
           RefreshState();
-        });
+        },
+        true, session_.representation());
     hex_view_->ClearFrame();
   }
   RefreshState();
@@ -1096,23 +1657,39 @@ void DocumentTab::EncodeCurrent() {
   RefreshState();
   hex_view_->viewport()->repaint();
   timing_.first_repaint_total_ns = total.nsecsElapsed();
-  timing_label_->setText(TimingText(timing_));
+  if (session_.IsAsciiDocument()) {
+    timing_label_->setText(
+        session_.preview().has_value() && session_.preview()->tx_template_review
+            ? QStringLiteral("input %1 ms | adapter + UI total %2 ms | review kind TX_TEMPLATE; no "
+                             "independent RX Decode timing")
+                  .arg(static_cast<double>(timing_.exact_input_ns) / 1000000.0, 0, 'f', 3)
+                  .arg(static_cast<double>(timing_.first_repaint_total_ns) / 1000000.0, 0, 'f', 3)
+            : QStringLiteral("ASCII Encode failed; no successful review result"));
+  } else {
+    timing_label_->setText(TimingText(timing_));
+  }
 }
 
 void DocumentTab::InspectCurrent() {
+  timing_label_->clear();
   field_table_->clearFocus();
   QApplication::processEvents(QEventLoop::ExcludeUserInputEvents);
-  session_.SetInspectDraft(Utf8(inspect_input_->toPlainText()));
+  session_.SetInspectDraftUtf16(Utf16(inspect_input_->toPlainText()));
   TimingObserver observer(timing_);
   session_.Inspect(&observer);
   if (session_.inspect_failure().has_value() &&
       session_.inspect_failure()->input_offset.has_value()) {
     const QString text = inspect_input_->toPlainText();
-    const QByteArray utf8 = text.toUtf8();
-    const auto bounded_offset = (std::min)(*session_.inspect_failure()->input_offset,
-                                           static_cast<std::size_t>(utf8.size()));
-    const int utf16_offset =
-        QString::fromUtf8(utf8.constData(), static_cast<int>(bounded_offset)).size();
+    int utf16_offset = 0;
+    if (session_.inspect_failure()->input_offset_is_utf16) {
+      utf16_offset = static_cast<int>((std::min)(*session_.inspect_failure()->input_offset,
+                                                 static_cast<std::size_t>(text.size())));
+    } else {
+      const QByteArray utf8 = text.toUtf8();
+      const auto bounded_offset = (std::min)(*session_.inspect_failure()->input_offset,
+                                             static_cast<std::size_t>(utf8.size()));
+      utf16_offset = QString::fromUtf8(utf8.constData(), static_cast<int>(bounded_offset)).size();
+    }
     QTextCursor cursor = inspect_input_->textCursor();
     cursor.setPosition((std::min)(utf16_offset, text.size()));
     if (cursor.position() < text.size())
@@ -1144,6 +1721,7 @@ std::vector<PhysicalBitMask> DocumentTab::InspectFailureHighlights(
     const MessageDescriptor* message) const {
   std::vector<PhysicalBitMask> highlights;
   if (message == nullptr || !session_.inspect_failure().has_value()) return highlights;
+  if (session_.IsAsciiDocument()) return highlights;
   const auto& failure = *session_.inspect_failure();
   if (failure.failed_field_index.has_value() &&
       *failure.failed_field_index < message->fields.size()) {

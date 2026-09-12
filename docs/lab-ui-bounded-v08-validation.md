@@ -118,3 +118,123 @@ Encode 成功或失效都基于当前选择重算详情，同时避免详情与�
 总控只读格式检查发现部分候选C++排版不符合仓库clang-format配置，随后仅对候选C++文件
 执行格式化，`clang-format --dry-run --Werror`及`git diff --check`通过。未修改业务逻辑，
 未重跑测试；上述Debug/Release证据属于格式整理前的功能验证批次。未Stage/Commit/Push。
+
+## 7. BYTES 编辑器超长输入可靠性修复（2026-09-10）
+
+实施起点为分支 `feat/lab-ui-c1`、HEAD
+`111916b23ecd655e8ee104c490468d7a5e048e1b`，工作树起始状态干净。只读参考总控工作树
+ASCII 最小契约第8、9节；没有复制或修改该契约，也没有执行Git写操作。
+
+### 7.1 修复前证据与根因
+
+用户实际验证确认：三字节 payload 的 `QLineEdit::maxLength` 为6，键入或粘贴
+`01020304` 时无法保留完整八字符草稿。实现检查确认旧代码直接以
+`protocol_byte_width * 2` 设置 `maxLength`，Qt会在 Field model 看到输入前截短，因此已有
+model四字节负例不能覆盖真实编辑器行为。
+
+### 7.2 编辑容量与拒绝策略
+
+- 协议最大长度仍由既有 Field model 校验，不改变 Binary BYTES 语法或接受域。
+- 编辑容量取 `protocol_byte_width * 2 + 2` 个 Hex 字符，即在全部合法输入之外至少容纳一个
+  完整超长字节。三字节 payload 的容量因此为8，`01020304`会完整保留并在提交时得到既有
+  `Payload length must be 0..3 bytes` 错误。
+- 容量计算以既有 desktop `max_frame_bytes=65536` 为硬依据，最大编辑容量为131074字符；
+  计算先核对协议宽度和 `int` 可表示性，不允许溢出或无界编辑状态。
+- `QValidator`针对整次候选文本判定容量。超过容量的键入、粘贴或替换不会接受合法前缀；
+  编辑器保留操作前文本，并通过红色背景、即时tooltip和模型诊断显示
+  `entire edit rejected`。
+- 容量拒绝同时把当前session草稿置为无效，清除旧Frame、Raw、Logical和高亮；带拒绝标记
+  的编辑器不能把旧文本重新提交为本次成功。后续合法编辑清除反馈并可正常恢复。
+
+### 7.3 首轮编辑器输入验证的边界
+
+首轮Schema 0.8 shown-window smoke通过委托创建了实际 `QLineEdit` 并发送键盘、粘贴事件，
+但随后直接调用 `setModelData` 提交，绕过 `QTableView` / `QStyledItemDelegate` 的标准
+Enter、Tab和FocusOut门禁。因此下列首轮通过结果能证明输入保留、容量拒绝、模型校验和恢复，
+不能证明标准编辑生命周期能够提交；该证据缺口和后续修复见第8节。
+
+1. 从旧成功Preview开始，选择全部文本并逐键输入 `01020304`；编辑器保留完整八字符，旧结果
+   立即清理，提交后model报告0..3字节越界。
+2. 通过键盘替换为 `010203`、提交并Encode，验证恢复成功。
+3. 选择全部文本后粘贴 `01020304`；完整草稿保留，提交后得到同一协议长度错误。
+4. 恢复合法三字节和成功Preview后，粘贴十字符 `0102030405`；整次操作因超过八字符容量被
+   拒绝，编辑器仍是旧的 `010203`，容量属性、tooltip和模型诊断可见，旧Preview已清理，
+   提交不会产生新成功。
+5. 再通过键盘替换为 `1020`、提交并Encode，验证Frame恢复为 `A5 05 10 20 DA`。
+6. 既有空载荷、两/三字节动态详情、`GG`失败清理和Inspect恢复断言继续通过。
+
+最终源状态的针对性Windows结果：
+
+- Release：重建 `pae_protocol_lab_ui` 成功；`qt_smoke`、`qt_smoke_v07`、
+  `qt_smoke_v08` 为3/3通过。
+- Debug：重建 `pae_protocol_lab_ui` 成功；同一集合3/3通过。
+- 格式：候选C++文件 `clang-format --dry-run --Werror` 通过；`git diff --check` 通过。
+
+最终日志：
+
+- `out/ui-v08-v142-check/Testing/Temporary/bytes-editor-final-release.log`
+- `out/ui-v08-v142-check/Testing/Temporary/bytes-editor-final-debug.log`
+
+本批次只证明离线Windows Qt编辑器、旧成功状态清理、提交与恢复行为。未运行完整产品矩阵、
+Linux、网络、真实协议、硬件、长稳、性能或部署验收；没有实施ASCII codec或ASCII UI。
+
+## 8. BYTES 标准提交门禁修复（2026-09-10）
+
+### 8.1 修复前动态证据
+
+总控先通过Qt 5.13源码静态指出：容量Validator对全部容量内输入返回 `Intermediate`，标准
+delegate在Enter、Tab或FocusOut提交前会检查 `hasAcceptableInput()`，因此合法值也可能无法
+提交。该发现最初只有静态证据，没有冒充动态复现。
+
+随后将专项改为由实际 `QTableView` 打开和管理编辑器，并用真实按键触发Enter提交；保持
+Validator为 `Intermediate` 的修复前Release运行明确失败：
+
+```text
+UI_SMOKE_FAIL ... Enter did not commit legal BYTES through the table delegate
+```
+
+修复前日志为
+`out/ui-v08-v142-check/Testing/Temporary/bytes-editor-submit-prefix-release.log`。这次运行才构成
+动态复现证据。
+
+### 8.2 限定修复
+
+容量Validator现在对容量内候选文本返回 `Acceptable`，只表达“允许进入标准提交链”；超过
+编辑容量仍返回 `Invalid` 并整次拒绝。协议Hex语法和payload长度继续由既有Field model
+判断，因此 `01020304`仍能完整进入model并得到0..3字节错误，没有重新变成编辑器级拒绝。
+
+剪贴板测试辅助从“只保存文本”改为复制并恢复原剪贴板的全部MIME formats，避免测试结束时
+丢失用户原有非文本数据。测试不激活或操作其他应用窗口。
+
+### 8.3 标准编辑生命周期覆盖
+
+最终shown-window专项不再手调 `setModelData`，覆盖：
+
+1. `QTableView`实际编辑器逐键替换为合法 `1020`，按Enter提交；model值为 `1020`，Encode
+   Frame为 `A5 05 10 20 DA`。
+2. 重新打开编辑器，逐键替换为容量内超协议值 `01020304`，按Tab提交；model完整保留八字符
+   并报告0..3字节错误，旧成功状态已清理。
+3. 重新打开编辑器，粘贴 `01020304` 后按Enter；model再次收到完整草稿并报告长度错误。
+4. 替换为合法 `010203`，将焦点移到Encode按钮触发FocusOut提交；model值更新并可恢复
+   Encode。
+5. 从合法成功状态粘贴超容量 `0102030405`；整次拒绝，编辑器仍为旧 `010203`，容量反馈和
+   model无效状态可见，随后Enter不能把旧文本提交为新成功。
+6. 重新打开编辑器，替换为 `1020`并Enter提交，验证model值和预期Frame恢复。
+
+### 8.4 最终Windows结果
+
+最终源状态串行重建并执行受影响窗口集合：
+
+- Release：`pae_protocol_lab_ui`构建成功；`qt_smoke`、`qt_smoke_v07`、
+  `qt_smoke_v08`为3/3通过。
+- Debug：`pae_protocol_lab_ui`构建成功；同一集合3/3通过。
+- `clang-format --dry-run --Werror`和`git diff --check`通过。
+
+最终日志：
+
+- `out/ui-v08-v142-check/Testing/Temporary/bytes-editor-submit-final-release.log`
+- `out/ui-v08-v142-check/Testing/Temporary/bytes-editor-submit-final-debug.log`
+
+本轮只修复Lab BYTES编辑器的有界输入和标准提交可靠性。未修改Compiler、Plan、Core、Schema、
+共享执行桥或根CMake，未实施ASCII codec、ASCII UI或网络，未运行完整产品矩阵、Linux、
+真实协议、硬件、长稳、性能或部署验收。

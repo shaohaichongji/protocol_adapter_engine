@@ -42,9 +42,30 @@ QString SourceName(protocol_plan::EncodeSource source) {
   return QStringLiteral("unknown");
 }
 
+bool ReferencedByPresentedAction(const FieldDescriptor& field,
+                                 FieldPresentationAction action) noexcept {
+  return action == FieldPresentationAction::ENCODE ? field.encode_referenced
+                                                   : field.decode_referenced;
+}
+
+QString PresentedActionName(FieldPresentationAction action) {
+  return action == FieldPresentationAction::ENCODE ? QStringLiteral("Encode")
+                                                   : QStringLiteral("Decode");
+}
+
 std::string Utf8(const QString& value) {
   const auto bytes = value.toUtf8();
   return std::string(bytes.constData(), static_cast<std::size_t>(bytes.size()));
+}
+
+std::u16string Utf16(const QString& value) {
+  const auto* begin = reinterpret_cast<const char16_t*>(value.utf16());
+  return std::u16string(begin, begin + value.size());
+}
+
+QString FromUtf16(const std::u16string& value) {
+  return QString::fromUtf16(reinterpret_cast<const ushort*>(value.data()),
+                            static_cast<int>(value.size()));
 }
 
 }  // namespace
@@ -74,6 +95,7 @@ QVariant FieldTableModel::data(const QModelIndex& index, int role) const {
   if (role == ByteWidthRole) {
     return static_cast<qulonglong>(field->byte_width);
   }
+  if (role == ByteRepresentationRole) return static_cast<int>(representation_);
   if (role == FieldIndexRole) {
     return static_cast<qulonglong>(field->field_index);
   }
@@ -148,8 +170,17 @@ QVariant FieldTableModel::data(const QModelIndex& index, int role) const {
     case TYPE:
       return ValueTypeName(field->value_type);
     case SOURCE:
+      if (field->ascii_text) {
+        if (!ReferencedByPresentedAction(*field, action_)) return QStringLiteral("not referenced");
+        return action_ == FieldPresentationAction::ENCODE ? QStringLiteral("input")
+                                                          : QStringLiteral("decoded");
+      }
       return SourceName(field->encode_source);
     case VALUE:
+      if (field->ascii_text && !ReferencedByPresentedAction(*field, action_)) {
+        return QStringLiteral("not referenced by %1 action").arg(PresentedActionName(action_));
+      }
+      if (field->ascii_text && action_ == FieldPresentationAction::INSPECT) return {};
       if (field->encode_source != protocol_plan::EncodeSource::INPUT) {
         return QString::fromUtf8(field->read_only_annotation.data(),
                                  static_cast<int>(field->read_only_annotation.size()));
@@ -162,13 +193,24 @@ QVariant FieldTableModel::data(const QModelIndex& index, int role) const {
                    ? QVariant::fromValue(static_cast<int>(*row.enum_entry_index))
                    : QVariant(QString::fromUtf8(name.data(), static_cast<int>(name.size())));
       }
-      return QString::fromUtf8(row.draft_text.data(), static_cast<int>(row.draft_text.size()));
+      return row.draft_text;
     case RAW_RESULT:
       return QString::fromUtf8(row.raw_result.data(), static_cast<int>(row.raw_result.size()));
     case LOGICAL_RESULT:
       return QString::fromUtf8(row.logical_result.data(),
                                static_cast<int>(row.logical_result.size()));
     case PHYSICAL_LOCATION: {
+      if (row.actual_range.has_value()) {
+        return QStringLiteral("%1 + %2")
+            .arg(static_cast<qulonglong>(row.actual_range->offset))
+            .arg(static_cast<qulonglong>(row.actual_range->length));
+      }
+      if (field->ascii_text) {
+        return ReferencedByPresentedAction(*field, action_)
+                   ? QStringLiteral("actual range unavailable")
+                   : QStringLiteral("not referenced by %1 action")
+                         .arg(PresentedActionName(action_));
+      }
       const auto location = message_ == nullptr
                                 ? FormatPhysicalLocation(*field)
                                 : FormatPhysicalLocation(*message_, *field, actual_frame_size_);
@@ -206,6 +248,16 @@ bool FieldTableModel::setData(const QModelIndex& index, const QVariant& value, i
   if (!editable_ || !index.isValid() || index.column() != VALUE) {
     return false;
   }
+  if (role == EditorCapacityRejectedRole) {
+    auto& row = rows_[static_cast<std::size_t>(index.row())];
+    const auto* field = FieldAt(index.row());
+    row.validation_error = value.toString();
+    if (draft_invalidated_ && field != nullptr) {
+      draft_invalidated_(field->field_index, Utf16(row.draft_text), Utf8(row.validation_error));
+    }
+    EmitValueChanged(index.row());
+    return false;
+  }
   TypedDraft draft;
   QString canonical;
   QString error;
@@ -214,11 +266,11 @@ bool FieldTableModel::setData(const QModelIndex& index, const QVariant& value, i
     const auto* field = FieldAt(index.row());
     if (field != nullptr && field->value_type != protocol_plan::ValueType::BOOL &&
         field->value_type != protocol_plan::ValueType::ENUM) {
-      row.draft_text = Utf8(value.toString());
+      row.draft_text = value.toString();
     }
     row.validation_error = error;
     if (draft_invalidated_ && field != nullptr) {
-      draft_invalidated_(field->field_index, row.draft_text, Utf8(error));
+      draft_invalidated_(field->field_index, Utf16(row.draft_text), Utf8(error));
     }
     EmitValueChanged(index.row());
     return false;
@@ -229,11 +281,11 @@ bool FieldTableModel::setData(const QModelIndex& index, const QVariant& value, i
     const auto* field = FieldAt(index.row());
     if (field != nullptr && field->value_type != protocol_plan::ValueType::BOOL &&
         field->value_type != protocol_plan::ValueType::ENUM) {
-      row.draft_text = Utf8(value.toString());
+      row.draft_text = value.toString();
     }
     row.validation_error = error;
     if (draft_invalidated_ && field != nullptr) {
-      draft_invalidated_(field->field_index, row.draft_text, Utf8(error));
+      draft_invalidated_(field->field_index, Utf16(row.draft_text), Utf8(error));
     }
     EmitValueChanged(index.row());
     return false;
@@ -244,25 +296,28 @@ bool FieldTableModel::setData(const QModelIndex& index, const QVariant& value, i
   if (field->value_type == protocol_plan::ValueType::BOOL) {
     row.bool_value = role == Qt::CheckStateRole ? value.toInt() == Qt::Checked : value.toBool();
     row.has_bool_value = true;
-    row.draft_text = row.bool_value ? "true" : "false";
+    row.draft_text = row.bool_value ? QStringLiteral("true") : QStringLiteral("false");
   } else if (field->value_type == protocol_plan::ValueType::ENUM) {
     row.enum_entry_index = static_cast<std::size_t>(value.toInt());
-    row.draft_text = Utf8(canonical);
+    row.draft_text = canonical;
   } else {
-    row.draft_text = Utf8(canonical);
+    row.draft_text = canonical;
   }
   EmitValueChanged(index.row());
   return true;
 }
 
 void FieldTableModel::Reset(const MessageDescriptor* message, DraftChanged draft_changed,
-                            DraftInvalidated draft_invalidated, bool editable) {
+                            DraftInvalidated draft_invalidated, bool editable,
+                            ByteRepresentation representation, FieldPresentationAction action) {
   beginResetModel();
   message_ = message;
   rows_.assign(message_ == nullptr ? 0U : message_->fields.size(), RowState{});
   draft_changed_ = std::move(draft_changed);
   draft_invalidated_ = std::move(draft_invalidated);
   editable_ = editable;
+  representation_ = representation;
+  action_ = action;
   failed_field_index_.reset();
   actual_frame_size_.reset();
   endResetModel();
@@ -275,25 +330,28 @@ void FieldTableModel::ApplyDrafts(const std::unordered_map<std::size_t, TypedDra
     if (found == drafts.end()) continue;
     auto& row = rows_[row_index];
     std::visit(
-        [&row](const auto& item) {
+        [this, &row](const auto& item) {
           using T = std::decay_t<decltype(item)>;
           if constexpr (std::is_same_v<T, std::uint64_t> || std::is_same_v<T, std::int64_t>) {
-            row.draft_text = std::to_string(item);
+            row.draft_text = QString::fromStdString(std::to_string(item));
           } else if constexpr (std::is_same_v<T, std::vector<std::uint8_t>>) {
-            static const char digits[] = "0123456789ABCDEF";
-            for (const auto value : item) {
-              row.draft_text.push_back(digits[value >> 4U]);
-              row.draft_text.push_back(digits[value & 0x0FU]);
+            if (representation_ == ByteRepresentation::ASCII_ESCAPED) {
+              std::string error;
+              const auto formatted = FormatAsciiEscaped(item, error);
+              row.draft_text = formatted.has_value() ? FromUtf16(*formatted) : QString{};
+            } else {
+              row.draft_text = QString::fromStdString(FormatContinuousUpperHex(item));
             }
           } else if constexpr (std::is_same_v<T, EnumSelection>) {
             row.enum_entry_index = item.entry_index;
-            row.draft_text = item.entry_id;
+            row.draft_text = QString::fromStdString(item.entry_id);
           } else if constexpr (std::is_same_v<T, bool>) {
             row.bool_value = item;
             row.has_bool_value = true;
-            row.draft_text = item ? "true" : "false";
+            row.draft_text = item ? QStringLiteral("true") : QStringLiteral("false");
           } else if constexpr (std::is_same_v<T, protocol_lab::v06::Decimal64>) {
-            row.draft_text = std::to_string(item.coefficient) + "@" + std::to_string(item.scale);
+            row.draft_text = QString::fromStdString(std::to_string(item.coefficient) + "@" +
+                                                    std::to_string(item.scale));
           }
         },
         found->second);
@@ -307,7 +365,7 @@ void FieldTableModel::ApplyInvalidDrafts(
   for (std::size_t row_index = 0U; row_index < message_->fields.size(); ++row_index) {
     const auto found = invalid_drafts.find(message_->fields[row_index].field_index);
     if (found == invalid_drafts.end()) continue;
-    rows_[row_index].draft_text = found->second.text;
+    rows_[row_index].draft_text = FromUtf16(found->second.text);
     rows_[row_index].validation_error =
         QString::fromUtf8(found->second.validation_error.data(),
                           static_cast<int>(found->second.validation_error.size()));
@@ -325,11 +383,12 @@ void FieldTableModel::ClearResults() {
   for (auto& row : rows_) {
     row.raw_result.clear();
     row.logical_result.clear();
+    row.actual_range.reset();
   }
-  emit dataChanged(index(0, RAW_RESULT), index(rowCount() - 1, LOGICAL_RESULT));
+  emit dataChanged(index(0, RAW_RESULT), index(rowCount() - 1, PHYSICAL_LOCATION));
 }
 
-void FieldTableModel::ApplyResults(const std::vector<protocol_lab::v06::FieldResult>& results) {
+void FieldTableModel::ApplyResults(const std::vector<UiFieldResult>& results) {
   ClearResults();
   if (message_ == nullptr) {
     return;
@@ -339,12 +398,13 @@ void FieldTableModel::ApplyResults(const std::vector<protocol_lab::v06::FieldRes
       if (message_->fields[row_index].id == result.id) {
         rows_[row_index].raw_result = result.raw_value;
         rows_[row_index].logical_result = result.logical_value;
+        rows_[row_index].actual_range = result.actual_range;
         break;
       }
     }
   }
   if (!rows_.empty()) {
-    emit dataChanged(index(0, RAW_RESULT), index(rowCount() - 1, LOGICAL_RESULT));
+    emit dataChanged(index(0, RAW_RESULT), index(rowCount() - 1, PHYSICAL_LOCATION));
   }
 }
 
@@ -443,14 +503,28 @@ bool FieldTableModel::ParseDraft(int row, const QVariant& value, int role, Typed
   }
   if (field->value_type == protocol_plan::ValueType::BYTES) {
     std::vector<std::uint8_t> bytes;
-    if (!text.empty() && !protocol_lab::v06::internal::ParseCanonicalUpperHexText(text, bytes)) {
-      error = QStringLiteral("Expected uppercase Hex without separators");
-      return false;
+    if (field->ascii_text && representation_ == ByteRepresentation::ASCII_ESCAPED) {
+      const auto parsed = ParseAsciiEscaped(Utf16(canonical));
+      if (!parsed.ok()) {
+        error = QStringLiteral("%1 at UTF-16 offset %2")
+                    .arg(QString::fromStdString(parsed.detail))
+                    .arg(static_cast<qulonglong>(parsed.utf16_offset.value_or(0U)));
+        return false;
+      }
+      bytes = parsed.bytes;
+    } else {
+      std::size_t error_offset = 0U;
+      if (!text.empty() && !ParseContinuousUpperHex(text, bytes, error_offset)) {
+        error = QStringLiteral("Expected uppercase Hex without separators at offset %1")
+                    .arg(static_cast<qulonglong>(error_offset));
+        return false;
+      }
     }
     if (field->byte_length_bounds.has_value()) {
       const auto& bounds = *field->byte_length_bounds;
       if (bytes.size() < bounds.minimum || bytes.size() > bounds.maximum) {
-        error = QStringLiteral("Payload length must be %1..%2 bytes")
+        error = (field->ascii_text ? QStringLiteral("Value length must be %1..%2 bytes")
+                                   : QStringLiteral("Payload length must be %1..%2 bytes"))
                     .arg(static_cast<qulonglong>(bounds.minimum))
                     .arg(static_cast<qulonglong>(bounds.maximum));
         return false;

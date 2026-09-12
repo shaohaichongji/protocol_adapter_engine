@@ -8,8 +8,16 @@
 
 #include "../../src/config_compiler/ui_description.h"
 #include "../../src/protocol_plan/plan_bundle.h"
+#if defined(PAE_ENABLE_SCHEMA_V10_ASCII_TEXT_CODEC)
+#include "../protocol_lab_ascii/ascii_offline_adapter.h"
+#endif
 
 namespace pae::protocol_lab_ui {
+
+enum class DocumentLayout {
+  BINARY,
+  ASCII_TEXT,
+};
 
 struct PhysicalBitMask {
   std::size_t frame_byte_index = 0U;
@@ -68,6 +76,10 @@ struct FieldDescriptor {
   std::optional<ByteRange> byte_range;
   std::optional<ByteLengthBounds> byte_length_bounds;
   std::string read_only_annotation;
+  bool ascii_text = false;
+  bool decode_referenced = false;
+  bool encode_referenced = false;
+  std::vector<std::uint8_t> allowed_control_bytes;
 #if defined(PAE_ENABLE_SCHEMA_V05_COMPILER)
   std::optional<protocol_plan::LinearConversionDescriptor> conversion;
 #endif
@@ -86,6 +98,8 @@ struct MessageDescriptor {
   std::optional<ByteRange> integrity_storage;
   bool integrity_range_ends_at_payload = false;
   bool integrity_storage_at_payload_end = false;
+  bool encode_available = true;
+  bool decode_available = true;
 #if defined(PAE_ENABLE_SCHEMA_V07_LENGTH_COMPILER)
   std::optional<ByteRange> computed_length_storage;
 #endif
@@ -99,9 +113,11 @@ struct PipelineDescriptor {
   std::string description;
   std::string source_ref;
   std::vector<std::size_t> message_indices;
+  std::vector<std::size_t> decode_message_indices;
 };
 
 struct DocumentDescription {
+  DocumentLayout layout = DocumentLayout::BINARY;
   std::string schema_version;
   std::string protocol_id;
   std::string protocol_version;
@@ -116,6 +132,10 @@ struct DocumentDescription {
 bool BuildDocumentDescription(const protocol_plan::PlanBundle& plan,
                               const config_compiler::UiDescriptionSidecar& sidecar,
                               DocumentDescription& output, std::string& error);
+#if defined(PAE_ENABLE_SCHEMA_V10_ASCII_TEXT_CODEC)
+bool BuildDocumentDescription(const protocol_lab::ascii::DocumentDescription& source,
+                              DocumentDescription& output, std::string& error);
+#endif
 
 std::string FormatPhysicalLocation(const FieldDescriptor& field);
 std::optional<ByteRange> ResolveActualFieldRange(const MessageDescriptor& message,

@@ -139,6 +139,7 @@ bool BuildDocumentDescription(const protocol_plan::PlanBundle& plan,
     item.description = CopyResolved(sidecar, metadata.description);
     item.source_ref = CopyResolved(sidecar, metadata.source_ref);
     item.message_indices.assign(source.message_indices.begin(), source.message_indices.end());
+    item.decode_message_indices = item.message_indices;
     for (const std::size_t message_index : item.message_indices) {
       if (message_index >= plan.Messages().size()) {
         error = "pipeline message index is outside the Plan";
@@ -289,6 +290,100 @@ bool BuildDocumentDescription(const protocol_plan::PlanBundle& plan,
   output = std::move(built);
   return true;
 }
+
+#if defined(PAE_ENABLE_SCHEMA_V10_ASCII_TEXT_CODEC)
+bool BuildDocumentDescription(const protocol_lab::ascii::DocumentDescription& source,
+                              DocumentDescription& output, std::string& error) {
+  DocumentDescription built;
+  built.layout = DocumentLayout::ASCII_TEXT;
+  built.schema_version = source.schema_version;
+  built.protocol_id = source.protocol_id;
+  built.protocol_version = source.protocol_version;
+  built.display_name = source.display_name;
+  built.description = source.description;
+  built.source_ref = source.source_ref;
+  built.max_frame_bytes = source.max_record_bytes;
+  built.pipelines.reserve(source.pipelines.size());
+  for (const auto& source_pipeline : source.pipelines) {
+    if (source_pipeline.pipeline_index != built.pipelines.size()) {
+      error = "ASCII Pipeline indices are not contiguous";
+      return false;
+    }
+    PipelineDescriptor pipeline;
+    pipeline.pipeline_index = source_pipeline.pipeline_index;
+    pipeline.id = source_pipeline.id;
+    pipeline.direction_id = source_pipeline.direction_id;
+    pipeline.display_name = source_pipeline.display_name;
+    pipeline.description = source_pipeline.description;
+    pipeline.source_ref = source_pipeline.source_ref;
+    pipeline.message_indices = source_pipeline.message_indices;
+    pipeline.decode_message_indices = source_pipeline.decode_message_indices;
+    built.pipelines.push_back(std::move(pipeline));
+  }
+  built.messages.reserve(source.messages.size());
+  for (const auto& source_message : source.messages) {
+    if (source_message.message_index != built.messages.size()) {
+      error = "ASCII Message indices are not contiguous";
+      return false;
+    }
+    MessageDescriptor message;
+    message.message_index = source_message.message_index;
+    message.id = source_message.id;
+    message.direction_id = source_message.direction_id;
+    message.display_name = source_message.display_name;
+    message.description = source_message.description;
+    message.source_ref = source_message.source_ref;
+    message.frame_size = source_message.max_record_length;
+    message.encode_available = source_message.encode.has_value();
+    message.decode_available = source_message.decode.has_value();
+    message.fields.reserve(source_message.fields.size());
+    for (const auto& source_field : source_message.fields) {
+      if (source_field.field_index != message.fields.size()) {
+        error = "ASCII Field indices are not contiguous";
+        return false;
+      }
+      FieldDescriptor field;
+      field.field_index = source_field.field_index;
+      field.id = source_field.id;
+      field.display_name = source_field.display_name;
+      field.description = source_field.description;
+      field.source_ref = source_field.source_ref;
+      field.value_type = protocol_plan::ValueType::BYTES;
+      field.wire_codec = protocol_plan::WireCodec::ASCII_TEXT;
+      field.byte_order = protocol_plan::ByteOrder::NOT_APPLICABLE;
+      field.encode_source = source_field.encode_referenced ? protocol_plan::EncodeSource::INPUT
+                                                           : protocol_plan::EncodeSource::CONSTANT;
+      field.byte_width = source_field.max_byte_length;
+      field.byte_length_bounds =
+          ByteLengthBounds{source_field.min_byte_length, source_field.max_byte_length};
+      field.ascii_text = true;
+      field.decode_referenced = source_field.decode_referenced;
+      field.encode_referenced = source_field.encode_referenced;
+      field.allowed_control_bytes = source_field.allowed_control_bytes;
+      if (!field.encode_referenced) field.read_only_annotation = "not referenced by Encode action";
+      message.fields.push_back(std::move(field));
+    }
+    built.messages.push_back(std::move(message));
+  }
+  for (const auto& pipeline : built.pipelines) {
+    for (const auto index : pipeline.message_indices) {
+      if (index >= built.messages.size()) {
+        error = "ASCII Pipeline Message index is outside the description";
+        return false;
+      }
+    }
+    for (const auto index : pipeline.decode_message_indices) {
+      if (index >= built.messages.size() || !built.messages[index].decode_available) {
+        error = "ASCII Pipeline Decode candidate is outside the description";
+        return false;
+      }
+    }
+  }
+  output = std::move(built);
+  error.clear();
+  return true;
+}
+#endif
 
 std::string FormatPhysicalLocation(const FieldDescriptor& field) {
   std::vector<PhysicalBitMask> masks = field.physical_bits;

@@ -169,7 +169,11 @@ function(pae_configure_protocol_lab_ui_deployment target_name)
         endif()
         if(NOT pae_deploy_config MATCHES "[/\\\\]tests[/\\\\]protocol_lab_ui[/\\\\]fixtures[/\\\\].+\\.pae\\.json$" AND
            NOT pae_deploy_config STREQUAL
-               "${PROJECT_BINARY_DIR}/generated/protocol_lab_ui/synthetic_ui_max.pae.json")
+               "${PROJECT_BINARY_DIR}/generated/protocol_lab_ui/synthetic_ui_max.pae.json" AND
+           NOT pae_deploy_config STREQUAL
+               "${PROJECT_SOURCE_DIR}/examples/config/synthetic_ascii_text_slice.pae.json" AND
+           NOT pae_deploy_config STREQUAL
+               "${PROJECT_SOURCE_DIR}/examples/config/synthetic_ascii_literal_only.pae.json")
             message(
                 FATAL_ERROR
                 "Only public synthetic tests/protocol_lab_ui/fixtures/*.pae.json files or the "

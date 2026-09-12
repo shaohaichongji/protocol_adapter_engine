@@ -5,6 +5,9 @@
 - [2026-09-10 流式宿主接入与Lab Schema 0.8 UI：三组八项确认契约](post-stream-host-and-ui-v08-checkpoint.md)
 - [ASCII文本编解码与Lab输入可靠性契约（Compiler/Plan/Core最小切片已实现并完成限定复核）](ascii-text-codec-minimal-contract.md)
 - [ASCII完整记录Windows验证报告](windows-msvc-2026-ascii-text-slice.md)
+- [Lab ASCII离线接入契约（实现及限定验收完成，待Git交付）](lab-ascii-offline-integration-contract.md)
+- [Lab ASCII内部适配第1阶段验证报告（历史阶段）](lab-ascii-adapter-stage1-validation.md)
+- [Lab ASCII UI第2阶段自动化与限定人工验证报告](lab-ascii-ui-stage2-validation.md)
 
 - [JSON Loader 诊断定位契约 V0.1（Spike Draft）](json_loader_diagnostic_contract_v0.1.md)
 - [Loader 与 Compiler 架构边界 V0.1](loader_compiler_boundary_v0.1.md)

@@ -25,6 +25,8 @@ add_library(
     STATIC
         compile_worker.cpp
         compile_worker.h
+        ascii_escaped_input.cpp
+        ascii_escaped_input.h
         description_mapping.cpp
         description_mapping.h
         document_session.cpp
@@ -47,6 +49,15 @@ target_link_libraries(
         pae::protocol_plan
         pae::project_options
 )
+if(PAE_ENABLE_SCHEMA_V10_ASCII_TEXT_CODEC)
+    if(NOT TARGET pae_protocol_lab_ascii_adapter_internal)
+        message(FATAL_ERROR "Schema 0.10 Protocol Lab UI requires the ASCII adapter target.")
+    endif()
+    target_link_libraries(
+        pae_protocol_lab_ui_headless_internal
+        PUBLIC pae_protocol_lab_ascii_adapter_internal
+    )
+endif()
 set_target_properties(
     pae_protocol_lab_ui_headless_internal
     PROPERTIES
@@ -82,12 +93,24 @@ set_target_properties(
         VISIBILITY_INLINES_HIDDEN YES
 )
 
-pae_configure_protocol_lab_ui_deployment(
-    pae_protocol_lab_ui
-    CONFIG_FILES
+set(
+    pae_protocol_lab_ui_deployment_configs
         "${PROJECT_SOURCE_DIR}/tests/protocol_lab_ui/fixtures/synthetic_ui_v05.pae.json"
         "${PROJECT_SOURCE_DIR}/tests/protocol_lab_ui/fixtures/synthetic_ui_v06.pae.json"
         "${PROJECT_SOURCE_DIR}/tests/protocol_lab_ui/fixtures/synthetic_ui_v07.pae.json"
         "${PROJECT_SOURCE_DIR}/tests/protocol_lab_ui/fixtures/synthetic_ui_v08.pae.json"
         "${pae_protocol_lab_ui_max_fixture}"
+)
+if(PAE_ENABLE_SCHEMA_V10_ASCII_TEXT_CODEC)
+    list(
+        APPEND pae_protocol_lab_ui_deployment_configs
+        "${PROJECT_SOURCE_DIR}/examples/config/synthetic_ascii_text_slice.pae.json"
+        "${PROJECT_SOURCE_DIR}/examples/config/synthetic_ascii_literal_only.pae.json"
+        "${PROJECT_SOURCE_DIR}/tests/protocol_lab_ui/fixtures/synthetic_ascii_decode_only.pae.json"
+        "${PROJECT_SOURCE_DIR}/tests/protocol_lab_ui/fixtures/synthetic_ascii_encode_only.pae.json"
+    )
+endif()
+pae_configure_protocol_lab_ui_deployment(
+    pae_protocol_lab_ui
+    CONFIG_FILES ${pae_protocol_lab_ui_deployment_configs}
 )

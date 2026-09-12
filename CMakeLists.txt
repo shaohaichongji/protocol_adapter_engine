@@ -37,6 +37,11 @@ option(
     OFF
 )
 option(
+    PAE_BUILD_PROTOCOL_LAB_ASCII_ADAPTER
+    "Build the internal non-persistent Schema 0.10 ASCII Lab adapter"
+    OFF
+)
+option(
     PAE_ENABLE_SCHEMA_V05_COMPILER
     "Enable the internal Schema 0.5 compiler and Core DEC-042B slices"
     OFF
@@ -246,11 +251,23 @@ if(PAE_ENABLE_SCHEMA_V10_ASCII_TEXT_CODEC AND
         "PAE_ENABLE_SCHEMA_V10_ASCII_TEXT_CODEC requires the Loader, Core, and explicit Schema 0.9 slice."
     )
 endif()
-if(PAE_ENABLE_SCHEMA_V10_ASCII_TEXT_CODEC AND
-   (PAE_BUILD_PROTOCOL_LAB OR PAE_BUILD_PROTOCOL_LAB_UI))
+if(PAE_ENABLE_SCHEMA_V10_ASCII_TEXT_CODEC AND PAE_BUILD_PROTOCOL_LAB)
     message(
         FATAL_ERROR
         "Schema 0.10 ASCII execution is not connected to Protocol Lab or its evidence formats."
+    )
+endif()
+if(PAE_ENABLE_SCHEMA_V10_ASCII_TEXT_CODEC AND PAE_BUILD_PROTOCOL_LAB_UI AND
+   NOT PAE_BUILD_PROTOCOL_LAB_ASCII_ADAPTER)
+    message(
+        FATAL_ERROR
+        "Schema 0.10 Protocol Lab UI requires PAE_BUILD_PROTOCOL_LAB_ASCII_ADAPTER=ON."
+    )
+endif()
+if(PAE_BUILD_PROTOCOL_LAB_ASCII_ADAPTER AND NOT PAE_ENABLE_SCHEMA_V10_ASCII_TEXT_CODEC)
+    message(
+        FATAL_ERROR
+        "PAE_BUILD_PROTOCOL_LAB_ASCII_ADAPTER requires PAE_ENABLE_SCHEMA_V10_ASCII_TEXT_CODEC=ON."
     )
 endif()
 if(PAE_BUILD_ASCII_TEXT_EXAMPLE AND NOT PAE_ENABLE_SCHEMA_V10_ASCII_TEXT_CODEC)
@@ -432,6 +449,13 @@ if(PAE_BUILD_PROTOCOL_LAB OR PAE_BUILD_PROTOCOL_LAB_UI)
     add_subdirectory(tools/protocol_lab)
     if(PAE_BUILD_PROTOCOL_LAB AND PAE_BUILD_TESTING)
         add_subdirectory(tests/protocol_lab)
+    endif()
+endif()
+
+if(PAE_BUILD_PROTOCOL_LAB_ASCII_ADAPTER)
+    add_subdirectory(tools/protocol_lab_ascii)
+    if(PAE_BUILD_TESTING)
+        add_subdirectory(tests/protocol_lab_ascii)
     endif()
 endif()
 

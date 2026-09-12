@@ -1,6 +1,15 @@
 # DEC-040 后续推进路线与当前状态
 
-## 2026-09-10 当前入口
+## 2026-09-12 当前入口
+
+PAE ASCII检查点已在`main@256c5b7`提交并推送。Lab输入修复`feat/lab-ui-c1@8bfe50f`已推送，
+当前已在主工作树启动合并但尚未生成合并提交。按[Lab ASCII离线接入契约](lab-ascii-offline-integration-contract.md)
+独立授权实施的内部适配、Qt接线及限定修复已完成；Windows Debug/Release自动验证和限定人工复核
+已通过，证据见[第2阶段验证报告](lab-ascii-ui-stage2-validation.md)。下一步为文档及提交范围收口，
+Git交付仍须明确授权：保留原merge自动暂存内容，后续增量尚未主动Stage、Commit或Push。
+网络、普通CLI和Evidence不在本检查点。
+
+### 2026-09-10 ASCII交付前入口（历史）
 
 最新交付基线为 `main@1a5467c`：流式宿主示例与Lab Schema 0.8 UI已合并。
 下一轮采用[ASCII文本与Lab输入可靠性契约](ascii-text-codec-minimal-contract.md)，八项及六项接口

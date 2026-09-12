@@ -289,6 +289,22 @@ void ApplicationWindow::AdvanceSmoke() {
   for (std::size_t index = 0; index < smoke_documents_.size(); ++index) {
     auto* document = smoke_documents_[index];
     tabs_->setCurrentWidget(document);
+    if (document->IsAsciiForSmoke()) {
+      if (performance_mode_) {
+        FinishSmoke(false, QStringLiteral("ASCII UI smoke is not a performance benchmark"));
+        return;
+      }
+      if (!document->VerifyAsciiForSmoke(error)) {
+        FinishSmoke(false, QStringLiteral("ASCII document %1: %2")
+                               .arg(static_cast<qulonglong>(index + 1U))
+                               .arg(error));
+        return;
+      }
+      std::fprintf(stdout, "UI_ASCII_SMOKE_DOCUMENT index=%zu frame_bytes=%zu fields=%d\n",
+                   index + 1U, document->PreviewFrameSizeForSmoke(),
+                   document->InspectFieldCountForSmoke());
+      continue;
+    }
     if (!document->EncodeForSmoke(error) || document->PreviewFrameSizeForSmoke() == 0U ||
         !document->SelectFirstMappableFieldForSmoke(error) ||
         document->HighlightedCellCountForSmoke() == 0U) {
@@ -430,6 +446,7 @@ void ApplicationWindow::AdvanceSmoke() {
   }
   if (!performance_mode_) {
     for (std::size_t index = 0; index < smoke_documents_.size(); ++index) {
+      if (smoke_documents_[index]->IsAsciiForSmoke()) continue;
       if (!smoke_documents_[index]->VerifyInvalidDraftRetentionForSmoke(error)) {
         FinishSmoke(
             false,

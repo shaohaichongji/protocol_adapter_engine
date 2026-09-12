@@ -8,6 +8,9 @@ set(
         inspect_state
         bounded_v08_state
 )
+if(PAE_ENABLE_SCHEMA_V10_ASCII_TEXT_CODEC)
+    list(APPEND pae_protocol_lab_ui_headless_test_names ascii_input ascii_session)
+endif()
 
 foreach(pae_ui_test_name IN LISTS pae_protocol_lab_ui_headless_test_names)
     set(pae_ui_test_target "pae_protocol_lab_ui_${pae_ui_test_name}_tests")
@@ -23,6 +26,14 @@ foreach(pae_ui_test_name IN LISTS pae_protocol_lab_ui_headless_test_names)
         PRIVATE
             "PAE_UI_FIXTURE_DIR=L\"${CMAKE_CURRENT_SOURCE_DIR}/fixtures\""
     )
+    if(pae_ui_test_name STREQUAL "ascii_session")
+        target_compile_definitions(
+            "${pae_ui_test_target}"
+            PRIVATE
+                "PAE_ASCII_TEXT_CONFIG=L\"${PROJECT_SOURCE_DIR}/examples/config/synthetic_ascii_text_slice.pae.json\""
+                "PAE_ASCII_LITERAL_CONFIG=L\"${PROJECT_SOURCE_DIR}/examples/config/synthetic_ascii_literal_only.pae.json\""
+        )
+    endif()
     set_target_properties(
         "${pae_ui_test_target}"
         PROPERTIES
@@ -46,6 +57,37 @@ add_test(
         "${CMAKE_CURRENT_SOURCE_DIR}/fixtures/synthetic_ui_v05.pae.json"
         "${CMAKE_CURRENT_SOURCE_DIR}/fixtures/synthetic_ui_v06.pae.json"
 )
+
+if(PAE_ENABLE_SCHEMA_V10_ASCII_TEXT_CODEC)
+    add_test(
+        NAME pae.tools.protocol_lab_ui.qt_smoke_ascii
+        COMMAND
+            "${PROJECT_BINARY_DIR}/out/protocol_lab_ui/$<CONFIG>/pae_protocol_lab_ui.exe"
+            --ui-smoke
+            "${PROJECT_SOURCE_DIR}/examples/config/synthetic_ascii_text_slice.pae.json"
+            "${PROJECT_SOURCE_DIR}/examples/config/synthetic_ascii_literal_only.pae.json"
+    )
+    set_tests_properties(
+        pae.tools.protocol_lab_ui.qt_smoke_ascii
+        PROPERTIES
+            LABELS "tools;protocol_lab_ui;offline;qt;window;smoke;schema_v10;ascii"
+            TIMEOUT 180
+    )
+    add_test(
+        NAME pae.tools.protocol_lab_ui.qt_smoke_ascii_one_way
+        COMMAND
+            "${PROJECT_BINARY_DIR}/out/protocol_lab_ui/$<CONFIG>/pae_protocol_lab_ui.exe"
+            --ui-smoke
+            "${CMAKE_CURRENT_SOURCE_DIR}/fixtures/synthetic_ascii_decode_only.pae.json"
+            "${CMAKE_CURRENT_SOURCE_DIR}/fixtures/synthetic_ascii_encode_only.pae.json"
+    )
+    set_tests_properties(
+        pae.tools.protocol_lab_ui.qt_smoke_ascii_one_way
+        PROPERTIES
+            LABELS "tools;protocol_lab_ui;offline;qt;window;smoke;schema_v10;ascii;one_way"
+            TIMEOUT 180
+    )
+endif()
 set_tests_properties(
     pae.tools.protocol_lab_ui.qt_smoke
     PROPERTIES

@@ -1,0 +1,26 @@
+{
+  "schema_version": "0.10",
+  "protocol_id": "synthetic_ascii_decode_only",
+  "protocol_version": "1.0",
+  "display_name": "Synthetic ASCII Decode-only",
+  "description": "Public from-scratch one-way UI action fixture.",
+  "source_ref": "SYNTHETIC_FROM_SCRATCH:ASCII_UI_ONE_WAY",
+  "resource_profile": "desktop",
+  "framing_profiles": [{
+    "id": "record", "display_name": "Record", "description": "",
+    "source_ref": "SYNTHETIC_FROM_SCRATCH:ASCII_UI_ONE_WAY", "input_kind": "complete_record"
+  }],
+  "pipelines": [{
+    "id": "pipeline", "display_name": "Pipeline", "description": "",
+    "source_ref": "SYNTHETIC_FROM_SCRATCH:ASCII_UI_ONE_WAY", "direction_id": "test",
+    "input_framing_profile_id": "record", "message_ids": ["message"]
+  }],
+  "messages": [{
+    "id": "message", "display_name": "Decode-only", "description": "",
+    "source_ref": "SYNTHETIC_FROM_SCRATCH:ASCII_UI_ONE_WAY", "direction_id": "test",
+    "layout": {"kind": "text", "encoding": "ascii", "decode": {
+      "segments": [{"kind": "literal", "text": "PING\r\n"}]
+    }},
+    "fields": []
+  }]
+}

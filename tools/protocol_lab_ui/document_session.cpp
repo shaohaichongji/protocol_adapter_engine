@@ -21,6 +21,12 @@ std::string InspectFailureDetail(std::string_view detail, std::size_t offset) {
   return output.str();
 }
 
+std::string AsciiInputFailureDetail(std::string_view detail, std::size_t utf16_offset) {
+  std::ostringstream output;
+  output << detail << " at input_utf16_code_unit_offset=" << utf16_offset << " (zero-based)";
+  return output.str();
+}
+
 bool DraftMatches(const FieldDescriptor& field, const TypedDraft& value) noexcept {
 #if defined(PAE_ENABLE_SCHEMA_V05_COMPILER)
   if (field.conversion.has_value()) {
@@ -67,6 +73,49 @@ std::string ValueKind(const FieldDescriptor& field) {
   return {};
 }
 
+std::vector<UiFieldResult> CopyLegacyFields(
+    const MessageDescriptor& message, const std::vector<protocol_lab::v06::FieldResult>& fields) {
+  std::vector<UiFieldResult> copied;
+  copied.reserve(fields.size());
+  for (const auto& source : fields) {
+    const auto found = std::find_if(message.fields.begin(), message.fields.end(),
+                                    [&](const auto& field) { return field.id == source.id; });
+    if (found == message.fields.end()) continue;
+    UiFieldResult field;
+    field.field_index = found->field_index;
+    field.id = source.id;
+    field.raw_value = source.raw_value;
+    field.logical_value = source.logical_value;
+    copied.push_back(std::move(field));
+  }
+  return copied;
+}
+
+#if defined(PAE_ENABLE_SCHEMA_V10_ASCII_TEXT_CODEC)
+std::vector<UiFieldResult> CopyAsciiFields(
+    const std::vector<protocol_lab::ascii::FieldResult>& fields) {
+  std::vector<UiFieldResult> copied;
+  copied.reserve(fields.size());
+  for (const auto& source : fields) {
+    UiFieldResult field;
+    field.field_index = source.field_index;
+    field.id = source.field_id;
+    field.raw_value = FormatContinuousUpperHex(source.bytes);
+    std::string error;
+    const auto escaped = FormatAsciiEscaped(source.bytes, error);
+    if (escaped.has_value()) {
+      field.logical_value.reserve(escaped->size());
+      for (const char16_t value : *escaped) field.logical_value.push_back(static_cast<char>(value));
+    } else {
+      field.logical_value = field.raw_value;
+    }
+    field.actual_range = ByteRange{source.range.offset, source.range.length};
+    copied.push_back(std::move(field));
+  }
+  return copied;
+}
+#endif
+
 }  // namespace
 
 DocumentSession::DocumentSession(DocumentId document_id) : document_id_(document_id) {}
@@ -91,6 +140,8 @@ Revision DocumentSession::BeginLoad() {
   description_.reset();
   ClearSelectionAndPreview();
   inspect_draft_.clear();
+  inspect_draft_utf16_.clear();
+  representation_ = ByteRepresentation::HEX;
   ++inspect_input_revision_;
   ClearInspectOutcome();
   diagnostic_id_.clear();
@@ -121,37 +172,59 @@ bool DocumentSession::ApplyCompileCompletion(std::unique_ptr<CompileCompletion> 
     return false;
   }
   const std::string schema{plan->SchemaVersion()};
-  if (schema != "0.5" && schema != "0.6" && schema != "0.7" && schema != "0.8") {
-    SetDiagnostic("UI_SCHEMA_UNSUPPORTED", "the UI supports Schema 0.5 through 0.8 only");
+  const bool legacy_schema =
+      schema == "0.5" || schema == "0.6" || schema == "0.7" || schema == "0.8";
+  const bool ascii_schema = schema == "0.10";
+  if (!legacy_schema && !ascii_schema) {
+    SetDiagnostic("UI_SCHEMA_UNSUPPORTED", "the UI supports Schema 0.5 through 0.8 and 0.10");
     state_ = DocumentState::CONFIG_ERROR;
     return false;
   }
 
   DocumentDescription neutral_description;
   std::string mapping_error;
-  if (!BuildDocumentDescription(*plan, artifacts.Description(), neutral_description,
-                                mapping_error)) {
-    SetDiagnostic("UI_DESCRIPTION_MAPPING_FAILED", std::move(mapping_error));
-    state_ = DocumentState::CONFIG_ERROR;
-    return false;
-  }
-
-  auto sidecar = artifacts.TakeDescription();
-  protocol_lab::v06::PreparationFailure failure;
-  auto bridge = protocol_lab::v06::ExecutionBridge::AdoptCompiledPlan(
-      artifacts.TakePlan(), completion->config_sha256, failure);
-  if (bridge == nullptr) {
-    SetDiagnostic(failure.diagnostic_id.empty() ? "UI_BRIDGE_ADOPTION_FAILED"
-                                                : std::move(failure.diagnostic_id),
-                  std::move(failure.detail));
-    state_ = DocumentState::CONFIG_ERROR;
-    return false;
-  }
-
   auto prepared = std::make_unique<PreparedDocument>();
-  prepared->description = std::move(sidecar);
   prepared->config_sha256 = std::move(completion->config_sha256);
-  prepared->bridge = std::move(bridge);
+  if (legacy_schema) {
+    if (!BuildDocumentDescription(*plan, artifacts.Description(), neutral_description,
+                                  mapping_error)) {
+      SetDiagnostic("UI_DESCRIPTION_MAPPING_FAILED", std::move(mapping_error));
+      state_ = DocumentState::CONFIG_ERROR;
+      return false;
+    }
+    prepared->description = artifacts.TakeDescription();
+    protocol_lab::v06::PreparationFailure failure;
+    prepared->bridge = protocol_lab::v06::ExecutionBridge::AdoptCompiledPlan(
+        artifacts.TakePlan(), prepared->config_sha256, failure);
+    if (prepared->bridge == nullptr) {
+      SetDiagnostic(failure.diagnostic_id.empty() ? "UI_BRIDGE_ADOPTION_FAILED"
+                                                  : std::move(failure.diagnostic_id),
+                    std::move(failure.detail));
+      state_ = DocumentState::CONFIG_ERROR;
+      return false;
+    }
+  } else {
+#if defined(PAE_ENABLE_SCHEMA_V10_ASCII_TEXT_CODEC)
+    if (!protocol_lab::ascii::OfflineAdapter::Supports(artifacts)) {
+      SetDiagnostic("UI_ASCII_ADAPTER_UNSUPPORTED", "ASCII adapter rejected Schema 0.10 artifacts");
+      state_ = DocumentState::CONFIG_ERROR;
+      return false;
+    }
+    prepared->ascii_adapter = protocol_lab::ascii::OfflineAdapter::AdoptCompiledArtifacts(
+        std::move(artifacts), mapping_error);
+    if (prepared->ascii_adapter == nullptr ||
+        !BuildDocumentDescription(prepared->ascii_adapter->Description(), neutral_description,
+                                  mapping_error)) {
+      SetDiagnostic("UI_ASCII_ADAPTER_PREPARATION_FAILED", std::move(mapping_error));
+      state_ = DocumentState::CONFIG_ERROR;
+      return false;
+    }
+#else
+    SetDiagnostic("UI_SCHEMA_UNSUPPORTED", "Schema 0.10 UI support is not compiled in");
+    state_ = DocumentState::CONFIG_ERROR;
+    return false;
+#endif
+  }
   prepared_ = std::move(prepared);
   description_ = std::move(neutral_description);
   ++plan_generation_;
@@ -180,6 +253,7 @@ bool DocumentSession::SelectPipeline(std::size_t pipeline_index) {
   drafts_.clear();
   invalid_drafts_.clear();
   inspect_draft_.clear();
+  inspect_draft_utf16_.clear();
   ++inspect_input_revision_;
   ClearPreview();
   ClearInspectOutcome();
@@ -204,6 +278,126 @@ bool DocumentSession::SetMode(OperationMode mode) {
   }
   RefreshDocumentState();
   return true;
+}
+
+bool DocumentSession::SetRepresentation(ByteRepresentation representation) {
+  if (!IsAsciiDocument()) return representation == ByteRepresentation::HEX;
+  if (representation_ == representation) return true;
+
+  std::unordered_map<std::size_t, InvalidDraftState> converted_invalid;
+  for (const auto& item : invalid_drafts_) {
+    std::vector<std::uint8_t> bytes;
+    if (representation_ == ByteRepresentation::ASCII_ESCAPED) {
+      const auto parsed = ParseAsciiEscaped(item.second.text);
+      if (!parsed.ok()) {
+        SetDiagnostic("UI_ASCII_INPUT_INVALID", parsed.detail);
+        return false;
+      }
+      bytes = parsed.bytes;
+    } else {
+      std::string source;
+      source.reserve(item.second.text.size());
+      for (const char16_t value : item.second.text) {
+        if (value > 0x7FU) {
+          SetDiagnostic("UI_ASCII_INPUT_INVALID", "Hex draft contains non-ASCII Unicode");
+          return false;
+        }
+        source.push_back(static_cast<char>(value));
+      }
+      std::size_t error_offset = 0U;
+      if (!ParseContinuousUpperHex(source, bytes, error_offset)) {
+        SetDiagnostic("UI_ASCII_INPUT_INVALID", "Hex draft is not continuous uppercase Hex");
+        return false;
+      }
+    }
+    InvalidDraftState converted;
+    converted.validation_error = item.second.validation_error;
+    if (representation == ByteRepresentation::ASCII_ESCAPED) {
+      std::string error;
+      const auto formatted = FormatAsciiEscaped(bytes, error);
+      if (!formatted.has_value()) {
+        SetDiagnostic("UI_ASCII_INPUT_INVALID", std::move(error));
+        return false;
+      }
+      converted.text = *formatted;
+    } else {
+      const auto formatted = FormatContinuousUpperHex(bytes);
+      converted.text.assign(formatted.begin(), formatted.end());
+    }
+    converted_invalid.emplace(item.first, std::move(converted));
+  }
+
+  if (!inspect_draft_utf16_.empty()) {
+    std::vector<std::uint8_t> bytes;
+    if (representation_ == ByteRepresentation::ASCII_ESCAPED) {
+      const auto parsed = ParseAsciiEscaped(inspect_draft_utf16_);
+      if (!parsed.ok()) {
+        SetDiagnostic("UI_ASCII_INPUT_INVALID", parsed.detail);
+        return false;
+      }
+      bytes = parsed.bytes;
+    } else {
+      std::string source;
+      source.reserve(inspect_draft_utf16_.size());
+      for (const char16_t value : inspect_draft_utf16_) {
+        if (value > 0x7FU) {
+          SetDiagnostic("UI_ASCII_INPUT_INVALID", "Inspect Hex contains non-ASCII Unicode");
+          return false;
+        }
+        source.push_back(static_cast<char>(value));
+      }
+      const std::size_t conversion_budget =
+          description_->max_frame_bytes == (std::numeric_limits<std::size_t>::max)()
+              ? description_->max_frame_bytes
+              : description_->max_frame_bytes + 1U;
+      const auto parsed = ParseInspectHex(source, conversion_budget);
+      if (!parsed.ok()) {
+        SetDiagnostic("UI_ASCII_INPUT_INVALID", InspectHexErrorDetail(parsed.error));
+        return false;
+      }
+      bytes = parsed.bytes;
+    }
+    if (representation == ByteRepresentation::ASCII_ESCAPED) {
+      std::string error;
+      const auto formatted = FormatAsciiEscaped(bytes, error);
+      if (!formatted.has_value()) {
+        SetDiagnostic("UI_ASCII_INPUT_INVALID", std::move(error));
+        return false;
+      }
+      inspect_draft_utf16_ = *formatted;
+    } else {
+      const auto formatted = FormatContinuousUpperHex(bytes);
+      inspect_draft_utf16_.assign(formatted.begin(), formatted.end());
+    }
+  }
+
+  representation_ = representation;
+  invalid_drafts_ = std::move(converted_invalid);
+  inspect_draft_.clear();
+  inspect_draft_.reserve(inspect_draft_utf16_.size());
+  for (const char16_t value : inspect_draft_utf16_) {
+    inspect_draft_.push_back(value <= 0xFFU ? static_cast<char>(value) : '?');
+  }
+  ++input_revision_;
+  ++inspect_input_revision_;
+  ClearPreview();
+  ClearInspectOutcome();
+  ClearEncodeFailure();
+  diagnostic_id_.clear();
+  diagnostic_detail_.clear();
+  RefreshDocumentState();
+  return true;
+}
+
+bool DocumentSession::EncodeAvailable() const noexcept {
+  const MessageDescriptor* message = nullptr;
+  return CurrentMessage(message) && message->encode_available;
+}
+
+bool DocumentSession::InspectAvailable() const noexcept {
+  return description_.has_value() && selected_pipeline_index_.has_value() &&
+         *selected_pipeline_index_ < description_->pipelines.size() &&
+         !description_->pipelines[*selected_pipeline_index_].decode_message_indices.empty();
 }
 
 bool DocumentSession::SelectMessage(std::size_t message_index) {
@@ -268,6 +462,12 @@ void DocumentSession::InvalidateDraft(std::size_t field_index) {
 
 bool DocumentSession::SetInvalidDraft(std::size_t field_index, std::string text,
                                       std::string validation_error) {
+  return SetInvalidDraftUtf16(field_index, std::u16string{text.begin(), text.end()},
+                              std::move(validation_error));
+}
+
+bool DocumentSession::SetInvalidDraftUtf16(std::size_t field_index, std::u16string text,
+                                           std::string validation_error) {
   const MessageDescriptor* message = nullptr;
   if (!CurrentMessage(message) || field_index >= message->fields.size() ||
       message->fields[field_index].encode_source != protocol_plan::EncodeSource::INPUT ||
@@ -311,13 +511,90 @@ bool DocumentSession::Encode(protocol_lab::v06::ExecutionObserver* observer,
                              InputMaterializationTimer* input_materialization_timer,
                              std::int64_t* input_materialization_ns) {
   const MessageDescriptor* message = nullptr;
-  if (!CurrentMessage(message) || prepared_ == nullptr || prepared_->bridge == nullptr) {
+  if (!CurrentMessage(message) || prepared_ == nullptr) {
     SetEncodeFailure("UI_ENCODE_NOT_READY", "no complete Plan selection is ready");
     ClearPreview();
     return false;
   }
   if (input_materialization_timer != nullptr) {
     input_materialization_timer->Start();
+  }
+#if defined(PAE_ENABLE_SCHEMA_V10_ASCII_TEXT_CODEC)
+  if (IsAsciiDocument()) {
+    if (prepared_->ascii_adapter == nullptr) {
+      SetEncodeFailure("UI_ENCODE_NOT_READY", "ASCII adapter is not ready");
+      ClearPreview();
+      return false;
+    }
+    std::vector<protocol_lab::ascii::InputField> inputs;
+    if (message->encode_available) {
+      for (const auto& field : message->fields) {
+        if (!field.encode_referenced) continue;
+        const auto draft = drafts_.find(field.field_index);
+        if (draft == drafts_.end() || !DraftMatches(field, draft->second)) {
+          const auto invalid = invalid_drafts_.find(field.field_index);
+          SetEncodeFailure(
+              invalid == invalid_drafts_.end() ? "UI_INPUT_INCOMPLETE" : "UI_INPUT_INVALID",
+              "field=" + field.id + "; reason=" +
+                  (invalid == invalid_drafts_.end() ? std::string{"no valid byte draft"}
+                                                    : invalid->second.validation_error));
+          ClearPreview();
+          RefreshDocumentState();
+          return false;
+        }
+        protocol_lab::ascii::InputField input;
+        input.field_index = field.field_index;
+        input.field_id = field.id;
+        input.bytes = std::get<std::vector<std::uint8_t>>(draft->second);
+        inputs.push_back(std::move(input));
+      }
+    }
+    if (input_materialization_timer != nullptr && input_materialization_ns != nullptr) {
+      *input_materialization_ns = input_materialization_timer->ElapsedNanoseconds();
+    }
+    protocol_lab::ascii::ExecutionIdentity identity;
+    identity.document_id = document_id_;
+    identity.load_revision = load_revision_;
+    identity.plan_generation = plan_generation_;
+    identity.selection_revision = selection_revision_;
+    identity.input_revision = input_revision_;
+    identity.pipeline_index = selection_->pipeline_index;
+    identity.pipeline_id = selection_->pipeline_id;
+    identity.message_index = selection_->message_index;
+    identity.message_id = selection_->message_id;
+    const PreviewKey requested_key = MakePreviewKey();
+    auto outcome = prepared_->ascii_adapter->Encode(std::move(identity), inputs);
+    if (!PreviewKeyStillCurrent(requested_key) ||
+        outcome.status != protocol_lab::ascii::AdapterStatus::OK) {
+      const std::string status =
+          outcome.core_called
+              ? std::string{protocol_lab::ascii::CodecStatusName(outcome.core_status)}
+              : std::string{"INVALID_REQUEST"};
+      SetEncodeFailure(status, outcome.detail.empty() ? "ASCII Encode failed: " + status
+                                                      : std::move(outcome.detail));
+      ClearPreview();
+      RefreshDocumentState();
+      return false;
+    }
+    PreviewResult published;
+    published.key = requested_key;
+    published.encoded_frame = std::move(outcome.frame);
+    published.fields = CopyAsciiFields(outcome.fields);
+    published.zero_field_success = published.fields.empty();
+    published.tx_template_review =
+        outcome.review_kind == protocol_lab::ascii::ReviewKind::TX_TEMPLATE;
+    preview_ = std::move(published);
+    diagnostic_id_.clear();
+    diagnostic_detail_.clear();
+    ClearEncodeFailure();
+    RefreshDocumentState();
+    return true;
+  }
+#endif
+  if (prepared_->bridge == nullptr) {
+    SetEncodeFailure("UI_ENCODE_NOT_READY", "Binary execution bridge is not ready");
+    ClearPreview();
+    return false;
   }
   protocol_lab::v06::ParsedValues values;
   values.format_version = description_->schema_version == "0.8"
@@ -395,7 +672,7 @@ bool DocumentSession::Encode(protocol_lab::v06::ExecutionObserver* observer,
   PreviewResult published;
   published.key = requested_key;
   published.encoded_frame = std::move(outcome.encoded_frame);
-  published.fields = std::move(outcome.result->fields);
+  published.fields = CopyLegacyFields(*message, outcome.result->fields);
   preview_ = std::move(published);
   diagnostic_id_.clear();
   diagnostic_detail_.clear();
@@ -405,11 +682,24 @@ bool DocumentSession::Encode(protocol_lab::v06::ExecutionObserver* observer,
 }
 
 bool DocumentSession::SetInspectDraft(std::string text) {
+  std::u16string converted;
+  converted.reserve(text.size());
+  for (const unsigned char value : text) converted.push_back(static_cast<char16_t>(value));
+  inspect_draft_ = text;
+  return SetInspectDraftUtf16(std::move(converted));
+}
+
+bool DocumentSession::SetInspectDraftUtf16(std::u16string text) {
   if (state_ == DocumentState::CLOSING || state_ == DocumentState::CLOSED || prepared_ == nullptr ||
       !selected_pipeline_index_.has_value()) {
     return false;
   }
-  inspect_draft_ = std::move(text);
+  inspect_draft_utf16_ = std::move(text);
+  inspect_draft_.clear();
+  inspect_draft_.reserve(inspect_draft_utf16_.size());
+  for (const char16_t value : inspect_draft_utf16_) {
+    inspect_draft_.push_back(value <= 0xFFU ? static_cast<char>(value) : '?');
+  }
   ++inspect_input_revision_;
   ClearInspectOutcome();
   diagnostic_id_.clear();
@@ -418,11 +708,19 @@ bool DocumentSession::SetInspectDraft(std::string text) {
   return true;
 }
 
+void DocumentSession::RejectInspectCapacity(std::size_t capacity) {
+  ++inspect_input_revision_;
+  ClearInspectOutcome();
+  SetDiagnostic("UI_ASCII_INPUT_CAPACITY_EXCEEDED",
+                "Inspect edit exceeds bounded capacity=" + std::to_string(capacity) +
+                    "; entire edit rejected");
+  RefreshDocumentState();
+}
+
 bool DocumentSession::Inspect(protocol_lab::v06::ExecutionObserver* observer) {
   ++inspect_request_revision_;
   ClearInspectOutcome();
-  if (prepared_ == nullptr || prepared_->bridge == nullptr || !description_.has_value() ||
-      !selected_pipeline_index_.has_value() ||
+  if (prepared_ == nullptr || !description_.has_value() || !selected_pipeline_index_.has_value() ||
       *selected_pipeline_index_ >= description_->pipelines.size()) {
     InspectFailure failure;
     failure.stage = InspectFailureStage::INPUT;
@@ -436,6 +734,130 @@ bool DocumentSession::Inspect(protocol_lab::v06::ExecutionObserver* observer) {
 
   const InspectResultKey requested_key = MakeInspectResultKey();
   const std::size_t budget = InspectFrameBudget();
+#if defined(PAE_ENABLE_SCHEMA_V10_ASCII_TEXT_CODEC)
+  if (IsAsciiDocument()) {
+    if (prepared_->ascii_adapter == nullptr) {
+      InspectFailure failure;
+      failure.diagnostic_id = "UI_INSPECT_NOT_READY";
+      failure.detail = "ASCII adapter is not ready";
+      inspect_failure_ = std::move(failure);
+      SetDiagnostic(inspect_failure_->diagnostic_id, inspect_failure_->detail);
+      return false;
+    }
+    std::vector<std::uint8_t> input;
+    if (representation_ == ByteRepresentation::ASCII_ESCAPED) {
+      const auto parsed = ParseAsciiEscaped(inspect_draft_utf16_);
+      if (!parsed.ok() || parsed.bytes.empty()) {
+        InspectFailure failure;
+        failure.stage = InspectFailureStage::INPUT;
+        failure.diagnostic_id = "UI_ASCII_INPUT_INVALID";
+        if (parsed.ok()) {
+          failure.detail = "Inspect ASCII escaped input is empty";
+        } else {
+          failure.input_offset = parsed.utf16_offset;
+          failure.input_offset_is_utf16 = true;
+          failure.detail = AsciiInputFailureDetail(parsed.detail, *parsed.utf16_offset);
+        }
+        inspect_failure_ = std::move(failure);
+        SetDiagnostic(inspect_failure_->diagnostic_id, inspect_failure_->detail);
+        RefreshDocumentState();
+        return false;
+      }
+      input = parsed.bytes;
+    } else {
+      const auto parsed = ParseInspectHex(inspect_draft_, budget);
+      if (!parsed.ok()) {
+        InspectFailure failure;
+        failure.stage = InspectFailureStage::INPUT;
+        failure.diagnostic_id = InspectHexDiagnosticId(parsed.error);
+        failure.detail =
+            InspectFailureDetail(InspectHexErrorDetail(parsed.error), parsed.input_offset);
+        failure.input_offset = parsed.input_offset;
+        inspect_failure_ = std::move(failure);
+        SetDiagnostic(inspect_failure_->diagnostic_id, inspect_failure_->detail);
+        RefreshDocumentState();
+        return false;
+      }
+      input = parsed.bytes;
+    }
+    if (budget == 0U || input.size() > budget) {
+      InspectFailure failure;
+      failure.stage = InspectFailureStage::INPUT;
+      failure.diagnostic_id = "UI_INSPECT_FRAME_LIMIT_EXCEEDED";
+      failure.detail = "decoded Inspect frame exceeds the selected Pipeline budget";
+      failure.input_frame = std::move(input);
+      inspect_failure_ = std::move(failure);
+      SetDiagnostic(inspect_failure_->diagnostic_id, inspect_failure_->detail);
+      RefreshDocumentState();
+      return false;
+    }
+    const auto& pipeline = description_->pipelines[*selected_pipeline_index_];
+    protocol_lab::ascii::ExecutionIdentity identity;
+    identity.document_id = document_id_;
+    identity.load_revision = load_revision_;
+    identity.plan_generation = plan_generation_;
+    identity.selection_revision = pipeline_selection_revision_;
+    identity.input_revision = inspect_input_revision_;
+    identity.pipeline_index = pipeline.pipeline_index;
+    identity.pipeline_id = pipeline.id;
+    auto outcome = prepared_->ascii_adapter->Inspect(std::move(identity), input);
+    if (!InspectKeyStillCurrent(requested_key)) return false;
+    if (outcome.status != protocol_lab::ascii::AdapterStatus::OK) {
+      InspectFailure failure;
+      const std::string status =
+          outcome.core_called
+              ? std::string{protocol_lab::ascii::CodecStatusName(outcome.core_status)}
+              : std::string{"INVALID_REQUEST"};
+      failure.stage = outcome.status == protocol_lab::ascii::AdapterStatus::MATERIALIZATION_FAILED
+                          ? InspectFailureStage::MATERIALIZATION
+                          : (status == "UNKNOWN_MESSAGE" || status == "AMBIGUOUS_MESSAGE"
+                                 ? InspectFailureStage::STRUCTURAL_QUERY
+                                 : InspectFailureStage::CODEC);
+      failure.status = status;
+      failure.diagnostic_id = "UI_INSPECT_" + status;
+      failure.detail =
+          outcome.detail.empty() ? "ASCII Inspect failed: " + status : std::move(outcome.detail);
+      failure.input_frame = std::move(outcome.diagnostic_input_frame);
+      failure.message_index = outcome.message_index;
+      failure.message_id = outcome.message_id;
+      failure.failed_field_index = outcome.failed_field_index;
+      failure.failed_field_id = outcome.failed_field_id;
+      inspect_failure_ = std::move(failure);
+      SetDiagnostic(inspect_failure_->diagnostic_id, inspect_failure_->detail);
+      RefreshDocumentState();
+      return false;
+    }
+    if (!outcome.message_index.has_value() || !outcome.message_id.has_value()) {
+      InspectFailure failure;
+      failure.stage = InspectFailureStage::MATERIALIZATION;
+      failure.diagnostic_id = "UI_INSPECT_MESSAGE_IDENTITY_MISMATCH";
+      failure.detail = "ASCII adapter success has no matched Message identity";
+      inspect_failure_ = std::move(failure);
+      SetDiagnostic(inspect_failure_->diagnostic_id, inspect_failure_->detail);
+      return false;
+    }
+    InspectResult result;
+    result.key = requested_key;
+    result.input_frame = std::move(outcome.frame);
+    result.message_index = *outcome.message_index;
+    result.message_id = *outcome.message_id;
+    result.fields = CopyAsciiFields(outcome.fields);
+    result.zero_field_success = result.fields.empty();
+    inspect_result_ = std::move(result);
+    diagnostic_id_.clear();
+    diagnostic_detail_.clear();
+    RefreshDocumentState();
+    return true;
+  }
+#endif
+  if (prepared_->bridge == nullptr) {
+    InspectFailure failure;
+    failure.diagnostic_id = "UI_INSPECT_NOT_READY";
+    failure.detail = "Binary execution bridge is not ready";
+    inspect_failure_ = std::move(failure);
+    SetDiagnostic(inspect_failure_->diagnostic_id, inspect_failure_->detail);
+    return false;
+  }
   auto parsed = ParseInspectHex(inspect_draft_, budget);
   if (!parsed.ok()) {
     InspectFailure failure;
@@ -532,7 +954,7 @@ bool DocumentSession::Inspect(protocol_lab::v06::ExecutionObserver* observer) {
   result.input_frame = std::move(parsed.bytes);
   result.message_index = message_index;
   result.message_id = std::move(message_id);
-  result.fields = std::move(outcome.result->fields);
+  result.fields = CopyLegacyFields(description_->messages[message_index], outcome.result->fields);
   inspect_result_ = std::move(result);
   diagnostic_id_.clear();
   diagnostic_detail_.clear();
@@ -545,6 +967,7 @@ void DocumentSession::Close() {
   state_ = DocumentState::CLOSING;
   ClearSelectionAndPreview();
   inspect_draft_.clear();
+  inspect_draft_utf16_.clear();
   ClearInspectOutcome();
   description_.reset();
   prepared_.reset();
@@ -670,8 +1093,14 @@ std::size_t DocumentSession::InspectFrameBudget() const noexcept {
     return 0U;
   }
   std::size_t pipeline_maximum = 0U;
-  for (const std::size_t message_index :
-       description_->pipelines[*selected_pipeline_index_].message_indices) {
+  const auto& pipeline = description_->pipelines[*selected_pipeline_index_];
+  const auto& candidates = description_->layout == DocumentLayout::ASCII_TEXT
+                               ? pipeline.decode_message_indices
+                               : pipeline.message_indices;
+  if (description_->layout == DocumentLayout::ASCII_TEXT && candidates.empty()) {
+    return (std::min)(description_->max_frame_bytes, std::size_t{65536U});
+  }
+  for (const std::size_t message_index : candidates) {
     if (message_index < description_->messages.size()) {
       pipeline_maximum =
           (std::max)(pipeline_maximum, description_->messages[message_index].frame_size);

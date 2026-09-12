@@ -59,6 +59,8 @@ class DocumentTab final : public QWidget {
   bool SelectFirstMappableFieldForSmoke(QString& error);
   bool VerifyInvalidDraftRetentionForSmoke(QString& error);
   bool VerifyBoundedV08ForSmoke(QString& error);
+  bool VerifyAsciiForSmoke(QString& error);
+  bool IsAsciiForSmoke() const noexcept { return session_.IsAsciiDocument(); }
   bool VerifyPipelineSwitchClearsInspectForSmoke(QString& error);
   void InvalidatePreviewForSmoke();
   std::size_t PreviewFrameSizeForSmoke() const noexcept;
@@ -83,6 +85,7 @@ class DocumentTab final : public QWidget {
   void EncodeCurrent();
   void InspectCurrent();
   void SelectMode(int combo_index);
+  void SelectRepresentation(int combo_index);
   void InvalidateEditedPreview();
   void InvalidateEditedDraft(std::size_t field_index);
   std::vector<PhysicalBitMask> InspectFailureHighlights(const MessageDescriptor* message) const;
@@ -102,6 +105,7 @@ class DocumentTab final : public QWidget {
   QComboBox* pipeline_combo_ = nullptr;
   QComboBox* mode_combo_ = nullptr;
   QComboBox* message_combo_ = nullptr;
+  QComboBox* representation_combo_ = nullptr;
   QPushButton* encode_button_ = nullptr;
   QPushButton* inspect_button_ = nullptr;
   QLabel* inspect_input_label_ = nullptr;
@@ -115,6 +119,7 @@ class DocumentTab final : public QWidget {
   QLabel* diagnostic_label_ = nullptr;
   QLabel* timing_label_ = nullptr;
   EncodeTimingSnapshot timing_;
+  QString accepted_inspect_text_;
 };
 
 }  // namespace pae::protocol_lab_ui

@@ -11,6 +11,11 @@
 
 namespace pae::protocol_lab_ui {
 
+enum class FieldPresentationAction {
+  ENCODE,
+  INSPECT,
+};
+
 class FieldTableModel final : public QAbstractTableModel {
  public:
   enum Column {
@@ -36,12 +41,14 @@ class FieldTableModel final : public QAbstractTableModel {
     FieldSourceRefRole,
     ReadOnlyAnnotationRole,
     HasConversionRole,
+    EditorCapacityRejectedRole,
+    ByteRepresentationRole,
   };
 
   using DraftChanged =
       std::function<bool(std::size_t field_index, TypedDraft value, QString& error)>;
-  using DraftInvalidated =
-      std::function<void(std::size_t field_index, std::string text, std::string validation_error)>;
+  using DraftInvalidated = std::function<void(std::size_t field_index, std::u16string text,
+                                              std::string validation_error)>;
 
   explicit FieldTableModel(QObject* parent = nullptr);
 
@@ -54,11 +61,13 @@ class FieldTableModel final : public QAbstractTableModel {
   bool setData(const QModelIndex& index, const QVariant& value, int role = Qt::EditRole) override;
 
   void Reset(const MessageDescriptor* message, DraftChanged draft_changed,
-             DraftInvalidated draft_invalidated = {}, bool editable = true);
+             DraftInvalidated draft_invalidated = {}, bool editable = true,
+             ByteRepresentation representation = ByteRepresentation::HEX,
+             FieldPresentationAction action = FieldPresentationAction::ENCODE);
   void ApplyDrafts(const std::unordered_map<std::size_t, TypedDraft>& drafts);
   void ApplyInvalidDrafts(const std::unordered_map<std::size_t, InvalidDraftState>& invalid_drafts);
   void ClearResults();
-  void ApplyResults(const std::vector<protocol_lab::v06::FieldResult>& results);
+  void ApplyResults(const std::vector<UiFieldResult>& results);
   void SetActualFrameSize(std::optional<std::size_t> frame_size);
   void SetFailedField(std::optional<std::size_t> field_index);
   const FieldDescriptor* FieldAt(int row) const noexcept;
@@ -66,13 +75,14 @@ class FieldTableModel final : public QAbstractTableModel {
 
  private:
   struct RowState {
-    std::string draft_text;
+    QString draft_text;
     std::optional<std::size_t> enum_entry_index;
     bool bool_value = false;
     bool has_bool_value = false;
     std::string raw_result;
     std::string logical_result;
     QString validation_error;
+    std::optional<ByteRange> actual_range;
   };
 
   bool ParseDraft(int row, const QVariant& value, int role, TypedDraft& output, QString& canonical,
@@ -86,6 +96,8 @@ class FieldTableModel final : public QAbstractTableModel {
   std::optional<std::size_t> failed_field_index_;
   bool editable_ = true;
   std::optional<std::size_t> actual_frame_size_;
+  ByteRepresentation representation_ = ByteRepresentation::HEX;
+  FieldPresentationAction action_ = FieldPresentationAction::ENCODE;
 };
 
 }  // namespace pae::protocol_lab_ui
