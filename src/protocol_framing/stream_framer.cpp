@@ -91,6 +91,23 @@ std::size_t StreamFramingWorkspace::AccountedWorkspaceBytes() const noexcept {
   return sizeof(StreamFramingWorkspace) + buffer_.capacity() * sizeof(std::uint8_t);
 }
 
+StreamFramingObservation StreamFramingWorkspace::Observe() const noexcept {
+  StreamFramingObservation observation;
+  if (state_ == State::DELIVER_PENDING) {
+    observation.phase = StreamFramingPhase::DELIVERY_PENDING;
+  }
+#if defined(PAE_ENABLE_SCHEMA_V11_ASCII_STREAM_FRAMING)
+  else if (state_ == State::DISCARD_UNTIL_CRLF) {
+    observation.phase = StreamFramingPhase::DISCARDING_UNTIL_CRLF;
+  }
+#endif
+  observation.buffered_bytes = buffered_size_;
+  observation.has_internal_work = HasInternalWork();
+  observation.effective_max_submit_bytes = max_submit_bytes_;
+  observation.effective_max_work_units = max_work_units_;
+  return observation;
+}
+
 WorkspaceCreateResult CreateStreamFramingWorkspace(
     const protocol_plan::PlanBundle& plan, std::size_t pipeline_index,
     const FramingLimitOverrides& overrides) noexcept {

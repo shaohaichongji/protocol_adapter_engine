@@ -12,6 +12,39 @@ if(PAE_ENABLE_SCHEMA_V10_ASCII_TEXT_CODEC)
     list(APPEND pae_protocol_lab_ui_headless_test_names ascii_input ascii_session)
 endif()
 
+if(PAE_BUILD_PROTOCOL_LAB_ASCII_STREAM_OBSERVER)
+    add_test(
+        NAME pae.tools.protocol_lab_ui.qt_smoke_ascii_stream
+        COMMAND
+            "${PROJECT_BINARY_DIR}/out/protocol_lab_ui/$<CONFIG>/pae_protocol_lab_ui.exe"
+            --ui-smoke
+            "${PROJECT_SOURCE_DIR}/examples/config/synthetic_ascii_stream_slice.pae.json"
+    )
+    set_tests_properties(
+        pae.tools.protocol_lab_ui.qt_smoke_ascii_stream
+        PROPERTIES
+            LABELS "tools;protocol_lab_ui;offline;qt;window;smoke;schema_v11;ascii;stream"
+            TIMEOUT 180
+    )
+    add_test(
+        NAME pae.tools.protocol_lab_ui.qt_smoke_ascii_stream_close_cancel
+        COMMAND
+            "${PROJECT_BINARY_DIR}/out/protocol_lab_ui/$<CONFIG>/pae_protocol_lab_ui.exe"
+            --ui-smoke
+            "${PROJECT_SOURCE_DIR}/examples/config/synthetic_ascii_stream_slice.pae.json"
+            "${PROJECT_SOURCE_DIR}/examples/config/synthetic_ascii_stream_slice.pae.json"
+    )
+    set_tests_properties(
+        pae.tools.protocol_lab_ui.qt_smoke_ascii_stream_close_cancel
+        PROPERTIES
+            LABELS "tools;protocol_lab_ui;offline;qt;window;smoke;schema_v11;ascii;stream;close"
+            TIMEOUT 180
+    )
+endif()
+if(PAE_BUILD_PROTOCOL_LAB_ASCII_STREAM_OBSERVER)
+    list(APPEND pae_protocol_lab_ui_headless_test_names ascii_stream_session)
+endif()
+
 foreach(pae_ui_test_name IN LISTS pae_protocol_lab_ui_headless_test_names)
     set(pae_ui_test_target "pae_protocol_lab_ui_${pae_ui_test_name}_tests")
     add_executable("${pae_ui_test_target}" "${pae_ui_test_name}_tests.cpp")
@@ -32,6 +65,13 @@ foreach(pae_ui_test_name IN LISTS pae_protocol_lab_ui_headless_test_names)
             PRIVATE
                 "PAE_ASCII_TEXT_CONFIG=L\"${PROJECT_SOURCE_DIR}/examples/config/synthetic_ascii_text_slice.pae.json\""
                 "PAE_ASCII_LITERAL_CONFIG=L\"${PROJECT_SOURCE_DIR}/examples/config/synthetic_ascii_literal_only.pae.json\""
+        )
+    endif()
+    if(pae_ui_test_name STREQUAL "ascii_stream_session")
+        target_compile_definitions(
+            "${pae_ui_test_target}"
+            PRIVATE
+                "PAE_ASCII_STREAM_CONFIG=L\"${PROJECT_SOURCE_DIR}/examples/config/synthetic_ascii_stream_slice.pae.json\""
         )
     endif()
     set_target_properties(

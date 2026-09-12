@@ -33,6 +33,9 @@ enum class DocumentState {
 enum class OperationMode {
   ENCODE,
   INSPECT,
+#if defined(PAE_BUILD_PROTOCOL_LAB_ASCII_STREAM_OBSERVER)
+  STREAM_INSPECT,
+#endif
 };
 
 enum class InspectFailureStage {
@@ -174,6 +177,19 @@ class DocumentSession final {
   bool SetInspectDraftUtf16(std::u16string text);
   void RejectInspectCapacity(std::size_t capacity);
   bool Inspect(protocol_lab::v06::ExecutionObserver* observer = nullptr);
+#if defined(PAE_BUILD_PROTOCOL_LAB_ASCII_STREAM_OBSERVER)
+  bool SubmitStream();
+  bool ContinueStream();
+  bool ResetStream();
+  bool StreamInspectAvailable() const noexcept;
+  bool StreamContinueAvailable() const noexcept;
+  bool StreamHasDiscardableState() const noexcept;
+  std::size_t StreamChunkBudget() const noexcept;
+  const std::optional<protocol_lab::ascii::StreamStepResult>& stream_step() const noexcept {
+    return stream_step_;
+  }
+  std::optional<protocol_lab::ascii::StreamObservation> StreamObservation() const noexcept;
+#endif
   void Close();
 
   DocumentId id() const noexcept { return document_id_; }
@@ -253,6 +269,10 @@ class DocumentSession final {
   std::u16string inspect_draft_utf16_;
   std::optional<InspectResult> inspect_result_;
   std::optional<InspectFailure> inspect_failure_;
+#if defined(PAE_BUILD_PROTOCOL_LAB_ASCII_STREAM_OBSERVER)
+  std::optional<protocol_lab::ascii::StreamStepResult> stream_step_;
+  std::optional<Revision> submitted_stream_input_revision_;
+#endif
   std::string diagnostic_id_;
   std::string diagnostic_detail_;
 };

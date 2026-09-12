@@ -10,6 +10,9 @@
 
 #include "../../src/config_compiler/config_compiler.h"
 #include "../../src/protocol_core/complete_record_codec.h"
+#if defined(PAE_BUILD_PROTOCOL_LAB_ASCII_STREAM_OBSERVER)
+#include "../../src/protocol_framing/stream_framer.h"
+#endif
 
 namespace pae::protocol_lab::ascii {
 
@@ -101,6 +104,10 @@ struct PipelineDescription {
   std::string source_ref;
   std::vector<std::size_t> message_indices;
   std::vector<std::size_t> decode_message_indices;
+#if defined(PAE_BUILD_PROTOCOL_LAB_ASCII_STREAM_OBSERVER)
+  bool stream_ascii_crlf = false;
+  std::size_t maximum_frame_length = 0U;
+#endif
 };
 
 struct DocumentDescription {
@@ -146,14 +153,50 @@ struct ExecutionResult {
   std::string detail;
 };
 
-// Internal, non-persistent Schema 0.10 adapter. It owns the Plan, Sidecar, and one reusable
-// Workspace. Every returned description/result byte and string is copied and remains valid after
-// subsequent calls and after this adapter is destroyed.
+#if defined(PAE_BUILD_PROTOCOL_LAB_ASCII_STREAM_OBSERVER)
+struct StreamObservation {
+  protocol_framing::StreamFramingPhase phase = protocol_framing::StreamFramingPhase::COLLECTING;
+  std::size_t buffered_bytes = 0U;
+  bool has_internal_work = false;
+  std::size_t effective_max_submit_bytes = 0U;
+  std::size_t effective_max_work_units = 0U;
+  std::size_t frozen_input_bytes = 0U;
+  std::size_t frozen_cursor = 0U;
+  bool reset_required = false;
+  std::uint64_t generation = 0U;
+  std::uint64_t step_sequence = 0U;
+  std::uint64_t total_candidates = 0U;
+  std::uint64_t total_decode_successes = 0U;
+  std::size_t total_discarded_bytes = 0U;
+  std::size_t total_malformed_candidates = 0U;
+};
+
+struct StreamStepResult {
+  ExecutionIdentity identity;
+  AdapterStatus status = AdapterStatus::INVALID_REQUEST;
+  bool push_called = false;
+  protocol_framing::SubmitResult framing;
+  StreamObservation before;
+  StreamObservation after;
+  std::optional<ExecutionResult> candidate;
+  std::string detail;
+};
+#endif
+
+// Internal, non-persistent ASCII adapter. It owns the Plan, Sidecar, reusable Core Workspace and,
+// when explicitly enabled, bounded Schema 0.11 stream workspaces. Every returned
+// description/result byte and string is copied and remains valid after subsequent calls and after
+// this adapter is destroyed.
 class OfflineAdapter final {
  public:
   static bool Supports(const config_compiler::CompiledUiArtifacts& artifacts) noexcept;
   static std::unique_ptr<OfflineAdapter> AdoptCompiledArtifacts(
-      config_compiler::CompiledUiArtifacts artifacts, std::string& error);
+      config_compiler::CompiledUiArtifacts artifacts, std::string& error
+#if defined(PAE_BUILD_PROTOCOL_LAB_ASCII_STREAM_OBSERVER)
+      ,
+      const protocol_framing::FramingLimitOverrides& stream_overrides = {}
+#endif
+  );
 
   OfflineAdapter(const OfflineAdapter&) = delete;
   OfflineAdapter& operator=(const OfflineAdapter&) = delete;
@@ -165,6 +208,20 @@ class OfflineAdapter final {
 
   ExecutionResult Inspect(ExecutionIdentity identity, const std::vector<std::uint8_t>& input_frame);
   ExecutionResult Encode(ExecutionIdentity identity, const std::vector<InputField>& inputs);
+#if defined(PAE_BUILD_PROTOCOL_LAB_ASCII_STREAM_OBSERVER)
+  StreamStepResult SubmitStreamChunk(ExecutionIdentity identity,
+                                     const std::vector<std::uint8_t>& input_chunk);
+  StreamStepResult ContinueStream(ExecutionIdentity identity);
+  bool ResetStream(std::size_t pipeline_index, std::string_view pipeline_id,
+                   std::string& error) noexcept;
+  std::optional<StreamObservation> ObserveStream(std::size_t pipeline_index) const noexcept;
+  std::size_t StreamChunkCapacity(std::size_t pipeline_index) const noexcept;
+  bool StreamHasDiscardableState(std::size_t pipeline_index) const noexcept;
+#if defined(PAE_PROTOCOL_LAB_ASCII_TEST_HOOKS)
+  void SetCandidateCopyLimitForTesting(std::size_t pipeline_index,
+                                       std::size_t maximum_bytes) noexcept;
+#endif
+#endif
 
  private:
   OfflineAdapter(protocol_plan::PlanOwner plan, config_compiler::UiDescriptionSidecar sidecar,
@@ -176,6 +233,10 @@ class OfflineAdapter final {
   config_compiler::UiDescriptionSidecar sidecar_;
   DocumentDescription description_;
   protocol_core::ExecutionWorkspace workspace_;
+#if defined(PAE_BUILD_PROTOCOL_LAB_ASCII_STREAM_OBSERVER)
+  struct StreamContext;
+  std::vector<std::unique_ptr<StreamContext>> streams_;
+#endif
 };
 
 std::string_view CodecStatusName(protocol_core::CodecStatus status) noexcept;

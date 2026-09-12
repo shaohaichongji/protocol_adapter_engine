@@ -241,7 +241,15 @@ int main(int argc, char** argv) {
                "exact session memory minus one fails");
   FramingLimitOverrides submit_limit;
   submit_limit.max_submit_bytes = 4U;
+  submit_limit.max_work_units = 17U;
   auto submit_limited = CreateStreamFramingWorkspace(*plan, 0U, submit_limit);
+  const StreamFramingObservation initial_observation = submit_limited.workspace->Observe();
+  ok &= Expect(initial_observation.phase == StreamFramingPhase::COLLECTING &&
+                   initial_observation.buffered_bytes == 0U &&
+                   !initial_observation.has_internal_work &&
+                   initial_observation.effective_max_submit_bytes == 4U &&
+                   initial_observation.effective_max_work_units == 17U,
+               "initial observation exposes effective limits without advancing state");
   CaptureState submit_frames;
   const std::string oversized_submit = "ONLY\r\n";
   const auto submit_reject =
@@ -251,8 +259,23 @@ int main(int argc, char** argv) {
                       FrameSink{Capture, &submit_frames});
   ok &= Expect(submit_reject.api_status == SubmitApiStatus::LIMIT_EXCEEDED &&
                    submit_reject.bytes_consumed == 0U && submit_reject.frames_delivered == 0U &&
-                   submit_limited.workspace->BufferedBytes() == 0U,
+                   submit_limited.workspace->Observe().phase == StreamFramingPhase::COLLECTING &&
+                   submit_limited.workspace->Observe().buffered_bytes == 0U,
                "oversized submit is rejected before changing stream state");
+
+  auto observed_half = CreateStreamFramingWorkspace(*plan, 0U);
+  CaptureState observed_half_frames;
+  const std::string observed_half_bytes = "ON";
+  static_cast<void>(
+      PushStreamChunk(*plan, *observed_half.workspace, 0U,
+                      ByteView{reinterpret_cast<const std::uint8_t*>(observed_half_bytes.data()),
+                               observed_half_bytes.size()},
+                      FrameSink{Capture, &observed_half_frames}));
+  const StreamFramingObservation half_observation = observed_half.workspace->Observe();
+  ok &= Expect(half_observation.phase == StreamFramingPhase::COLLECTING &&
+                   half_observation.buffered_bytes == observed_half_bytes.size() &&
+                   !half_observation.has_internal_work && observed_half_frames.count == 0U,
+               "half record remains collecting and cannot progress without new input");
 
   CaptureState captured;
   const std::string first = "RX A!OK\r\n";
@@ -335,11 +358,15 @@ int main(int argc, char** argv) {
       *plan, *long_workspace.workspace, 0U,
       ByteView{reinterpret_cast<const std::uint8_t*>(long_prefix.data()), long_prefix.size()},
       FrameSink{Capture, &recovered});
-  ok &= Expect(long_result.bytes_consumed == 12U && long_result.frames_delivered == 0U &&
-                   long_result.malformed_candidates == 1U && long_result.bytes_discarded == 12U &&
-                   long_result.last_framing_issue == FramingIssue::RECORD_TOO_LONG &&
-                   long_result.stop_reason == SubmitStopReason::NEED_MORE,
-               "M bytes without terminator becomes one recoverable overlong candidate");
+  ok &= Expect(
+      long_result.bytes_consumed == 12U && long_result.frames_delivered == 0U &&
+          long_result.malformed_candidates == 1U && long_result.bytes_discarded == 12U &&
+          long_result.last_framing_issue == FramingIssue::RECORD_TOO_LONG &&
+          long_result.stop_reason == SubmitStopReason::NEED_MORE &&
+          long_workspace.workspace->Observe().phase == StreamFramingPhase::DISCARDING_UNTIL_CRLF &&
+          long_workspace.workspace->Observe().buffered_bytes == 0U &&
+          !long_workspace.workspace->Observe().has_internal_work,
+      "M bytes without terminator becomes one recoverable overlong candidate");
   const std::string recover = "\r\nONLY\r\n";
   long_result = PushStreamChunk(
       *plan, *long_workspace.workspace, 0U,
@@ -360,6 +387,10 @@ int main(int argc, char** argv) {
   ok &= Expect(ResetStreamFramingWorkspace(*plan, *reset_discard_workspace.workspace, 0U) ==
                    SubmitApiStatus::OK,
                "Reset leaves discard mode without inventing a boundary");
+  const StreamFramingObservation reset_observation = reset_discard_workspace.workspace->Observe();
+  ok &= Expect(reset_observation.phase == StreamFramingPhase::COLLECTING &&
+                   reset_observation.buffered_bytes == 0U && !reset_observation.has_internal_work,
+               "Reset observation returns to empty collecting state");
   const std::string after_reset_record = "ONLY\r\n";
   const auto after_discard_reset =
       PushStreamChunk(*plan, *reset_discard_workspace.workspace, 0U,
@@ -417,10 +448,20 @@ int main(int argc, char** argv) {
       Expect(pending_result.bytes_consumed == two.size() && pending_result.frames_delivered == 1U &&
                  pending_result.stop_reason == SubmitStopReason::WORK_BUDGET_REACHED,
              "callback budget retains one completed pending frame");
+  const StreamFramingObservation pending_observation = pending_workspace.workspace->Observe();
+  ok &=
+      Expect(pending_observation.phase == StreamFramingPhase::DELIVERY_PENDING &&
+                 pending_observation.buffered_bytes == 9U && pending_observation.has_internal_work,
+             "pending delivery is distinguishable from an empty collecting state");
   pending_result = PushStreamChunk(*plan, *pending_workspace.workspace, 0U, ByteView{},
                                    FrameSink{Capture, &pending});
   ok &= Expect(pending_result.frames_delivered == 1U && pending.count == 2U,
                "empty push delivers pending frame exactly once");
+  const StreamFramingObservation delivered_observation = pending_workspace.workspace->Observe();
+  ok &= Expect(delivered_observation.phase == StreamFramingPhase::COLLECTING &&
+                   delivered_observation.buffered_bytes == 0U &&
+                   !delivered_observation.has_internal_work,
+               "observation reflects collection state after pending delivery completes");
 
   auto first_flow = CreateStreamFramingWorkspace(*plan, 0U);
   auto second_flow = CreateStreamFramingWorkspace(*plan, 0U);

@@ -1,6 +1,6 @@
 # DEC-040 后续推进路线与当前状态
 
-## 2026-09-12 当前入口
+## 2026-09-13 当前入口
 
 Lab ASCII离线集成已随合并提交`407af0df6e7b77c05aa5afbc7f334822fe5ae205`推送至main，
 父提交为`256c5b7`和`8bfe50f`；原32文件检查点已交付。下一检查点的
@@ -8,8 +8,11 @@ Lab ASCII离线集成已随合并提交`407af0df6e7b77c05aa5afbc7f334822fe5ae205
 PAE Compiler/Plan/Framer、Core版本接线、快照和宿主示例已实现；初版Windows Debug/Release
 各31/31通过。总控发现0.11快照遗漏RX/TX模板，限定修复先复现失败，再完成两个配置各6/6回归，
 该P2已定向复核关闭，详见[验证报告](windows-msvc-2026-ascii-stream-framing-slice.md)。
-当前进行文档与候选范围收口，尚未Stage、Commit、Push；Lab离线chunk观察尚未实施，
-后续须先核定接入接口及授权，共享文件串行修改。不扩展网络、端点注册、UTF-8或Evidence。
+PAE已随`716ff00ea8aa3d3f46b914008890f9706670d32b`提交并推送。
+[Lab离线chunk观察六项契约](lab-ascii-stream-observer-contract.md)已完成接口和Lab串行实施。
+接口Debug/Release各2/2通过；Lab初版各17/17定向及47/47整配置回归通过，三项限定修复后各3/3通过。
+用户于2026-09-13确认完整人工流程符合预期并关闭Lab，见[验收记录](lab-ascii-stream-observer-validation.md)。
+当前收口提交候选及提交信息，未Stage、Commit、Push。不扩展网络、端点注册、UTF-8或Evidence。
 
 ### 2026-09-12 Lab集成交付前快照（历史）
 

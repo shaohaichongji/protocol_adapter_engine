@@ -44,7 +44,10 @@ class DocumentTab final : public QWidget {
 
   void LoadPath(const QString& path);
   void AcceptCompletion(std::unique_ptr<CompileCompletion> completion);
-  void CloseDocument();
+  bool CloseDocument(bool require_confirmation = true);
+#if defined(PAE_BUILD_PROTOCOL_LAB_ASCII_STREAM_OBSERVER)
+  bool ConfirmClose();
+#endif
 
   bool PopulateCanonicalDraftsForSmoke(QString& error);
   bool EncodeForSmoke(QString& error);
@@ -60,6 +63,13 @@ class DocumentTab final : public QWidget {
   bool VerifyInvalidDraftRetentionForSmoke(QString& error);
   bool VerifyBoundedV08ForSmoke(QString& error);
   bool VerifyAsciiForSmoke(QString& error);
+#if defined(PAE_BUILD_PROTOCOL_LAB_ASCII_STREAM_OBSERVER)
+  bool IsAsciiStreamForSmoke() const noexcept { return session_.StreamInspectAvailable(); }
+  bool VerifyAsciiStreamForSmoke(QString& error);
+  bool PrepareStreamHalfFrameForSmoke(QString& error);
+  QString StreamStateSignatureForSmoke() const;
+  void ResetStreamForSmoke();
+#endif
   bool IsAsciiForSmoke() const noexcept { return session_.IsAsciiDocument(); }
   bool VerifyPipelineSwitchClearsInspectForSmoke(QString& error);
   void InvalidatePreviewForSmoke();
@@ -84,6 +94,12 @@ class DocumentTab final : public QWidget {
   void SelectMessage(int combo_index);
   void EncodeCurrent();
   void InspectCurrent();
+#if defined(PAE_BUILD_PROTOCOL_LAB_ASCII_STREAM_OBSERVER)
+  void ContinueStream();
+  void ResetStream();
+  bool ConfirmStreamDiscard(const QString& action);
+  bool ConfirmStreamDiscardOnly(const QString& action);
+#endif
   void SelectMode(int combo_index);
   void SelectRepresentation(int combo_index);
   void InvalidateEditedPreview();
@@ -108,6 +124,11 @@ class DocumentTab final : public QWidget {
   QComboBox* representation_combo_ = nullptr;
   QPushButton* encode_button_ = nullptr;
   QPushButton* inspect_button_ = nullptr;
+#if defined(PAE_BUILD_PROTOCOL_LAB_ASCII_STREAM_OBSERVER)
+  QPushButton* continue_button_ = nullptr;
+  QPushButton* reset_stream_button_ = nullptr;
+  QLabel* stream_status_label_ = nullptr;
+#endif
   QLabel* inspect_input_label_ = nullptr;
   QPlainTextEdit* inspect_input_ = nullptr;
   QLabel* result_kind_label_ = nullptr;

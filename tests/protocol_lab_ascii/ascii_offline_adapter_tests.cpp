@@ -58,6 +58,22 @@ std::unique_ptr<OfflineAdapter> Prepare(std::string_view config, std::string& er
   return OfflineAdapter::AdoptCompiledArtifacts(std::move(artifacts), error);
 }
 
+#if defined(PAE_BUILD_PROTOCOL_LAB_ASCII_STREAM_OBSERVER)
+std::unique_ptr<OfflineAdapter> PrepareWithLimits(
+    std::string_view config, const pae::protocol_framing::FramingLimitOverrides& limits,
+    std::string& error) {
+  const std::size_t limit =
+      pae::config_compiler::DerivedUiDescriptionMemoryLimit(ResourceProfile::DESKTOP);
+  auto compiled = CompileJsonToPlanWithUiDescription(config, limit);
+  if (!compiled.Succeeded()) {
+    error = compiled.Diagnostic() == nullptr ? "compile failed without diagnostic"
+                                             : compiled.Diagnostic()->detail;
+    return nullptr;
+  }
+  return OfflineAdapter::AdoptCompiledArtifacts(std::move(compiled).TakeArtifacts(), error, limits);
+}
+#endif
+
 ExecutionIdentity InspectIdentity(std::string pipeline_id = "ascii_pipeline") {
   ExecutionIdentity identity;
   identity.document_id = 17U;
@@ -288,19 +304,177 @@ bool CheckLegacyIsolation(const char* config_path) {
   }
   std::string error;
   auto adapter = OfflineAdapter::AdoptCompiledArtifacts(std::move(compiled).TakeArtifacts(), error);
-  return Expect(adapter == nullptr && error.find("Schema 0.10") != std::string::npos,
+  return Expect(adapter == nullptr && error.find("supported ASCII") != std::string::npos,
                 "ASCII adapter rejects legacy Binary artifacts for old-path dispatch");
 }
+
+#if defined(PAE_BUILD_PROTOCOL_LAB_ASCII_STREAM_OBSERVER)
+bool SameEngineState(const pae::protocol_lab::ascii::StreamObservation& left,
+                     const pae::protocol_lab::ascii::StreamObservation& right) {
+  return left.phase == right.phase && left.buffered_bytes == right.buffered_bytes &&
+         left.has_internal_work == right.has_internal_work &&
+         left.frozen_input_bytes == right.frozen_input_bytes &&
+         left.frozen_cursor == right.frozen_cursor &&
+         left.total_discarded_bytes == right.total_discarded_bytes &&
+         left.total_malformed_candidates == right.total_malformed_candidates &&
+         left.total_candidates == right.total_candidates &&
+         left.total_decode_successes == right.total_decode_successes;
+}
+
+bool CheckStreamObserver(const char* config_path) {
+  std::string error;
+  auto adapter = Prepare(ReadFile(config_path), error);
+  if (!Expect(adapter != nullptr, "Schema 0.11 stream artifacts adopt: " + error)) return false;
+  bool ok = Expect(adapter->Description().schema_version == "0.11" &&
+                       adapter->Description().pipelines.size() == 3U &&
+                       adapter->Description().pipelines[0].stream_ascii_crlf &&
+                       adapter->Description().pipelines[0].maximum_frame_length == 12U &&
+                       !adapter->Description().pipelines[1].stream_ascii_crlf,
+                   "description distinguishes stream and complete-record Pipelines");
+  const auto initial = adapter->ObserveStream(0U);
+  ok &= Expect(initial.has_value() && initial->buffered_bytes == 0U &&
+                   adapter->StreamChunkCapacity(0U) ==
+                       (std::min)(std::size_t{65536U}, initial->effective_max_submit_bytes),
+               "chunk capacity is min(65536, effective max_submit_bytes)");
+
+  auto first = adapter->SubmitStreamChunk(InspectIdentity(), Bytes("RX A!"));
+  ok &= Expect(first.status == AdapterStatus::OK && first.push_called &&
+                   first.framing.frames_delivered == 0U && !first.candidate.has_value() &&
+                   first.after.buffered_bytes == 5U && first.after.frozen_input_bytes == 0U,
+               "half-frame Submit consumes a new chunk without inventing a candidate");
+  const auto half_frame = *adapter->ObserveStream(0U);
+  std::vector<std::uint8_t> oversized(adapter->StreamChunkCapacity(0U) + 1U, 'X');
+  auto rejected = adapter->SubmitStreamChunk(InspectIdentity(), oversized);
+  ok &= Expect(rejected.status == AdapterStatus::INVALID_REQUEST && !rejected.push_called &&
+                   SameEngineState(half_frame, *adapter->ObserveStream(0U)),
+               "capacity rejection preserves the half-frame and all counters");
+
+  auto candidate = adapter->SubmitStreamChunk(InspectIdentity(), Bytes("OK\r\nONLY\r\n"));
+  ok &= Expect(
+      candidate.status == AdapterStatus::OK && candidate.push_called &&
+          candidate.framing.stop_reason == pae::protocol_framing::SubmitStopReason::SINK_STOP &&
+          candidate.framing.frames_delivered == 1U && candidate.candidate.has_value() &&
+          candidate.candidate->status == AdapterStatus::OK &&
+          AsText(candidate.candidate->frame) == "RX A!OK\r\n" &&
+          candidate.after.frozen_input_bytes == 10U && candidate.after.frozen_cursor == 4U,
+      "candidate STOP freezes only the unconsumed suffix");
+  auto continued = adapter->ContinueStream(InspectIdentity());
+  ok &= Expect(continued.status == AdapterStatus::OK && continued.push_called &&
+                   continued.framing.frames_delivered == 1U && continued.candidate.has_value() &&
+                   continued.candidate->status == AdapterStatus::OK &&
+                   AsText(continued.candidate->frame) == "ONLY\r\n" &&
+                   continued.after.frozen_input_bytes == 0U &&
+                   continued.after.total_candidates == 2U &&
+                   continued.after.total_decode_successes == 2U,
+               "Continue submits the frozen suffix once and owns the second result");
+  auto nothing = adapter->ContinueStream(InspectIdentity());
+  ok &= Expect(nothing.status == AdapterStatus::INVALID_REQUEST && !nothing.push_called,
+               "Continue without suffix or internal work is rejected before Push");
+
+  auto split_cr = adapter->SubmitStreamChunk(InspectIdentity(), Bytes("RX B!OK\r"));
+  auto split_lf = adapter->SubmitStreamChunk(InspectIdentity(), Bytes("\n"));
+  ok &= Expect(split_cr.status == AdapterStatus::OK && !split_cr.candidate.has_value() &&
+                   split_lf.candidate.has_value() &&
+                   AsText(split_lf.candidate->frame) == "RX B!OK\r\n",
+               "CRLF split across Submit chunks yields one candidate");
+
+  auto decode_failure = adapter->SubmitStreamChunk(InspectIdentity(), Bytes("BAD\r\n"));
+  ok &= Expect(decode_failure.status == AdapterStatus::OK && decode_failure.candidate.has_value() &&
+                   decode_failure.candidate->status == AdapterStatus::CORE_FAILED &&
+                   decode_failure.after.total_candidates == 4U &&
+                   decode_failure.after.total_decode_successes == 3U,
+               "Decode failure remains a delivered candidate and does not become protocol success");
+
+  auto overlong = adapter->SubmitStreamChunk(InspectIdentity(), Bytes("1234567890123"));
+  ok &= Expect(overlong.status == AdapterStatus::OK &&
+                   overlong.after.phase ==
+                       pae::protocol_framing::StreamFramingPhase::DISCARDING_UNTIL_CRLF &&
+                   overlong.after.total_malformed_candidates == 1U,
+               "overlong candidate enters bounded discard state");
+  ok &= Expect(adapter->StreamHasDiscardableState(0U), "discard state requires confirmation");
+  const auto generation = overlong.after.generation;
+  ok &= Expect(adapter->ResetStream(0U, "ascii_pipeline", error), "explicit stream Reset succeeds");
+  const auto reset = *adapter->ObserveStream(0U);
+  ok &= Expect(reset.generation == generation + 1U && reset.step_sequence == 0U &&
+                   reset.total_candidates == 0U && reset.total_decode_successes == 0U &&
+                   reset.total_discarded_bytes == 0U && reset.total_malformed_candidates == 0U &&
+                   reset.buffered_bytes == 0U && !adapter->StreamHasDiscardableState(0U),
+               "Reset clears workspace, frozen input, results counters, and increments generation");
+
+  auto complete_encode_identity = InspectIdentity("encode_only_pipeline");
+  complete_encode_identity.pipeline_index = 1U;
+  complete_encode_identity.message_index = 2U;
+  complete_encode_identity.message_id = "encode_only";
+  const auto complete_encoded = adapter->Encode(complete_encode_identity, {});
+  auto complete_inspect_identity = InspectIdentity("decode_only_pipeline");
+  complete_inspect_identity.pipeline_index = 2U;
+  const auto complete_inspected = adapter->Inspect(complete_inspect_identity, Bytes("ONLY\r\n"));
+  ok &= Expect(complete_encoded.status == AdapterStatus::OK &&
+                   AsText(complete_encoded.frame) == "SEND\r\n" &&
+                   complete_inspected.status == AdapterStatus::OK &&
+                   complete_inspected.message_id == "decode_only",
+               "Schema 0.11 complete-record Encode and Inspect remain on the normal adapter path");
+
+  auto second = Prepare(ReadFile(config_path), error);
+  auto tab_one = adapter->SubmitStreamChunk(InspectIdentity(), Bytes("RX C!"));
+  ok &= Expect(second != nullptr && second->ObserveStream(0U)->buffered_bytes == 0U &&
+                   tab_one.after.buffered_bytes != second->ObserveStream(0U)->buffered_bytes,
+               "two adapters isolate stream workspace and counters like two document tabs");
+
+  pae::protocol_framing::FramingLimitOverrides low_work;
+  low_work.max_submit_bytes = 8U;
+  low_work.max_work_units = 6U;
+  auto budgeted = PrepareWithLimits(ReadFile(config_path), low_work, error);
+  const auto budgeted_capacity = budgeted == nullptr ? 0U : budgeted->StreamChunkCapacity(0U);
+  ok &= Expect(budgeted != nullptr && budgeted_capacity == 8U,
+               "effective override drives the Lab chunk capacity; actual=" +
+                   std::to_string(budgeted_capacity) + "; error=" + error);
+  if (budgeted != nullptr) {
+    auto step = budgeted->SubmitStreamChunk(InspectIdentity(), Bytes("RX A!"));
+    ok &= Expect(
+        step.framing.stop_reason == pae::protocol_framing::SubmitStopReason::WORK_BUDGET_REACHED &&
+            step.framing.bytes_consumed == 3U && step.after.frozen_cursor == 3U,
+        "work budget freezes a strict suffix after actual bytes_consumed");
+    step = budgeted->ContinueStream(InspectIdentity());
+    ok &= Expect(step.framing.bytes_consumed == 2U && step.after.frozen_input_bytes == 0U,
+                 "Continue consumes only the final frozen suffix without replay");
+  }
+
+  auto copy_failure = Prepare(ReadFile(config_path), error);
+  if (copy_failure != nullptr) {
+    copy_failure->SetCandidateCopyLimitForTesting(0U, 4U);
+    const auto failed_copy =
+        copy_failure->SubmitStreamChunk(InspectIdentity(), Bytes("RX A!OK\r\n"));
+    ok &= Expect(failed_copy.status == AdapterStatus::MATERIALIZATION_FAILED &&
+                     failed_copy.push_called && failed_copy.framing.frames_delivered == 1U &&
+                     failed_copy.framing.bytes_consumed == 9U && failed_copy.after.reset_required &&
+                     !failed_copy.candidate.has_value(),
+                 "candidate copy failure preserves step facts and requires explicit Reset");
+  } else {
+    ok &= Expect(false, "copy-failure adapter adopts: " + error);
+  }
+  return ok;
+}
+#endif
 
 }  // namespace
 
 int main(int argc, char** argv) {
-  if (argc != 4) {
+  const int expected_argc =
+#if defined(PAE_BUILD_PROTOCOL_LAB_ASCII_STREAM_OBSERVER)
+      5;
+#else
+      4;
+#endif
+  if (argc != expected_argc) {
     std::cerr << "usage: ascii_offline_adapter_tests <ascii-config> <literal-config> "
-                 "<legacy-binary-config>\n";
+                 "<legacy-binary-config> [ascii-stream-config]\n";
     return 2;
   }
-  const bool ok = CheckDescriptionAndExecution(argv[1]) && CheckLiteralOnlyAndOneWay(argv[2]) &&
-                  CheckFailureStatusAndOwnership() && CheckLegacyIsolation(argv[3]);
+  bool ok = CheckDescriptionAndExecution(argv[1]) && CheckLiteralOnlyAndOneWay(argv[2]) &&
+            CheckFailureStatusAndOwnership() && CheckLegacyIsolation(argv[3]);
+#if defined(PAE_BUILD_PROTOCOL_LAB_ASCII_STREAM_OBSERVER)
+  ok = ok && CheckStreamObserver(argv[4]);
+#endif
   return ok ? 0 : 1;
 }

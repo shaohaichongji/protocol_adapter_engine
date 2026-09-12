@@ -12,10 +12,12 @@
 #include <QKeyEvent>
 #include <QLabel>
 #include <QLineEdit>
+#include <QMessageBox>
 #include <QMimeData>
 #include <QPlainTextEdit>
 #include <QPushButton>
 #include <QSplitter>
+#include <QStandardItemModel>
 #include <QTableView>
 #include <QTextBrowser>
 #include <QTextCursor>
@@ -50,6 +52,68 @@ QString FromUtf16(const std::u16string& value) {
   return QString::fromUtf16(reinterpret_cast<const ushort*>(value.data()),
                             static_cast<int>(value.size()));
 }
+
+#if defined(PAE_BUILD_PROTOCOL_LAB_ASCII_STREAM_OBSERVER)
+QString StreamPhaseName(protocol_framing::StreamFramingPhase value) {
+  switch (value) {
+    case protocol_framing::StreamFramingPhase::COLLECTING:
+      return QStringLiteral("COLLECTING");
+    case protocol_framing::StreamFramingPhase::DELIVERY_PENDING:
+      return QStringLiteral("DELIVERY_PENDING");
+    case protocol_framing::StreamFramingPhase::DISCARDING_UNTIL_CRLF:
+      return QStringLiteral("DISCARDING_UNTIL_CRLF");
+  }
+  return QStringLiteral("UNKNOWN");
+}
+
+QString StopReasonName(protocol_framing::SubmitStopReason value) {
+  switch (value) {
+    case protocol_framing::SubmitStopReason::INPUT_EXHAUSTED:
+      return QStringLiteral("INPUT_EXHAUSTED");
+    case protocol_framing::SubmitStopReason::NEED_MORE:
+      return QStringLiteral("NEED_MORE");
+    case protocol_framing::SubmitStopReason::WORK_BUDGET_REACHED:
+      return QStringLiteral("WORK_BUDGET_REACHED");
+    case protocol_framing::SubmitStopReason::SINK_STOP:
+      return QStringLiteral("SINK_STOP");
+  }
+  return QStringLiteral("UNKNOWN");
+}
+
+QString SubmitApiStatusName(protocol_framing::SubmitApiStatus value) {
+  switch (value) {
+    case protocol_framing::SubmitApiStatus::OK:
+      return QStringLiteral("OK");
+    case protocol_framing::SubmitApiStatus::INVALID_ARGUMENT:
+      return QStringLiteral("INVALID_ARGUMENT");
+    case protocol_framing::SubmitApiStatus::INVALID_PLAN:
+      return QStringLiteral("INVALID_PLAN");
+    case protocol_framing::SubmitApiStatus::WORKSPACE_PLAN_MISMATCH:
+      return QStringLiteral("WORKSPACE_PLAN_MISMATCH");
+    case protocol_framing::SubmitApiStatus::WORKSPACE_BUSY:
+      return QStringLiteral("WORKSPACE_BUSY");
+    case protocol_framing::SubmitApiStatus::REENTRANT_CALL:
+      return QStringLiteral("REENTRANT_CALL");
+    case protocol_framing::SubmitApiStatus::LIMIT_EXCEEDED:
+      return QStringLiteral("LIMIT_EXCEEDED");
+    case protocol_framing::SubmitApiStatus::INTERNAL_ERROR:
+      return QStringLiteral("INTERNAL_ERROR");
+  }
+  return QStringLiteral("UNKNOWN");
+}
+
+QString FramingIssueName(protocol_framing::FramingIssue value) {
+  switch (value) {
+    case protocol_framing::FramingIssue::NONE:
+      return QStringLiteral("NONE");
+    case protocol_framing::FramingIssue::MALFORMED_LENGTH:
+      return QStringLiteral("MALFORMED_LENGTH");
+    case protocol_framing::FramingIssue::RECORD_TOO_LONG:
+      return QStringLiteral("RECORD_TOO_LONG");
+  }
+  return QStringLiteral("UNKNOWN");
+}
+#endif
 
 std::vector<PhysicalBitMask> FieldHighlights(const MessageDescriptor* message,
                                              const FieldDescriptor* field,
@@ -220,7 +284,7 @@ DocumentTab::DocumentTab(DocumentId document_id, CompileWorker& worker, QWidget*
   RefreshState();
 }
 
-DocumentTab::~DocumentTab() { CloseDocument(); }
+DocumentTab::~DocumentTab() { CloseDocument(false); }
 
 QString DocumentTab::ConfigPath() const { return path_edit_->text(); }
 
@@ -246,16 +310,28 @@ void DocumentTab::AcceptCompletion(std::unique_ptr<CompileCompletion> completion
   RefreshState();
 }
 
-void DocumentTab::CloseDocument() {
+bool DocumentTab::CloseDocument(bool require_confirmation) {
   if (closed_) {
-    return;
+    return true;
   }
+#if defined(PAE_BUILD_PROTOCOL_LAB_ASCII_STREAM_OBSERVER)
+  if (require_confirmation && !ConfirmStreamDiscardOnly(QStringLiteral("close this document"))) {
+    return false;
+  }
+#endif
   closed_ = true;
   worker_.CloseDocument(session_.id());
   field_model_->Reset(nullptr, {});
   hex_view_->ClearFrame();
   session_.Close();
+  return true;
 }
+
+#if defined(PAE_BUILD_PROTOCOL_LAB_ASCII_STREAM_OBSERVER)
+bool DocumentTab::ConfirmClose() {
+  return ConfirmStreamDiscardOnly(QStringLiteral("close the application"));
+}
+#endif
 
 bool DocumentTab::PopulateCanonicalDraftsForSmoke(QString& error) {
   const auto* message = CurrentMessage();
@@ -676,6 +752,116 @@ bool DocumentTab::VerifyBoundedV08ForSmoke(QString& error) {
   return true;
 }
 
+#if defined(PAE_BUILD_PROTOCOL_LAB_ASCII_STREAM_OBSERVER)
+bool DocumentTab::VerifyAsciiStreamForSmoke(QString& error) {
+  if (!session_.StreamInspectAvailable()) {
+    error = QStringLiteral("selected document is not an ASCII CRLF stream Pipeline");
+    return false;
+  }
+  mode_combo_->setCurrentIndex(
+      mode_combo_->findData(static_cast<int>(OperationMode::STREAM_INSPECT)));
+  representation_combo_->setCurrentIndex(
+      representation_combo_->findData(static_cast<int>(ByteRepresentation::ASCII_ESCAPED)));
+  if (!inspect_button_->isEnabled() || inspect_button_->text() != QStringLiteral("Submit chunk") ||
+      session_.StreamChunkBudget() !=
+          (std::min)(std::size_t{65536U},
+                     session_.StreamObservation()->effective_max_submit_bytes)) {
+    error = QStringLiteral("Stream Inspect mode or effective chunk capacity differs");
+    return false;
+  }
+  inspect_input_->setPlainText(QStringLiteral("RX A!"));
+  InspectCurrent();
+  const auto half = session_.StreamObservation();
+  if (!half.has_value() || half->buffered_bytes != 5U || session_.inspect_result().has_value() ||
+      !result_kind_label_->text().contains(QStringLiteral("本步无候选"))) {
+    error = QStringLiteral("half-frame Submit presentation differs");
+    return false;
+  }
+  const auto step_before_repeat = half->step_sequence;
+  InspectCurrent();
+  if (session_.diagnostic_id() != "UI_STREAM_CHUNK_ALREADY_SUBMITTED" ||
+      session_.StreamObservation()->step_sequence != step_before_repeat ||
+      session_.StreamObservation()->buffered_bytes != half->buffered_bytes) {
+    error = QStringLiteral("unchanged submitted draft was pushed more than once");
+    return false;
+  }
+  inspect_input_->setPlainText(QStringLiteral("RX A!OK\\q"));
+  InspectCurrent();
+  if (session_.StreamObservation()->buffered_bytes != half->buffered_bytes ||
+      !session_.inspect_failure().has_value() || session_.inspect_failure()->input_offset != 7U ||
+      !session_.inspect_failure()->input_offset_is_utf16) {
+    error = QStringLiteral("invalid stream draft changed state or lost UTF-16 offset");
+    return false;
+  }
+  inspect_input_->setPlainText(QStringLiteral("OK\\r\\nONLY\\r\\n"));
+  InspectCurrent();
+  if (!session_.inspect_result().has_value() ||
+      session_.inspect_result()->message_id != "greeting" || !continue_button_->isEnabled()) {
+    error = QStringLiteral("candidate STOP or frozen suffix presentation differs");
+    return false;
+  }
+  ContinueStream();
+  if (!session_.inspect_result().has_value() ||
+      session_.inspect_result()->message_id != "decode_only" || continue_button_->isEnabled()) {
+    error = QStringLiteral("Continue did not expose exactly the next candidate");
+    return false;
+  }
+  inspect_input_->setPlainText(QStringLiteral("1234567890123"));
+  InspectCurrent();
+  if (!session_.StreamHasDiscardableState() ||
+      session_.StreamObservation()->phase !=
+          protocol_framing::StreamFramingPhase::DISCARDING_UNTIL_CRLF) {
+    error = QStringLiteral("overlong candidate did not expose discard state");
+    return false;
+  }
+  ResetStream();
+  if (session_.StreamHasDiscardableState() ||
+      session_.StreamObservation()->total_candidates != 0U) {
+    error = QStringLiteral("Reset did not clear stream state and counters");
+    return false;
+  }
+  return true;
+}
+
+bool DocumentTab::PrepareStreamHalfFrameForSmoke(QString& error) {
+  if (!session_.StreamInspectAvailable()) {
+    error = QStringLiteral("stream Pipeline is unavailable");
+    return false;
+  }
+  mode_combo_->setCurrentIndex(
+      mode_combo_->findData(static_cast<int>(OperationMode::STREAM_INSPECT)));
+  representation_combo_->setCurrentIndex(
+      representation_combo_->findData(static_cast<int>(ByteRepresentation::ASCII_ESCAPED)));
+  inspect_input_->setPlainText(QStringLiteral("RX A!"));
+  InspectCurrent();
+  const auto observation = session_.StreamObservation();
+  if (!observation.has_value() || observation->buffered_bytes != 5U) {
+    error = QStringLiteral("failed to prepare a five-byte half-frame");
+    return false;
+  }
+  return true;
+}
+
+QString DocumentTab::StreamStateSignatureForSmoke() const {
+  const auto observation = session_.StreamObservation();
+  if (!observation.has_value()) return QStringLiteral("unavailable");
+  return QStringLiteral("%1|%2|%3|%4|%5|%6|%7|%8|%9|%10|%11")
+      .arg(FromUtf16(session_.inspect_draft_utf16()))
+      .arg(static_cast<int>(observation->phase))
+      .arg(static_cast<qulonglong>(observation->buffered_bytes))
+      .arg(observation->has_internal_work ? 1 : 0)
+      .arg(static_cast<qulonglong>(observation->frozen_input_bytes))
+      .arg(static_cast<qulonglong>(observation->frozen_cursor))
+      .arg(static_cast<qulonglong>(observation->generation))
+      .arg(static_cast<qulonglong>(observation->step_sequence))
+      .arg(static_cast<qulonglong>(observation->total_candidates))
+      .arg(static_cast<qulonglong>(observation->total_decode_successes))
+      .arg(session_.stream_step().has_value() ? 1 : 0);
+}
+
+void DocumentTab::ResetStreamForSmoke() { ResetStream(); }
+#endif
+
 bool DocumentTab::VerifyAsciiForSmoke(QString& error) {
   if (!session_.IsAsciiDocument()) {
     error = QStringLiteral("document is not Schema 0.10 ASCII");
@@ -979,6 +1165,10 @@ void DocumentTab::BuildUi() {
   mode_combo_ = new QComboBox(this);
   mode_combo_->addItem(QStringLiteral("Encode"), static_cast<int>(OperationMode::ENCODE));
   mode_combo_->addItem(QStringLiteral("Inspect"), static_cast<int>(OperationMode::INSPECT));
+#if defined(PAE_BUILD_PROTOCOL_LAB_ASCII_STREAM_OBSERVER)
+  mode_combo_->addItem(QStringLiteral("Stream Inspect"),
+                       static_cast<int>(OperationMode::STREAM_INSPECT));
+#endif
   message_combo_ = new QComboBox(this);
   representation_combo_ = new QComboBox(this);
   representation_combo_->addItem(QStringLiteral("Hex"), static_cast<int>(ByteRepresentation::HEX));
@@ -986,6 +1176,10 @@ void DocumentTab::BuildUi() {
                                  static_cast<int>(ByteRepresentation::ASCII_ESCAPED));
   encode_button_ = new QPushButton(QStringLiteral("Encode"), this);
   inspect_button_ = new QPushButton(QStringLiteral("Inspect complete record"), this);
+#if defined(PAE_BUILD_PROTOCOL_LAB_ASCII_STREAM_OBSERVER)
+  continue_button_ = new QPushButton(QStringLiteral("Continue"), this);
+  reset_stream_button_ = new QPushButton(QStringLiteral("Reset stream"), this);
+#endif
   selection_row->addWidget(new QLabel(QStringLiteral("Mode"), this));
   selection_row->addWidget(mode_combo_);
   selection_row->addWidget(new QLabel(QStringLiteral("Pipeline"), this));
@@ -996,6 +1190,10 @@ void DocumentTab::BuildUi() {
   selection_row->addWidget(representation_combo_);
   selection_row->addWidget(encode_button_);
   selection_row->addWidget(inspect_button_);
+#if defined(PAE_BUILD_PROTOCOL_LAB_ASCII_STREAM_OBSERVER)
+  selection_row->addWidget(continue_button_);
+  selection_row->addWidget(reset_stream_button_);
+#endif
   root->addLayout(selection_row);
 
   inspect_input_label_ =
@@ -1010,6 +1208,12 @@ void DocumentTab::BuildUi() {
   result_kind_label_ = new QLabel(this);
   result_kind_label_->setTextInteractionFlags(Qt::TextSelectableByMouse);
   root->addWidget(result_kind_label_);
+#if defined(PAE_BUILD_PROTOCOL_LAB_ASCII_STREAM_OBSERVER)
+  stream_status_label_ = new QLabel(this);
+  stream_status_label_->setWordWrap(true);
+  stream_status_label_->setTextInteractionFlags(Qt::TextSelectableByMouse);
+  root->addWidget(stream_status_label_);
+#endif
 
   auto* vertical_splitter = new QSplitter(Qt::Vertical, this);
   auto* upper_splitter = new QSplitter(Qt::Horizontal, vertical_splitter);
@@ -1062,6 +1266,10 @@ void DocumentTab::BuildUi() {
           [this](int index) { SelectMessage(index); });
   connect(encode_button_, &QPushButton::clicked, this, [this] { EncodeCurrent(); });
   connect(inspect_button_, &QPushButton::clicked, this, [this] { InspectCurrent(); });
+#if defined(PAE_BUILD_PROTOCOL_LAB_ASCII_STREAM_OBSERVER)
+  connect(continue_button_, &QPushButton::clicked, this, [this] { ContinueStream(); });
+  connect(reset_stream_button_, &QPushButton::clicked, this, [this] { ResetStream(); });
+#endif
   connect(mode_combo_, qOverload<int>(&QComboBox::currentIndexChanged), this,
           [this](int index) { SelectMode(index); });
   connect(representation_combo_, qOverload<int>(&QComboBox::currentIndexChanged), this,
@@ -1070,8 +1278,12 @@ void DocumentTab::BuildUi() {
     if (rebuilding_selectors_) return;
     timing_label_->clear();
     const QString text = inspect_input_->toPlainText();
-    const auto capacity =
-        InspectEditorCapacity(session_.InspectFrameBudget(), session_.representation());
+    const auto byte_capacity =
+#if defined(PAE_BUILD_PROTOCOL_LAB_ASCII_STREAM_OBSERVER)
+        session_.mode() == OperationMode::STREAM_INSPECT ? session_.StreamChunkBudget() :
+#endif
+                                                         session_.InspectFrameBudget();
+    const auto capacity = InspectEditorCapacity(byte_capacity, session_.representation());
     if (!capacity.has_value() || text.size() > *capacity) {
       rebuilding_selectors_ = true;
       inspect_input_->setPlainText(accepted_inspect_text_);
@@ -1098,6 +1310,9 @@ void DocumentTab::BeginLoadFromPath() {
   if (closed_) {
     return;
   }
+#if defined(PAE_BUILD_PROTOCOL_LAB_ASCII_STREAM_OBSERVER)
+  if (!ConfirmStreamDiscard(QStringLiteral("reload this configuration"))) return;
+#endif
   const auto revision = session_.BeginLoad();
   ResetVisibleDocument();
   RefreshState();
@@ -1260,15 +1475,95 @@ void DocumentTab::RefreshState() {
   const bool loading = session_.state() == DocumentState::LOADING;
   pipeline_combo_->setEnabled(description != nullptr && !loading);
   mode_combo_->setEnabled(description != nullptr && !loading);
+#if defined(PAE_BUILD_PROTOCOL_LAB_ASCII_STREAM_OBSERVER)
+  if (auto* model = qobject_cast<QStandardItemModel*>(mode_combo_->model())) {
+    const int inspect_index = mode_combo_->findData(static_cast<int>(OperationMode::INSPECT));
+    const int stream_index = mode_combo_->findData(static_cast<int>(OperationMode::STREAM_INSPECT));
+    if (inspect_index >= 0 && model->item(inspect_index) != nullptr)
+      model->item(inspect_index)->setEnabled(session_.InspectAvailable());
+    if (stream_index >= 0 && model->item(stream_index) != nullptr)
+      model->item(stream_index)->setEnabled(session_.StreamInspectAvailable());
+  }
+#endif
   representation_combo_->setVisible(session_.IsAsciiDocument());
   representation_combo_->setEnabled(session_.IsAsciiDocument() && !loading);
   const bool encode_mode = session_.mode() == OperationMode::ENCODE;
+  const bool inspect_mode = session_.mode() == OperationMode::INSPECT;
+#if defined(PAE_BUILD_PROTOCOL_LAB_ASCII_STREAM_OBSERVER)
+  const bool stream_mode = session_.mode() == OperationMode::STREAM_INSPECT;
+#else
+  const bool stream_mode = false;
+#endif
   message_combo_->setEnabled(description != nullptr && !loading && encode_mode);
   encode_button_->setEnabled(description != nullptr && session_.selection().has_value() &&
                              session_.EncodeAvailable() && !loading && encode_mode);
   inspect_button_->setEnabled(description != nullptr &&
                               session_.selected_pipeline_index().has_value() &&
-                              session_.InspectAvailable() && !loading && !encode_mode);
+                              (inspect_mode ? session_.InspectAvailable()
+#if defined(PAE_BUILD_PROTOCOL_LAB_ASCII_STREAM_OBSERVER)
+                                            : session_.StreamInspectAvailable()
+#else
+                                            : false
+#endif
+                                   ) &&
+                              !loading && !encode_mode
+#if defined(PAE_BUILD_PROTOCOL_LAB_ASCII_STREAM_OBSERVER)
+                              && !(stream_mode && session_.StreamContinueAvailable())
+#endif
+  );
+#if defined(PAE_BUILD_PROTOCOL_LAB_ASCII_STREAM_OBSERVER)
+  inspect_button_->setText(stream_mode ? QStringLiteral("Submit chunk")
+                                       : QStringLiteral("Inspect complete record"));
+  continue_button_->setVisible(stream_mode);
+  reset_stream_button_->setVisible(stream_mode);
+  stream_status_label_->setVisible(stream_mode);
+  continue_button_->setEnabled(stream_mode && !loading && session_.StreamContinueAvailable());
+  reset_stream_button_->setEnabled(stream_mode && !loading && session_.StreamInspectAvailable());
+  inspect_input_->setReadOnly(stream_mode && session_.StreamContinueAvailable());
+  representation_combo_->setEnabled(session_.IsAsciiDocument() && !loading);
+  if (stream_mode) {
+    const auto observation = session_.StreamObservation();
+    if (observation.has_value()) {
+      QString text =
+          QStringLiteral(
+              "phase=%1 | buffered=%2 | internal=%3 | C=%4 | work=%5 | "
+              "frozen=%6/%7 | generation=%8 | step=%9 | candidates=%10 | "
+              "decode_ok=%11 | discarded=%12 | malformed=%13 | reset_required=%14")
+              .arg(StreamPhaseName(observation->phase))
+              .arg(static_cast<qulonglong>(observation->buffered_bytes))
+              .arg(observation->has_internal_work ? QStringLiteral("true")
+                                                  : QStringLiteral("false"))
+              .arg(static_cast<qulonglong>(session_.StreamChunkBudget()))
+              .arg(static_cast<qulonglong>(observation->effective_max_work_units))
+              .arg(static_cast<qulonglong>(observation->frozen_cursor))
+              .arg(static_cast<qulonglong>(observation->frozen_input_bytes))
+              .arg(static_cast<qulonglong>(observation->generation))
+              .arg(static_cast<qulonglong>(observation->step_sequence))
+              .arg(static_cast<qulonglong>(observation->total_candidates))
+              .arg(static_cast<qulonglong>(observation->total_decode_successes))
+              .arg(static_cast<qulonglong>(observation->total_discarded_bytes))
+              .arg(static_cast<qulonglong>(observation->total_malformed_candidates))
+              .arg(observation->reset_required ? QStringLiteral("true") : QStringLiteral("false"));
+      if (session_.stream_step().has_value()) {
+        const auto& step = *session_.stream_step();
+        text += QStringLiteral(
+                    "\nlast step: api=%1 | stop=%2 | consumed=%3 | frames=%4 | "
+                    "discarded=%5 | malformed=%6 | issue=%7 | work=%8")
+                    .arg(SubmitApiStatusName(step.framing.api_status))
+                    .arg(StopReasonName(step.framing.stop_reason))
+                    .arg(static_cast<qulonglong>(step.framing.bytes_consumed))
+                    .arg(static_cast<qulonglong>(step.framing.frames_delivered))
+                    .arg(static_cast<qulonglong>(step.framing.bytes_discarded))
+                    .arg(static_cast<qulonglong>(step.framing.malformed_candidates))
+                    .arg(FramingIssueName(step.framing.last_framing_issue))
+                    .arg(static_cast<qulonglong>(step.framing.work_units_used));
+      }
+      stream_status_label_->setText(text);
+    } else {
+      stream_status_label_->setText(QStringLiteral("Stream observer unavailable"));
+    }
+  }
+#endif
   if (session_.diagnostic_id().empty() && session_.diagnostic_detail().empty()) {
     diagnostic_label_->clear();
   } else {
@@ -1278,11 +1573,20 @@ void DocumentTab::RefreshState() {
 }
 
 void DocumentTab::RefreshModePresentation() {
-  const bool inspect_mode = session_.mode() == OperationMode::INSPECT;
+  const bool inspect_mode = session_.mode() != OperationMode::ENCODE;
+#if defined(PAE_BUILD_PROTOCOL_LAB_ASCII_STREAM_OBSERVER)
+  const bool stream_mode = session_.mode() == OperationMode::STREAM_INSPECT;
+#else
+  const bool stream_mode = false;
+#endif
   inspect_input_label_->setText(
       session_.IsAsciiDocument() && session_.representation() == ByteRepresentation::ASCII_ESCAPED
           ? QStringLiteral("Raw input / 原始输入（ASCII escaped；实际控制字符和非ASCII被拒绝）")
           : QStringLiteral("Raw input / 原始输入（Hex；允许大小写及 SP/HT/CR/LF）"));
+  if (stream_mode) {
+    inspect_input_label_->setText(QStringLiteral(
+        "Stream chunk / 流输入块（容量按 C=min(65536,effective max_submit_bytes)）"));
+  }
   inspect_input_label_->setVisible(inspect_mode);
   inspect_input_->setVisible(inspect_mode);
   inspect_button_->setVisible(inspect_mode);
@@ -1350,7 +1654,13 @@ void DocumentTab::RefreshInspect() {
       failed_detail_row = static_cast<int>(*failure.failed_field_index);
     }
   } else {
-    result_kind_label_->setText(QStringLiteral("Raw input / 原始输入（尚无有效解码结果）"));
+    result_kind_label_->setText(
+#if defined(PAE_BUILD_PROTOCOL_LAB_ASCII_STREAM_OBSERVER)
+        session_.mode() == OperationMode::STREAM_INSPECT && session_.stream_step().has_value()
+            ? QStringLiteral("Current step / 本步无候选")
+            :
+#endif
+            QStringLiteral("Raw input / 原始输入（尚无有效解码结果）"));
   }
   if (frame.empty()) {
     hex_view_->ClearFrame();
@@ -1401,7 +1711,7 @@ void DocumentTab::RefreshFieldDetails(int row, bool refresh_frame) {
   if (field == nullptr) {
     details_view_->clear();
     if (!refresh_frame) return;
-    if (session_.mode() == OperationMode::INSPECT) {
+    if (session_.mode() != OperationMode::ENCODE) {
       std::vector<std::uint8_t> frame;
       if (session_.inspect_result().has_value()) frame = session_.inspect_result()->input_frame;
       if (session_.inspect_failure().has_value()) frame = session_.inspect_failure()->input_frame;
@@ -1483,7 +1793,7 @@ void DocumentTab::RefreshFieldDetails(int row, bool refresh_frame) {
     const std::vector<UiFieldResult>* results = nullptr;
     if (session_.mode() == OperationMode::ENCODE && session_.preview().has_value())
       results = &session_.preview()->fields;
-    if (session_.mode() == OperationMode::INSPECT && session_.inspect_result().has_value())
+    if (session_.mode() != OperationMode::ENCODE && session_.inspect_result().has_value())
       results = &session_.inspect_result()->fields;
     if (results != nullptr) {
       const auto found = std::find_if(results->begin(), results->end(), [&](const auto& result) {
@@ -1536,7 +1846,7 @@ void DocumentTab::RefreshFieldDetails(int row, bool refresh_frame) {
   }
   details_view_->setHtml(details.join(QStringLiteral("<br/>")));
   if (!refresh_frame) return;
-  if (session_.mode() == OperationMode::INSPECT) {
+  if (session_.mode() != OperationMode::ENCODE) {
     std::vector<std::uint8_t> frame;
     std::vector<PhysicalBitMask> highlights;
     if (session_.inspect_result().has_value()) {
@@ -1558,8 +1868,25 @@ void DocumentTab::SelectPipeline(int combo_index) {
   if (rebuilding_selectors_ || combo_index < 0) {
     return;
   }
-  if (session_.SelectPipeline(
-          static_cast<std::size_t>(pipeline_combo_->itemData(combo_index).toULongLong()))) {
+  const auto requested =
+      static_cast<std::size_t>(pipeline_combo_->itemData(combo_index).toULongLong());
+#if defined(PAE_BUILD_PROTOCOL_LAB_ASCII_STREAM_OBSERVER)
+  if (session_.selected_pipeline_index().has_value() &&
+      requested != *session_.selected_pipeline_index() &&
+      !ConfirmStreamDiscard(QStringLiteral("switch Pipeline"))) {
+    rebuilding_selectors_ = true;
+    for (int index = 0; index < pipeline_combo_->count(); ++index) {
+      if (pipeline_combo_->itemData(index).toULongLong() ==
+          static_cast<qulonglong>(*session_.selected_pipeline_index())) {
+        pipeline_combo_->setCurrentIndex(index);
+        break;
+      }
+    }
+    rebuilding_selectors_ = false;
+    return;
+  }
+#endif
+  if (session_.SelectPipeline(requested)) {
     timing_label_->clear();
     field_model_->Reset(nullptr, {});
     hex_view_->ClearFrame();
@@ -1567,6 +1894,14 @@ void DocumentTab::SelectPipeline(int combo_index) {
     inspect_input_->clear();
     rebuilding_selectors_ = false;
     accepted_inspect_text_.clear();
+#if defined(PAE_BUILD_PROTOCOL_LAB_ASCII_STREAM_OBSERVER)
+    if (session_.mode() == OperationMode::STREAM_INSPECT && !session_.StreamInspectAvailable()) {
+      session_.SetMode(OperationMode::ENCODE);
+      rebuilding_selectors_ = true;
+      mode_combo_->setCurrentIndex(mode_combo_->findData(static_cast<int>(OperationMode::ENCODE)));
+      rebuilding_selectors_ = false;
+    }
+#endif
     RebuildMessageSelector();
   }
   RefreshState();
@@ -1575,6 +1910,16 @@ void DocumentTab::SelectPipeline(int combo_index) {
 void DocumentTab::SelectMode(int combo_index) {
   if (rebuilding_selectors_ || combo_index < 0) return;
   const auto mode = static_cast<OperationMode>(mode_combo_->itemData(combo_index).toInt());
+#if defined(PAE_BUILD_PROTOCOL_LAB_ASCII_STREAM_OBSERVER)
+  if (session_.mode() == OperationMode::STREAM_INSPECT && mode != OperationMode::STREAM_INSPECT &&
+      !ConfirmStreamDiscard(QStringLiteral("leave Stream Inspect"))) {
+    rebuilding_selectors_ = true;
+    mode_combo_->setCurrentIndex(
+        mode_combo_->findData(static_cast<int>(OperationMode::STREAM_INSPECT)));
+    rebuilding_selectors_ = false;
+    return;
+  }
+#endif
   if (session_.SetMode(mode)) {
     timing_label_->clear();
     RefreshModePresentation();
@@ -1676,7 +2021,14 @@ void DocumentTab::InspectCurrent() {
   QApplication::processEvents(QEventLoop::ExcludeUserInputEvents);
   session_.SetInspectDraftUtf16(Utf16(inspect_input_->toPlainText()));
   TimingObserver observer(timing_);
-  session_.Inspect(&observer);
+#if defined(PAE_BUILD_PROTOCOL_LAB_ASCII_STREAM_OBSERVER)
+  if (session_.mode() == OperationMode::STREAM_INSPECT) {
+    session_.SubmitStream();
+  } else
+#endif
+  {
+    session_.Inspect(&observer);
+  }
   if (session_.inspect_failure().has_value() &&
       session_.inspect_failure()->input_offset.has_value()) {
     const QString text = inspect_input_->toPlainText();
@@ -1700,6 +2052,50 @@ void DocumentTab::InspectCurrent() {
   RefreshState();
   hex_view_->viewport()->repaint();
 }
+
+#if defined(PAE_BUILD_PROTOCOL_LAB_ASCII_STREAM_OBSERVER)
+void DocumentTab::ContinueStream() {
+  timing_label_->clear();
+  session_.ContinueStream();
+  RefreshInspect();
+  RefreshState();
+  hex_view_->viewport()->repaint();
+}
+
+void DocumentTab::ResetStream() {
+  if (!session_.ResetStream()) {
+    RefreshState();
+    return;
+  }
+  rebuilding_selectors_ = true;
+  inspect_input_->clear();
+  rebuilding_selectors_ = false;
+  accepted_inspect_text_.clear();
+  RefreshInspect();
+  RefreshState();
+}
+
+bool DocumentTab::ConfirmStreamDiscard(const QString& action) {
+  if (!ConfirmStreamDiscardOnly(action)) return false;
+  if (!session_.StreamHasDiscardableState()) return true;
+  if (!session_.ResetStream()) return false;
+  rebuilding_selectors_ = true;
+  inspect_input_->clear();
+  rebuilding_selectors_ = false;
+  accepted_inspect_text_.clear();
+  return true;
+}
+
+bool DocumentTab::ConfirmStreamDiscardOnly(const QString& action) {
+  if (!session_.StreamHasDiscardableState()) return true;
+  const auto answer = QMessageBox::question(
+      this, QStringLiteral("Discard stream state?"),
+      QStringLiteral("%1 will discard buffered/framing state and any frozen suffix. Continue?")
+          .arg(action),
+      QMessageBox::Yes | QMessageBox::No, QMessageBox::No);
+  return answer == QMessageBox::Yes;
+}
+#endif
 
 void DocumentTab::InvalidateEditedPreview() {
   session_.InvalidateInput();

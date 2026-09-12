@@ -42,6 +42,11 @@ option(
     OFF
 )
 option(
+    PAE_BUILD_PROTOCOL_LAB_ASCII_STREAM_OBSERVER
+    "Build the internal non-persistent Schema 0.11 Lab stream observer"
+    OFF
+)
+option(
     PAE_ENABLE_SCHEMA_V05_COMPILER
     "Enable the internal Schema 0.5 compiler and Core DEC-042B slices"
     OFF
@@ -122,12 +127,25 @@ option(
     OFF
 )
 
+if(PAE_BUILD_PROTOCOL_LAB_ASCII_STREAM_OBSERVER AND
+   (NOT PAE_ENABLE_SCHEMA_V11_ASCII_STREAM_FRAMING OR
+    NOT PAE_BUILD_PROTOCOL_LAB_ASCII_ADAPTER OR
+    NOT PAE_BUILD_STREAM_FRAMING_SLICE))
+    message(FATAL_ERROR
+        "Lab ASCII stream observer requires explicit V11, ASCII adapter, and Framing slice options."
+    )
+endif()
+
+if(PAE_ENABLE_SCHEMA_V11_ASCII_STREAM_FRAMING AND PAE_BUILD_PROTOCOL_LAB)
+    message(FATAL_ERROR "Schema 0.11 remains unsupported by Protocol Lab CLI and Evidence.")
+endif()
+
 if(PAE_ENABLE_SCHEMA_V11_ASCII_STREAM_FRAMING AND
-   (PAE_BUILD_PROTOCOL_LAB OR PAE_BUILD_PROTOCOL_LAB_UI OR
-    PAE_BUILD_PROTOCOL_LAB_ASCII_ADAPTER))
+   (PAE_BUILD_PROTOCOL_LAB_UI OR PAE_BUILD_PROTOCOL_LAB_ASCII_ADAPTER) AND
+   NOT PAE_BUILD_PROTOCOL_LAB_ASCII_STREAM_OBSERVER)
     message(
         FATAL_ERROR
-        "Schema 0.11 ASCII stream framing is not connected to Protocol Lab, Evidence, or UI."
+        "Schema 0.11 Lab adapter/UI requires the explicit Lab ASCII stream observer option."
     )
 endif()
 

@@ -68,6 +68,22 @@ struct FramingLimitOverrides {
   std::size_t max_session_memory_bytes = 0U;
 };
 
+enum class StreamFramingPhase {
+  COLLECTING,
+  DELIVERY_PENDING,
+#if defined(PAE_ENABLE_SCHEMA_V11_ASCII_STREAM_FRAMING)
+  DISCARDING_UNTIL_CRLF,
+#endif
+};
+
+struct StreamFramingObservation {
+  StreamFramingPhase phase = StreamFramingPhase::COLLECTING;
+  std::size_t buffered_bytes = 0U;
+  bool has_internal_work = false;
+  std::size_t effective_max_submit_bytes = 0U;
+  std::size_t effective_max_work_units = 0U;
+};
+
 class StreamFramingWorkspace;
 
 struct WorkspaceCreateResult {
@@ -89,6 +105,10 @@ class StreamFramingWorkspace final {
   std::size_t BufferedBytes() const noexcept { return buffered_size_; }
   std::size_t TotalDiscardedBytes() const noexcept { return total_discarded_bytes_; }
   std::size_t TotalMalformedCandidates() const noexcept { return total_malformed_candidates_; }
+
+  // The workspace owner may inspect this between serialized Push/Reset calls. This read does not
+  // synchronize with concurrent mutation and does not advance the framing state.
+  StreamFramingObservation Observe() const noexcept;
 
  private:
   enum class State {

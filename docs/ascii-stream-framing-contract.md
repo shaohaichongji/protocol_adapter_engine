@@ -2,9 +2,11 @@
 
 日期：2026-09-12。状态：六项推荐方向已由用户确认，契约已冻结；随后用户明确授权 PAE 首片
 源码实施及 Windows Debug/Release 针对性验证。PAE 首片已实现并完成 Windows 离线验证，
-总控定向复核发现的 Snapshot P2 已修复并关闭，当前进入交付范围收口，尚未 Stage、Commit、Push。
-Lab 暂不实施；实施与 Git 交付分别授权。
-本次授权仅覆盖第8节 PAE 侧范围及其验证报告，不以未来行为描述冒充现有能力。
+总控定向复核发现的 Snapshot P2 已修复并关闭；PAE 首片已随
+`716ff00ea8aa3d3f46b914008890f9706670d32b` 提交并推送。
+Lab 六项方案见[离线分块观察契约](lab-ascii-stream-observer-contract.md)，接线、限定修复和
+2026-09-13用户人工验收已完成，尚未Git交付；见[Lab验证报告](lab-ascii-stream-observer-validation.md)。
+PAE 实施授权仅覆盖第8节 PAE 侧范围及其验证报告；Lab 实施与 Git 交付另行授权，不以未来行为冒充现有能力。
 
 验证证据见[本片 Windows 验证报告](windows-msvc-2026-ascii-stream-framing-slice.md)：初版
 Debug/Release 各31/31；Snapshot 纠错先复现失败，再执行两个配置各6/6针对性回归。

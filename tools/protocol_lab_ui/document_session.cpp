@@ -143,6 +143,9 @@ Revision DocumentSession::BeginLoad() {
   inspect_draft_utf16_.clear();
   representation_ = ByteRepresentation::HEX;
   ++inspect_input_revision_;
+#if defined(PAE_BUILD_PROTOCOL_LAB_ASCII_STREAM_OBSERVER)
+  submitted_stream_input_revision_.reset();
+#endif
   ClearInspectOutcome();
   diagnostic_id_.clear();
   diagnostic_detail_.clear();
@@ -174,9 +177,13 @@ bool DocumentSession::ApplyCompileCompletion(std::unique_ptr<CompileCompletion> 
   const std::string schema{plan->SchemaVersion()};
   const bool legacy_schema =
       schema == "0.5" || schema == "0.6" || schema == "0.7" || schema == "0.8";
-  const bool ascii_schema = schema == "0.10";
+  const bool ascii_schema = schema == "0.10"
+#if defined(PAE_BUILD_PROTOCOL_LAB_ASCII_STREAM_OBSERVER)
+                            || schema == "0.11"
+#endif
+      ;
   if (!legacy_schema && !ascii_schema) {
-    SetDiagnostic("UI_SCHEMA_UNSUPPORTED", "the UI supports Schema 0.5 through 0.8 and 0.10");
+    SetDiagnostic("UI_SCHEMA_UNSUPPORTED", "the UI supports its explicitly compiled schemas");
     state_ = DocumentState::CONFIG_ERROR;
     return false;
   }
@@ -206,7 +213,7 @@ bool DocumentSession::ApplyCompileCompletion(std::unique_ptr<CompileCompletion> 
   } else {
 #if defined(PAE_ENABLE_SCHEMA_V10_ASCII_TEXT_CODEC)
     if (!protocol_lab::ascii::OfflineAdapter::Supports(artifacts)) {
-      SetDiagnostic("UI_ASCII_ADAPTER_UNSUPPORTED", "ASCII adapter rejected Schema 0.10 artifacts");
+      SetDiagnostic("UI_ASCII_ADAPTER_UNSUPPORTED", "ASCII adapter rejected the compiled schema");
       state_ = DocumentState::CONFIG_ERROR;
       return false;
     }
@@ -255,6 +262,9 @@ bool DocumentSession::SelectPipeline(std::size_t pipeline_index) {
   inspect_draft_.clear();
   inspect_draft_utf16_.clear();
   ++inspect_input_revision_;
+#if defined(PAE_BUILD_PROTOCOL_LAB_ASCII_STREAM_OBSERVER)
+  submitted_stream_input_revision_.reset();
+#endif
   ClearPreview();
   ClearInspectOutcome();
   ClearEncodeFailure();
@@ -379,7 +389,17 @@ bool DocumentSession::SetRepresentation(ByteRepresentation representation) {
     inspect_draft_.push_back(value <= 0xFFU ? static_cast<char>(value) : '?');
   }
   ++input_revision_;
+  const bool stream_draft_was_submitted =
+#if defined(PAE_BUILD_PROTOCOL_LAB_ASCII_STREAM_OBSERVER)
+      submitted_stream_input_revision_.has_value() &&
+      *submitted_stream_input_revision_ == inspect_input_revision_;
+#else
+      false;
+#endif
   ++inspect_input_revision_;
+#if defined(PAE_BUILD_PROTOCOL_LAB_ASCII_STREAM_OBSERVER)
+  if (stream_draft_was_submitted) submitted_stream_input_revision_ = inspect_input_revision_;
+#endif
   ClearPreview();
   ClearInspectOutcome();
   ClearEncodeFailure();
@@ -397,7 +417,11 @@ bool DocumentSession::EncodeAvailable() const noexcept {
 bool DocumentSession::InspectAvailable() const noexcept {
   return description_.has_value() && selected_pipeline_index_.has_value() &&
          *selected_pipeline_index_ < description_->pipelines.size() &&
-         !description_->pipelines[*selected_pipeline_index_].decode_message_indices.empty();
+         !description_->pipelines[*selected_pipeline_index_].decode_message_indices.empty()
+#if defined(PAE_BUILD_PROTOCOL_LAB_ASCII_STREAM_OBSERVER)
+         && !description_->pipelines[*selected_pipeline_index_].stream_ascii_crlf
+#endif
+      ;
 }
 
 bool DocumentSession::SelectMessage(std::size_t message_index) {
@@ -694,6 +718,7 @@ bool DocumentSession::SetInspectDraftUtf16(std::u16string text) {
       !selected_pipeline_index_.has_value()) {
     return false;
   }
+  if (inspect_draft_utf16_ == text) return true;
   inspect_draft_utf16_ = std::move(text);
   inspect_draft_.clear();
   inspect_draft_.reserve(inspect_draft_utf16_.size());
@@ -709,7 +734,17 @@ bool DocumentSession::SetInspectDraftUtf16(std::u16string text) {
 }
 
 void DocumentSession::RejectInspectCapacity(std::size_t capacity) {
+  const bool stream_draft_was_submitted =
+#if defined(PAE_BUILD_PROTOCOL_LAB_ASCII_STREAM_OBSERVER)
+      submitted_stream_input_revision_.has_value() &&
+      *submitted_stream_input_revision_ == inspect_input_revision_;
+#else
+      false;
+#endif
   ++inspect_input_revision_;
+#if defined(PAE_BUILD_PROTOCOL_LAB_ASCII_STREAM_OBSERVER)
+  if (stream_draft_was_submitted) submitted_stream_input_revision_ = inspect_input_revision_;
+#endif
   ClearInspectOutcome();
   SetDiagnostic("UI_ASCII_INPUT_CAPACITY_EXCEEDED",
                 "Inspect edit exceeds bounded capacity=" + std::to_string(capacity) +
@@ -736,6 +771,19 @@ bool DocumentSession::Inspect(protocol_lab::v06::ExecutionObserver* observer) {
   const std::size_t budget = InspectFrameBudget();
 #if defined(PAE_ENABLE_SCHEMA_V10_ASCII_TEXT_CODEC)
   if (IsAsciiDocument()) {
+#if defined(PAE_BUILD_PROTOCOL_LAB_ASCII_STREAM_OBSERVER)
+    if (description_->pipelines[*selected_pipeline_index_].stream_ascii_crlf) {
+      InspectFailure failure;
+      failure.stage = InspectFailureStage::INPUT;
+      failure.status = "OPERATION_NOT_SUPPORTED";
+      failure.diagnostic_id = "UI_INSPECT_OPERATION_NOT_SUPPORTED";
+      failure.detail = "stream_chunk + ascii_crlf requires Stream Inspect Submit/Continue";
+      inspect_failure_ = std::move(failure);
+      SetDiagnostic(inspect_failure_->diagnostic_id, inspect_failure_->detail);
+      RefreshDocumentState();
+      return false;
+    }
+#endif
     if (prepared_->ascii_adapter == nullptr) {
       InspectFailure failure;
       failure.diagnostic_id = "UI_INSPECT_NOT_READY";
@@ -962,6 +1010,215 @@ bool DocumentSession::Inspect(protocol_lab::v06::ExecutionObserver* observer) {
   return true;
 }
 
+#if defined(PAE_BUILD_PROTOCOL_LAB_ASCII_STREAM_OBSERVER)
+bool DocumentSession::StreamInspectAvailable() const noexcept {
+  return prepared_ != nullptr && prepared_->ascii_adapter != nullptr && description_.has_value() &&
+         selected_pipeline_index_.has_value() &&
+         *selected_pipeline_index_ < description_->pipelines.size() &&
+         description_->pipelines[*selected_pipeline_index_].stream_ascii_crlf;
+}
+
+std::optional<protocol_lab::ascii::StreamObservation> DocumentSession::StreamObservation()
+    const noexcept {
+  if (!StreamInspectAvailable()) return std::nullopt;
+  return prepared_->ascii_adapter->ObserveStream(*selected_pipeline_index_);
+}
+
+bool DocumentSession::StreamContinueAvailable() const noexcept {
+  const auto observation = StreamObservation();
+  return observation.has_value() && !observation->reset_required &&
+         (observation->frozen_cursor < observation->frozen_input_bytes ||
+          observation->has_internal_work);
+}
+
+bool DocumentSession::StreamHasDiscardableState() const noexcept {
+  return StreamInspectAvailable() &&
+         prepared_->ascii_adapter->StreamHasDiscardableState(*selected_pipeline_index_);
+}
+
+std::size_t DocumentSession::StreamChunkBudget() const noexcept {
+  return StreamInspectAvailable()
+             ? prepared_->ascii_adapter->StreamChunkCapacity(*selected_pipeline_index_)
+             : 0U;
+}
+
+namespace {
+InspectFailure StreamFailureFromAdapter(const protocol_lab::ascii::ExecutionResult& outcome) {
+  InspectFailure failure;
+  const std::string status =
+      outcome.core_called ? std::string{protocol_lab::ascii::CodecStatusName(outcome.core_status)}
+                          : std::string{"INVALID_REQUEST"};
+  failure.stage = outcome.status == protocol_lab::ascii::AdapterStatus::MATERIALIZATION_FAILED
+                      ? InspectFailureStage::MATERIALIZATION
+                      : (status == "UNKNOWN_MESSAGE" || status == "AMBIGUOUS_MESSAGE"
+                             ? InspectFailureStage::STRUCTURAL_QUERY
+                             : InspectFailureStage::CODEC);
+  failure.status = status;
+  failure.diagnostic_id = "UI_STREAM_INSPECT_" + status;
+  failure.detail =
+      outcome.detail.empty() ? "ASCII stream candidate Decode failed: " + status : outcome.detail;
+  failure.input_frame = outcome.diagnostic_input_frame;
+  failure.message_index = outcome.message_index;
+  failure.message_id = outcome.message_id;
+  failure.failed_field_index = outcome.failed_field_index;
+  failure.failed_field_id = outcome.failed_field_id;
+  return failure;
+}
+}  // namespace
+
+bool DocumentSession::SubmitStream() {
+  if (!StreamInspectAvailable()) {
+    SetDiagnostic("UI_STREAM_INSPECT_NOT_AVAILABLE", "selected Pipeline is not ASCII CRLF stream");
+    return false;
+  }
+  if (submitted_stream_input_revision_.has_value() &&
+      *submitted_stream_input_revision_ == inspect_input_revision_) {
+    SetDiagnostic("UI_STREAM_CHUNK_ALREADY_SUBMITTED",
+                  "edit the stream chunk before submitting new data");
+    return false;
+  }
+  std::vector<std::uint8_t> input;
+  if (representation_ == ByteRepresentation::ASCII_ESCAPED) {
+    const auto parsed = ParseAsciiEscaped(inspect_draft_utf16_);
+    if (!parsed.ok() || parsed.bytes.empty()) {
+      InspectFailure failure;
+      failure.stage = InspectFailureStage::INPUT;
+      failure.diagnostic_id = "UI_ASCII_INPUT_INVALID";
+      if (parsed.ok()) {
+        failure.detail = "Stream chunk is empty";
+      } else {
+        failure.input_offset = parsed.utf16_offset;
+        failure.input_offset_is_utf16 = true;
+        failure.detail = AsciiInputFailureDetail(parsed.detail, *parsed.utf16_offset);
+      }
+      inspect_failure_ = std::move(failure);
+      SetDiagnostic(inspect_failure_->diagnostic_id, inspect_failure_->detail);
+      return false;
+    }
+    input = parsed.bytes;
+  } else {
+    const auto parsed = ParseInspectHex(inspect_draft_, StreamChunkBudget());
+    if (!parsed.ok()) {
+      SetDiagnostic(InspectHexDiagnosticId(parsed.error),
+                    InspectFailureDetail(InspectHexErrorDetail(parsed.error), parsed.input_offset));
+      return false;
+    }
+    input = parsed.bytes;
+  }
+  if (input.empty() || input.size() > StreamChunkBudget()) {
+    SetDiagnostic("UI_STREAM_CHUNK_CAPACITY_EXCEEDED",
+                  "stream chunk exceeds effective Submit capacity");
+    return false;
+  }
+  const auto& pipeline = description_->pipelines[*selected_pipeline_index_];
+  protocol_lab::ascii::ExecutionIdentity identity;
+  identity.document_id = document_id_;
+  identity.load_revision = load_revision_;
+  identity.plan_generation = plan_generation_;
+  identity.selection_revision = pipeline_selection_revision_;
+  identity.input_revision = inspect_input_revision_;
+  identity.pipeline_index = pipeline.pipeline_index;
+  identity.pipeline_id = pipeline.id;
+  ++inspect_request_revision_;
+  stream_step_ = prepared_->ascii_adapter->SubmitStreamChunk(std::move(identity), input);
+  if (stream_step_->push_called) submitted_stream_input_revision_ = inspect_input_revision_;
+  inspect_result_.reset();
+  inspect_failure_.reset();
+  if (stream_step_->status != protocol_lab::ascii::AdapterStatus::OK) {
+    SetDiagnostic("UI_STREAM_STEP_FAILED", stream_step_->detail);
+    return false;
+  }
+  if (stream_step_->candidate.has_value()) {
+    const auto& candidate = *stream_step_->candidate;
+    if (candidate.status == protocol_lab::ascii::AdapterStatus::OK &&
+        candidate.message_index.has_value() && candidate.message_id.has_value()) {
+      InspectResult mapped;
+      mapped.key = MakeInspectResultKey();
+      mapped.input_frame = candidate.frame;
+      mapped.message_index = *candidate.message_index;
+      mapped.message_id = *candidate.message_id;
+      mapped.fields = CopyAsciiFields(candidate.fields);
+      mapped.zero_field_success = mapped.fields.empty();
+      inspect_result_ = std::move(mapped);
+      diagnostic_id_.clear();
+      diagnostic_detail_.clear();
+    } else {
+      inspect_failure_ = StreamFailureFromAdapter(candidate);
+      SetDiagnostic(inspect_failure_->diagnostic_id, inspect_failure_->detail);
+    }
+  } else {
+    diagnostic_id_.clear();
+    diagnostic_detail_.clear();
+  }
+  RefreshDocumentState();
+  return true;
+}
+
+bool DocumentSession::ContinueStream() {
+  if (!StreamContinueAvailable()) {
+    SetDiagnostic("UI_STREAM_CONTINUE_NOT_AVAILABLE", "no frozen suffix or internal work remains");
+    return false;
+  }
+  const auto& pipeline = description_->pipelines[*selected_pipeline_index_];
+  protocol_lab::ascii::ExecutionIdentity identity;
+  identity.document_id = document_id_;
+  identity.load_revision = load_revision_;
+  identity.plan_generation = plan_generation_;
+  identity.selection_revision = pipeline_selection_revision_;
+  identity.input_revision = inspect_input_revision_;
+  identity.pipeline_index = pipeline.pipeline_index;
+  identity.pipeline_id = pipeline.id;
+  ++inspect_request_revision_;
+  stream_step_ = prepared_->ascii_adapter->ContinueStream(std::move(identity));
+  inspect_result_.reset();
+  inspect_failure_.reset();
+  if (stream_step_->status != protocol_lab::ascii::AdapterStatus::OK) {
+    SetDiagnostic("UI_STREAM_STEP_FAILED", stream_step_->detail);
+    return false;
+  }
+  if (stream_step_->candidate.has_value()) {
+    const auto& candidate = *stream_step_->candidate;
+    if (candidate.status == protocol_lab::ascii::AdapterStatus::OK &&
+        candidate.message_index.has_value() && candidate.message_id.has_value()) {
+      InspectResult mapped;
+      mapped.key = MakeInspectResultKey();
+      mapped.input_frame = candidate.frame;
+      mapped.message_index = *candidate.message_index;
+      mapped.message_id = *candidate.message_id;
+      mapped.fields = CopyAsciiFields(candidate.fields);
+      mapped.zero_field_success = mapped.fields.empty();
+      inspect_result_ = std::move(mapped);
+      diagnostic_id_.clear();
+      diagnostic_detail_.clear();
+    } else {
+      inspect_failure_ = StreamFailureFromAdapter(candidate);
+      SetDiagnostic(inspect_failure_->diagnostic_id, inspect_failure_->detail);
+    }
+  }
+  RefreshDocumentState();
+  return true;
+}
+
+bool DocumentSession::ResetStream() {
+  if (!StreamInspectAvailable()) return false;
+  const auto& pipeline = description_->pipelines[*selected_pipeline_index_];
+  std::string error;
+  if (!prepared_->ascii_adapter->ResetStream(pipeline.pipeline_index, pipeline.id, error)) {
+    SetDiagnostic("UI_STREAM_RESET_FAILED", std::move(error));
+    return false;
+  }
+  inspect_draft_.clear();
+  inspect_draft_utf16_.clear();
+  ++inspect_input_revision_;
+  submitted_stream_input_revision_.reset();
+  ClearInspectOutcome();
+  diagnostic_id_.clear();
+  diagnostic_detail_.clear();
+  RefreshDocumentState();
+  return true;
+}
+#endif
+
 void DocumentSession::Close() {
   if (state_ == DocumentState::CLOSED) return;
   state_ = DocumentState::CLOSING;
@@ -990,6 +1247,9 @@ void DocumentSession::ClearPreview() { preview_.reset(); }
 void DocumentSession::ClearInspectOutcome() {
   inspect_result_.reset();
   inspect_failure_.reset();
+#if defined(PAE_BUILD_PROTOCOL_LAB_ASCII_STREAM_OBSERVER)
+  stream_step_.reset();
+#endif
 }
 
 bool DocumentSession::SetInitialSelection() {

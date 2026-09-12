@@ -2,9 +2,11 @@
 
 #include <QAction>
 #include <QApplication>
+#include <QCloseEvent>
 #include <QFileDialog>
 #include <QFileInfo>
 #include <QMenuBar>
+#include <QMessageBox>
 #include <QStatusBar>
 #include <QTabWidget>
 #include <QTimer>
@@ -152,9 +154,27 @@ ApplicationWindow::ApplicationWindow(QWidget* parent) : QMainWindow(parent) {
 ApplicationWindow::~ApplicationWindow() {
   for (int index = 0; index < tabs_->count(); ++index) {
     if (auto* document = dynamic_cast<DocumentTab*>(tabs_->widget(index))) {
-      document->CloseDocument();
+      document->CloseDocument(false);
     }
   }
+}
+
+void ApplicationWindow::closeEvent(QCloseEvent* event) {
+#if defined(PAE_BUILD_PROTOCOL_LAB_ASCII_STREAM_OBSERVER)
+  for (int index = 0; index < tabs_->count(); ++index) {
+    if (auto* document = dynamic_cast<DocumentTab*>(tabs_->widget(index));
+        document != nullptr && !document->ConfirmClose()) {
+      event->ignore();
+      return;
+    }
+  }
+#endif
+  for (int index = 0; index < tabs_->count(); ++index) {
+    if (auto* document = dynamic_cast<DocumentTab*>(tabs_->widget(index))) {
+      document->CloseDocument(false);
+    }
+  }
+  event->accept();
 }
 
 DocumentTab* ApplicationWindow::AddDocument(const QString& config_path) {
@@ -223,7 +243,7 @@ void ApplicationWindow::CloseTab(int index) {
   if (document == nullptr) {
     return;
   }
-  document->CloseDocument();
+  if (!document->CloseDocument()) return;
   tabs_->removeTab(index);
   document->deleteLater();
   new_action_->setEnabled(tabs_->count() < 2);
@@ -294,7 +314,14 @@ void ApplicationWindow::AdvanceSmoke() {
         FinishSmoke(false, QStringLiteral("ASCII UI smoke is not a performance benchmark"));
         return;
       }
-      if (!document->VerifyAsciiForSmoke(error)) {
+#if defined(PAE_BUILD_PROTOCOL_LAB_ASCII_STREAM_OBSERVER)
+      const bool ascii_ok = document->IsAsciiStreamForSmoke()
+                                ? document->VerifyAsciiStreamForSmoke(error)
+                                : document->VerifyAsciiForSmoke(error);
+#else
+      const bool ascii_ok = document->VerifyAsciiForSmoke(error);
+#endif
+      if (!ascii_ok) {
         FinishSmoke(false, QStringLiteral("ASCII document %1: %2")
                                .arg(static_cast<qulonglong>(index + 1U))
                                .arg(error));
@@ -455,6 +482,39 @@ void ApplicationWindow::AdvanceSmoke() {
       }
     }
   }
+#if defined(PAE_BUILD_PROTOCOL_LAB_ASCII_STREAM_OBSERVER)
+  if (!performance_mode_ && smoke_documents_.size() == 2U &&
+      smoke_documents_[0]->IsAsciiStreamForSmoke() &&
+      smoke_documents_[1]->IsAsciiStreamForSmoke()) {
+    if (!smoke_documents_[0]->PrepareStreamHalfFrameForSmoke(error) ||
+        !smoke_documents_[1]->PrepareStreamHalfFrameForSmoke(error)) {
+      FinishSmoke(false, QStringLiteral("close confirmation setup failed: %1").arg(error));
+      return;
+    }
+    const QString first_before = smoke_documents_[0]->StreamStateSignatureForSmoke();
+    const QString second_before = smoke_documents_[1]->StreamStateSignatureForSmoke();
+    QTimer::singleShot(0, qApp, [] {
+      if (auto* first = qobject_cast<QMessageBox*>(QApplication::activeModalWidget())) {
+        first->done(QMessageBox::Yes);
+      }
+      QTimer::singleShot(0, qApp, [] {
+        if (auto* second = qobject_cast<QMessageBox*>(QApplication::activeModalWidget())) {
+          second->done(QMessageBox::No);
+        }
+      });
+    });
+    const bool closed = close();
+    if (closed || !isVisible() ||
+        smoke_documents_[0]->StreamStateSignatureForSmoke() != first_before ||
+        smoke_documents_[1]->StreamStateSignatureForSmoke() != second_before) {
+      FinishSmoke(false,
+                  QStringLiteral("two-Tab close Yes-then-No mutated state or closed the window"));
+      return;
+    }
+    smoke_documents_[0]->ResetStreamForSmoke();
+    smoke_documents_[1]->ResetStreamForSmoke();
+  }
+#endif
   for (auto* document : smoke_documents_) {
     document->InvalidatePreviewForSmoke();
     if (document->PreviewFrameSizeForSmoke() != 0U) {

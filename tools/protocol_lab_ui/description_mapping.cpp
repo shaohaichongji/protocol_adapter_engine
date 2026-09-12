@@ -318,6 +318,10 @@ bool BuildDocumentDescription(const protocol_lab::ascii::DocumentDescription& so
     pipeline.source_ref = source_pipeline.source_ref;
     pipeline.message_indices = source_pipeline.message_indices;
     pipeline.decode_message_indices = source_pipeline.decode_message_indices;
+#if defined(PAE_BUILD_PROTOCOL_LAB_ASCII_STREAM_OBSERVER)
+    pipeline.stream_ascii_crlf = source_pipeline.stream_ascii_crlf;
+    pipeline.maximum_frame_length = source_pipeline.maximum_frame_length;
+#endif
     built.pipelines.push_back(std::move(pipeline));
   }
   built.messages.reserve(source.messages.size());

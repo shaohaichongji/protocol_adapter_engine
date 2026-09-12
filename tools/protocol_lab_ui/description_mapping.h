@@ -114,6 +114,10 @@ struct PipelineDescriptor {
   std::string source_ref;
   std::vector<std::size_t> message_indices;
   std::vector<std::size_t> decode_message_indices;
+#if defined(PAE_BUILD_PROTOCOL_LAB_ASCII_STREAM_OBSERVER)
+  bool stream_ascii_crlf = false;
+  std::size_t maximum_frame_length = 0U;
+#endif
 };
 
 struct DocumentDescription {

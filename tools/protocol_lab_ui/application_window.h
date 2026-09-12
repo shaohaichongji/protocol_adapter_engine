@@ -11,6 +11,7 @@
 class QAction;
 class QTabWidget;
 class QTimer;
+class QCloseEvent;
 
 namespace pae::protocol_lab_ui {
 
@@ -25,6 +26,9 @@ class ApplicationWindow final : public QMainWindow {
   int DocumentCount() const noexcept;
   void StartUiSmoke(QStringList config_paths);
   void StartUiPerformance(QStringList config_paths, int warmup_count, int sample_count);
+
+ protected:
+  void closeEvent(QCloseEvent* event) override;
 
  private:
   void CloseTab(int index);
