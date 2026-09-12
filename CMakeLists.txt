@@ -72,6 +72,11 @@ option(
     OFF
 )
 option(
+    PAE_ENABLE_SCHEMA_V11_ASCII_STREAM_FRAMING
+    "Enable the internal Schema 0.11 ASCII CRLF stream framing slice"
+    OFF
+)
+option(
     PAE_BUILD_ASCII_TEXT_EXAMPLE
     "Build the minimal Schema 0.10 ASCII complete-record host example"
     OFF
@@ -84,6 +89,11 @@ option(
 option(
     PAE_BUILD_STREAM_FRAMING_EXAMPLE
     "Build the bounded stream Framing host-push example"
+    OFF
+)
+option(
+    PAE_BUILD_ASCII_STREAM_FRAMING_EXAMPLE
+    "Build the bounded Schema 0.11 ASCII CRLF stream host example"
     OFF
 )
 option(
@@ -111,6 +121,15 @@ option(
     "Build the internal minimal business embedding example"
     OFF
 )
+
+if(PAE_ENABLE_SCHEMA_V11_ASCII_STREAM_FRAMING AND
+   (PAE_BUILD_PROTOCOL_LAB OR PAE_BUILD_PROTOCOL_LAB_UI OR
+    PAE_BUILD_PROTOCOL_LAB_ASCII_ADAPTER))
+    message(
+        FATAL_ERROR
+        "Schema 0.11 ASCII stream framing is not connected to Protocol Lab, Evidence, or UI."
+    )
+endif()
 
 if(PAE_BUILD_PROTOCOL_LAB_UI)
     foreach(
@@ -251,6 +270,16 @@ if(PAE_ENABLE_SCHEMA_V10_ASCII_TEXT_CODEC AND
         "PAE_ENABLE_SCHEMA_V10_ASCII_TEXT_CODEC requires the Loader, Core, and explicit Schema 0.9 slice."
     )
 endif()
+if(PAE_ENABLE_SCHEMA_V11_ASCII_STREAM_FRAMING AND
+   (NOT PAE_ENABLE_SCHEMA_V10_ASCII_TEXT_CODEC OR
+    NOT PAE_ENABLE_SCHEMA_V09_STREAM_FRAMING OR
+    NOT PAE_BUILD_LOADER_SCHEMA_IR_SLICE OR
+    NOT PAE_BUILD_COMPLETE_RECORD_CODEC_SLICE))
+    message(
+        FATAL_ERROR
+        "PAE_ENABLE_SCHEMA_V11_ASCII_STREAM_FRAMING requires the Schema 0.10 ASCII, Schema 0.9 Framing, Loader, and Core slices."
+    )
+endif()
 if(PAE_ENABLE_SCHEMA_V10_ASCII_TEXT_CODEC AND PAE_BUILD_PROTOCOL_LAB)
     message(
         FATAL_ERROR
@@ -281,6 +310,14 @@ if(PAE_BUILD_STREAM_FRAMING_SLICE AND NOT PAE_ENABLE_SCHEMA_V09_STREAM_FRAMING)
 endif()
 if(PAE_BUILD_STREAM_FRAMING_EXAMPLE AND NOT PAE_BUILD_STREAM_FRAMING_SLICE)
     message(FATAL_ERROR "PAE_BUILD_STREAM_FRAMING_EXAMPLE requires the Framing slice.")
+endif()
+if(PAE_BUILD_ASCII_STREAM_FRAMING_EXAMPLE AND
+   (NOT PAE_ENABLE_SCHEMA_V11_ASCII_STREAM_FRAMING OR
+    NOT PAE_BUILD_STREAM_FRAMING_SLICE))
+    message(
+        FATAL_ERROR
+        "PAE_BUILD_ASCII_STREAM_FRAMING_EXAMPLE requires the Schema 0.11 and Framing slices."
+    )
 endif()
 
 if(PROJECT_IS_TOP_LEVEL)
@@ -428,6 +465,9 @@ endif()
 
 if(PAE_BUILD_STREAM_FRAMING_EXAMPLE)
     add_subdirectory(examples/stream_framing)
+endif()
+if(PAE_BUILD_ASCII_STREAM_FRAMING_EXAMPLE)
+    add_subdirectory(examples/ascii_stream_framing)
 endif()
 if(PAE_BUILD_ASCII_TEXT_EXAMPLE)
     add_subdirectory(examples/ascii_text)

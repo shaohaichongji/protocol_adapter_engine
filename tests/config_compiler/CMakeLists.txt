@@ -115,6 +115,30 @@ if(PAE_ENABLE_SCHEMA_V10_ASCII_TEXT_CODEC)
         PRIVATE PAE_ENABLE_SCHEMA_V10_ASCII_TEXT_CODEC=1
     )
 endif()
+if(PAE_ENABLE_SCHEMA_V11_ASCII_STREAM_FRAMING)
+    find_program(pae_ascii_stream_schema_powershell NAMES pwsh pwsh.exe REQUIRED)
+    add_test(
+        NAME pae.config_compiler.ascii_stream_schema_contract
+        COMMAND
+            "${pae_ascii_stream_schema_powershell}"
+            -NoProfile
+            -ExecutionPolicy Bypass
+            -File "${CMAKE_CURRENT_SOURCE_DIR}/verify_ascii_stream_schema_contract.ps1"
+            -SchemaPath "${PROJECT_SOURCE_DIR}/schema/pae.schema.json"
+            -SamplePath "${PROJECT_SOURCE_DIR}/examples/config/synthetic_ascii_stream_slice.pae.json"
+            -V10SamplePath "${PROJECT_SOURCE_DIR}/examples/config/synthetic_ascii_text_slice.pae.json"
+    )
+    set_tests_properties(
+        pae.config_compiler.ascii_stream_schema_contract
+        PROPERTIES LABELS "config_compiler;schema;ascii_stream" TIMEOUT 60
+    )
+endif()
+if(PAE_ENABLE_SCHEMA_V11_ASCII_STREAM_FRAMING)
+    target_compile_definitions(
+        pae_config_compiler_contract_tests
+        PRIVATE PAE_ENABLE_SCHEMA_V11_ASCII_STREAM_FRAMING=1
+    )
+endif()
 
 if(PAE_ENABLE_SCHEMA_V05_COMPILER)
     target_compile_definitions(
@@ -144,6 +168,12 @@ endif()
 if(PAE_ENABLE_SCHEMA_V10_ASCII_TEXT_CODEC)
     target_compile_definitions(
         pae_config_compiler_ui_description_tests PRIVATE PAE_ENABLE_SCHEMA_V10_ASCII_TEXT_CODEC=1
+    )
+endif()
+if(PAE_ENABLE_SCHEMA_V11_ASCII_STREAM_FRAMING)
+    target_compile_definitions(
+        pae_config_compiler_ui_description_tests
+        PRIVATE PAE_ENABLE_SCHEMA_V11_ASCII_STREAM_FRAMING=1
     )
 endif()
 

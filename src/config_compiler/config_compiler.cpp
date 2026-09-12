@@ -646,19 +646,20 @@ bool ReadEnumToken(yyjson_val* value, std::string_view pointer,
 }
 
 bool ParseFramingProfile(yyjson_val* value, std::string_view pointer, bool supports_stream,
-                         FramingProfileIr& output, CompileDiagnostic& diagnostic) {
+                         bool supports_ascii_stream, FramingProfileIr& output,
+                         CompileDiagnostic& diagnostic) {
   if (!yyjson_is_obj(value)) {
     return SetDiagnostic(diagnostic, CompileStage::STRUCTURAL, CompileError::TYPE_MISMATCH,
                          std::string(pointer), "framing profile must be an object");
   }
   if (!ValidateObjectProperties(
           value, pointer,
-          supports_stream
+          supports_stream || supports_ascii_stream
               ? std::initializer_list<std::string_view>{"id", "display_name", "description",
                                                         "source_ref", "input_kind", "strategy",
                                                         "frame_length_bytes", "sync_bytes",
                                                         "length_field", "minimum_frame_length",
-                                                        "maximum_frame_length"}
+                                                        "maximum_frame_length", "terminator_text"}
               : std::initializer_list<std::string_view>{"id", "display_name", "description",
                                                         "source_ref", "input_kind"},
           diagnostic)) {
@@ -675,11 +676,12 @@ bool ParseFramingProfile(yyjson_val* value, std::string_view pointer, bool suppo
   yyjson_val* input_kind = RequiredProperty(value, "input_kind", pointer, diagnostic);
   std::string input_kind_token;
   if (input_kind == nullptr ||
-      !ReadEnumToken(input_kind, ChildPointer(pointer, "input_kind"),
-                     supports_stream ? std::initializer_list<std::string_view>{"complete_record",
-                                                                               "stream_chunk"}
-                                     : std::initializer_list<std::string_view>{"complete_record"},
-                     input_kind_token, diagnostic)) {
+      !ReadEnumToken(
+          input_kind, ChildPointer(pointer, "input_kind"),
+          (supports_stream || supports_ascii_stream)
+              ? std::initializer_list<std::string_view>{"complete_record", "stream_chunk"}
+              : std::initializer_list<std::string_view>{"complete_record"},
+          input_kind_token, diagnostic)) {
     return false;
   }
   output.input_kind = InputKind::COMPLETE_RECORD;
@@ -689,12 +691,58 @@ bool ParseFramingProfile(yyjson_val* value, std::string_view pointer, bool suppo
     yyjson_val* strategy_value = RequiredProperty(value, "strategy", pointer, diagnostic);
     std::string strategy;
     if (strategy_value == nullptr ||
-        !ReadEnumToken(strategy_value, ChildPointer(pointer, "strategy"),
-                       {"fixed_length", "sync_fixed_length", "sync_length_field"}, strategy,
-                       diagnostic)) {
+        !ReadEnumToken(
+            strategy_value, ChildPointer(pointer, "strategy"),
+            supports_ascii_stream
+                ? std::initializer_list<std::string_view>{"ascii_crlf"}
+                : std::initializer_list<std::string_view>{"fixed_length", "sync_fixed_length",
+                                                          "sync_length_field"},
+            strategy, diagnostic)) {
       return false;
     }
-    if (strategy == "fixed_length" || strategy == "sync_fixed_length") {
+    if (strategy == "ascii_crlf") {
+#if defined(PAE_ENABLE_SCHEMA_V11_ASCII_STREAM_FRAMING)
+      output.strategy = FramingStrategy::ASCII_CRLF;
+      std::string terminator;
+      if (!ReadRequiredString(value, "terminator_text", pointer, 2U, 2U, terminator, diagnostic)) {
+        return false;
+      }
+      if (terminator != "\r\n") {
+        return SetDiagnostic(diagnostic, CompileStage::DOMAIN_VALIDATION,
+                             CompileError::ASCII_STREAM_TERMINATOR_INVALID,
+                             ChildPointer(pointer, "terminator_text"),
+                             "ASCII stream terminator must be exactly CRLF");
+      }
+      output.sync_bytes = {0x0DU, 0x0AU};
+      if (!ReadRequiredUint64(value, "maximum_frame_length", pointer, output.maximum_frame_length,
+                              diagnostic)) {
+        return false;
+      }
+      if (output.maximum_frame_length < 2U) {
+        return SetDiagnostic(diagnostic, CompileStage::DOMAIN_VALIDATION,
+                             CompileError::ASCII_STREAM_PROFILE_MISMATCH,
+                             ChildPointer(pointer, "maximum_frame_length"),
+                             "ASCII stream maximum_frame_length must include CRLF");
+      }
+      for (const std::string_view name :
+           {"frame_length_bytes", "sync_bytes", "length_field", "minimum_frame_length"}) {
+        if (yyjson_obj_get(value, std::string{name}.c_str()) != nullptr) {
+          return SetDiagnostic(diagnostic, CompileStage::STRUCTURAL, CompileError::UNKNOWN_PROPERTY,
+                               ChildPointer(pointer, name),
+                               "ASCII CRLF profile contains a member from another strategy");
+        }
+      }
+#else
+      return SetDiagnostic(diagnostic, CompileStage::STRUCTURAL, CompileError::UNSUPPORTED_FEATURE,
+                           ChildPointer(pointer, "strategy"),
+                           "ASCII stream framing is disabled in this build");
+#endif
+    } else if (strategy == "fixed_length" || strategy == "sync_fixed_length") {
+      if (yyjson_obj_get(value, "terminator_text") != nullptr) {
+        return SetDiagnostic(diagnostic, CompileStage::STRUCTURAL, CompileError::UNKNOWN_PROPERTY,
+                             ChildPointer(pointer, "terminator_text"),
+                             "binary stream profile cannot contain terminator_text");
+      }
       output.strategy = strategy == "fixed_length" ? FramingStrategy::FIXED_LENGTH
                                                    : FramingStrategy::SYNC_FIXED_LENGTH;
       if (!ReadRequiredUint64(value, "frame_length_bytes", pointer, output.frame_length_bytes,
@@ -715,6 +763,11 @@ bool ParseFramingProfile(yyjson_val* value, std::string_view pointer, bool suppo
       if (strategy == "fixed_length" && yyjson_obj_get(value, "sync_bytes") != nullptr)
         return reject_foreign_member("sync_bytes");
     } else {
+      if (yyjson_obj_get(value, "terminator_text") != nullptr) {
+        return SetDiagnostic(diagnostic, CompileStage::STRUCTURAL, CompileError::UNKNOWN_PROPERTY,
+                             ChildPointer(pointer, "terminator_text"),
+                             "binary stream profile cannot contain terminator_text");
+      }
       output.strategy = FramingStrategy::SYNC_LENGTH_FIELD;
       if (yyjson_obj_get(value, "frame_length_bytes") != nullptr) {
         return SetDiagnostic(diagnostic, CompileStage::STRUCTURAL, CompileError::UNKNOWN_PROPERTY,
@@ -771,7 +824,7 @@ bool ParseFramingProfile(yyjson_val* value, std::string_view pointer, bool suppo
         output.length_field_byte_order = order == "big_endian" ? ByteOrder::BIG : ByteOrder::LITTLE;
       }
     }
-    if (strategy != "fixed_length") {
+    if (strategy != "fixed_length" && strategy != "ascii_crlf") {
       yyjson_val* sync = RequiredProperty(value, "sync_bytes", pointer, diagnostic);
       std::string sync_text;
       if (sync == nullptr || !ReadString(sync, ChildPointer(pointer, "sync_bytes"), 1U,
@@ -787,7 +840,7 @@ bool ParseFramingProfile(yyjson_val* value, std::string_view pointer, bool suppo
   } else {
     for (const std::string_view name :
          {"strategy", "frame_length_bytes", "sync_bytes", "length_field", "minimum_frame_length",
-          "maximum_frame_length"}) {
+          "maximum_frame_length", "terminator_text"}) {
       if (yyjson_obj_get(value, std::string{name}.c_str()) != nullptr) {
         return SetDiagnostic(diagnostic, CompileStage::STRUCTURAL, CompileError::UNKNOWN_PROPERTY,
                              ChildPointer(pointer, name),
@@ -797,6 +850,7 @@ bool ParseFramingProfile(yyjson_val* value, std::string_view pointer, bool suppo
   }
 #else
   static_cast<void>(supports_stream);
+  static_cast<void>(supports_ascii_stream);
 #endif
   output.origin.json_pointer = std::string{pointer};
   return true;
@@ -2222,6 +2276,9 @@ bool BuildSchemaIr(yyjson_val* root, SchemaIr& output, CompileDiagnostic& diagno
 #endif
 #if defined(PAE_ENABLE_SCHEMA_V10_ASCII_TEXT_CODEC)
                                 || output.schema_version == "0.10"
+#if defined(PAE_ENABLE_SCHEMA_V11_ASCII_STREAM_FRAMING)
+                                || output.schema_version == "0.11"
+#endif
 #endif
       ;
 #else
@@ -2259,8 +2316,13 @@ bool BuildSchemaIr(yyjson_val* root, SchemaIr& output, CompileDiagnostic& diagno
              framing_profiles, "/framing_profiles", output.framing_profiles,
              [&output](yyjson_val* value, std::string_view pointer, FramingProfileIr& framing,
                        CompileDiagnostic& item_diagnostic) {
-               return ParseFramingProfile(value, pointer, output.schema_version == "0.9", framing,
-                                          item_diagnostic);
+               return ParseFramingProfile(value, pointer, output.schema_version == "0.9",
+#if defined(PAE_ENABLE_SCHEMA_V11_ASCII_STREAM_FRAMING)
+                                          output.schema_version == "0.11",
+#else
+                                          false,
+#endif
+                                          framing, item_diagnostic);
              },
              diagnostic) &&
          ParseObjectArray(pipelines, "/pipelines", output.pipelines, ParsePipeline, diagnostic) &&
@@ -2269,7 +2331,11 @@ bool BuildSchemaIr(yyjson_val* root, SchemaIr& output, CompileDiagnostic& diagno
              [&output](yyjson_val* value, std::string_view pointer, MessageIr& message,
                        CompileDiagnostic& item_diagnostic) {
 #if defined(PAE_ENABLE_SCHEMA_V10_ASCII_TEXT_CODEC)
-               if (output.schema_version == "0.10") {
+               if (output.schema_version == "0.10"
+#if defined(PAE_ENABLE_SCHEMA_V11_ASCII_STREAM_FRAMING)
+                   || output.schema_version == "0.11"
+#endif
+               ) {
                  return ParseTextMessage(value, pointer, message, item_diagnostic);
                }
 #endif
@@ -2388,6 +2454,20 @@ bool ValidateStreamFramingLocal(const FramingProfileIr& framing, CompileDiagnost
     }
     return true;
   }
+#if defined(PAE_ENABLE_SCHEMA_V11_ASCII_STREAM_FRAMING)
+  if (framing.strategy == FramingStrategy::ASCII_CRLF) {
+    if (framing.sync_bytes != std::vector<std::uint8_t>{0x0DU, 0x0AU} ||
+        framing.frame_length_bytes != 0U || framing.length_field_offset != 0U ||
+        framing.length_field_width != 0U ||
+        framing.length_field_byte_order != ByteOrder::NOT_APPLICABLE ||
+        framing.minimum_frame_length != 0U || framing.maximum_frame_length < 2U) {
+      return SetDiagnostic(diagnostic, CompileStage::DOMAIN_VALIDATION,
+                           CompileError::ASCII_STREAM_PROFILE_MISMATCH, framing.origin.json_pointer,
+                           "ASCII CRLF framing profile members are inconsistent");
+    }
+    return true;
+  }
+#endif
   if (framing.strategy != FramingStrategy::SYNC_LENGTH_FIELD || framing.sync_bytes.empty() ||
       (framing.length_field_width != 1U && framing.length_field_width != 2U &&
        framing.length_field_width != 4U) ||
@@ -2650,6 +2730,75 @@ bool ValidateAsciiMessage(MessageIr& message, ResourceRequirements& requirements
   }
   return true;
 }
+
+#if defined(PAE_ENABLE_SCHEMA_V11_ASCII_STREAM_FRAMING)
+bool FieldAllowsAscii(const FieldIr& field, std::uint8_t character) noexcept {
+  const std::uint64_t mask = std::uint64_t{1U} << (character % 64U);
+  const std::uint64_t word =
+      character < 64U ? field.wire.allowed_ascii_low : field.wire.allowed_ascii_high;
+  return (word & mask) != 0U;
+}
+
+bool AdvanceCrLfStates(std::uint8_t states, const FieldIr& field, std::uint8_t& output) noexcept {
+  output = 0U;
+  for (std::uint16_t value = 0U; value <= 0x7FU; ++value) {
+    const auto byte = static_cast<std::uint8_t>(value);
+    if (!FieldAllowsAscii(field, byte)) continue;
+    if ((states & 1U) != 0U) output |= byte == 0x0DU ? 2U : 1U;
+    if ((states & 2U) != 0U) {
+      if (byte == 0x0AU) return false;
+      output |= byte == 0x0DU ? 2U : 1U;
+    }
+  }
+  return output != 0U;
+}
+
+bool AdvanceCrLfByte(std::uint8_t& states, std::uint8_t byte) noexcept {
+  if ((states & 2U) != 0U && byte == 0x0AU) return false;
+  states = byte == 0x0DU ? 2U : 1U;
+  return true;
+}
+
+bool ProveAsciiCrLfBoundary(const TextActionIr& action, const std::vector<FieldIr>& fields) {
+  if (action.segments.empty()) return false;
+  const TextSegmentIr& final_segment = action.segments.back();
+  if (final_segment.kind != TextSegmentKind::LITERAL || final_segment.literal.size() < 2U ||
+      final_segment.literal[final_segment.literal.size() - 2U] != 0x0DU ||
+      final_segment.literal.back() != 0x0AU) {
+    return false;
+  }
+  std::uint8_t states = 1U;
+  for (std::size_t segment_index = 0U; segment_index < action.segments.size(); ++segment_index) {
+    const TextSegmentIr& segment = action.segments[segment_index];
+    if (segment.kind == TextSegmentKind::LITERAL) {
+      std::size_t byte_count = segment.literal.size();
+      if (segment_index + 1U == action.segments.size()) byte_count -= 2U;
+      for (std::size_t index = 0U; index < byte_count; ++index) {
+        if (!AdvanceCrLfByte(states, segment.literal[index])) return false;
+      }
+      continue;
+    }
+    if (segment.field_index >= fields.size()) return false;
+    const FieldIr& field = fields[segment.field_index];
+    std::uint8_t exact = states;
+    std::uint8_t accepted = 0U;
+    for (std::uint64_t count = 0U;; ++count) {
+      if (count >= field.wire.text_min_length) accepted |= exact;
+      if (count == field.wire.text_max_length) break;
+      std::uint8_t next = 0U;
+      if (!AdvanceCrLfStates(exact, field, next)) return false;
+      if (next == exact) {
+        if (field.wire.text_max_length >= field.wire.text_min_length) accepted |= next;
+        break;
+      }
+      exact = next;
+    }
+    if (accepted == 0U) return false;
+    states = accepted;
+  }
+  return true;
+}
+#endif
 #endif
 
 bool ValidateMessageDomain(MessageIr& message, ResourceRequirements& requirements,
@@ -3429,9 +3578,12 @@ DomainValidationResult DomainValidator::Validate(SchemaIr schema) {
       return DomainValidationResult::Failure(std::move(diagnostic));
     }
     if (framing.input_kind == InputKind::STREAM_CHUNK) {
-      const std::uint64_t frame_limit = framing.strategy == FramingStrategy::SYNC_LENGTH_FIELD
-                                            ? framing.maximum_frame_length
-                                            : framing.frame_length_bytes;
+      const std::uint64_t frame_limit =
+          framing.strategy == FramingStrategy::SYNC_LENGTH_FIELD ? framing.maximum_frame_length
+#if defined(PAE_ENABLE_SCHEMA_V11_ASCII_STREAM_FRAMING)
+          : framing.strategy == FramingStrategy::ASCII_CRLF ? framing.maximum_frame_length
+#endif
+                                                            : framing.frame_length_bytes;
       if (frame_limit > (std::numeric_limits<std::size_t>::max)()) {
         SetDiagnostic(diagnostic, CompileStage::DOMAIN_VALIDATION,
                       CompileError::INTEGER_OUT_OF_RANGE, framing.origin.json_pointer,
@@ -3509,9 +3661,36 @@ DomainValidationResult DomainValidator::Validate(SchemaIr schema) {
 #if defined(PAE_ENABLE_SCHEMA_V09_STREAM_FRAMING)
     const FramingProfileIr& framing_profile = schema.framing_profiles[framing->second];
     if (framing_profile.input_kind == InputKind::STREAM_CHUNK) {
+#if defined(PAE_ENABLE_SCHEMA_V11_ASCII_STREAM_FRAMING)
+      std::size_t ascii_decode_candidates = 0U;
+#endif
       for (const std::size_t resolved_message_index : resolved.message_indices) {
         const MessageIr& message = schema.messages[resolved_message_index];
         const auto bounds = MessageFrameBounds(message);
+#if defined(PAE_ENABLE_SCHEMA_V11_ASCII_STREAM_FRAMING)
+        if (framing_profile.strategy == FramingStrategy::ASCII_CRLF) {
+          if (!message.ascii_text.has_value() || !message.ascii_text->decode.has_value()) {
+            continue;
+          }
+          ++ascii_decode_candidates;
+          const TextActionIr& decode = *message.ascii_text->decode;
+          if (decode.max_record_length > framing_profile.maximum_frame_length) {
+            SetDiagnostic(diagnostic, CompileStage::DOMAIN_VALIDATION,
+                          CompileError::ASCII_STREAM_PROFILE_MISMATCH,
+                          ChildPointer(pipeline.origin.json_pointer, "message_ids"),
+                          "ASCII stream Decode record exceeds maximum_frame_length");
+            return DomainValidationResult::Failure(std::move(diagnostic));
+          }
+          if (!ProveAsciiCrLfBoundary(decode, message.fields)) {
+            SetDiagnostic(diagnostic, CompileStage::DOMAIN_VALIDATION,
+                          CompileError::ASCII_STREAM_BOUNDARY_UNPROVEN,
+                          message.ascii_text->origin.json_pointer,
+                          "first CRLF cannot be proven to occur exactly at the Decode record end");
+            return DomainValidationResult::Failure(std::move(diagnostic));
+          }
+          continue;
+        }
+#endif
         if ((framing_profile.strategy == FramingStrategy::FIXED_LENGTH ||
              framing_profile.strategy == FramingStrategy::SYNC_FIXED_LENGTH) &&
             (bounds.first != framing_profile.frame_length_bytes ||
@@ -3542,6 +3721,16 @@ DomainValidationResult DomainValidator::Validate(SchemaIr schema) {
           return DomainValidationResult::Failure(std::move(diagnostic));
         }
       }
+#if defined(PAE_ENABLE_SCHEMA_V11_ASCII_STREAM_FRAMING)
+      if (framing_profile.strategy == FramingStrategy::ASCII_CRLF &&
+          ascii_decode_candidates == 0U) {
+        SetDiagnostic(diagnostic, CompileStage::DOMAIN_VALIDATION,
+                      CompileError::ASCII_STREAM_PROFILE_MISMATCH,
+                      ChildPointer(pipeline.origin.json_pointer, "message_ids"),
+                      "ASCII stream Pipeline requires at least one Decode-capable Message");
+        return DomainValidationResult::Failure(std::move(diagnostic));
+      }
+#endif
     }
 #endif
     resolved_pipelines.push_back(std::move(resolved));

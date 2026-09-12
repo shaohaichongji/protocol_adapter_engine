@@ -832,7 +832,12 @@ CodecStatus PrepareEncodeInputs(const PlanBundle& plan, const MessageExecutionPl
     PAE_INCREMENT_OPERATION_COUNT(field_validation_visits);
     const FieldExecutionPlan& field = message.fields[value.field.field_index];
 #if defined(PAE_ENABLE_SCHEMA_V10_ASCII_TEXT_CODEC)
-    if (plan.SchemaVersion() == "0.10" && !field.text_encode_input) {
+    if ((plan.SchemaVersion() == "0.10"
+#if defined(PAE_ENABLE_SCHEMA_V11_ASCII_STREAM_FRAMING)
+         || plan.SchemaVersion() == "0.11"
+#endif
+         ) &&
+        !field.text_encode_input) {
       return CodecStatus::FIELD_REFERENCE_MISMATCH;
     }
 #endif
@@ -880,7 +885,11 @@ CodecStatus PrepareEncodeInputs(const PlanBundle& plan, const MessageExecutionPl
       }
     } else if (!defer_value_validation && field.value_type == ValueType::BYTES) {
 #if defined(PAE_ENABLE_SCHEMA_V10_ASCII_TEXT_CODEC)
-      if (plan.SchemaVersion() == "0.10") {
+      if (plan.SchemaVersion() == "0.10"
+#if defined(PAE_ENABLE_SCHEMA_V11_ASCII_STREAM_FRAMING)
+          || plan.SchemaVersion() == "0.11"
+#endif
+      ) {
         if (value.bytes_value.size < field.text_min_length ||
             value.bytes_value.size > field.text_max_length) {
           return CodecStatus::BYTES_LENGTH_MISMATCH;
@@ -936,7 +945,11 @@ CodecStatus PrepareEncodeInputs(const PlanBundle& plan, const MessageExecutionPl
     result.failed_field_index = field_index;
     if (field.encode_source == EncodeSource::INPUT &&
 #if defined(PAE_ENABLE_SCHEMA_V10_ASCII_TEXT_CODEC)
-        (plan.SchemaVersion() != "0.10" || field.text_encode_input) &&
+        (plan.SchemaVersion() != "0.10"
+#if defined(PAE_ENABLE_SCHEMA_V11_ASCII_STREAM_FRAMING)
+             && plan.SchemaVersion() != "0.11"
+#endif
+         || field.text_encode_input) &&
 #endif
         !IsPresent(present_words, field.input_ordinal)) {
       return CodecStatus::MISSING_FIELD;
@@ -1259,6 +1272,9 @@ bool internal::SupportsCompleteRecordSchema(std::string_view schema_version) noe
 #endif
 #if defined(PAE_ENABLE_SCHEMA_V10_ASCII_TEXT_CODEC)
   if (schema_version == "0.10") return true;
+#if defined(PAE_ENABLE_SCHEMA_V11_ASCII_STREAM_FRAMING)
+  if (schema_version == "0.11") return true;
+#endif
 #endif
 #endif
   return false;
@@ -1422,7 +1438,12 @@ DecodeResult DecodeCompleteRecord(const PlanBundle& plan, ExecutionWorkspace& wo
   const PipelineExecutionPlan& pipeline = pipelines[pipeline_index];
   const auto& messages = plan.MessageExecutionPlans();
 #if defined(PAE_ENABLE_SCHEMA_V10_ASCII_TEXT_CODEC)
-  if (plan.SchemaVersion() == "0.10" && pipeline.text_message_indices.empty()) {
+  if ((plan.SchemaVersion() == "0.10"
+#if defined(PAE_ENABLE_SCHEMA_V11_ASCII_STREAM_FRAMING)
+       || plan.SchemaVersion() == "0.11"
+#endif
+       ) &&
+      pipeline.text_message_indices.empty()) {
     result.status = CodecStatus::OPERATION_NOT_SUPPORTED;
     return result;
   }
@@ -1759,7 +1780,12 @@ EncodeResult EncodeCompleteRecord(const PlanBundle& plan, ExecutionWorkspace& wo
   const MessageExecutionPlan& message = messages[message_index];
   result.required_size = message.frame_size;
 #if defined(PAE_ENABLE_SCHEMA_V10_ASCII_TEXT_CODEC)
-  if (plan.SchemaVersion() == "0.10" && !message.text_encode.has_value()) {
+  if ((plan.SchemaVersion() == "0.10"
+#if defined(PAE_ENABLE_SCHEMA_V11_ASCII_STREAM_FRAMING)
+       || plan.SchemaVersion() == "0.11"
+#endif
+       ) &&
+      !message.text_encode.has_value()) {
     result.status = CodecStatus::OPERATION_NOT_SUPPORTED;
     result.required_size = 0U;
     return result;

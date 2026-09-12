@@ -91,6 +91,10 @@ std::string_view ToString(protocol_plan::FramingStrategy value) noexcept {
       return "sync_fixed_length";
     case protocol_plan::FramingStrategy::SYNC_LENGTH_FIELD:
       return "sync_length_field";
+#if defined(PAE_ENABLE_SCHEMA_V11_ASCII_STREAM_FRAMING)
+    case protocol_plan::FramingStrategy::ASCII_CRLF:
+      return "ascii_crlf";
+#endif
   }
   return "invalid";
 }
@@ -261,8 +265,14 @@ std::string MakeDeterministicPlanSnapshot(const PlanBundle& plan) {
 #else
   const bool v10 = false;
 #endif
+#if defined(PAE_ENABLE_SCHEMA_V11_ASCII_STREAM_FRAMING)
+  const bool v11 = plan.SchemaVersion() == "0.11";
+#else
+  const bool v11 = false;
+#endif
   AppendStringProperty("snapshot_format",
-                       v10   ? "pae_plan_bundle_v0.10_ascii_text_slice"
+                       v11   ? "pae_plan_bundle_v0.11_ascii_stream_slice"
+                       : v10 ? "pae_plan_bundle_v0.10_ascii_text_slice"
                        : v09 ? "pae_plan_bundle_v0.9_stream_framing_slice"
                        : v08 ? "pae_plan_bundle_v0.8_bounded_variable_slice"
                        : v07 ? "pae_plan_bundle_v0.7_length_slice"
@@ -308,7 +318,7 @@ std::string MakeDeterministicPlanSnapshot(const PlanBundle& plan) {
                           output);
   }
 #if defined(PAE_ENABLE_SCHEMA_V09_STREAM_FRAMING)
-  if (v09) {
+  if (v09 || v11) {
     output.push_back(',');
     AppendIntegerProperty("max_stream_frame_bytes", requirements.max_stream_frame_bytes, output);
     output.push_back(',');
@@ -319,7 +329,7 @@ std::string MakeDeterministicPlanSnapshot(const PlanBundle& plan) {
   }
 #endif
 #if defined(PAE_ENABLE_SCHEMA_V10_ASCII_TEXT_CODEC)
-  if (v10) {
+  if (v10 || v11) {
     output.push_back(',');
     AppendIntegerProperty("total_text_segment_count", requirements.total_text_segment_count,
                           output);
@@ -392,7 +402,7 @@ std::string MakeDeterministicPlanSnapshot(const PlanBundle& plan) {
     output.push_back(',');
     AppendStringProperty("input_kind", ToString(framing.input_kind), output);
 #if defined(PAE_ENABLE_SCHEMA_V09_STREAM_FRAMING)
-    if (v09 && framing.input_kind == InputKind::STREAM_CHUNK) {
+    if ((v09 || v11) && framing.input_kind == InputKind::STREAM_CHUNK) {
       output.push_back(',');
       AppendStringProperty("strategy", ToString(framing.strategy), output);
       if (framing.strategy == protocol_plan::FramingStrategy::FIXED_LENGTH ||
@@ -400,7 +410,14 @@ std::string MakeDeterministicPlanSnapshot(const PlanBundle& plan) {
         output.push_back(',');
         AppendIntegerProperty("frame_length_bytes", framing.frame_length_bytes, output);
       }
-      if (!framing.sync_bytes.empty()) {
+#if defined(PAE_ENABLE_SCHEMA_V11_ASCII_STREAM_FRAMING)
+      if (v11 && framing.strategy == protocol_plan::FramingStrategy::ASCII_CRLF) {
+        output.append(",\"terminator_text\":\"\\r\\n\"");
+        output.push_back(',');
+        AppendIntegerProperty("maximum_frame_length", framing.maximum_frame_length, output);
+      } else
+#endif
+          if (!framing.sync_bytes.empty()) {
         output.append(",\"sync_bytes\":");
         AppendHexBytes(framing.sync_bytes, output);
       }
@@ -462,7 +479,7 @@ std::string MakeDeterministicPlanSnapshot(const PlanBundle& plan) {
     output.push_back(',');
     AppendIntegerProperty("frame_length_bytes", message.frame_length_bytes, output);
 #if defined(PAE_ENABLE_SCHEMA_V10_ASCII_TEXT_CODEC)
-    if (v10) {
+    if (v10 || v11) {
       const auto& execution = plan.MessageExecutionPlans()[message_index];
       const auto append_action =
           [&output](std::string_view name,

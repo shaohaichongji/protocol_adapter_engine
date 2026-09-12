@@ -253,6 +253,33 @@ class PlanBuilderTestPeer final {
     }
     return draft;
   }
+#if defined(PAE_ENABLE_SCHEMA_V11_ASCII_STREAM_FRAMING)
+  static BudgetedPlanDraft MutateAsciiStreamDraft(
+      BudgetedPlanDraft draft, pae::test_support::AsciiStreamDraftMutation mutation) {
+    auto& framing = draft.draft_->framing_profiles[0];
+    auto& message = draft.draft_->messages[0];
+    switch (mutation) {
+      case pae::test_support::AsciiStreamDraftMutation::CORRUPTED_TERMINATOR:
+        framing.sync_bytes[1] = 0x0BU;
+        break;
+      case pae::test_support::AsciiStreamDraftMutation::PROFILE_TOO_SHORT:
+        framing.maximum_frame_length = 2U;
+        draft.draft_->resource_requirements.max_stream_frame_bytes = 2U;
+        draft.draft_->resource_requirements.max_framing_buffer_bytes = 2U;
+        break;
+      case pae::test_support::AsciiStreamDraftMutation::BOUNDARY_UNPROVEN:
+        message.ascii_text->decode->segments.back().literal = {'!', 'X', 'X'};
+        message.ascii_text->decode->segments.back().prefix_table = {0U, 0U, 0U};
+        break;
+      case pae::test_support::AsciiStreamDraftMutation::NO_DECODE_CANDIDATE:
+        draft.draft_->resource_requirements.total_text_segment_count -=
+            message.ascii_text->decode->segments.size();
+        message.ascii_text->decode.reset();
+        break;
+    }
+    return draft;
+  }
+#endif
 #endif
 
 #if defined(PAE_ENABLE_SCHEMA_V07_LENGTH_COMPILER)
@@ -645,6 +672,13 @@ protocol_plan::BudgetedPlanDraft MutateAsciiTextDraft(protocol_plan::BudgetedPla
   return protocol_plan::test_only::PlanBuilderTestPeer::MutateAsciiTextDraft(std::move(draft),
                                                                              mutation);
 }
+#if defined(PAE_ENABLE_SCHEMA_V11_ASCII_STREAM_FRAMING)
+protocol_plan::BudgetedPlanDraft MutateAsciiStreamDraft(protocol_plan::BudgetedPlanDraft draft,
+                                                        AsciiStreamDraftMutation mutation) {
+  return protocol_plan::test_only::PlanBuilderTestPeer::MutateAsciiStreamDraft(std::move(draft),
+                                                                               mutation);
+}
+#endif
 #endif
 
 #if defined(PAE_ENABLE_SCHEMA_V05_COMPILER)

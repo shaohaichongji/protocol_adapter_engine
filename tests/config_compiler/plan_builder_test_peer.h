@@ -60,6 +60,16 @@ enum class AsciiTextDraftMutation {
 };
 protocol_plan::BudgetedPlanDraft MutateAsciiTextDraft(protocol_plan::BudgetedPlanDraft draft,
                                                       AsciiTextDraftMutation mutation);
+#if defined(PAE_ENABLE_SCHEMA_V11_ASCII_STREAM_FRAMING)
+enum class AsciiStreamDraftMutation {
+  CORRUPTED_TERMINATOR,
+  PROFILE_TOO_SHORT,
+  BOUNDARY_UNPROVEN,
+  NO_DECODE_CANDIDATE,
+};
+protocol_plan::BudgetedPlanDraft MutateAsciiStreamDraft(protocol_plan::BudgetedPlanDraft draft,
+                                                        AsciiStreamDraftMutation mutation);
+#endif
 #endif
 protocol_plan::BudgetedPlanDraft MakeInt64DraftWithOutOfRangeConstant();
 #if defined(PAE_ENABLE_SCHEMA_V05_COMPILER)

@@ -105,6 +105,9 @@ enum class FramingStrategy {
   FIXED_LENGTH,
   SYNC_FIXED_LENGTH,
   SYNC_LENGTH_FIELD,
+#if defined(PAE_ENABLE_SCHEMA_V11_ASCII_STREAM_FRAMING)
+  ASCII_CRLF,
+#endif
 };
 #endif
 

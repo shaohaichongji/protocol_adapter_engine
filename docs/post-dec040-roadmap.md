@@ -2,6 +2,17 @@
 
 ## 2026-09-12 当前入口
 
+Lab ASCII离线集成已随合并提交`407af0df6e7b77c05aa5afbc7f334822fe5ae205`推送至main，
+父提交为`256c5b7`和`8bfe50f`；原32文件检查点已交付。下一检查点的
+[ASCII有界流式接收首片六项契约](ascii-stream-framing-contract.md)已获用户确认并独立授权实施。
+PAE Compiler/Plan/Framer、Core版本接线、快照和宿主示例已实现；初版Windows Debug/Release
+各31/31通过。总控发现0.11快照遗漏RX/TX模板，限定修复先复现失败，再完成两个配置各6/6回归，
+该P2已定向复核关闭，详见[验证报告](windows-msvc-2026-ascii-stream-framing-slice.md)。
+当前进行文档与候选范围收口，尚未Stage、Commit、Push；Lab离线chunk观察尚未实施，
+后续须先核定接入接口及授权，共享文件串行修改。不扩展网络、端点注册、UTF-8或Evidence。
+
+### 2026-09-12 Lab集成交付前快照（历史）
+
 PAE ASCII检查点已在`main@256c5b7`提交并推送。Lab输入修复`feat/lab-ui-c1@8bfe50f`已推送，
 当前已在主工作树启动合并但尚未生成合并提交。按[Lab ASCII离线接入契约](lab-ascii-offline-integration-contract.md)
 独立授权实施的内部适配、Qt接线及限定修复已完成；Windows Debug/Release自动验证和限定人工复核

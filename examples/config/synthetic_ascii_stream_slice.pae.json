@@ -1,0 +1,138 @@
+{
+  "schema_version": "0.11",
+  "protocol_id": "synthetic_ascii_stream_slice",
+  "protocol_version": "1.0",
+  "display_name": "Synthetic ASCII CRLF stream slice",
+  "description": "Public from-scratch bounded ASCII stream vectors.",
+  "source_ref": "SYNTHETIC_FROM_SCRATCH:ASCII_STREAM_SLICE",
+  "resource_profile": "desktop",
+  "framing_profiles": [
+    {
+      "id": "ascii_rx",
+      "display_name": "ASCII CRLF receive",
+      "description": "Bounded records including CRLF.",
+      "source_ref": "SYNTHETIC_FROM_SCRATCH:ASCII_STREAM_SLICE",
+      "input_kind": "stream_chunk",
+      "strategy": "ascii_crlf",
+      "terminator_text": "\r\n",
+      "maximum_frame_length": 12
+    },
+    {
+      "id": "record",
+      "display_name": "Complete record",
+      "description": "Offline action-gating checks.",
+      "source_ref": "SYNTHETIC_FROM_SCRATCH:ASCII_STREAM_SLICE",
+      "input_kind": "complete_record"
+    }
+  ],
+  "pipelines": [
+    {
+      "id": "ascii_pipeline",
+      "display_name": "ASCII stream pipeline",
+      "description": "Synthetic stream receive direction.",
+      "source_ref": "SYNTHETIC_FROM_SCRATCH:ASCII_STREAM_SLICE",
+      "direction_id": "synthetic",
+      "input_framing_profile_id": "ascii_rx",
+      "message_ids": ["greeting", "decode_only", "encode_only"]
+    },
+    {
+      "id": "encode_only_pipeline",
+      "display_name": "Encode-only pipeline",
+      "description": "Offline missing Decode action check.",
+      "source_ref": "SYNTHETIC_FROM_SCRATCH:ASCII_STREAM_SLICE",
+      "direction_id": "synthetic",
+      "input_framing_profile_id": "record",
+      "message_ids": ["encode_only"]
+    },
+    {
+      "id": "decode_only_pipeline",
+      "display_name": "Decode-only pipeline",
+      "description": "Offline missing Encode action check.",
+      "source_ref": "SYNTHETIC_FROM_SCRATCH:ASCII_STREAM_SLICE",
+      "direction_id": "synthetic",
+      "input_framing_profile_id": "record",
+      "message_ids": ["decode_only"]
+    }
+  ],
+  "messages": [
+    {
+      "id": "greeting",
+      "display_name": "Greeting",
+      "description": "Independent receive and transmit templates.",
+      "source_ref": "SYNTHETIC_FROM_SCRATCH:ASCII_STREAM_SLICE",
+      "direction_id": "synthetic",
+      "layout": {
+        "kind": "text",
+        "encoding": "ascii",
+        "decode": {"segments": [
+          {"kind": "literal", "text": "RX "},
+          {"kind": "field", "field_id": "name"},
+          {"kind": "literal", "text": "!"},
+          {"kind": "field", "field_id": "rx_code"},
+          {"kind": "literal", "text": "\r\n"}
+        ]},
+        "encode": {"segments": [
+          {"kind": "literal", "text": "TX "},
+          {"kind": "field", "field_id": "name"},
+          {"kind": "literal", "text": "!"},
+          {"kind": "field", "field_id": "tx_tag"},
+          {"kind": "literal", "text": "\r\n"}
+        ]}
+      },
+      "fields": [
+        {
+          "id": "name",
+          "display_name": "Name",
+          "description": "Printable bounded name.",
+          "source_ref": "SYNTHETIC_FROM_SCRATCH:ASCII_STREAM_SLICE",
+          "value_type": "BYTES",
+          "wire": {"codec": "ascii_text", "min_byte_length": 1, "max_byte_length": 4},
+          "encode": {"source": "input"}
+        },
+        {
+          "id": "rx_code",
+          "display_name": "RX code",
+          "description": "Decode-only fixed-width value.",
+          "source_ref": "SYNTHETIC_FROM_SCRATCH:ASCII_STREAM_SLICE",
+          "value_type": "BYTES",
+          "wire": {"codec": "ascii_text", "min_byte_length": 2, "max_byte_length": 2}
+        },
+        {
+          "id": "tx_tag",
+          "display_name": "TX tag",
+          "description": "Encode-only fixed-width value.",
+          "source_ref": "SYNTHETIC_FROM_SCRATCH:ASCII_STREAM_SLICE",
+          "value_type": "BYTES",
+          "wire": {"codec": "ascii_text", "min_byte_length": 1, "max_byte_length": 1},
+          "encode": {"source": "input"}
+        }
+      ]
+    },
+    {
+      "id": "decode_only",
+      "display_name": "Decode only",
+      "description": "Literal-only receive action.",
+      "source_ref": "SYNTHETIC_FROM_SCRATCH:ASCII_STREAM_SLICE",
+      "direction_id": "synthetic",
+      "layout": {
+        "kind": "text",
+        "encoding": "ascii",
+        "decode": {"segments": [{"kind": "literal", "text": "ONLY\r\n"}]}
+      },
+      "fields": []
+    },
+    {
+      "id": "encode_only",
+      "display_name": "Encode only",
+      "description": "Literal-only transmit action ignored by RX candidates.",
+      "source_ref": "SYNTHETIC_FROM_SCRATCH:ASCII_STREAM_SLICE",
+      "direction_id": "synthetic",
+      "layout": {
+        "kind": "text",
+        "encoding": "ascii",
+        "encode": {"segments": [{"kind": "literal", "text": "SEND\r\n"}]}
+      },
+      "fields": []
+    }
+  ]
+}

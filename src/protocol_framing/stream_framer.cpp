@@ -52,6 +52,10 @@ bool StreamFramingWorkspace::HasInternalWork() const noexcept {
 }
 
 bool StreamFramingWorkspace::HasHalfFrame() const noexcept {
+#if defined(PAE_ENABLE_SCHEMA_V11_ASCII_STREAM_FRAMING)
+  if (state_ == State::COLLECT_ASCII) return buffered_size_ != 0U;
+  if (state_ == State::DISCARD_UNTIL_CRLF) return true;
+#endif
   if (state_ == State::COLLECT_FIXED || state_ == State::COLLECT_DECLARED ||
       state_ == State::READ_LENGTH) {
     return buffered_size_ != 0U;
@@ -69,6 +73,13 @@ void StreamFramingWorkspace::ResetCandidate() noexcept {
   compact_start_ = 0U;
   compact_size_ = 0U;
   compact_moved_ = 0U;
+#if defined(PAE_ENABLE_SCHEMA_V11_ASCII_STREAM_FRAMING)
+  previous_was_cr_ = false;
+  if (framing_->strategy == protocol_plan::FramingStrategy::ASCII_CRLF) {
+    state_ = State::COLLECT_ASCII;
+    return;
+  }
+#endif
   state_ = framing_->strategy == protocol_plan::FramingStrategy::FIXED_LENGTH ? State::COLLECT_FIXED
                                                                               : State::SEARCH_SYNC;
   if (state_ == State::COLLECT_FIXED) {
@@ -84,7 +95,12 @@ WorkspaceCreateResult CreateStreamFramingWorkspace(
     const protocol_plan::PlanBundle& plan, std::size_t pipeline_index,
     const FramingLimitOverrides& overrides) noexcept {
   WorkspaceCreateResult result;
-  if (plan.SchemaVersion() != "0.9" || pipeline_index >= plan.Pipelines().size()) {
+  if ((plan.SchemaVersion() != "0.9"
+#if defined(PAE_ENABLE_SCHEMA_V11_ASCII_STREAM_FRAMING)
+       && plan.SchemaVersion() != "0.11"
+#endif
+       ) ||
+      pipeline_index >= plan.Pipelines().size()) {
     return result;
   }
   const auto& pipeline = plan.Pipelines()[pipeline_index];
@@ -110,6 +126,10 @@ WorkspaceCreateResult CreateStreamFramingWorkspace(
   const std::uint64_t frame_capacity64 =
       framing.strategy == protocol_plan::FramingStrategy::SYNC_LENGTH_FIELD
           ? framing.maximum_frame_length
+#if defined(PAE_ENABLE_SCHEMA_V11_ASCII_STREAM_FRAMING)
+      : framing.strategy == protocol_plan::FramingStrategy::ASCII_CRLF
+          ? framing.maximum_frame_length
+#endif
           : framing.frame_length_bytes;
   if (!valid || frame_capacity64 == 0U ||
       frame_capacity64 > protocol_plan::kMaxStreamFrameBytesHardLimit ||
@@ -151,7 +171,12 @@ SubmitResult PushStreamChunk(const protocol_plan::PlanBundle& plan,
     result.api_status = SubmitApiStatus::INVALID_ARGUMENT;
     return result;
   }
-  if (plan.SchemaVersion() != "0.9" || pipeline_index >= plan.Pipelines().size()) {
+  if ((plan.SchemaVersion() != "0.9"
+#if defined(PAE_ENABLE_SCHEMA_V11_ASCII_STREAM_FRAMING)
+       && plan.SchemaVersion() != "0.11"
+#endif
+       ) ||
+      pipeline_index >= plan.Pipelines().size()) {
     result.api_status = SubmitApiStatus::INVALID_PLAN;
     return result;
   }
@@ -205,6 +230,50 @@ SubmitResult PushStreamChunk(const protocol_plan::PlanBundle& plan,
       }
       continue;
     }
+
+#if defined(PAE_ENABLE_SCHEMA_V11_ASCII_STREAM_FRAMING)
+    if (state == State::COLLECT_ASCII) {
+      if (input_index == input.size) break;
+      if (!charge(2U)) return budget_stop();
+      if (workspace.buffered_size_ >= workspace.buffer_.size()) {
+        result.api_status = SubmitApiStatus::INTERNAL_ERROR;
+        return result;
+      }
+      const std::uint8_t byte = input.data[input_index++];
+      workspace.buffer_[workspace.buffered_size_++] = byte;
+      ++result.bytes_consumed;
+      const bool terminated = workspace.buffered_size_ >= 2U &&
+                              workspace.buffer_[workspace.buffered_size_ - 2U] == 0x0DU &&
+                              byte == 0x0AU;
+      if (terminated) {
+        workspace.state_ = State::DELIVER_PENDING;
+      } else if (workspace.buffered_size_ == workspace.buffer_.size()) {
+        ++result.malformed_candidates;
+        ++workspace.total_malformed_candidates_;
+        result.last_framing_issue = FramingIssue::RECORD_TOO_LONG;
+        workspace.previous_was_cr_ = byte == 0x0DU;
+        record_discard(workspace.buffered_size_);
+        workspace.buffered_size_ = 0U;
+        workspace.state_ = State::DISCARD_UNTIL_CRLF;
+      }
+      continue;
+    }
+
+    if (state == State::DISCARD_UNTIL_CRLF) {
+      if (input_index == input.size) break;
+      if (!charge(2U)) return budget_stop();
+      const std::uint8_t byte = input.data[input_index++];
+      ++result.bytes_consumed;
+      record_discard(1U);
+      const bool terminated = workspace.previous_was_cr_ && byte == 0x0AU;
+      workspace.previous_was_cr_ = byte == 0x0DU;
+      if (terminated) {
+        workspace.previous_was_cr_ = false;
+        workspace.state_ = State::COLLECT_ASCII;
+      }
+      continue;
+    }
+#endif
 
     if (state == State::COPY_SYNC) {
       while (workspace.copy_sync_index_ < workspace.framing_->sync_bytes.size()) {

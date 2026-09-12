@@ -228,6 +228,9 @@ class TestRunner final {
 #endif
 #if defined(PAE_ENABLE_SCHEMA_V10_ASCII_TEXT_CODEC)
                                                     + 5U
+#if defined(PAE_ENABLE_SCHEMA_V11_ASCII_STREAM_FRAMING)
+                                                    + 5U
+#endif
 #endif
       ;
 #else
@@ -423,6 +426,24 @@ SchemaIr MakeAsciiTextContractSchema() {
   schema.messages.push_back(std::move(message));
   return schema;
 }
+#if defined(PAE_ENABLE_SCHEMA_V11_ASCII_STREAM_FRAMING)
+SchemaIr MakeAsciiStreamContractSchema() {
+  SchemaIr schema = MakeAsciiTextContractSchema();
+  schema.schema_version = "0.11";
+  FramingProfileIr& framing = schema.framing_profiles[0];
+  framing.id = "ascii_stream";
+  framing.input_kind = InputKind::STREAM_CHUNK;
+  framing.strategy = FramingStrategy::ASCII_CRLF;
+  framing.sync_bytes = {0x0DU, 0x0AU};
+  framing.maximum_frame_length = 16U;
+  schema.pipelines[0].input_framing_profile_id = "ascii_stream";
+  for (auto* action :
+       {&*schema.messages[0].ascii_text->decode, &*schema.messages[0].ascii_text->encode}) {
+    action->segments.back().literal = {'!', '\r', '\n'};
+  }
+  return schema;
+}
+#endif
 #endif
 
 std::unique_ptr<BudgetedPlanDraft> AssembleSchemaDraft(SchemaIr schema,
@@ -1404,6 +1425,50 @@ void RunPlanBuilderAsciiTextDefenseCases(TestRunner& runner) {
   reject("ascii_text_builder_field_type_defense", Mutation::FIELD_TYPE_MISMATCH,
          PlanBuildError::INVALID_FIELD_PLAN);
 }
+#if defined(PAE_ENABLE_SCHEMA_V11_ASCII_STREAM_FRAMING)
+void RunPlanBuilderAsciiStreamDefenseCases(TestRunner& runner) {
+  const auto make_draft = [&runner]() -> std::unique_ptr<BudgetedPlanDraft> {
+    CompileDiagnostic diagnostic;
+    auto draft = AssembleSchemaDraft(MakeAsciiStreamContractSchema(), std::nullopt, diagnostic);
+    if (draft == nullptr) {
+      runner.Fail("ascii_stream_builder_fixture", "valid stream fixture failed before PlanBuilder");
+    }
+    return draft;
+  };
+  auto control = make_draft();
+  if (control == nullptr || !PlanBuilder::Freeze(std::move(*control)).Succeeded()) {
+    runner.Fail("ascii_stream_builder_control", "valid ASCII stream Draft did not freeze");
+  } else {
+    runner.Pass("ascii_stream_builder_control");
+  }
+  const auto reject = [&runner, &make_draft](std::string_view case_id,
+                                             pae::test_support::AsciiStreamDraftMutation mutation,
+                                             PlanBuildError expected) {
+    auto draft = make_draft();
+    if (draft == nullptr) return;
+    const PlanBuildResult result =
+        PlanBuilder::Freeze(pae::test_support::MutateAsciiStreamDraft(std::move(*draft), mutation));
+    if (result.Succeeded() || result.Diagnostic() == nullptr ||
+        result.Diagnostic()->code != expected) {
+      runner.Fail(case_id, result.Succeeded()
+                               ? "corrupted ASCII stream Draft passed the Builder defense"
+                               : "Builder rejected at code " +
+                                     std::to_string(static_cast<int>(result.Diagnostic()->code)));
+    } else {
+      runner.Pass(case_id);
+    }
+  };
+  using Mutation = pae::test_support::AsciiStreamDraftMutation;
+  reject("ascii_stream_builder_terminator_defense", Mutation::CORRUPTED_TERMINATOR,
+         PlanBuildError::INVALID_FRAMING_PLAN);
+  reject("ascii_stream_builder_profile_bound_defense", Mutation::PROFILE_TOO_SHORT,
+         PlanBuildError::INVALID_PIPELINE_PLAN);
+  reject("ascii_stream_builder_boundary_defense", Mutation::BOUNDARY_UNPROVEN,
+         PlanBuildError::INVALID_PIPELINE_PLAN);
+  reject("ascii_stream_builder_decode_candidate_defense", Mutation::NO_DECODE_CANDIDATE,
+         PlanBuildError::INVALID_PIPELINE_PLAN);
+}
+#endif
 #endif
 
 bool ReadBinaryFile(const std::filesystem::path& path, std::string& output, std::string& error) {
@@ -1825,6 +1890,9 @@ int main(int argc, char** argv) {
   RunPlanBuilderInt64DefenseCase(runner);
 #if defined(PAE_ENABLE_SCHEMA_V10_ASCII_TEXT_CODEC)
   RunPlanBuilderAsciiTextDefenseCases(runner);
+#if defined(PAE_ENABLE_SCHEMA_V11_ASCII_STREAM_FRAMING)
+  RunPlanBuilderAsciiStreamDefenseCases(runner);
+#endif
 #endif
   RunPlanMemoryContractCases(runner);
 

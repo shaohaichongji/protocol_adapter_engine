@@ -41,7 +41,13 @@ enum class SubmitStopReason {
   SINK_STOP,
 };
 
-enum class FramingIssue { NONE, MALFORMED_LENGTH };
+enum class FramingIssue {
+  NONE,
+  MALFORMED_LENGTH,
+#if defined(PAE_ENABLE_SCHEMA_V11_ASCII_STREAM_FRAMING)
+  RECORD_TOO_LONG,
+#endif
+};
 
 struct SubmitResult {
   SubmitApiStatus api_status = SubmitApiStatus::OK;
@@ -94,6 +100,10 @@ class StreamFramingWorkspace final {
     DELIVER_PENDING,
     RESCAN_INVALID,
     COMPACT_INVALID,
+#if defined(PAE_ENABLE_SCHEMA_V11_ASCII_STREAM_FRAMING)
+    COLLECT_ASCII,
+    DISCARD_UNTIL_CRLF,
+#endif
   };
 
   StreamFramingWorkspace(const protocol_plan::PlanBundle& plan, std::size_t pipeline_index,
@@ -132,6 +142,9 @@ class StreamFramingWorkspace final {
   std::size_t max_session_memory_bytes_ = 0U;
   std::size_t total_discarded_bytes_ = 0U;
   std::size_t total_malformed_candidates_ = 0U;
+#if defined(PAE_ENABLE_SCHEMA_V11_ASCII_STREAM_FRAMING)
+  bool previous_was_cr_ = false;
+#endif
   State state_ = State::COLLECT_FIXED;
   std::atomic_flag in_use_ = ATOMIC_FLAG_INIT;
 };
