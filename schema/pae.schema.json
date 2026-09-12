@@ -1,9 +1,9 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "urn:pae:schema:protocol-package:0.9:bounded-stream-framing-slice",
-  "title": "PAE ProtocolPackage V0.1-V0.9 Bounded Stream Framing Slice",
-  "description": "Schema 0.9在既有完整记录能力上增加有界流式切帧。",
-  "x-pae-status": "BOUNDED STREAM FRAMING MINIMAL SLICE",
+  "$id": "urn:pae:schema:protocol-package:0.10:ascii-text-codec-slice",
+  "title": "PAE ProtocolPackage V0.1-V0.10 ASCII Text Codec Slice",
+  "description": "Schema 0.10增加仅ASCII文本包的完整记录编解码。",
+  "x-pae-status": "ASCII TEXT COMPLETE RECORD MINIMAL SLICE",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -19,7 +19,7 @@
   ],
   "properties": {
     "schema_version": {
-      "enum": ["0.1", "0.2", "0.3", "0.4", "0.5", "0.6", "0.7", "0.8", "0.9"]
+      "enum": ["0.1", "0.2", "0.3", "0.4", "0.5", "0.6", "0.7", "0.8", "0.9", "0.10"]
     },
     "protocol_id": {
       "$ref": "#/$defs/stable_id"
@@ -86,7 +86,11 @@
                 "else": {
                   "if": {"properties": {"schema_version": {"const": "0.7"}}},
                   "then": {"properties": {"messages": {"items": {"$ref": "#/$defs/message_v07"}}}},
-                  "else": {"properties": {"messages": {"items": {"$ref": "#/$defs/message_v08"}}}}
+                  "else": {
+                    "if": {"properties": {"schema_version": {"const": "0.10"}}},
+                    "then": {"properties": {"messages": {"items": {"$ref": "#/$defs/message_v10"}}}},
+                    "else": {"properties": {"messages": {"items": {"$ref": "#/$defs/message_v08"}}}}
+                  }
                 }
               }
             }
@@ -485,6 +489,98 @@
         {"$ref": "#/$defs/message_v07"},
         {"$ref": "#/$defs/message_v08_bounded"}
       ]
+    },
+    "message_v10": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "display_name", "description", "source_ref", "direction_id",
+                   "layout", "fields"],
+      "properties": {
+        "id": {"$ref": "#/$defs/stable_id"},
+        "display_name": {"$ref": "#/$defs/display_name"},
+        "description": {"$ref": "#/$defs/description"},
+        "source_ref": {"$ref": "#/$defs/source_ref"},
+        "direction_id": {"$ref": "#/$defs/stable_id"},
+        "layout": {"$ref": "#/$defs/ascii_text_layout"},
+        "fields": {
+          "type": "array", "maxItems": 2048,
+          "items": {"$ref": "#/$defs/ascii_text_field"}
+        }
+      }
+    },
+    "ascii_text_layout": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "encoding"],
+      "properties": {
+        "kind": {"const": "text"},
+        "encoding": {"const": "ascii"},
+        "decode": {"$ref": "#/$defs/ascii_text_action"},
+        "encode": {"$ref": "#/$defs/ascii_text_action"}
+      },
+      "anyOf": [{"required": ["decode"]}, {"required": ["encode"]}]
+    },
+    "ascii_text_action": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["segments"],
+      "properties": {
+        "segments": {
+          "type": "array", "minItems": 1, "maxItems": 4097,
+          "items": {"$ref": "#/$defs/ascii_text_segment"}
+        }
+      }
+    },
+    "ascii_text_segment": {
+      "oneOf": [
+        {
+          "type": "object", "additionalProperties": false,
+          "required": ["kind", "text"],
+          "properties": {
+            "kind": {"const": "literal"},
+            "text": {"type": "string", "minLength": 1, "maxLength": 65536}
+          }
+        },
+        {
+          "type": "object", "additionalProperties": false,
+          "required": ["kind", "field_id"],
+          "properties": {
+            "kind": {"const": "field"},
+            "field_id": {"$ref": "#/$defs/stable_id"}
+          }
+        }
+      ]
+    },
+    "ascii_text_field": {
+      "allOf": [
+        {"$ref": "#/$defs/field_common"},
+        {
+          "type": "object",
+          "required": ["value_type", "wire"],
+          "properties": {
+            "value_type": {"const": "BYTES"},
+            "wire": {"$ref": "#/$defs/wire_ascii_text"},
+            "encode": {"$ref": "#/$defs/input_encode_source"}
+          }
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    "wire_ascii_text": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["codec", "min_byte_length", "max_byte_length"],
+      "properties": {
+        "codec": {"const": "ascii_text"},
+        "min_byte_length": {"type": "integer", "minimum": 0,
+                            "maximum": 18446744073709551615},
+        "max_byte_length": {"type": "integer", "minimum": 0,
+                            "maximum": 18446744073709551615},
+        "allowed_control_bytes": {
+          "type": "string",
+          "pattern": "^(?:[0-9A-F]{2})(?: [0-9A-F]{2})*$"
+        }
+      }
     },
     "message_v08_bounded": {
       "type": "object",

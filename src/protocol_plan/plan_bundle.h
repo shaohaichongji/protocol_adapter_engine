@@ -63,7 +63,33 @@ struct FieldPlan {
 #if defined(PAE_ENABLE_SCHEMA_V05_COMPILER)
   std::size_t conversion_index = static_cast<std::size_t>(-1);
 #endif
+#if defined(PAE_ENABLE_SCHEMA_V10_ASCII_TEXT_CODEC)
+  std::uint64_t text_min_length = 0U;
+  std::uint64_t text_max_length = 0U;
+  std::uint64_t allowed_ascii_low = 0U;
+  std::uint64_t allowed_ascii_high = 0U;
+#endif
 };
+
+#if defined(PAE_ENABLE_SCHEMA_V10_ASCII_TEXT_CODEC)
+struct TextSegmentPlan {
+  TextSegmentKind kind = TextSegmentKind::LITERAL;
+  std::vector<std::uint8_t> literal;
+  std::vector<std::size_t> prefix_table;
+  std::size_t field_index = static_cast<std::size_t>(-1);
+};
+
+struct TextActionPlan {
+  std::vector<TextSegmentPlan> segments;
+  std::uint64_t min_record_length = 0U;
+  std::uint64_t max_record_length = 0U;
+};
+
+struct AsciiTextPlan {
+  std::optional<TextActionPlan> decode;
+  std::optional<TextActionPlan> encode;
+};
+#endif
 
 struct BitContainerPlan {
   std::string id;
@@ -133,6 +159,9 @@ struct MessagePlan {
   std::optional<ComputedLengthPlan> computed_length;
 #endif
   std::vector<FieldPlan> fields;
+#if defined(PAE_ENABLE_SCHEMA_V10_ASCII_TEXT_CODEC)
+  std::optional<AsciiTextPlan> ascii_text;
+#endif
 };
 
 struct PipelinePlan {
@@ -187,6 +216,12 @@ struct FrozenFieldPlan {
   std::optional<std::int64_t> signed_constant_value;
 #if defined(PAE_ENABLE_SCHEMA_V05_COMPILER)
   std::size_t conversion_index = static_cast<std::size_t>(-1);
+#endif
+#if defined(PAE_ENABLE_SCHEMA_V10_ASCII_TEXT_CODEC)
+  std::uint64_t text_min_length = 0U;
+  std::uint64_t text_max_length = 0U;
+  std::uint64_t allowed_ascii_low = 0U;
+  std::uint64_t allowed_ascii_high = 0U;
 #endif
 };
 
@@ -290,7 +325,29 @@ struct FieldExecutionPlan {
   std::size_t conversion_index = static_cast<std::size_t>(-1);
   std::size_t conversion_slot = static_cast<std::size_t>(-1);
 #endif
+#if defined(PAE_ENABLE_SCHEMA_V10_ASCII_TEXT_CODEC)
+  std::size_t text_min_length = 0U;
+  std::size_t text_max_length = 0U;
+  std::uint64_t allowed_ascii_low = 0U;
+  std::uint64_t allowed_ascii_high = 0U;
+  bool text_encode_input = false;
+#endif
 };
+
+#if defined(PAE_ENABLE_SCHEMA_V10_ASCII_TEXT_CODEC)
+struct TextSegmentExecutionPlan {
+  TextSegmentKind kind = TextSegmentKind::LITERAL;
+  FrozenArray<std::uint8_t> literal;
+  FrozenArray<std::size_t> prefix_table;
+  std::size_t field_index = static_cast<std::size_t>(-1);
+};
+
+struct TextActionExecutionPlan {
+  FrozenArray<TextSegmentExecutionPlan> segments;
+  std::size_t min_record_length = 0U;
+  std::size_t max_record_length = 0U;
+};
+#endif
 
 struct MessageExecutionPlan {
   std::size_t frame_size = 0U;
@@ -307,6 +364,11 @@ struct MessageExecutionPlan {
   FrozenArray<FieldExecutionPlan> fields;
   FrozenArray<std::uint64_t> enum_raw_values;
   FrozenArray<EnumLookupExecutionPlan> enum_lookup_entries;
+#if defined(PAE_ENABLE_SCHEMA_V10_ASCII_TEXT_CODEC)
+  std::optional<TextActionExecutionPlan> text_decode;
+  std::optional<TextActionExecutionPlan> text_encode;
+  std::size_t text_decode_field_count = 0U;
+#endif
 };
 
 struct CandidateGroupExecutionPlan {
@@ -320,6 +382,9 @@ struct PipelineExecutionPlan {
   FrozenArray<CandidateGroupExecutionPlan> candidate_groups;
 #if defined(PAE_ENABLE_SCHEMA_V08_VARIABLE_COMPILER)
   FrozenArray<std::size_t> variable_message_indices;
+#endif
+#if defined(PAE_ENABLE_SCHEMA_V10_ASCII_TEXT_CODEC)
+  FrozenArray<std::size_t> text_message_indices;
 #endif
 };
 

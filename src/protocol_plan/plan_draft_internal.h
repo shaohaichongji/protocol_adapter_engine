@@ -43,6 +43,11 @@ struct PreparedMessageExecutionPlan {
   std::vector<FieldExecutionPlan> fields;
   std::vector<std::uint64_t> enum_raw_values;
   std::vector<EnumLookupExecutionPlan> enum_lookup_entries;
+#if defined(PAE_ENABLE_SCHEMA_V10_ASCII_TEXT_CODEC)
+  std::optional<TextActionPlan> text_decode;
+  std::optional<TextActionPlan> text_encode;
+  std::size_t text_decode_field_count = 0U;
+#endif
 };
 
 struct PreparedCandidateGroupExecutionPlan {
@@ -56,6 +61,9 @@ struct PreparedPipelineExecutionPlan {
   std::vector<PreparedCandidateGroupExecutionPlan> candidate_groups;
 #if defined(PAE_ENABLE_SCHEMA_V08_VARIABLE_COMPILER)
   std::vector<std::size_t> variable_message_indices;
+#endif
+#if defined(PAE_ENABLE_SCHEMA_V10_ASCII_TEXT_CODEC)
+  std::vector<std::size_t> text_message_indices;
 #endif
 };
 

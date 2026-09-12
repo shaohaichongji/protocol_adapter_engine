@@ -37,6 +37,11 @@ enum class CodecStatus {
   BUFFER_TOO_SMALL,
   FINAL_REVIEW_FAILED,
   INTERNAL_ERROR,
+#if defined(PAE_ENABLE_SCHEMA_V10_ASCII_TEXT_CODEC)
+  ASCII_CHARACTER_NOT_ALLOWED,
+  ASCII_TERMINATOR_CONFLICT,
+  OPERATION_NOT_SUPPORTED,
+#endif
 #if defined(PAE_ENABLE_SCHEMA_V07_LENGTH_COMPILER)
   COMPUTED_FIELD_OVERRIDE,
   LENGTH_MISMATCH,
@@ -194,6 +199,9 @@ namespace test_only {
 // Test-only fault injection for the instrumented target. The production target does not expose
 // this declaration or carry the associated branch.
 void CorruptIntegrityStorageBeforeFinalReviewOnce() noexcept;
+#if defined(PAE_ENABLE_SCHEMA_V10_ASCII_TEXT_CODEC)
+void CorruptAsciiOutputBeforeFinalReviewOnce() noexcept;
+#endif
 #if defined(PAE_ENABLE_SCHEMA_V07_LENGTH_COMPILER)
 void CorruptComputedLengthBeforeFinalReviewOnce() noexcept;
 #endif

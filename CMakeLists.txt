@@ -62,6 +62,16 @@ option(
     OFF
 )
 option(
+    PAE_ENABLE_SCHEMA_V10_ASCII_TEXT_CODEC
+    "Enable the internal Schema 0.10 ASCII complete-record compiler and Core slice"
+    OFF
+)
+option(
+    PAE_BUILD_ASCII_TEXT_EXAMPLE
+    "Build the minimal Schema 0.10 ASCII complete-record host example"
+    OFF
+)
+option(
     PAE_BUILD_STREAM_FRAMING_SLICE
     "Build the internal bounded stream Framing execution slice"
     OFF
@@ -227,6 +237,25 @@ if(PAE_ENABLE_SCHEMA_V09_STREAM_FRAMING AND
         "PAE_ENABLE_SCHEMA_V09_STREAM_FRAMING requires the Loader, Core, and explicit Schema 0.8 compiler slice."
     )
 endif()
+if(PAE_ENABLE_SCHEMA_V10_ASCII_TEXT_CODEC AND
+   (NOT PAE_ENABLE_SCHEMA_V09_STREAM_FRAMING OR
+    NOT PAE_BUILD_LOADER_SCHEMA_IR_SLICE OR
+    NOT PAE_BUILD_COMPLETE_RECORD_CODEC_SLICE))
+    message(
+        FATAL_ERROR
+        "PAE_ENABLE_SCHEMA_V10_ASCII_TEXT_CODEC requires the Loader, Core, and explicit Schema 0.9 slice."
+    )
+endif()
+if(PAE_ENABLE_SCHEMA_V10_ASCII_TEXT_CODEC AND
+   (PAE_BUILD_PROTOCOL_LAB OR PAE_BUILD_PROTOCOL_LAB_UI))
+    message(
+        FATAL_ERROR
+        "Schema 0.10 ASCII execution is not connected to Protocol Lab or its evidence formats."
+    )
+endif()
+if(PAE_BUILD_ASCII_TEXT_EXAMPLE AND NOT PAE_ENABLE_SCHEMA_V10_ASCII_TEXT_CODEC)
+    message(FATAL_ERROR "PAE_BUILD_ASCII_TEXT_EXAMPLE requires the Schema 0.10 ASCII slice.")
+endif()
 if(PAE_BUILD_STREAM_FRAMING_SLICE AND NOT PAE_ENABLE_SCHEMA_V09_STREAM_FRAMING)
     message(
         FATAL_ERROR
@@ -343,7 +372,8 @@ if(PAE_BUILD_LOADER_SCHEMA_IR_SLICE OR
    PAE_BUILD_PROTOCOL_LAB OR
    PAE_BUILD_PROTOCOL_LAB_UI OR
    PAE_BUILD_BUSINESS_EMBEDDING_EXAMPLE OR
-   PAE_BUILD_STREAM_FRAMING_SLICE)
+   PAE_BUILD_STREAM_FRAMING_SLICE OR
+   PAE_BUILD_ASCII_TEXT_EXAMPLE)
     add_subdirectory(src/protocol_plan)
 endif()
 
@@ -352,7 +382,8 @@ if(PAE_BUILD_LOADER_SCHEMA_IR_SLICE OR
    PAE_BUILD_PROTOCOL_LAB OR
    PAE_BUILD_PROTOCOL_LAB_UI OR
    PAE_BUILD_BUSINESS_EMBEDDING_EXAMPLE OR
-   PAE_BUILD_STREAM_FRAMING_SLICE)
+   PAE_BUILD_STREAM_FRAMING_SLICE OR
+   PAE_BUILD_ASCII_TEXT_EXAMPLE)
     add_subdirectory(src/config_compiler)
 endif()
 
@@ -380,6 +411,9 @@ endif()
 
 if(PAE_BUILD_STREAM_FRAMING_EXAMPLE)
     add_subdirectory(examples/stream_framing)
+endif()
+if(PAE_BUILD_ASCII_TEXT_EXAMPLE)
+    add_subdirectory(examples/ascii_text)
 endif()
 
 if(PAE_BUILD_BUSINESS_EMBEDDING_EXAMPLE)

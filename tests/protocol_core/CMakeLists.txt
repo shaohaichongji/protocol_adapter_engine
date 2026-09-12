@@ -146,6 +146,16 @@ if(PAE_ENABLE_SCHEMA_V05_COMPILER)
         PROPERTIES LABELS "protocol_core;decimal;dec042b" TIMEOUT 180
     )
 endif()
+if(PAE_ENABLE_SCHEMA_V10_ASCII_TEXT_CODEC)
+    add_test(
+        NAME pae.protocol_core.complete_record_codec.first_ascii_text_allocation
+        COMMAND pae_complete_record_first_call_allocation_tests --first-ascii-text
+    )
+    set_tests_properties(
+        pae.protocol_core.complete_record_codec.first_ascii_text_allocation
+        PROPERTIES LABELS "protocol_core;complete_record_codec;allocation;ascii_text" TIMEOUT 180
+    )
+endif()
 if(PAE_ENABLE_SCHEMA_V06_CRC_COMPILER)
     add_test(
         NAME pae.protocol_core.complete_record_codec.first_crc_allocation
@@ -175,6 +185,33 @@ if(PAE_ENABLE_SCHEMA_V08_VARIABLE_COMPILER)
         pae.protocol_core.complete_record_codec.first_variable_allocation
         PROPERTIES LABELS "protocol_core;complete_record_codec;allocation;bounded_variable"
                    TIMEOUT 180
+    )
+endif()
+if(PAE_ENABLE_SCHEMA_V10_ASCII_TEXT_CODEC)
+    add_executable(pae_ascii_text_contract_tests ascii_text_contract_tests.cpp)
+    target_include_directories(
+        pae_ascii_text_contract_tests
+        PRIVATE
+            "${PROJECT_SOURCE_DIR}/src/config_compiler"
+            "${PROJECT_SOURCE_DIR}/src/protocol_core"
+    )
+    target_link_libraries(
+        pae_ascii_text_contract_tests
+        PRIVATE
+            pae_config_compiler
+            pae_protocol_core_slice_instrumented
+            pae::protocol_plan
+            pae::project_options
+    )
+    add_test(
+        NAME pae.protocol_core.ascii_text.contract
+        COMMAND pae_ascii_text_contract_tests
+                "${PROJECT_SOURCE_DIR}/examples/config/synthetic_ascii_text_slice.pae.json"
+                "${PROJECT_SOURCE_DIR}/examples/config/synthetic_ascii_literal_only.pae.json"
+    )
+    set_tests_properties(
+        pae.protocol_core.ascii_text.contract
+        PROPERTIES LABELS "protocol_core;ascii_text" TIMEOUT 180
     )
 endif()
 if(PAE_ENABLE_SCHEMA_V08_VARIABLE_COMPILER)

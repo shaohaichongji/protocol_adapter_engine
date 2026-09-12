@@ -51,6 +51,16 @@ enum class StreamDraftMutation {
 };
 protocol_plan::BudgetedPlanDraft MakeCorruptedStreamDraft(StreamDraftMutation mutation);
 #endif
+#if defined(PAE_ENABLE_SCHEMA_V10_ASCII_TEXT_CODEC)
+enum class AsciiTextDraftMutation {
+  CORRUPTED_PREFIX_TABLE,
+  RESOURCE_COUNT_MISMATCH,
+  OLD_SCHEMA_RESIDUE,
+  FIELD_TYPE_MISMATCH,
+};
+protocol_plan::BudgetedPlanDraft MutateAsciiTextDraft(protocol_plan::BudgetedPlanDraft draft,
+                                                      AsciiTextDraftMutation mutation);
+#endif
 protocol_plan::BudgetedPlanDraft MakeInt64DraftWithOutOfRangeConstant();
 #if defined(PAE_ENABLE_SCHEMA_V05_COMPILER)
 enum class ConversionDraftMutation {

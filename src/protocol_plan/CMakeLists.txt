@@ -44,6 +44,9 @@ endif()
 if(PAE_ENABLE_SCHEMA_V09_STREAM_FRAMING)
     target_compile_definitions(pae_protocol_plan PUBLIC PAE_ENABLE_SCHEMA_V09_STREAM_FRAMING=1)
 endif()
+if(PAE_ENABLE_SCHEMA_V10_ASCII_TEXT_CODEC)
+    target_compile_definitions(pae_protocol_plan PUBLIC PAE_ENABLE_SCHEMA_V10_ASCII_TEXT_CODEC=1)
+endif()
 
 set_target_properties(
     pae_protocol_plan

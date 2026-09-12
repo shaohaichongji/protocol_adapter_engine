@@ -40,6 +40,9 @@ constexpr std::size_t kPresenceWordBits = 64U;
 
 #if defined(PAE_ENABLE_OPERATION_COUNTERS)
 std::atomic<bool> g_corrupt_integrity_storage_before_final_review{false};
+#if defined(PAE_ENABLE_SCHEMA_V10_ASCII_TEXT_CODEC)
+std::atomic<bool> g_corrupt_ascii_before_final_review{false};
+#endif
 #if defined(PAE_ENABLE_SCHEMA_V07_LENGTH_COMPILER)
 std::atomic<bool> g_corrupt_computed_length_before_final_review{false};
 #endif
@@ -235,6 +238,123 @@ bool MessageMatches(const MessageExecutionPlan& message,
   }
   return true;
 }
+
+#if defined(PAE_ENABLE_SCHEMA_V10_ASCII_TEXT_CODEC)
+enum class TextWalkStatus {
+  MATCH,
+  NO_MATCH,
+  INVALID_CHARACTER,
+  INVALID_PLAN,
+};
+
+bool IsAllowedAscii(const FieldExecutionPlan& field, std::uint8_t character) noexcept {
+  if (character > 0x7FU) return false;
+  const std::uint64_t word = character < 64U ? field.allowed_ascii_low : field.allowed_ascii_high;
+  return (word & (std::uint64_t{1U} << (character % 64U))) != 0U;
+}
+
+std::size_t FindTextLiteral(ByteView input, std::size_t begin, std::size_t maximum_field_length,
+                            const protocol_plan::TextSegmentExecutionPlan& literal) noexcept {
+  if (literal.literal.empty() || literal.prefix_table.size() != literal.literal.size() ||
+      begin > input.size) {
+    return kInvalidIndex;
+  }
+  std::size_t scan_end = input.size;
+  if (maximum_field_length <= input.size - begin &&
+      literal.literal.size() <= input.size - begin - maximum_field_length) {
+    scan_end = begin + maximum_field_length + literal.literal.size();
+  }
+  std::size_t prefix = 0U;
+  for (std::size_t index = begin; index < scan_end; ++index) {
+    while (prefix != 0U && input.data[index] != literal.literal[prefix]) {
+      prefix = literal.prefix_table[prefix - 1U];
+    }
+    if (input.data[index] == literal.literal[prefix]) ++prefix;
+    if (prefix == literal.literal.size()) return index + 1U - prefix;
+  }
+  return kInvalidIndex;
+}
+
+template <typename Visitor>
+TextWalkStatus WalkTextAction(const protocol_plan::TextActionExecutionPlan& action,
+                              const MessageExecutionPlan& message, ByteView input,
+                              bool validate_characters, Visitor&& visitor) noexcept {
+  if (input.size < action.min_record_length || input.size > action.max_record_length ||
+      action.segments.empty()) {
+    return TextWalkStatus::NO_MATCH;
+  }
+  std::size_t cursor = 0U;
+  for (std::size_t segment_index = 0U; segment_index < action.segments.size(); ++segment_index) {
+    const auto& segment = action.segments[segment_index];
+    if (segment.kind == protocol_plan::TextSegmentKind::LITERAL) {
+      if (segment.literal.empty() || segment.literal.size() > input.size - cursor) {
+        return TextWalkStatus::NO_MATCH;
+      }
+      for (std::size_t index = 0U; index < segment.literal.size(); ++index) {
+        if (input.data[cursor + index] != segment.literal[index]) return TextWalkStatus::NO_MATCH;
+      }
+      cursor += segment.literal.size();
+      continue;
+    }
+    if (segment.kind != protocol_plan::TextSegmentKind::FIELD ||
+        segment.field_index >= message.fields.size()) {
+      return TextWalkStatus::INVALID_PLAN;
+    }
+    const FieldExecutionPlan& field = message.fields[segment.field_index];
+    std::size_t length = 0U;
+    if (field.text_min_length == field.text_max_length) {
+      length = field.text_min_length;
+      if (length > input.size - cursor) return TextWalkStatus::NO_MATCH;
+    } else if (segment_index + 1U == action.segments.size()) {
+      length = input.size - cursor;
+    } else {
+      const auto& terminator = action.segments[segment_index + 1U];
+      if (terminator.kind != protocol_plan::TextSegmentKind::LITERAL) {
+        return TextWalkStatus::INVALID_PLAN;
+      }
+      const std::size_t found = FindTextLiteral(input, cursor, field.text_max_length, terminator);
+      if (found == kInvalidIndex) return TextWalkStatus::NO_MATCH;
+      length = found - cursor;
+    }
+    if (length < field.text_min_length || length > field.text_max_length) {
+      return TextWalkStatus::NO_MATCH;
+    }
+    if (validate_characters) {
+      for (std::size_t index = 0U; index < length; ++index) {
+        if (!IsAllowedAscii(field, input.data[cursor + index])) {
+          return TextWalkStatus::INVALID_CHARACTER;
+        }
+      }
+    }
+    if (!visitor(segment.field_index, cursor, length)) return TextWalkStatus::INVALID_PLAN;
+    cursor += length;
+  }
+  return cursor == input.size ? TextWalkStatus::MATCH : TextWalkStatus::NO_MATCH;
+}
+
+bool TextMessageMatches(const MessageExecutionPlan& message, ByteView input) noexcept {
+  if (!message.text_decode.has_value()) return false;
+  return WalkTextAction(*message.text_decode, message, input, false,
+                        [](std::size_t, std::size_t, std::size_t) { return true; }) ==
+         TextWalkStatus::MATCH;
+}
+
+std::size_t FindFirstAcrossBoundary(
+    ByteView value, const protocol_plan::TextSegmentExecutionPlan& literal) noexcept {
+  const std::size_t total = value.size + literal.literal.size();
+  std::size_t prefix = 0U;
+  for (std::size_t index = 0U; index < total; ++index) {
+    const std::uint8_t byte =
+        index < value.size ? value.data[index] : literal.literal[index - value.size];
+    while (prefix != 0U && byte != literal.literal[prefix]) {
+      prefix = literal.prefix_table[prefix - 1U];
+    }
+    if (byte == literal.literal[prefix]) ++prefix;
+    if (prefix == literal.literal.size()) return index + 1U - prefix;
+  }
+  return kInvalidIndex;
+}
+#endif
 
 #if defined(PAE_ENABLE_SCHEMA_V08_VARIABLE_COMPILER)
 bool ResolvePayloadLength(const MessageExecutionPlan& message, std::size_t frame_size,
@@ -528,6 +648,14 @@ MatchOutcome FindPipelineMatch(const PipelineExecutionPlan& pipeline,
     }
   }
 #endif
+#if defined(PAE_ENABLE_SCHEMA_V10_ASCII_TEXT_CODEC)
+  for (const std::size_t message_index : pipeline.text_message_indices) {
+    PAE_INCREMENT_OPERATION_COUNT(candidate_messages_examined);
+    if (!TextMessageMatches(messages[message_index], input)) continue;
+    ++outcome.match_count;
+    if (outcome.match_count == 1U) outcome.message_index = message_index;
+  }
+#endif
   return outcome;
 }
 
@@ -703,6 +831,11 @@ CodecStatus PrepareEncodeInputs(const PlanBundle& plan, const MessageExecutionPl
     result.failed_field_index = value.field.field_index;
     PAE_INCREMENT_OPERATION_COUNT(field_validation_visits);
     const FieldExecutionPlan& field = message.fields[value.field.field_index];
+#if defined(PAE_ENABLE_SCHEMA_V10_ASCII_TEXT_CODEC)
+    if (plan.SchemaVersion() == "0.10" && !field.text_encode_input) {
+      return CodecStatus::FIELD_REFERENCE_MISMATCH;
+    }
+#endif
     if (field.encode_source != EncodeSource::INPUT) {
 #if defined(PAE_ENABLE_SCHEMA_V07_LENGTH_COMPILER)
       if (field.encode_source == EncodeSource::COMPUTED) {
@@ -746,21 +879,41 @@ CodecStatus PrepareEncodeInputs(const PlanBundle& plan, const MessageExecutionPl
         return CodecStatus::VALUE_NOT_REPRESENTABLE;
       }
     } else if (!defer_value_validation && field.value_type == ValueType::BYTES) {
-#if defined(PAE_ENABLE_SCHEMA_V08_VARIABLE_COMPILER)
-      const bool bounded_payload =
-          message.bounded_payload.has_value() &&
-          value.field.field_index == message.bounded_payload->payload_field_index;
-      if (bounded_payload ? (value.bytes_value.size < message.bounded_payload->min_payload_length ||
-                             value.bytes_value.size > message.bounded_payload->max_payload_length)
-                          : value.bytes_value.size != field.width) {
-#else
-      if (value.bytes_value.size != field.width) {
+#if defined(PAE_ENABLE_SCHEMA_V10_ASCII_TEXT_CODEC)
+      if (plan.SchemaVersion() == "0.10") {
+        if (value.bytes_value.size < field.text_min_length ||
+            value.bytes_value.size > field.text_max_length) {
+          return CodecStatus::BYTES_LENGTH_MISMATCH;
+        }
+        AddressRange unused;
+        if (!GetAddressRange(value.bytes_value.data, value.bytes_value.size, unused)) {
+          return CodecStatus::INVALID_ARGUMENT;
+        }
+        for (std::size_t index = 0U; index < value.bytes_value.size; ++index) {
+          if (!IsAllowedAscii(field, value.bytes_value.data[index])) {
+            return CodecStatus::ASCII_CHARACTER_NOT_ALLOWED;
+          }
+        }
+      } else
 #endif
-        return CodecStatus::BYTES_LENGTH_MISMATCH;
-      }
-      AddressRange unused;
-      if (!GetAddressRange(value.bytes_value.data, value.bytes_value.size, unused)) {
-        return CodecStatus::INVALID_ARGUMENT;
+      {
+#if defined(PAE_ENABLE_SCHEMA_V08_VARIABLE_COMPILER)
+        const bool bounded_payload =
+            message.bounded_payload.has_value() &&
+            value.field.field_index == message.bounded_payload->payload_field_index;
+        if (bounded_payload
+                ? (value.bytes_value.size < message.bounded_payload->min_payload_length ||
+                   value.bytes_value.size > message.bounded_payload->max_payload_length)
+                : value.bytes_value.size != field.width) {
+#else
+        if (value.bytes_value.size != field.width) {
+#endif
+          return CodecStatus::BYTES_LENGTH_MISMATCH;
+        }
+        AddressRange unused;
+        if (!GetAddressRange(value.bytes_value.data, value.bytes_value.size, unused)) {
+          return CodecStatus::INVALID_ARGUMENT;
+        }
       }
     } else if (!defer_value_validation && field.value_type == ValueType::BOOL) {
       // Native bool has no alternate numeric or string representation in the Core API.
@@ -782,6 +935,9 @@ CodecStatus PrepareEncodeInputs(const PlanBundle& plan, const MessageExecutionPl
     const FieldExecutionPlan& field = message.fields[field_index];
     result.failed_field_index = field_index;
     if (field.encode_source == EncodeSource::INPUT &&
+#if defined(PAE_ENABLE_SCHEMA_V10_ASCII_TEXT_CODEC)
+        (plan.SchemaVersion() != "0.10" || field.text_encode_input) &&
+#endif
         !IsPresent(present_words, field.input_ordinal)) {
       return CodecStatus::MISSING_FIELD;
     }
@@ -1101,6 +1257,9 @@ bool internal::SupportsCompleteRecordSchema(std::string_view schema_version) noe
 #if defined(PAE_ENABLE_SCHEMA_V09_STREAM_FRAMING)
   if (schema_version == "0.9") return true;
 #endif
+#if defined(PAE_ENABLE_SCHEMA_V10_ASCII_TEXT_CODEC)
+  if (schema_version == "0.10") return true;
+#endif
 #endif
   return false;
 }
@@ -1262,6 +1421,12 @@ DecodeResult DecodeCompleteRecord(const PlanBundle& plan, ExecutionWorkspace& wo
   }
   const PipelineExecutionPlan& pipeline = pipelines[pipeline_index];
   const auto& messages = plan.MessageExecutionPlans();
+#if defined(PAE_ENABLE_SCHEMA_V10_ASCII_TEXT_CODEC)
+  if (plan.SchemaVersion() == "0.10" && pipeline.text_message_indices.empty()) {
+    result.status = CodecStatus::OPERATION_NOT_SUPPORTED;
+    return result;
+  }
+#endif
   const MatchOutcome match =
       FindPipelineMatch(pipeline, messages, input PAE_OPERATION_COUNTS_ARGUMENT);
   if (match.match_count == 0U) {
@@ -1275,6 +1440,58 @@ DecodeResult DecodeCompleteRecord(const PlanBundle& plan, ExecutionWorkspace& wo
 
   result.message_index = match.message_index;
   const MessageExecutionPlan& message = messages[match.message_index];
+#if defined(PAE_ENABLE_SCHEMA_V10_ASCII_TEXT_CODEC)
+  if (message.text_decode.has_value()) {
+    result.required_field_count = message.text_decode_field_count;
+    if (message.text_decode_field_count > field_slot_capacity) {
+      result.status = CodecStatus::OUTPUT_SLOTS_TOO_SMALL;
+      return result;
+    }
+    AddressRange input_range;
+    AddressRange slot_range;
+    if (!GetAddressRange(input.data, input.size, input_range) ||
+        !GetArrayAddressRange(field_slots, message.text_decode_field_count,
+                              sizeof(DecodedFieldSlot), slot_range)) {
+      result.status = CodecStatus::INVALID_ARGUMENT;
+      return result;
+    }
+    if (RangesOverlap(input_range, slot_range)) {
+      result.status = CodecStatus::INPUT_OUTPUT_OVERLAP;
+      return result;
+    }
+    const TextWalkStatus validation =
+        WalkTextAction(*message.text_decode, message, input, true,
+                       [](std::size_t, std::size_t, std::size_t) { return true; });
+    if (validation != TextWalkStatus::MATCH) {
+      result.status =
+          validation == TextWalkStatus::INVALID_CHARACTER
+              ? CodecStatus::ASCII_CHARACTER_NOT_ALLOWED
+              : (validation == TextWalkStatus::INVALID_PLAN ? CodecStatus::INVALID_PLAN
+                                                            : CodecStatus::UNKNOWN_MESSAGE);
+      return result;
+    }
+    std::size_t output_index = 0U;
+    const TextWalkStatus materialized =
+        WalkTextAction(*message.text_decode, message, input, false,
+                       [&](std::size_t field_index, std::size_t offset, std::size_t length) {
+                         if (output_index >= message.text_decode_field_count) return false;
+                         DecodedFieldSlot slot;
+                         slot.field = FieldRef{&plan, match.message_index, field_index};
+                         slot.value_kind = LogicalValueKind::BYTES;
+                         slot.bytes_value = ByteView{input.data + offset, length};
+                         field_slots[output_index++] = slot;
+                         return true;
+                       });
+    if (materialized != TextWalkStatus::MATCH || output_index != message.text_decode_field_count) {
+      result.status = CodecStatus::INVALID_PLAN;
+      return result;
+    }
+    result.status = CodecStatus::OK;
+    result.field_count = output_index;
+    result.failed_field_index = kInvalidIndex;
+    return result;
+  }
+#endif
   result.required_field_count = message.fields.size();
   if (message.fields.size() > field_slot_capacity) {
     result.status = CodecStatus::OUTPUT_SLOTS_TOO_SMALL;
@@ -1541,6 +1758,13 @@ EncodeResult EncodeCompleteRecord(const PlanBundle& plan, ExecutionWorkspace& wo
 
   const MessageExecutionPlan& message = messages[message_index];
   result.required_size = message.frame_size;
+#if defined(PAE_ENABLE_SCHEMA_V10_ASCII_TEXT_CODEC)
+  if (plan.SchemaVersion() == "0.10" && !message.text_encode.has_value()) {
+    result.status = CodecStatus::OPERATION_NOT_SUPPORTED;
+    result.required_size = 0U;
+    return result;
+  }
+#endif
   const CodecStatus value_status =
       PrepareEncodeInputs(plan, message, message_index, values, value_count,
                           workspace.encode_value_indices_, workspace.encode_present_words_,
@@ -1553,6 +1777,139 @@ EncodeResult EncodeCompleteRecord(const PlanBundle& plan, ExecutionWorkspace& wo
     result.required_size = 0U;
     return result;
   }
+
+#if defined(PAE_ENABLE_SCHEMA_V10_ASCII_TEXT_CODEC)
+  if (message.text_encode.has_value()) {
+    std::size_t actual_size = 0U;
+    for (std::size_t segment_index = 0U; segment_index < message.text_encode->segments.size();
+         ++segment_index) {
+      const auto& segment = message.text_encode->segments[segment_index];
+      if (segment.kind == protocol_plan::TextSegmentKind::LITERAL) {
+        if (segment.literal.size() > (std::numeric_limits<std::size_t>::max)() - actual_size) {
+          result.status = CodecStatus::INVALID_PLAN;
+          result.required_size = 0U;
+          return result;
+        }
+        actual_size += segment.literal.size();
+        continue;
+      }
+      if (segment.field_index >= message.fields.size()) {
+        result.status = CodecStatus::INVALID_PLAN;
+        result.required_size = 0U;
+        return result;
+      }
+      const FieldExecutionPlan& field = message.fields[segment.field_index];
+      if (!field.text_encode_input ||
+          field.input_ordinal >= workspace.encode_value_indices_.size()) {
+        result.status = CodecStatus::INVALID_PLAN;
+        result.required_size = 0U;
+        return result;
+      }
+      const ByteView bytes =
+          values[workspace.encode_value_indices_[field.input_ordinal]].bytes_value;
+      if (bytes.size > (std::numeric_limits<std::size_t>::max)() - actual_size) {
+        result.status = CodecStatus::INVALID_PLAN;
+        result.required_size = 0U;
+        return result;
+      }
+      if (field.text_min_length != field.text_max_length &&
+          segment_index + 1U < message.text_encode->segments.size()) {
+        const auto& terminator = message.text_encode->segments[segment_index + 1U];
+        if (terminator.kind != protocol_plan::TextSegmentKind::LITERAL ||
+            FindFirstAcrossBoundary(bytes, terminator) != bytes.size) {
+          result.status = CodecStatus::ASCII_TERMINATOR_CONFLICT;
+          result.failed_field_index = segment.field_index;
+          result.required_size = 0U;
+          return result;
+        }
+      }
+      actual_size += bytes.size;
+    }
+    result.required_size = actual_size;
+    if (actual_size < message.text_encode->min_record_length ||
+        actual_size > message.text_encode->max_record_length || actual_size > message.frame_size) {
+      result.status = CodecStatus::FINAL_REVIEW_FAILED;
+      result.required_size = 0U;
+      return result;
+    }
+    if (output.data == nullptr) {
+      result.status = CodecStatus::INVALID_ARGUMENT;
+      return result;
+    }
+    if (output.capacity < actual_size) {
+      result.status = CodecStatus::BUFFER_TOO_SMALL;
+      return result;
+    }
+    AddressRange output_range;
+    if (!GetAddressRange(output.data, actual_size, output_range)) {
+      result.status = CodecStatus::INVALID_ARGUMENT;
+      return result;
+    }
+    if (RangesOverlap(value_descriptor_range, output_range)) {
+      result.status = CodecStatus::INPUT_OUTPUT_OVERLAP;
+      return result;
+    }
+    for (std::size_t value_index = 0U; value_index < value_count; ++value_index) {
+      AddressRange input_range;
+      if (!GetAddressRange(values[value_index].bytes_value.data,
+                           values[value_index].bytes_value.size, input_range)) {
+        result.status = CodecStatus::INVALID_ARGUMENT;
+        result.failed_value_index = value_index;
+        return result;
+      }
+      if (RangesOverlap(input_range, output_range)) {
+        result.status = CodecStatus::INPUT_OUTPUT_OVERLAP;
+        result.failed_value_index = value_index;
+        return result;
+      }
+    }
+    std::size_t cursor = 0U;
+    for (const auto& segment : message.text_encode->segments) {
+      if (segment.kind == protocol_plan::TextSegmentKind::LITERAL) {
+        for (const std::uint8_t byte : segment.literal) output.data[cursor++] = byte;
+      } else {
+        const FieldExecutionPlan& field = message.fields[segment.field_index];
+        const ByteView bytes =
+            values[workspace.encode_value_indices_[field.input_ordinal]].bytes_value;
+        for (std::size_t index = 0U; index < bytes.size; ++index) {
+          output.data[cursor++] = bytes.data[index];
+        }
+      }
+    }
+#if defined(PAE_ENABLE_OPERATION_COUNTERS)
+    if (actual_size != 0U &&
+        g_corrupt_ascii_before_final_review.exchange(false, std::memory_order_relaxed)) {
+      output.data[actual_size - 1U] ^= 0x01U;
+    }
+#endif
+    const ByteView encoded{output.data, actual_size};
+    const TextWalkStatus reviewed = WalkTextAction(
+        *message.text_encode, message, encoded, true,
+        [&](std::size_t field_index, std::size_t offset, std::size_t length) {
+          const FieldExecutionPlan& field = message.fields[field_index];
+          if (!field.text_encode_input ||
+              field.input_ordinal >= workspace.encode_value_indices_.size()) {
+            return false;
+          }
+          const ByteView expected =
+              values[workspace.encode_value_indices_[field.input_ordinal]].bytes_value;
+          if (expected.size != length) return false;
+          for (std::size_t index = 0U; index < length; ++index) {
+            if (encoded.data[offset + index] != expected.data[index]) return false;
+          }
+          return true;
+        });
+    if (reviewed != TextWalkStatus::MATCH) {
+      result.status = CodecStatus::FINAL_REVIEW_FAILED;
+      return result;
+    }
+    result.status = CodecStatus::OK;
+    result.bytes_written = actual_size;
+    result.failed_value_index = kInvalidIndex;
+    result.failed_field_index = kInvalidIndex;
+    return result;
+  }
+#endif
 
   std::size_t actual_frame_size = message.frame_size;
 #if defined(PAE_ENABLE_SCHEMA_V08_VARIABLE_COMPILER)
@@ -1766,6 +2123,12 @@ namespace test_only {
 void CorruptIntegrityStorageBeforeFinalReviewOnce() noexcept {
   g_corrupt_integrity_storage_before_final_review.store(true, std::memory_order_relaxed);
 }
+
+#if defined(PAE_ENABLE_SCHEMA_V10_ASCII_TEXT_CODEC)
+void CorruptAsciiOutputBeforeFinalReviewOnce() noexcept {
+  g_corrupt_ascii_before_final_review.store(true, std::memory_order_relaxed);
+}
+#endif
 
 #if defined(PAE_ENABLE_SCHEMA_V07_LENGTH_COMPILER)
 void CorruptComputedLengthBeforeFinalReviewOnce() noexcept {

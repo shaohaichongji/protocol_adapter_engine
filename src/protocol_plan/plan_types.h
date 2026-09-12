@@ -125,7 +125,17 @@ enum class WireCodec {
   UNSIGNED_INTEGER,
   BYTES,
   BITFIELD,
+#if defined(PAE_ENABLE_SCHEMA_V10_ASCII_TEXT_CODEC)
+  ASCII_TEXT,
+#endif
 };
+
+#if defined(PAE_ENABLE_SCHEMA_V10_ASCII_TEXT_CODEC)
+enum class TextSegmentKind {
+  LITERAL,
+  FIELD,
+};
+#endif
 
 enum class BitNumbering {
   LSB0,
@@ -188,6 +198,9 @@ struct ResourceRequirements {
   std::size_t max_stream_frame_bytes = 0U;
   std::size_t max_sync_bytes = 0U;
   std::size_t max_framing_buffer_bytes = 0U;
+#endif
+#if defined(PAE_ENABLE_SCHEMA_V10_ASCII_TEXT_CODEC)
+  std::size_t total_text_segment_count = 0U;
 #endif
 };
 

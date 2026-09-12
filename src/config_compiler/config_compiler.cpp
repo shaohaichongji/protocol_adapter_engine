@@ -1795,6 +1795,264 @@ bool ParseBoundedPayloadLayout(yyjson_val* value, std::string_view pointer,
 }
 #endif
 
+#if defined(PAE_ENABLE_SCHEMA_V10_ASCII_TEXT_CODEC)
+void AddAllowedAscii(std::uint8_t value, WireIr& wire) noexcept {
+  if (value < 64U) {
+    wire.allowed_ascii_low |= std::uint64_t{1U} << value;
+  } else {
+    wire.allowed_ascii_high |= std::uint64_t{1U} << (value - 64U);
+  }
+}
+
+bool ParseTextField(yyjson_val* value, std::string_view pointer, FieldIr& output,
+                    CompileDiagnostic& diagnostic) {
+  if (!yyjson_is_obj(value)) {
+    return SetDiagnostic(diagnostic, CompileStage::STRUCTURAL, CompileError::TYPE_MISMATCH,
+                         std::string{pointer}, "text field must be an object");
+  }
+  if (!ValidateObjectProperties(
+          value, pointer,
+          {"id", "display_name", "description", "source_ref", "value_type", "wire", "encode"},
+          diagnostic) ||
+      !ReadRequiredId(value, "id", pointer, output.id, diagnostic) ||
+      !ReadRequiredString(value, "display_name", pointer, 1U, 256U, output.display_name,
+                          diagnostic) ||
+      !ReadRequiredString(value, "description", pointer, 0U, 1024U, output.description,
+                          diagnostic) ||
+      !ReadRequiredString(value, "source_ref", pointer, 1U, 512U, output.source_ref, diagnostic)) {
+    return false;
+  }
+  yyjson_val* value_type = RequiredProperty(value, "value_type", pointer, diagnostic);
+  std::string value_type_token;
+  if (value_type == nullptr || !ReadEnumToken(value_type, ChildPointer(pointer, "value_type"),
+                                              {"BYTES"}, value_type_token, diagnostic)) {
+    return false;
+  }
+  output.value_type = ValueType::BYTES;
+  yyjson_val* wire = RequiredProperty(value, "wire", pointer, diagnostic);
+  const std::string wire_pointer = ChildPointer(pointer, "wire");
+  if (wire == nullptr || !yyjson_is_obj(wire)) {
+    return wire == nullptr
+               ? false
+               : SetDiagnostic(diagnostic, CompileStage::STRUCTURAL, CompileError::TYPE_MISMATCH,
+                               wire_pointer, "text wire must be an object");
+  }
+  if (!ValidateObjectProperties(
+          wire, wire_pointer,
+          {"codec", "min_byte_length", "max_byte_length", "allowed_control_bytes"}, diagnostic)) {
+    return false;
+  }
+  yyjson_val* codec = RequiredProperty(wire, "codec", wire_pointer, diagnostic);
+  std::string codec_token;
+  if (codec == nullptr ||
+      !ReadEnumToken(codec, ChildPointer(wire_pointer, "codec"), {"ascii_text"}, codec_token,
+                     diagnostic) ||
+      !ReadRequiredUint64(wire, "min_byte_length", wire_pointer, output.wire.text_min_length,
+                          diagnostic) ||
+      !ReadRequiredUint64(wire, "max_byte_length", wire_pointer, output.wire.text_max_length,
+                          diagnostic)) {
+    return false;
+  }
+  output.wire.codec = WireCodec::ASCII_TEXT;
+  for (std::uint8_t character = 0x20U; character <= 0x7EU; ++character) {
+    AddAllowedAscii(character, output.wire);
+  }
+  if (yyjson_val* controls = yyjson_obj_get(wire, "allowed_control_bytes")) {
+    std::string encoded;
+    std::vector<std::uint8_t> decoded;
+    if (!ReadString(controls, ChildPointer(wire_pointer, "allowed_control_bytes"), 2U, 98U, encoded,
+                    diagnostic) ||
+        !ParseHexBytes(encoded, decoded)) {
+      return SetDiagnostic(diagnostic, CompileStage::STRUCTURAL, CompileError::INVALID_HEX_BYTES,
+                           ChildPointer(wire_pointer, "allowed_control_bytes"),
+                           "allowed_control_bytes must be canonical uppercase hexadecimal");
+    }
+    int previous = -1;
+    for (const std::uint8_t character : decoded) {
+      if ((character > 0x1FU && character != 0x7FU) || static_cast<int>(character) <= previous) {
+        return SetDiagnostic(
+            diagnostic, CompileStage::DOMAIN_VALIDATION, CompileError::ASCII_CONTROL_BYTE_INVALID,
+            ChildPointer(wire_pointer, "allowed_control_bytes"),
+            "control bytes must be unique, ascending, and outside printable ASCII");
+      }
+      AddAllowedAscii(character, output.wire);
+      previous = character;
+    }
+  }
+  if (yyjson_val* encode = yyjson_obj_get(value, "encode")) {
+    if (!ParseEncode(encode, ChildPointer(pointer, "encode"), ValueType::BYTES, false,
+                     output.encode, diagnostic) ||
+        output.encode.source != EncodeSource::INPUT) {
+      return false;
+    }
+  }
+  output.wire.origin.json_pointer = wire_pointer;
+  output.origin.json_pointer = std::string{pointer};
+  return true;
+}
+
+bool ParseTextFields(yyjson_val* value, std::string_view pointer, std::vector<FieldIr>& output,
+                     CompileDiagnostic& diagnostic) {
+  if (!yyjson_is_arr(value)) {
+    return SetDiagnostic(diagnostic, CompileStage::STRUCTURAL, CompileError::TYPE_MISMATCH,
+                         std::string{pointer}, "text fields must be an array");
+  }
+  output.clear();
+  output.reserve(yyjson_arr_size(value));
+  yyjson_arr_iter iterator;
+  yyjson_arr_iter_init(value, &iterator);
+  std::size_t index = 0U;
+  while (yyjson_val* field = yyjson_arr_iter_next(&iterator)) {
+    FieldIr parsed;
+    if (!ParseTextField(field, IndexPointer(pointer, index), parsed, diagnostic)) return false;
+    output.push_back(std::move(parsed));
+    ++index;
+  }
+  return true;
+}
+
+bool ParseTextAction(yyjson_val* value, std::string_view pointer, TextActionIr& output,
+                     CompileDiagnostic& diagnostic) {
+  if (!yyjson_is_obj(value)) {
+    return SetDiagnostic(diagnostic, CompileStage::STRUCTURAL, CompileError::TYPE_MISMATCH,
+                         std::string{pointer}, "text action must be an object");
+  }
+  if (!ValidateObjectProperties(value, pointer, {"segments"}, diagnostic)) return false;
+  yyjson_val* segments = RequiredProperty(value, "segments", pointer, diagnostic);
+  const std::string segments_pointer = ChildPointer(pointer, "segments");
+  if (segments == nullptr || !yyjson_is_arr(segments)) {
+    return segments == nullptr
+               ? false
+               : SetDiagnostic(diagnostic, CompileStage::STRUCTURAL, CompileError::TYPE_MISMATCH,
+                               segments_pointer, "segments must be an array");
+  }
+  if (yyjson_arr_size(segments) == 0U) {
+    return SetDiagnostic(diagnostic, CompileStage::DOMAIN_VALIDATION,
+                         CompileError::ASCII_TEMPLATE_EMPTY, segments_pointer,
+                         "a declared text action must contain at least one segment");
+  }
+  output.segments.reserve(yyjson_arr_size(segments));
+  yyjson_arr_iter iterator;
+  yyjson_arr_iter_init(segments, &iterator);
+  std::size_t index = 0U;
+  while (yyjson_val* segment = yyjson_arr_iter_next(&iterator)) {
+    const std::string segment_pointer = IndexPointer(segments_pointer, index);
+    if (!yyjson_is_obj(segment)) {
+      return SetDiagnostic(diagnostic, CompileStage::STRUCTURAL, CompileError::TYPE_MISMATCH,
+                           segment_pointer, "text segment must be an object");
+    }
+    yyjson_val* kind = RequiredProperty(segment, "kind", segment_pointer, diagnostic);
+    std::string kind_token;
+    if (kind == nullptr || !ReadEnumToken(kind, ChildPointer(segment_pointer, "kind"),
+                                          {"literal", "field"}, kind_token, diagnostic)) {
+      return false;
+    }
+    TextSegmentIr parsed;
+    parsed.origin.json_pointer = segment_pointer;
+    if (kind_token == "literal") {
+      if (!ValidateObjectProperties(segment, segment_pointer, {"kind", "text"}, diagnostic)) {
+        return false;
+      }
+      std::string text;
+      if (!ReadRequiredString(segment, "text", segment_pointer, 1U, 64U * 1024U, text,
+                              diagnostic)) {
+        return false;
+      }
+      for (const unsigned char character : text) {
+        if (character > 0x7FU) {
+          return SetDiagnostic(
+              diagnostic, CompileStage::DOMAIN_VALIDATION, CompileError::ASCII_LITERAL_INVALID,
+              ChildPointer(segment_pointer, "text"), "literal text must contain ASCII bytes only");
+        }
+      }
+      parsed.kind = TextSegmentKind::LITERAL;
+      parsed.literal.assign(text.begin(), text.end());
+    } else {
+      if (!ValidateObjectProperties(segment, segment_pointer, {"kind", "field_id"}, diagnostic) ||
+          !ReadRequiredId(segment, "field_id", segment_pointer, parsed.field_id, diagnostic)) {
+        return false;
+      }
+      parsed.kind = TextSegmentKind::FIELD;
+    }
+    output.segments.push_back(std::move(parsed));
+    ++index;
+  }
+  return true;
+}
+
+bool ParseTextMessage(yyjson_val* value, std::string_view pointer, MessageIr& output,
+                      CompileDiagnostic& diagnostic) {
+  if (!yyjson_is_obj(value)) {
+    return SetDiagnostic(diagnostic, CompileStage::STRUCTURAL, CompileError::TYPE_MISMATCH,
+                         std::string{pointer}, "text message must be an object");
+  }
+  if (!ValidateObjectProperties(
+          value, pointer,
+          {"id", "display_name", "description", "source_ref", "direction_id", "layout", "fields"},
+          diagnostic) ||
+      !ReadRequiredId(value, "id", pointer, output.id, diagnostic) ||
+      !ReadRequiredString(value, "display_name", pointer, 1U, 256U, output.display_name,
+                          diagnostic) ||
+      !ReadRequiredString(value, "description", pointer, 0U, 1024U, output.description,
+                          diagnostic) ||
+      !ReadRequiredString(value, "source_ref", pointer, 1U, 512U, output.source_ref, diagnostic) ||
+      !ReadRequiredId(value, "direction_id", pointer, output.direction_id, diagnostic)) {
+    return false;
+  }
+  yyjson_val* layout = RequiredProperty(value, "layout", pointer, diagnostic);
+  const std::string layout_pointer = ChildPointer(pointer, "layout");
+  if (layout == nullptr || !yyjson_is_obj(layout)) {
+    return layout == nullptr
+               ? false
+               : SetDiagnostic(diagnostic, CompileStage::STRUCTURAL, CompileError::TYPE_MISMATCH,
+                               layout_pointer, "text layout must be an object");
+  }
+  if (!ValidateObjectProperties(layout, layout_pointer, {"kind", "encoding", "decode", "encode"},
+                                diagnostic)) {
+    return false;
+  }
+  yyjson_val* kind = RequiredProperty(layout, "kind", layout_pointer, diagnostic);
+  yyjson_val* encoding = RequiredProperty(layout, "encoding", layout_pointer, diagnostic);
+  std::string kind_token;
+  std::string encoding_token;
+  if (kind == nullptr || encoding == nullptr ||
+      !ReadEnumToken(kind, ChildPointer(layout_pointer, "kind"), {"text"}, kind_token,
+                     diagnostic) ||
+      !ReadEnumToken(encoding, ChildPointer(layout_pointer, "encoding"), {"ascii"}, encoding_token,
+                     diagnostic)) {
+    return false;
+  }
+  AsciiTextLayoutIr parsed_layout;
+  parsed_layout.origin.json_pointer = layout_pointer;
+  if (yyjson_val* decode = yyjson_obj_get(layout, "decode")) {
+    TextActionIr action;
+    if (!ParseTextAction(decode, ChildPointer(layout_pointer, "decode"), action, diagnostic)) {
+      return false;
+    }
+    parsed_layout.decode = std::move(action);
+  }
+  if (yyjson_val* encode = yyjson_obj_get(layout, "encode")) {
+    TextActionIr action;
+    if (!ParseTextAction(encode, ChildPointer(layout_pointer, "encode"), action, diagnostic)) {
+      return false;
+    }
+    parsed_layout.encode = std::move(action);
+  }
+  if (!parsed_layout.decode.has_value() && !parsed_layout.encode.has_value()) {
+    return SetDiagnostic(diagnostic, CompileStage::STRUCTURAL, CompileError::MISSING_PROPERTY,
+                         layout_pointer, "text layout requires decode or encode");
+  }
+  yyjson_val* fields = RequiredProperty(value, "fields", pointer, diagnostic);
+  if (fields == nullptr ||
+      !ParseTextFields(fields, ChildPointer(pointer, "fields"), output.fields, diagnostic)) {
+    return false;
+  }
+  output.ascii_text = std::move(parsed_layout);
+  output.origin.json_pointer = std::string{pointer};
+  return true;
+}
+#endif
+
 bool ParseMessage(yyjson_val* value, std::string_view pointer, bool supports_bitfields,
                   bool supports_integrity, bool supports_crc, bool supports_int64,
                   bool supports_conversion, bool supports_computed_length,
@@ -1962,6 +2220,9 @@ bool BuildSchemaIr(yyjson_val* root, SchemaIr& output, CompileDiagnostic& diagno
 #if defined(PAE_ENABLE_SCHEMA_V09_STREAM_FRAMING)
                                 || output.schema_version == "0.9"
 #endif
+#if defined(PAE_ENABLE_SCHEMA_V10_ASCII_TEXT_CODEC)
+                                || output.schema_version == "0.10"
+#endif
       ;
 #else
   const bool supported_schema = output.schema_version == "0.1" || output.schema_version == "0.2" ||
@@ -2007,6 +2268,11 @@ bool BuildSchemaIr(yyjson_val* root, SchemaIr& output, CompileDiagnostic& diagno
              messages, "/messages", output.messages,
              [&output](yyjson_val* value, std::string_view pointer, MessageIr& message,
                        CompileDiagnostic& item_diagnostic) {
+#if defined(PAE_ENABLE_SCHEMA_V10_ASCII_TEXT_CODEC)
+               if (output.schema_version == "0.10") {
+                 return ParseTextMessage(value, pointer, message, item_diagnostic);
+               }
+#endif
                return ParseMessage(
                    value, pointer, output.schema_version != "0.1",
                    output.schema_version == "0.3" || output.schema_version == "0.4" ||
@@ -2199,6 +2465,11 @@ std::uint64_t BitWidthMask(std::uint64_t byte_width) noexcept {
 }
 
 bool FixedMatchersCanIntersect(const MessageIr& left, const MessageIr& right) {
+#if defined(PAE_ENABLE_SCHEMA_V10_ASCII_TEXT_CODEC)
+  if (left.ascii_text.has_value() || right.ascii_text.has_value()) {
+    return false;
+  }
+#endif
   const std::uint64_t left_min =
 #if defined(PAE_ENABLE_SCHEMA_V08_VARIABLE_COMPILER)
       left.bounded_payload.has_value() ? left.bounded_payload->min_frame_length :
@@ -2237,8 +2508,157 @@ bool FixedMatchersCanIntersect(const MessageIr& left, const MessageIr& right) {
   return true;
 }
 
+#if defined(PAE_ENABLE_SCHEMA_V10_ASCII_TEXT_CODEC)
+bool AddUint64Checked(std::uint64_t value, std::uint64_t& total) noexcept {
+  if (value > (std::numeric_limits<std::uint64_t>::max)() - total) return false;
+  total += value;
+  return true;
+}
+
+bool ValidateTextAction(TextActionIr& action,
+                        const std::unordered_map<std::string, std::size_t>& ids,
+                        const std::vector<FieldIr>& fields, std::vector<bool>& referenced,
+                        ResourceRequirements& requirements, CompileDiagnostic& diagnostic) {
+  std::vector<bool> local_references(fields.size(), false);
+  std::uint64_t minimum = 0U;
+  std::uint64_t maximum = 0U;
+  for (std::size_t index = 0U; index < action.segments.size(); ++index) {
+    TextSegmentIr& segment = action.segments[index];
+    if (segment.kind == TextSegmentKind::LITERAL) {
+      if (segment.literal.empty() || !AddUint64Checked(segment.literal.size(), minimum) ||
+          !AddUint64Checked(segment.literal.size(), maximum)) {
+        return SetDiagnostic(diagnostic, CompileStage::DOMAIN_VALIDATION,
+                             CompileError::ASCII_LITERAL_INVALID, segment.origin.json_pointer,
+                             "text literal is empty or record length arithmetic overflows");
+      }
+      continue;
+    }
+    const auto field = ids.find(segment.field_id);
+    if (field == ids.end()) {
+      return SetDiagnostic(diagnostic, CompileStage::DOMAIN_VALIDATION,
+                           CompileError::UNKNOWN_REFERENCE,
+                           ChildPointer(segment.origin.json_pointer, "field_id"),
+                           "text segment references an unknown field");
+    }
+    segment.field_index = field->second;
+    if (local_references[field->second]) {
+      return SetDiagnostic(diagnostic, CompileStage::DOMAIN_VALIDATION,
+                           CompileError::DUPLICATE_REFERENCE,
+                           ChildPointer(segment.origin.json_pointer, "field_id"),
+                           "a field may appear at most once in each text action");
+    }
+    local_references[field->second] = true;
+    referenced[field->second] = true;
+    const FieldIr& descriptor = fields[field->second];
+    if (!AddUint64Checked(descriptor.wire.text_min_length, minimum) ||
+        !AddUint64Checked(descriptor.wire.text_max_length, maximum)) {
+      return SetDiagnostic(
+          diagnostic, CompileStage::DOMAIN_VALIDATION, CompileError::ASCII_FIELD_LENGTH_INVALID,
+          descriptor.wire.origin.json_pointer, "text record length arithmetic overflows");
+    }
+    if (descriptor.wire.text_min_length != descriptor.wire.text_max_length &&
+        index + 1U < action.segments.size() &&
+        action.segments[index + 1U].kind != TextSegmentKind::LITERAL) {
+      return SetDiagnostic(diagnostic, CompileStage::DOMAIN_VALIDATION,
+                           CompileError::ASCII_FIELD_BOUNDARY_AMBIGUOUS,
+                           segment.origin.json_pointer,
+                           "a non-trailing variable text field requires an immediate literal");
+    }
+  }
+  action.min_record_length = minimum;
+  action.max_record_length = maximum;
+  if (!AddSizeChecked(action.segments.size(), requirements.total_text_segment_count)) {
+    return SetDiagnostic(
+        diagnostic, CompileStage::DOMAIN_VALIDATION, CompileError::RESOURCE_LIMIT_EXCEEDED,
+        action.segments.front().origin.json_pointer, "text segment count overflows this build");
+  }
+  return true;
+}
+
+bool ValidateAsciiMessage(MessageIr& message, ResourceRequirements& requirements,
+                          CompileDiagnostic& diagnostic) {
+  if (!message.ascii_text.has_value() || !message.matcher_clauses.empty() ||
+      !message.bit_containers.empty() || message.integrity.has_value() ||
+      message.bounded_payload.has_value()) {
+    return SetDiagnostic(diagnostic, CompileStage::DOMAIN_VALIDATION,
+                         CompileError::INTERNAL_CONTRACT_VIOLATION, message.origin.json_pointer,
+                         "Schema 0.10 text Message contains a Binary execution descriptor");
+  }
+  std::unordered_map<std::string, std::size_t> ids;
+  ids.reserve(message.fields.size());
+  for (std::size_t index = 0U; index < message.fields.size(); ++index) {
+    FieldIr& field = message.fields[index];
+    if (!ids.emplace(field.id, index).second) {
+      return SetDiagnostic(diagnostic, CompileStage::DOMAIN_VALIDATION, CompileError::DUPLICATE_ID,
+                           ChildPointer(field.origin.json_pointer, "id"),
+                           "field ID is duplicated within the text message");
+    }
+    if (field.value_type != ValueType::BYTES || field.wire.codec != WireCodec::ASCII_TEXT) {
+      return SetDiagnostic(diagnostic, CompileStage::DOMAIN_VALIDATION,
+                           CompileError::ASCII_FIELD_REFERENCE_INVALID, field.origin.json_pointer,
+                           "text Message fields must be ASCII BYTES fields");
+    }
+    if (field.wire.text_min_length > field.wire.text_max_length) {
+      return SetDiagnostic(diagnostic, CompileStage::DOMAIN_VALIDATION,
+                           CompileError::ASCII_FIELD_LENGTH_INVALID,
+                           ChildPointer(field.wire.origin.json_pointer, "min_byte_length"),
+                           "min_byte_length must not exceed max_byte_length");
+    }
+  }
+  std::vector<bool> decoded(message.fields.size(), false);
+  std::vector<bool> encoded(message.fields.size(), false);
+  AsciiTextLayoutIr& layout = *message.ascii_text;
+  if (layout.decode.has_value() &&
+      !ValidateTextAction(*layout.decode, ids, message.fields, decoded, requirements, diagnostic)) {
+    return false;
+  }
+  if (layout.encode.has_value() &&
+      !ValidateTextAction(*layout.encode, ids, message.fields, encoded, requirements, diagnostic)) {
+    return false;
+  }
+  for (std::size_t index = 0U; index < message.fields.size(); ++index) {
+    const bool encode_declared = !message.fields[index].encode.origin.json_pointer.empty();
+    if (!decoded[index] && !encoded[index]) {
+      return SetDiagnostic(
+          diagnostic, CompileStage::DOMAIN_VALIDATION, CompileError::ASCII_FIELD_REFERENCE_INVALID,
+          message.fields[index].origin.json_pointer, "text field is not referenced by any action");
+    }
+    if (encoded[index] != encode_declared) {
+      return SetDiagnostic(diagnostic, CompileStage::DOMAIN_VALIDATION,
+                           CompileError::ASCII_FIELD_REFERENCE_INVALID,
+                           message.fields[index].origin.json_pointer,
+                           encoded[index] ? "encode field requires encode.source input"
+                                          : "Decode-only field must omit encode");
+    }
+  }
+  const std::uint64_t decode_max =
+      layout.decode.has_value() ? layout.decode->max_record_length : 0U;
+  const std::uint64_t encode_max =
+      layout.encode.has_value() ? layout.encode->max_record_length : 0U;
+  message.frame_length_bytes = (std::max)(decode_max, encode_max);
+  if (message.frame_length_bytes == 0U) {
+    return SetDiagnostic(diagnostic, CompileStage::DOMAIN_VALIDATION,
+                         CompileError::ASCII_FIELD_LENGTH_INVALID, layout.origin.json_pointer,
+                         "text Message maximum record length must be non-zero");
+  }
+  requirements.max_frame_bytes =
+      (std::max)(requirements.max_frame_bytes, message.frame_length_bytes);
+  if (!AddSizeChecked(message.fields.size(), requirements.total_field_count)) {
+    return SetDiagnostic(diagnostic, CompileStage::DOMAIN_VALIDATION,
+                         CompileError::RESOURCE_LIMIT_EXCEEDED, message.origin.json_pointer,
+                         "text field count overflows this build");
+  }
+  return true;
+}
+#endif
+
 bool ValidateMessageDomain(MessageIr& message, ResourceRequirements& requirements,
                            CompileDiagnostic& diagnostic) {
+#if defined(PAE_ENABLE_SCHEMA_V10_ASCII_TEXT_CODEC)
+  if (message.ascii_text.has_value()) {
+    return ValidateAsciiMessage(message, requirements, diagnostic);
+  }
+#endif
 #if defined(PAE_ENABLE_SCHEMA_V08_VARIABLE_COMPILER)
   if (message.bounded_payload.has_value()) {
     BoundedPayloadIr& layout = *message.bounded_payload;
@@ -3270,6 +3690,27 @@ bool EstimateSchemaPlanMemory(const SchemaIr& schema,
         !layout.AddArray<EnumLookupExecutionPlan>(enum_entry_count, PlanMemoryCategory::INDEX)) {
       return false;
     }
+#if defined(PAE_ENABLE_SCHEMA_V10_ASCII_TEXT_CODEC)
+    if (message.ascii_text.has_value()) {
+      const auto add_action = [&layout](const std::optional<TextActionIr>& action) {
+        if (!action.has_value()) return true;
+        if (!layout.AddArray<TextSegmentExecutionPlan>(action->segments.size(),
+                                                       PlanMemoryCategory::EXECUTION_DESCRIPTOR)) {
+          return false;
+        }
+        for (const TextSegmentIr& segment : action->segments) {
+          if (!layout.AddArray<std::uint8_t>(segment.literal.size(), PlanMemoryCategory::MATCHER) ||
+              !layout.AddArray<std::size_t>(segment.literal.size(), PlanMemoryCategory::MATCHER)) {
+            return false;
+          }
+        }
+        return true;
+      };
+      if (!add_action(message.ascii_text->decode) || !add_action(message.ascii_text->encode)) {
+        return false;
+      }
+    }
+#endif
   }
 
   if (!layout.AddArray<PipelineExecutionPlan>(schema.pipelines.size(),
@@ -3283,7 +3724,16 @@ bool EstimateSchemaPlanMemory(const SchemaIr& schema,
 #if defined(PAE_ENABLE_SCHEMA_V08_VARIABLE_COMPILER)
     std::size_t variable_count = 0U;
 #endif
+#if defined(PAE_ENABLE_SCHEMA_V10_ASCII_TEXT_CODEC)
+    std::size_t text_count = 0U;
+#endif
     for (const std::size_t message_index : pipeline.message_indices) {
+#if defined(PAE_ENABLE_SCHEMA_V10_ASCII_TEXT_CODEC)
+      if (schema.messages[message_index].ascii_text.has_value()) {
+        if (schema.messages[message_index].ascii_text->decode.has_value()) ++text_count;
+        continue;
+      }
+#endif
 #if defined(PAE_ENABLE_SCHEMA_V08_VARIABLE_COMPILER)
       if (schema.messages[message_index].bounded_payload.has_value()) {
         ++variable_count;
@@ -3297,6 +3747,9 @@ bool EstimateSchemaPlanMemory(const SchemaIr& schema,
                                                       PlanMemoryCategory::EXECUTION_DESCRIPTOR)
 #if defined(PAE_ENABLE_SCHEMA_V08_VARIABLE_COMPILER)
         || !layout.AddArray<std::size_t>(variable_count, PlanMemoryCategory::INDEX)
+#endif
+#if defined(PAE_ENABLE_SCHEMA_V10_ASCII_TEXT_CODEC)
+        || !layout.AddArray<std::size_t>(text_count, PlanMemoryCategory::INDEX)
 #endif
     ) {
       return false;
@@ -3397,6 +3850,15 @@ ResourceBudgetResult ResourceBudgetValidator::ValidateImpl(
                           diagnostic)) {
     return ResourceBudgetResult::Failure(std::move(diagnostic));
   }
+#if defined(PAE_ENABLE_SCHEMA_V10_ASCII_TEXT_CODEC)
+  const std::size_t max_total_text_segments =
+      4U * budget->max_total_fields + 2U * budget->max_messages;
+  if (!CheckResourceCount(requirements.total_text_segment_count, max_total_text_segments,
+                          "/messages", "text segment count exceeds the derived Plan limit",
+                          diagnostic)) {
+    return ResourceBudgetResult::Failure(std::move(diagnostic));
+  }
+#endif
 #if defined(PAE_ENABLE_SCHEMA_V07_LENGTH_COMPILER)
   if (!CheckResourceCount(requirements.total_computed_length_count, budget->max_messages,
                           "/messages", "computed length count exceeds the message count limit",
@@ -3432,6 +3894,23 @@ ResourceBudgetResult ResourceBudgetValidator::ValidateImpl(
         return ResourceBudgetResult::Failure(std::move(diagnostic));
       }
     }
+#if defined(PAE_ENABLE_SCHEMA_V10_ASCII_TEXT_CODEC)
+    if (message.ascii_text.has_value()) {
+      const std::size_t per_action_limit = 2U * budget->max_fields_per_message + 1U;
+      if ((message.ascii_text->decode.has_value() &&
+           !CheckResourceCount(message.ascii_text->decode->segments.size(), per_action_limit,
+                               ChildPointer(message.ascii_text->origin.json_pointer, "decode"),
+                               "Decode text segment count exceeds the derived Message limit",
+                               diagnostic)) ||
+          (message.ascii_text->encode.has_value() &&
+           !CheckResourceCount(message.ascii_text->encode->segments.size(), per_action_limit,
+                               ChildPointer(message.ascii_text->origin.json_pointer, "encode"),
+                               "Encode text segment count exceeds the derived Message limit",
+                               diagnostic))) {
+        return ResourceBudgetResult::Failure(std::move(diagnostic));
+      }
+    }
+#endif
   }
   const std::size_t plan_memory_limit =
       (std::min)(test_plan_memory_limit_bytes.value_or(budget->max_plan_memory_bytes),
@@ -3509,6 +3988,38 @@ PlanDraftAssemblyResult PlanDraftAssembler::Assemble(BudgetedSchemaIr budgeted) 
     message_plan.id = std::move(message.id);
     message_plan.direction_id = std::move(message.direction_id);
     message_plan.frame_length_bytes = message.frame_length_bytes;
+#if defined(PAE_ENABLE_SCHEMA_V10_ASCII_TEXT_CODEC)
+    if (message.ascii_text.has_value()) {
+      protocol_plan::AsciiTextPlan text_plan;
+      const auto build_action =
+          [](std::optional<TextActionIr>& source) -> std::optional<protocol_plan::TextActionPlan> {
+        if (!source.has_value()) return std::nullopt;
+        protocol_plan::TextActionPlan action;
+        action.min_record_length = source->min_record_length;
+        action.max_record_length = source->max_record_length;
+        action.segments.reserve(source->segments.size());
+        for (TextSegmentIr& segment : source->segments) {
+          protocol_plan::TextSegmentPlan output;
+          output.kind = segment.kind;
+          output.literal = std::move(segment.literal);
+          output.field_index = segment.field_index;
+          output.prefix_table.resize(output.literal.size(), 0U);
+          for (std::size_t index = 1U, prefix = 0U; index < output.literal.size(); ++index) {
+            while (prefix != 0U && output.literal[index] != output.literal[prefix]) {
+              prefix = output.prefix_table[prefix - 1U];
+            }
+            if (output.literal[index] == output.literal[prefix]) ++prefix;
+            output.prefix_table[index] = prefix;
+          }
+          action.segments.push_back(std::move(output));
+        }
+        return action;
+      };
+      text_plan.decode = build_action(message.ascii_text->decode);
+      text_plan.encode = build_action(message.ascii_text->encode);
+      message_plan.ascii_text = std::move(text_plan);
+    }
+#endif
     message_plan.matchers.reserve(message.matcher_clauses.size());
     for (MatcherClauseIr& matcher : message.matcher_clauses) {
       message_plan.matchers.push_back(MatcherPlan{matcher.kind, matcher.length_bytes,
@@ -3593,6 +4104,12 @@ PlanDraftAssemblyResult PlanDraftAssembler::Assemble(BudgetedSchemaIr budgeted) 
       field_plan.bit_container_index = field.wire.bit_container_index;
       field_plan.bit_offset = field.wire.bit_offset;
       field_plan.bit_width = field.wire.bit_width;
+#if defined(PAE_ENABLE_SCHEMA_V10_ASCII_TEXT_CODEC)
+      field_plan.text_min_length = field.wire.text_min_length;
+      field_plan.text_max_length = field.wire.text_max_length;
+      field_plan.allowed_ascii_low = field.wire.allowed_ascii_low;
+      field_plan.allowed_ascii_high = field.wire.allowed_ascii_high;
+#endif
 #if defined(PAE_ENABLE_SCHEMA_V05_COMPILER)
       if (field.conversion.has_value()) {
         field_plan.conversion_index = conversion_plans.size();

@@ -29,6 +29,9 @@ using protocol_plan::ResourceRequirements;
 using protocol_plan::UnknownEnumPolicy;
 using protocol_plan::ValueType;
 using protocol_plan::WireCodec;
+#if defined(PAE_ENABLE_SCHEMA_V10_ASCII_TEXT_CODEC)
+using protocol_plan::TextSegmentKind;
+#endif
 
 struct ConfigOrigin {
   std::string json_pointer;
@@ -82,7 +85,35 @@ struct WireIr {
   std::uint64_t bit_width = 0U;
   std::size_t bit_container_index = static_cast<std::size_t>(-1);
   ConfigOrigin origin;
+#if defined(PAE_ENABLE_SCHEMA_V10_ASCII_TEXT_CODEC)
+  std::uint64_t text_min_length = 0U;
+  std::uint64_t text_max_length = 0U;
+  std::uint64_t allowed_ascii_low = 0U;
+  std::uint64_t allowed_ascii_high = 0U;
+#endif
 };
+
+#if defined(PAE_ENABLE_SCHEMA_V10_ASCII_TEXT_CODEC)
+struct TextSegmentIr {
+  TextSegmentKind kind = TextSegmentKind::LITERAL;
+  std::vector<std::uint8_t> literal;
+  std::string field_id;
+  std::size_t field_index = static_cast<std::size_t>(-1);
+  ConfigOrigin origin;
+};
+
+struct TextActionIr {
+  std::vector<TextSegmentIr> segments;
+  std::uint64_t min_record_length = 0U;
+  std::uint64_t max_record_length = 0U;
+};
+
+struct AsciiTextLayoutIr {
+  std::optional<TextActionIr> decode;
+  std::optional<TextActionIr> encode;
+  ConfigOrigin origin;
+};
+#endif
 
 struct BitContainerIr {
   std::string id;
@@ -203,6 +234,9 @@ struct MessageIr {
   std::vector<BitContainerIr> bit_containers;
   std::optional<IntegrityIr> integrity;
   std::vector<FieldIr> fields;
+#if defined(PAE_ENABLE_SCHEMA_V10_ASCII_TEXT_CODEC)
+  std::optional<AsciiTextLayoutIr> ascii_text;
+#endif
   ConfigOrigin origin;
 };
 

@@ -511,7 +511,13 @@ bool UiDescriptionBuilder::Audit(const protocol_plan::PlanBundle& plan,
           field.enum_begin != expected_enum_begin ||
           field.enum_count != plan_field.enum_entries.size() ||
           !CheckedRange(field.enum_begin, field.enum_count, sidecar.Enums().size())) {
-        diagnostic = InternalDiagnostic("Plan and UI description field enum indexes differ");
+        diagnostic = InternalDiagnostic(
+            "Plan and UI description field enum indexes differ at message " +
+            std::to_string(message_index) + ", field " + std::to_string(field_offset) +
+            ": UI begin/count=" + std::to_string(field.enum_begin) + "/" +
+            std::to_string(field.enum_count) +
+            ", expected begin=" + std::to_string(expected_enum_begin) +
+            ", Plan count=" + std::to_string(plan_field.enum_entries.size()));
         return false;
       }
       for (std::size_t enum_offset = 0U; enum_offset < field.enum_count; ++enum_offset) {

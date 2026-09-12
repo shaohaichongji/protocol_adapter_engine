@@ -109,6 +109,12 @@ if(PAE_ENABLE_SCHEMA_V09_STREAM_FRAMING)
         PRIVATE PAE_ENABLE_SCHEMA_V09_STREAM_FRAMING=1
     )
 endif()
+if(PAE_ENABLE_SCHEMA_V10_ASCII_TEXT_CODEC)
+    target_compile_definitions(
+        pae_config_compiler_contract_tests
+        PRIVATE PAE_ENABLE_SCHEMA_V10_ASCII_TEXT_CODEC=1
+    )
+endif()
 
 if(PAE_ENABLE_SCHEMA_V05_COMPILER)
     target_compile_definitions(
@@ -133,6 +139,11 @@ endif()
 if(PAE_ENABLE_SCHEMA_V09_STREAM_FRAMING)
     target_compile_definitions(
         pae_config_compiler_ui_description_tests PRIVATE PAE_ENABLE_SCHEMA_V09_STREAM_FRAMING=1
+    )
+endif()
+if(PAE_ENABLE_SCHEMA_V10_ASCII_TEXT_CODEC)
+    target_compile_definitions(
+        pae_config_compiler_ui_description_tests PRIVATE PAE_ENABLE_SCHEMA_V10_ASCII_TEXT_CODEC=1
     )
 endif()
 
@@ -212,6 +223,28 @@ set_tests_properties(
         TIMEOUT 180
         WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
 )
+
+if(PAE_ENABLE_SCHEMA_V10_ASCII_TEXT_CODEC)
+    find_program(pae_ascii_schema_powershell NAMES pwsh pwsh.exe REQUIRED)
+    add_test(
+        NAME pae.config_compiler.ascii_text_schema_contract
+        COMMAND
+            "${pae_ascii_schema_powershell}"
+            -NoProfile
+            -ExecutionPolicy Bypass
+            -File "${CMAKE_CURRENT_SOURCE_DIR}/verify_ascii_text_schema_contract.ps1"
+            -SchemaPath "${PROJECT_SOURCE_DIR}/schema/pae.schema.json"
+            -SamplePath "${PROJECT_SOURCE_DIR}/examples/config/synthetic_ascii_text_slice.pae.json"
+            -LiteralOnlySamplePath
+                "${PROJECT_SOURCE_DIR}/examples/config/synthetic_ascii_literal_only.pae.json"
+            -LegacyBinarySamplePath
+                "${CMAKE_CURRENT_SOURCE_DIR}/fixtures/valid/minimal_complete_record.pae.json"
+    )
+    set_tests_properties(
+        pae.config_compiler.ascii_text_schema_contract
+        PROPERTIES LABELS "config_compiler;schema;ascii_text" TIMEOUT 60
+    )
+endif()
 set_tests_properties(
     pae.config_compiler.ui_description
     PROPERTIES

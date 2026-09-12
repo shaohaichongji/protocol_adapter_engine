@@ -51,6 +51,11 @@ using pae::config_compiler::SchemaIr;
 using pae::config_compiler::ValidatedSchemaIr;
 using pae::config_compiler::ValueType;
 using pae::config_compiler::WireIr;
+#if defined(PAE_ENABLE_SCHEMA_V10_ASCII_TEXT_CODEC)
+using pae::config_compiler::AsciiTextLayoutIr;
+using pae::config_compiler::TextActionIr;
+using pae::config_compiler::TextSegmentIr;
+#endif
 using pae::protocol_plan::BitNumbering;
 using pae::protocol_plan::BudgetedPlanDraft;
 using pae::protocol_plan::ByteOrder;
@@ -67,6 +72,9 @@ using pae::protocol_plan::PlanBundle;
 using pae::protocol_plan::PlanMemoryReport;
 using pae::protocol_plan::ResourceProfile;
 using pae::protocol_plan::WireCodec;
+#if defined(PAE_ENABLE_SCHEMA_V10_ASCII_TEXT_CODEC)
+using pae::protocol_plan::TextSegmentKind;
+#endif
 
 static_assert(!std::is_copy_constructible_v<PlanBundle>);
 static_assert(!std::is_copy_assignable_v<PlanBundle>);
@@ -218,6 +226,9 @@ class TestRunner final {
 #if defined(PAE_ENABLE_SCHEMA_V09_STREAM_FRAMING)
                                                     + 13U
 #endif
+#if defined(PAE_ENABLE_SCHEMA_V10_ASCII_TEXT_CODEC)
+                                                    + 5U
+#endif
       ;
 #else
   static constexpr std::size_t kExpectedCaseCount = 84U;
@@ -331,6 +342,88 @@ SchemaIr MakeCapabilityContractSchema() {
   schema.messages.push_back(std::move(message));
   return schema;
 }
+
+#if defined(PAE_ENABLE_SCHEMA_V10_ASCII_TEXT_CODEC)
+SchemaIr MakeAsciiTextContractSchema() {
+  SchemaIr schema;
+  schema.schema_version = "0.10";
+  schema.protocol_id = "ascii_builder_contract";
+  schema.protocol_version = "1";
+  schema.display_name = "ASCII builder contract";
+  schema.source_ref = "SYNTHETIC_FROM_SCRATCH:ascii_builder_contract";
+  schema.resource_profile = ResourceProfile::DESKTOP;
+
+  FramingProfileIr framing;
+  framing.id = "record";
+  framing.display_name = "Record";
+  framing.source_ref = "SYNTHETIC_FROM_SCRATCH:ascii_builder_contract#framing";
+  framing.input_kind = InputKind::COMPLETE_RECORD;
+  framing.origin.json_pointer = "/framing_profiles/0";
+  schema.framing_profiles.push_back(std::move(framing));
+
+  PipelineIr pipeline;
+  pipeline.id = "text_pipeline";
+  pipeline.display_name = "Text pipeline";
+  pipeline.source_ref = "SYNTHETIC_FROM_SCRATCH:ascii_builder_contract#pipeline";
+  pipeline.direction_id = "text";
+  pipeline.input_framing_profile_id = "record";
+  pipeline.message_ids.push_back("text_message");
+  pipeline.origin.json_pointer = "/pipelines/0";
+  schema.pipelines.push_back(std::move(pipeline));
+
+  MessageIr message;
+  message.id = "text_message";
+  message.display_name = "Text message";
+  message.source_ref = "SYNTHETIC_FROM_SCRATCH:ascii_builder_contract#message";
+  message.direction_id = "text";
+  message.origin.json_pointer = "/messages/0";
+
+  FieldIr field;
+  field.id = "value";
+  field.display_name = "Value";
+  field.source_ref = "SYNTHETIC_FROM_SCRATCH:ascii_builder_contract#value";
+  field.value_type = ValueType::BYTES;
+  field.wire.codec = WireCodec::ASCII_TEXT;
+  field.wire.text_min_length = 1U;
+  field.wire.text_max_length = 4U;
+  field.wire.origin.json_pointer = "/messages/0/fields/0/wire";
+  for (std::uint8_t character = 0x20U; character <= 0x7EU; ++character) {
+    if (character < 64U) {
+      field.wire.allowed_ascii_low |= std::uint64_t{1U} << character;
+    } else {
+      field.wire.allowed_ascii_high |= std::uint64_t{1U} << (character - 64U);
+    }
+  }
+  field.encode.source = EncodeSource::INPUT;
+  field.encode.origin.json_pointer = "/messages/0/fields/0/encode";
+  field.origin.json_pointer = "/messages/0/fields/0";
+  message.fields.push_back(std::move(field));
+
+  TextActionIr action;
+  TextSegmentIr prefix;
+  prefix.kind = TextSegmentKind::LITERAL;
+  prefix.literal = {'X', '='};
+  prefix.origin.json_pointer = "/messages/0/layout/decode/segments/0";
+  action.segments.push_back(std::move(prefix));
+  TextSegmentIr value;
+  value.kind = TextSegmentKind::FIELD;
+  value.field_id = "value";
+  value.origin.json_pointer = "/messages/0/layout/decode/segments/1";
+  action.segments.push_back(std::move(value));
+  TextSegmentIr suffix;
+  suffix.kind = TextSegmentKind::LITERAL;
+  suffix.literal = {'!'};
+  suffix.origin.json_pointer = "/messages/0/layout/decode/segments/2";
+  action.segments.push_back(std::move(suffix));
+  AsciiTextLayoutIr layout;
+  layout.decode = action;
+  layout.encode = std::move(action);
+  layout.origin.json_pointer = "/messages/0/layout";
+  message.ascii_text = std::move(layout);
+  schema.messages.push_back(std::move(message));
+  return schema;
+}
+#endif
 
 std::unique_ptr<BudgetedPlanDraft> AssembleSchemaDraft(SchemaIr schema,
                                                        std::optional<std::size_t> plan_memory_limit,
@@ -1271,6 +1364,48 @@ void RunPlanBuilderInt64DefenseCase(TestRunner& runner) {
   }
 }
 
+#if defined(PAE_ENABLE_SCHEMA_V10_ASCII_TEXT_CODEC)
+void RunPlanBuilderAsciiTextDefenseCases(TestRunner& runner) {
+  const auto make_draft = [&runner]() -> std::unique_ptr<BudgetedPlanDraft> {
+    CompileDiagnostic diagnostic;
+    auto draft = AssembleSchemaDraft(MakeAsciiTextContractSchema(), std::nullopt, diagnostic);
+    if (draft == nullptr) {
+      runner.Fail("ascii_text_builder_fixture", "valid ASCII fixture failed before PlanBuilder");
+    }
+    return draft;
+  };
+  auto control = make_draft();
+  if (control == nullptr || !PlanBuilder::Freeze(std::move(*control)).Succeeded()) {
+    runner.Fail("ascii_text_builder_control", "valid budgeted ASCII Draft did not freeze");
+  } else {
+    runner.Pass("ascii_text_builder_control");
+  }
+  const auto reject = [&runner, &make_draft](std::string_view case_id,
+                                             pae::test_support::AsciiTextDraftMutation mutation,
+                                             PlanBuildError expected) {
+    auto draft = make_draft();
+    if (draft == nullptr) return;
+    const PlanBuildResult result =
+        PlanBuilder::Freeze(pae::test_support::MutateAsciiTextDraft(std::move(*draft), mutation));
+    if (result.Succeeded() || result.Diagnostic() == nullptr ||
+        result.Diagnostic()->code != expected) {
+      runner.Fail(case_id, "corrupted ASCII Draft was accepted or rejected at the wrong gate");
+    } else {
+      runner.Pass(case_id);
+    }
+  };
+  using Mutation = pae::test_support::AsciiTextDraftMutation;
+  reject("ascii_text_builder_prefix_table_defense", Mutation::CORRUPTED_PREFIX_TABLE,
+         PlanBuildError::INVALID_MESSAGE_PLAN);
+  reject("ascii_text_builder_resource_count_defense", Mutation::RESOURCE_COUNT_MISMATCH,
+         PlanBuildError::RESOURCE_REQUIREMENTS_MISMATCH);
+  reject("ascii_text_builder_old_schema_residue_defense", Mutation::OLD_SCHEMA_RESIDUE,
+         PlanBuildError::INVALID_MESSAGE_PLAN);
+  reject("ascii_text_builder_field_type_defense", Mutation::FIELD_TYPE_MISMATCH,
+         PlanBuildError::INVALID_FIELD_PLAN);
+}
+#endif
+
 bool ReadBinaryFile(const std::filesystem::path& path, std::string& output, std::string& error) {
   std::ifstream stream{path, std::ios::binary};
   if (!stream) {
@@ -1688,6 +1823,9 @@ int main(int argc, char** argv) {
   RunPlanBuilderStreamDefenseCases(runner);
 #endif
   RunPlanBuilderInt64DefenseCase(runner);
+#if defined(PAE_ENABLE_SCHEMA_V10_ASCII_TEXT_CODEC)
+  RunPlanBuilderAsciiTextDefenseCases(runner);
+#endif
   RunPlanMemoryContractCases(runner);
 
   const std::filesystem::path data_root{argv[1]};

@@ -168,6 +168,9 @@ bool RequirementsEqual(const ResourceRequirements& left,
          left.max_sync_bytes == right.max_sync_bytes &&
          left.max_framing_buffer_bytes == right.max_framing_buffer_bytes
 #endif
+#if defined(PAE_ENABLE_SCHEMA_V10_ASCII_TEXT_CODEC)
+         && left.total_text_segment_count == right.total_text_segment_count
+#endif
       ;
 }
 
@@ -343,6 +346,26 @@ bool EstimatePreparedPlanMemory(
                                                   PlanMemoryCategory::INDEX)) {
       return false;
     }
+#if defined(PAE_ENABLE_SCHEMA_V10_ASCII_TEXT_CODEC)
+    const auto add_text_action = [&layout](const std::optional<TextActionPlan>& action) {
+      if (!action.has_value()) return true;
+      if (!layout.AddArray<TextSegmentExecutionPlan>(action->segments.size(),
+                                                     PlanMemoryCategory::EXECUTION_DESCRIPTOR)) {
+        return false;
+      }
+      for (const TextSegmentPlan& segment : action->segments) {
+        if (!layout.AddArray<std::uint8_t>(segment.literal.size(), PlanMemoryCategory::MATCHER) ||
+            !layout.AddArray<std::size_t>(segment.prefix_table.size(),
+                                          PlanMemoryCategory::MATCHER)) {
+          return false;
+        }
+      }
+      return true;
+    };
+    if (!add_text_action(message.text_decode) || !add_text_action(message.text_encode)) {
+      return false;
+    }
+#endif
   }
   if (!layout.AddArray<PipelineExecutionPlan>(pipeline_execution_plans.size(),
                                               PlanMemoryCategory::EXECUTION_DESCRIPTOR)) {
@@ -355,6 +378,10 @@ bool EstimatePreparedPlanMemory(
                                                       PlanMemoryCategory::EXECUTION_DESCRIPTOR)
 #if defined(PAE_ENABLE_SCHEMA_V08_VARIABLE_COMPILER)
         || !layout.AddArray<std::size_t>(pipeline.variable_message_indices.size(),
+                                         PlanMemoryCategory::INDEX)
+#endif
+#if defined(PAE_ENABLE_SCHEMA_V10_ASCII_TEXT_CODEC)
+        || !layout.AddArray<std::size_t>(pipeline.text_message_indices.size(),
                                          PlanMemoryCategory::INDEX)
 #endif
     ) {
@@ -422,6 +449,35 @@ bool FreezePodArray(PlanArena& arena, const std::vector<T>& source, PlanMemoryCa
       output);
 }
 
+#if defined(PAE_ENABLE_SCHEMA_V10_ASCII_TEXT_CODEC)
+bool FreezeTextAction(PlanArena& arena, const std::optional<TextActionPlan>& source,
+                      std::optional<TextActionExecutionPlan>& output) {
+  if (!source.has_value()) {
+    output.reset();
+    return true;
+  }
+  TextActionExecutionPlan action;
+  if (!ToSize(source->min_record_length, action.min_record_length) ||
+      !ToSize(source->max_record_length, action.max_record_length) ||
+      !FreezeObjectArray<TextSegmentExecutionPlan>(
+          arena, source->segments.size(), PlanMemoryCategory::EXECUTION_DESCRIPTOR,
+          [&arena, &source](std::size_t index, TextSegmentExecutionPlan& segment) {
+            const TextSegmentPlan& input = source->segments[index];
+            segment.kind = input.kind;
+            segment.field_index = input.field_index;
+            return FreezePodArray(arena, input.literal, PlanMemoryCategory::MATCHER,
+                                  segment.literal) &&
+                   FreezePodArray(arena, input.prefix_table, PlanMemoryCategory::MATCHER,
+                                  segment.prefix_table);
+          },
+          action.segments)) {
+    return false;
+  }
+  output = std::move(action);
+  return true;
+}
+#endif
+
 }  // namespace
 
 BudgetedPlanDraft::BudgetedPlanDraft(std::unique_ptr<detail::PlanDraftData> draft) noexcept
@@ -451,6 +507,9 @@ PlanBuildResult PlanBuilder::FreezeImpl(detail::PlanDraftData draft) {
 #endif
 #if defined(PAE_ENABLE_SCHEMA_V09_STREAM_FRAMING)
        && draft.schema_version != "0.9"
+#endif
+#if defined(PAE_ENABLE_SCHEMA_V10_ASCII_TEXT_CODEC)
+       && draft.schema_version != "0.10"
 #endif
        ) ||
       !IsStableId(draft.protocol_id) || draft.protocol_version.empty() || limits == nullptr ||
@@ -482,6 +541,9 @@ PlanBuildResult PlanBuilder::FreezeImpl(detail::PlanDraftData draft) {
 #if defined(PAE_ENABLE_SCHEMA_V09_STREAM_FRAMING)
          && draft.schema_version != "0.9"
 #endif
+#if defined(PAE_ENABLE_SCHEMA_V10_ASCII_TEXT_CODEC)
+         && draft.schema_version != "0.10"
+#endif
          ) ||
         (conversion.raw_value_type != ValueType::UINT64 &&
          conversion.raw_value_type != ValueType::INT64) ||
@@ -501,6 +563,26 @@ PlanBuildResult PlanBuilder::FreezeImpl(detail::PlanDraftData draft) {
   }
   for (std::size_t message_index = 0U; message_index < draft.messages.size(); ++message_index) {
     const MessagePlan& message = draft.messages[message_index];
+#if defined(PAE_ENABLE_SCHEMA_V10_ASCII_TEXT_CODEC)
+    if (message.ascii_text.has_value()) {
+      const auto count_action = [&actual_requirements](
+                                    const std::optional<TextActionPlan>& action) {
+        return !action.has_value() || AddSizeChecked(action->segments.size(),
+                                                     actual_requirements.total_text_segment_count);
+      };
+      const std::size_t per_action_limit = 2U * limits->max_fields_per_message + 1U;
+      const std::size_t total_limit = 4U * limits->max_total_fields + 2U * limits->max_messages;
+      if ((message.ascii_text->decode.has_value() &&
+           message.ascii_text->decode->segments.size() > per_action_limit) ||
+          (message.ascii_text->encode.has_value() &&
+           message.ascii_text->encode->segments.size() > per_action_limit) ||
+          !count_action(message.ascii_text->decode) || !count_action(message.ascii_text->encode) ||
+          actual_requirements.total_text_segment_count > total_limit) {
+        return Reject(PlanBuildError::RESOURCE_LIMIT_EXCEEDED, kInvalidPlanBuildIndex,
+                      kInvalidPlanBuildIndex, message_index);
+      }
+    }
+#endif
     if (message.frame_length_bytes > limits->max_frame_bytes ||
         message.fields.size() > limits->max_fields_per_message ||
         message.bit_containers.size() > limits->max_fields_per_message ||
@@ -656,10 +738,16 @@ PlanBuildResult PlanBuilder::FreezeImpl(detail::PlanDraftData draft) {
   for (std::size_t message_index = 0U; message_index < draft.messages.size(); ++message_index) {
     const MessagePlan& message = draft.messages[message_index];
     std::size_t frame_size = 0U;
+    const bool text_message =
+#if defined(PAE_ENABLE_SCHEMA_V10_ASCII_TEXT_CODEC)
+        message.ascii_text.has_value();
+#else
+        false;
+#endif
     if (!IsStableId(message.id) || !IsStableId(message.direction_id) ||
         !message_ids.emplace(message.id).second ||
         !ToSize(message.frame_length_bytes, frame_size) || frame_size == 0U ||
-        message.matchers.empty() || message.fields.empty()) {
+        (!text_message && (message.matchers.empty() || message.fields.empty()))) {
       return Reject(PlanBuildError::INVALID_MESSAGE_PLAN, kInvalidPlanBuildIndex,
                     kInvalidPlanBuildIndex, message_index);
     }
@@ -668,6 +756,117 @@ PlanBuildResult PlanBuilder::FreezeImpl(detail::PlanDraftData draft) {
 
     detail::PreparedMessageExecutionPlan execution;
     execution.frame_size = frame_size;
+#if defined(PAE_ENABLE_SCHEMA_V10_ASCII_TEXT_CODEC)
+    if (text_message) {
+      if (draft.schema_version != "0.10" || !message.matchers.empty() ||
+          !message.bit_containers.empty() || message.integrity.has_value()
+#if defined(PAE_ENABLE_SCHEMA_V08_VARIABLE_COMPILER)
+          || message.bounded_payload.has_value()
+#endif
+#if defined(PAE_ENABLE_SCHEMA_V07_LENGTH_COMPILER)
+          || message.computed_length.has_value()
+#endif
+      ) {
+        return Reject(PlanBuildError::INVALID_MESSAGE_PLAN, kInvalidPlanBuildIndex,
+                      kInvalidPlanBuildIndex, message_index);
+      }
+      std::unordered_set<std::string> field_ids;
+      std::vector<bool> decode_fields(message.fields.size(), false);
+      std::vector<bool> encode_fields(message.fields.size(), false);
+      const auto validate_action = [&](const std::optional<TextActionPlan>& action,
+                                       std::vector<bool>& references, bool decode) {
+        if (!action.has_value()) return true;
+        if (action->segments.empty()) return false;
+        std::size_t minimum = 0U;
+        std::size_t maximum = 0U;
+        for (std::size_t segment_index = 0U; segment_index < action->segments.size();
+             ++segment_index) {
+          const TextSegmentPlan& segment = action->segments[segment_index];
+          if (segment.kind == TextSegmentKind::LITERAL) {
+            if (segment.literal.empty() || segment.prefix_table.size() != segment.literal.size() ||
+                !AddSizeChecked(segment.literal.size(), minimum) ||
+                !AddSizeChecked(segment.literal.size(), maximum)) {
+              return false;
+            }
+            std::size_t prefix = 0U;
+            for (std::size_t index = 0U; index < segment.literal.size(); ++index) {
+              if (segment.literal[index] > 0x7FU) return false;
+              if (index != 0U) {
+                while (prefix != 0U && segment.literal[index] != segment.literal[prefix]) {
+                  prefix = segment.prefix_table[prefix - 1U];
+                }
+                if (segment.literal[index] == segment.literal[prefix]) ++prefix;
+              }
+              if (segment.prefix_table[index] != prefix || prefix > index) return false;
+            }
+            continue;
+          }
+          if (segment.kind != TextSegmentKind::FIELD ||
+              segment.field_index >= message.fields.size() || references[segment.field_index]) {
+            return false;
+          }
+          references[segment.field_index] = true;
+          const FieldPlan& field = message.fields[segment.field_index];
+          std::size_t field_min = 0U;
+          std::size_t field_max = 0U;
+          if (!ToSize(field.text_min_length, field_min) ||
+              !ToSize(field.text_max_length, field_max) || field_min > field_max ||
+              !AddSizeChecked(field_min, minimum) || !AddSizeChecked(field_max, maximum) ||
+              (field_min != field_max && segment_index + 1U < action->segments.size() &&
+               action->segments[segment_index + 1U].kind != TextSegmentKind::LITERAL)) {
+            return false;
+          }
+          if (decode) ++execution.text_decode_field_count;
+        }
+        return minimum == action->min_record_length && maximum == action->max_record_length &&
+               maximum <= frame_size;
+      };
+      if (!validate_action(message.ascii_text->decode, decode_fields, true) ||
+          !validate_action(message.ascii_text->encode, encode_fields, false)) {
+        return Reject(PlanBuildError::INVALID_MESSAGE_PLAN, kInvalidPlanBuildIndex,
+                      kInvalidPlanBuildIndex, message_index);
+      }
+      std::size_t input_ordinal = 0U;
+      execution.fields.reserve(message.fields.size());
+      for (std::size_t field_index = 0U; field_index < message.fields.size(); ++field_index) {
+        const FieldPlan& field = message.fields[field_index];
+        if (!IsStableId(field.id) || !field_ids.emplace(field.id).second ||
+            field.value_type != ValueType::BYTES || field.wire_codec != WireCodec::ASCII_TEXT ||
+            (!decode_fields[field_index] && !encode_fields[field_index])) {
+          return Reject(PlanBuildError::INVALID_FIELD_PLAN, kInvalidPlanBuildIndex,
+                        kInvalidPlanBuildIndex, message_index, kInvalidPlanBuildIndex, field_index);
+        }
+        for (std::uint8_t character = 0x20U; character <= 0x7EU; ++character) {
+          const std::uint64_t mask = std::uint64_t{1U} << (character % 64U);
+          const std::uint64_t word =
+              character < 64U ? field.allowed_ascii_low : field.allowed_ascii_high;
+          if ((word & mask) == 0U) {
+            return Reject(PlanBuildError::INVALID_FIELD_PLAN, kInvalidPlanBuildIndex,
+                          kInvalidPlanBuildIndex, message_index, kInvalidPlanBuildIndex,
+                          field_index);
+          }
+        }
+        FieldExecutionPlan field_execution;
+        field_execution.value_type = ValueType::BYTES;
+        field_execution.encode_source = EncodeSource::INPUT;
+        field_execution.input_ordinal =
+            encode_fields[field_index] ? input_ordinal++ : kInvalidPlanBuildIndex;
+        field_execution.text_min_length = static_cast<std::size_t>(field.text_min_length);
+        field_execution.text_max_length = static_cast<std::size_t>(field.text_max_length);
+        field_execution.allowed_ascii_low = field.allowed_ascii_low;
+        field_execution.allowed_ascii_high = field.allowed_ascii_high;
+        field_execution.text_encode_input = encode_fields[field_index];
+        execution.fields.push_back(field_execution);
+      }
+      execution.required_input_count = input_ordinal;
+      execution.text_decode = message.ascii_text->decode;
+      execution.text_encode = message.ascii_text->encode;
+      execution_resource_layout.max_input_fields_per_message =
+          (std::max)(execution_resource_layout.max_input_fields_per_message, input_ordinal);
+      message_execution_plans.push_back(std::move(execution));
+      continue;
+    }
+#endif
 #if defined(PAE_ENABLE_SCHEMA_V08_VARIABLE_COMPILER)
     if (message.bounded_payload.has_value()) {
       const BoundedPayloadPlan& bounded = *message.bounded_payload;
@@ -1553,6 +1752,10 @@ PlanBuildResult PlanBuilder::FreezeImpl(detail::PlanDraftData draft) {
 #endif
       for (const std::size_t earlier_index : seen_message_indices) {
         if (earlier_index != message_index &&
+#if defined(PAE_ENABLE_SCHEMA_V10_ASCII_TEXT_CODEC)
+            !message_execution_plans[earlier_index].text_decode.has_value() &&
+            !message_execution_plans[message_index].text_decode.has_value() &&
+#endif
             FixedMatchersCanIntersect(message_execution_plans[earlier_index],
                                       message_execution_plans[message_index])) {
           return Reject(PlanBuildError::AMBIGUOUS_MATCHER, kInvalidPlanBuildIndex, pipeline_index,
@@ -1562,8 +1765,15 @@ PlanBuildResult PlanBuilder::FreezeImpl(detail::PlanDraftData draft) {
       const std::size_t word_index = message_index / kBitsPerAllowedMessageWord;
       const auto bit_index = static_cast<unsigned>(message_index % kBitsPerAllowedMessageWord);
       execution.allowed_message_words[word_index] |= std::uint64_t{1U} << bit_index;
+#if defined(PAE_ENABLE_SCHEMA_V10_ASCII_TEXT_CODEC)
+      if (message_execution_plans[message_index].text_decode.has_value()) {
+        execution.text_message_indices.push_back(message_index);
+      } else if (message_execution_plans[message_index].text_encode.has_value()) {
+        continue;
+      } else
+#endif
 #if defined(PAE_ENABLE_SCHEMA_V08_VARIABLE_COMPILER)
-      if (message_execution_plans[message_index].bounded_payload.has_value()) {
+          if (message_execution_plans[message_index].bounded_payload.has_value()) {
         execution.variable_message_indices.push_back(message_index);
       } else
 #endif
@@ -1745,6 +1955,12 @@ PlanBuildResult PlanBuilder::FreezeImpl(detail::PlanDraftData draft) {
                   field.bit_container_index = field_source.bit_container_index;
                   field.bit_offset = field_source.bit_offset;
                   field.bit_width = field_source.bit_width;
+#if defined(PAE_ENABLE_SCHEMA_V10_ASCII_TEXT_CODEC)
+                  field.text_min_length = field_source.text_min_length;
+                  field.text_max_length = field_source.text_max_length;
+                  field.allowed_ascii_low = field_source.allowed_ascii_low;
+                  field.allowed_ascii_high = field_source.allowed_ascii_high;
+#endif
                   if (!FreezeString(arena, field_source.id, field.id)) {
                     return false;
                   }
@@ -1786,17 +2002,25 @@ PlanBuildResult PlanBuilder::FreezeImpl(detail::PlanDraftData draft) {
 #if defined(PAE_ENABLE_SCHEMA_V07_LENGTH_COMPILER)
             output.computed_length = source.computed_length;
 #endif
-            return FreezePodArray(arena, source.fixed_bytes, PlanMemoryCategory::MATCHER,
-                                  output.fixed_bytes) &&
-                   FreezePodArray(arena, source.bit_containers,
-                                  PlanMemoryCategory::EXECUTION_DESCRIPTOR,
-                                  output.bit_containers) &&
-                   FreezePodArray(arena, source.fields, PlanMemoryCategory::EXECUTION_DESCRIPTOR,
-                                  output.fields) &&
-                   FreezePodArray(arena, source.enum_raw_values, PlanMemoryCategory::INDEX,
-                                  output.enum_raw_values) &&
-                   FreezePodArray(arena, source.enum_lookup_entries, PlanMemoryCategory::INDEX,
-                                  output.enum_lookup_entries);
+            if (!FreezePodArray(arena, source.fixed_bytes, PlanMemoryCategory::MATCHER,
+                                output.fixed_bytes) ||
+                !FreezePodArray(arena, source.bit_containers,
+                                PlanMemoryCategory::EXECUTION_DESCRIPTOR, output.bit_containers) ||
+                !FreezePodArray(arena, source.fields, PlanMemoryCategory::EXECUTION_DESCRIPTOR,
+                                output.fields) ||
+                !FreezePodArray(arena, source.enum_raw_values, PlanMemoryCategory::INDEX,
+                                output.enum_raw_values) ||
+                !FreezePodArray(arena, source.enum_lookup_entries, PlanMemoryCategory::INDEX,
+                                output.enum_lookup_entries)) {
+              return false;
+            }
+#if defined(PAE_ENABLE_SCHEMA_V10_ASCII_TEXT_CODEC)
+            output.text_decode_field_count = source.text_decode_field_count;
+            return FreezeTextAction(arena, source.text_decode, output.text_decode) &&
+                   FreezeTextAction(arena, source.text_encode, output.text_encode);
+#else
+            return true;
+#endif
           },
           frozen_message_execution)) {
     return Reject(PlanBuildError::ALLOCATION_FAILED);
@@ -1815,6 +2039,12 @@ PlanBuildResult PlanBuilder::FreezeImpl(detail::PlanDraftData draft) {
 #if defined(PAE_ENABLE_SCHEMA_V08_VARIABLE_COMPILER)
             if (!FreezePodArray(arena, source.variable_message_indices, PlanMemoryCategory::INDEX,
                                 output.variable_message_indices)) {
+              return false;
+            }
+#endif
+#if defined(PAE_ENABLE_SCHEMA_V10_ASCII_TEXT_CODEC)
+            if (!FreezePodArray(arena, source.text_message_indices, PlanMemoryCategory::INDEX,
+                                output.text_message_indices)) {
               return false;
             }
 #endif

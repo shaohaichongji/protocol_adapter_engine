@@ -306,6 +306,31 @@ CompileResult BuildVariablePlan() {
 }
 #endif
 
+#if defined(PAE_ENABLE_SCHEMA_V10_ASCII_TEXT_CODEC)
+CompileResult BuildAsciiTextPlan() {
+  return pae::config_compiler::CompileJsonToPlan(R"json({
+    "schema_version":"0.10","protocol_id":"allocation_ascii","protocol_version":"1",
+    "display_name":"Synthetic","description":"","source_ref":"SYNTHETIC_FROM_SCRATCH:allocation",
+    "resource_profile":"desktop",
+    "framing_profiles":[{"id":"record","display_name":"Synthetic","description":"",
+      "source_ref":"SYNTHETIC_FROM_SCRATCH:allocation","input_kind":"complete_record"}],
+    "pipelines":[{"id":"pipe","display_name":"Synthetic","description":"",
+      "source_ref":"SYNTHETIC_FROM_SCRATCH:allocation","direction_id":"text",
+      "input_framing_profile_id":"record","message_ids":["message"]}],
+    "messages":[{"id":"message","display_name":"Synthetic","description":"",
+      "source_ref":"SYNTHETIC_FROM_SCRATCH:allocation","direction_id":"text",
+      "layout":{"kind":"text","encoding":"ascii",
+        "decode":{"segments":[{"kind":"literal","text":"RX "},
+          {"kind":"field","field_id":"value"},{"kind":"literal","text":"!"}]},
+        "encode":{"segments":[{"kind":"literal","text":"TX "},
+          {"kind":"field","field_id":"value"},{"kind":"literal","text":"!"}]}},
+      "fields":[{"id":"value","display_name":"Synthetic","description":"",
+        "source_ref":"SYNTHETIC_FROM_SCRATCH:allocation","value_type":"BYTES",
+        "wire":{"codec":"ascii_text","min_byte_length":1,"max_byte_length":4},
+        "encode":{"source":"input"}}]}]})json");
+}
+#endif
+
 #if defined(PAE_ENABLE_SCHEMA_V07_LENGTH_COMPILER)
 CompileResult BuildLengthPlan() {
   return pae::config_compiler::CompileJsonToPlan(R"json({
@@ -552,6 +577,38 @@ bool RunFirstLengthCalls() {
 }
 #endif
 
+#if defined(PAE_ENABLE_SCHEMA_V10_ASCII_TEXT_CODEC)
+bool RunFirstAsciiTextCalls() {
+  CompileResult frozen = BuildAsciiTextPlan();
+  if (!frozen.Succeeded()) return false;
+  ExecutionWorkspace workspace{*frozen.Plan()};
+  constexpr std::array<std::uint8_t, 2U> value_bytes{'O', 'K'};
+  EncodeFieldValue value;
+  value.field = FieldRef{frozen.Plan(), 0U, 0U};
+  value.value_kind = LogicalValueKind::BYTES;
+  value.bytes_value = {value_bytes.data(), value_bytes.size()};
+  std::array<std::uint8_t, 6U> output{};
+  std::size_t before = g_allocation_count.load(std::memory_order_relaxed);
+  const auto encoded = EncodeCompleteRecord(*frozen.Plan(), workspace, 0U, 0U, &value, 1U,
+                                            {output.data(), output.size()});
+  std::size_t after = g_allocation_count.load(std::memory_order_relaxed);
+  if (encoded.status != CodecStatus::OK || encoded.bytes_written != output.size() ||
+      output != std::array<std::uint8_t, 6U>{'T', 'X', ' ', 'O', 'K', '!'} || before != after) {
+    return false;
+  }
+  constexpr std::array<std::uint8_t, 6U> input{'R', 'X', ' ', 'O', 'K', '!'};
+  DecodedFieldSlot slot;
+  before = g_allocation_count.load(std::memory_order_relaxed);
+  const auto decoded =
+      DecodeCompleteRecord(*frozen.Plan(), workspace, 0U, {input.data(), input.size()}, &slot, 1U);
+  after = g_allocation_count.load(std::memory_order_relaxed);
+  return decoded.status == CodecStatus::OK && decoded.field_count == 1U &&
+         slot.value_kind == LogicalValueKind::BYTES &&
+         slot.bytes_value.size == value_bytes.size() &&
+         slot.bytes_value.data == input.data() + 3U && before == after;
+}
+#endif
+
 #if defined(PAE_ENABLE_SCHEMA_V05_COMPILER)
 bool RunFirstDecimalCalls() {
   CompileResult frozen = BuildDecimalPlan();
@@ -605,7 +662,10 @@ int main(int argc, char** argv) {
 #if defined(PAE_ENABLE_SCHEMA_V05_COMPILER)
                       : mode == "--first-decimal" ? RunFirstDecimalCalls()
 #endif
-                                                  : false;
+#if defined(PAE_ENABLE_SCHEMA_V10_ASCII_TEXT_CODEC)
+                      : mode == "--first-ascii-text" ? RunFirstAsciiTextCalls()
+#endif
+                                                     : false;
   std::string_view case_id =
       mode == "--first-decode"
           ? "first_decode_zero_replaceable_new_allocation"
@@ -630,6 +690,9 @@ int main(int argc, char** argv) {
 #endif
                                       ))));
   if (mode == "--first-variable") case_id = "first_variable_calls_zero_replaceable_new_allocation";
+  if (mode == "--first-ascii-text") {
+    case_id = "first_ascii_text_calls_zero_replaceable_new_allocation";
+  }
   std::cout << (passed ? "PASS" : "FAIL") << " case=" << case_id << '\n';
   std::cout << "FIRST_CALL_ALLOCATION_TEST_SUMMARY passed=" << (passed ? 1 : 0)
             << " failed=" << (passed ? 0 : 1) << " expected=1 gate=" << (passed ? "PASS" : "FAIL")

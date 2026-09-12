@@ -6,8 +6,8 @@
 | --- | --- |
 | 当前状态 | `V0.1 DRAFT SLICE / INCOMPLETE（V0.1 草案切片 / 不完整）` |
 | 对应 Schema | [`pae.schema.json`](pae.schema.json) |
-| 当前切片 | 严格配置编译、yyjson-free（不依赖yyjson）的Frozen Execution Plan（冻结执行计划）、显式ExecutionWorkspace、COMPLETE_RECORD内部Decode/Encode、固定长度/固定字节Matcher、UINT64/INT64/BYTES/ENUM，Schema 0.2中的BOOL与位容器、Schema 0.3中的SUM8、Schema 0.4中的字节对齐INT64，以及专用开关下Schema 0.5比例/偏置的编译冻结和Core双向转换；`input`与整数`constant` Encode Source |
-| 不覆盖 | STREAM_CHUNK流式Framing、CRC及其他Integrity算法、Receive Gate、Mapping、Session、Runtime注册、公共API及完整V0.1字段类型 |
+| 当前切片 | 严格配置编译、yyjson-free（不依赖yyjson）的Frozen Execution Plan（冻结执行计划）、显式ExecutionWorkspace、COMPLETE_RECORD内部Decode/Encode、固定/有界变长Binary能力、Schema 0.9内部Framer，以及默认关闭专用开关下Schema 0.10 ASCII Text完整记录 |
+| 不覆盖 | UTF-8/转码、文本流分帧、Lab ASCII接入、Receive Gate、Mapping、Session、Runtime注册、公共API及完整V0.1字段类型 |
 
 本文描述PAE（Protocol Adapter Engine，协议适配引擎）首个Loader/Compiler（加载器/编译器）垂直切片及其后的`COMPLETE_RECORD（完整记录）`Codec（编解码器）内部切片。它没有完成《PAE V0.1 技术细节拍板方案》中`PAE-DEC-027`要求的完整Schema V0.1语义覆盖，也没有冻结公共API（Application Programming Interface，应用程序接口），不能作为完整V0.1配置语言或生产协议正确性声明。
 
@@ -459,11 +459,34 @@ Event格式；它在配置成功编译后、输入/Codec/网络/证据动作前�
 公开实现及Windows离线证据见`docs/bounded-stream-framing-contract.md`和
 `docs/windows-msvc-2026-bounded-stream-framing-slice.md`。
 
-## 13. 当前不覆盖的完整 V0.1 能力
+## 13. Schema 0.10 ASCII Text完整记录内部切片
+
+Schema 0.10由默认关闭的`PAE_ENABLE_SCHEMA_V10_ASCII_TEXT_CODEC`保护，只接受
+`layout.kind=text`、`encoding=ascii`的Text Message；0.1～0.9的Binary配置、Plan和执行分支不变。
+每个Message可分别声明非空Decode/Encode动作，动作由有序literal和ASCII BYTES field组成；
+固定长度、紧随非空literal终止的有界变长字段及末尾剩余字段按确定性无回溯规则执行。
+
+Compiler严格校验ASCII literal、控制字节白名单、字段引用、动作边界和派生记录长度；Plan冻结
+RX/TX segment、literal、KMP前缀表和字段约束。每动作segment上限为
+`2 × max_fields_per_message + 1`，每Plan RX/TX合计上限为
+`4 × max_total_fields + 2 × max_messages`，并继续受Plan Arena和现有帧长预算约束。
+
+Decode先只做结构唯一性判断，唯一后才校验字符并以借用输入的BYTES视图零拷贝交付；失败字段数为0。
+Encode拒绝缺失、重复、未知字段、字符/长度错误及跨字段边界的终止序列冲突，写入后使用TX模板独立
+二次解析并逐字段比较原输入；失败有效输出长度为0。不存在的动作返回`OPERATION_NOT_SUPPORTED`。
+执行热路径及首次调用不新增堆分配。
+
+首轮不接入Protocol Lab，不定义新Result/Record/Event或指纹域；Lab必须在Codec、网络和证据动作前
+拒绝0.10。该切片不包含UTF-8、数字文本转换、CR/LF流分帧、网络或稳定公共API。公开契约、合成样例
+和Windows离线证据见`docs/ascii-text-codec-minimal-contract.md`、
+`examples/config/synthetic_ascii_text_slice.pae.json`和
+`docs/windows-msvc-2026-ascii-text-slice.md`。
+
+## 14. 当前不覆盖的完整 V0.1 能力
 
 完成本切片不能宣称完成完整Schema V0.1。至少仍缺少：
 
-- REAL64、STRING/ASCII和Packed BCD；有符号位字段仍未实现；
+- REAL64、UTF-8/通用STRING和Packed BCD；有符号位字段仍未实现；
 - 比例/偏置的Values/Lab证据、raw/value constraints及稳定公共接口；
 - `default`及长度以外的通用`computed`作者格式；
 - SUM、XOR、LRC、CRC之外的自定义Checksum及多段/动态完整性规则；
@@ -471,7 +494,7 @@ Event格式；它在配置成功编译后、输入/Codec/网络/证据动作前�
 - 稳定公共API、C ABI和字符串键值适配层；
 - 三个PoC（Proof of Concept，概念验证）的正式协议独立Golden Vector；当前只有人工实验协议的两条Synthetic引擎向量。
 
-## 14. 验证边界
+## 15. 验证边界
 
 截至2026-09-02，Loader/Compiler与Frozen Execution Plan内部切片已有以下执行证据：
 
@@ -489,10 +512,11 @@ Event格式；它在配置成功编译后、输入/Codec/网络/证据动作前�
 - Linux、目标板、硬件或现场行为；
 - 人工样例与任何生产协议、真实报文或设备行为之间存在等价关系。
 
-## 15. 修订记录
+## 16. 修订记录
 
 | 文档版本 | 日期 | 说明 |
 | --- | --- | --- |
+| 0.1.17 | 2026-09-10 | 同步默认关闭的Schema 0.10 ASCII Text完整记录、确定性边界、TX模板复核、Plan资源计费、Lab不接入及Windows离线验证边界 |
 | 0.1.16 | 2026-09-10 | 同步Schema 0.9有界流式切帧、三策略、精确消费/背压、Plan与Workspace资源边界、Lab早拒绝及Windows离线验证边界 |
 | 0.1.15 | 2026-09-09 | 收口Schema 0.8空BYTES：增加仅新代可用的Values 0.5，Result 0.9 Reader/Writer/指纹统一接受空配对，旧代不变 |
 | 0.1.14 | 2026-09-09 | 同步Schema 0.8有界变长完整记录、实际尺寸执行、动态完整性、Lab 0.9/Record 0.10及Windows离线边界 |

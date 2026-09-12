@@ -1,0 +1,88 @@
+{
+  "schema_version": "0.10",
+  "protocol_id": "synthetic_ascii_text_slice",
+  "protocol_version": "1.0",
+  "display_name": "Synthetic ASCII text slice",
+  "description": "Public from-scratch complete-record ASCII vector.",
+  "source_ref": "SYNTHETIC_FROM_SCRATCH:ASCII_TEXT_SLICE",
+  "resource_profile": "desktop",
+  "framing_profiles": [
+    {
+      "id": "record",
+      "display_name": "Complete record",
+      "description": "Host supplies one complete record.",
+      "source_ref": "SYNTHETIC_FROM_SCRATCH:ASCII_TEXT_SLICE",
+      "input_kind": "complete_record"
+    }
+  ],
+  "pipelines": [
+    {
+      "id": "ascii_pipeline",
+      "display_name": "ASCII pipeline",
+      "description": "Synthetic text pipeline.",
+      "source_ref": "SYNTHETIC_FROM_SCRATCH:ASCII_TEXT_SLICE",
+      "direction_id": "synthetic",
+      "input_framing_profile_id": "record",
+      "message_ids": ["greeting"]
+    }
+  ],
+  "messages": [
+    {
+      "id": "greeting",
+      "display_name": "Greeting",
+      "description": "Independent receive and transmit text templates.",
+      "source_ref": "SYNTHETIC_FROM_SCRATCH:ASCII_TEXT_SLICE",
+      "direction_id": "synthetic",
+      "layout": {
+        "kind": "text",
+        "encoding": "ascii",
+        "decode": {
+          "segments": [
+            {"kind": "literal", "text": "RX "},
+            {"kind": "field", "field_id": "name"},
+            {"kind": "literal", "text": "!"},
+            {"kind": "field", "field_id": "rx_code"},
+            {"kind": "literal", "text": "\r\n"}
+          ]
+        },
+        "encode": {
+          "segments": [
+            {"kind": "literal", "text": "TX "},
+            {"kind": "field", "field_id": "name"},
+            {"kind": "literal", "text": "!"},
+            {"kind": "field", "field_id": "tx_tag"},
+            {"kind": "literal", "text": "\r\n"}
+          ]
+        }
+      },
+      "fields": [
+        {
+          "id": "name",
+          "display_name": "Name",
+          "description": "Printable variable-length name.",
+          "source_ref": "SYNTHETIC_FROM_SCRATCH:ASCII_TEXT_SLICE",
+          "value_type": "BYTES",
+          "wire": {"codec": "ascii_text", "min_byte_length": 1, "max_byte_length": 8},
+          "encode": {"source": "input"}
+        },
+        {
+          "id": "rx_code",
+          "display_name": "RX code",
+          "description": "Decode-only fixed-width value.",
+          "source_ref": "SYNTHETIC_FROM_SCRATCH:ASCII_TEXT_SLICE",
+          "value_type": "BYTES",
+          "wire": {"codec": "ascii_text", "min_byte_length": 2, "max_byte_length": 2}
+        },
+        {
+          "id": "tx_tag",
+          "display_name": "TX tag",
+          "description": "Encode-only fixed-width value.",
+          "source_ref": "SYNTHETIC_FROM_SCRATCH:ASCII_TEXT_SLICE",
+          "value_type": "BYTES",
+          "wire": {"codec": "ascii_text", "min_byte_length": 1, "max_byte_length": 1},
+          "encode": {"source": "input"}
+        }
+      ]
+    }
+  ]
+}

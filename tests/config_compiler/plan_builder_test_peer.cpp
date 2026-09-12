@@ -233,6 +233,28 @@ class PlanBuilderTestPeer final {
   }
 #endif
 
+#if defined(PAE_ENABLE_SCHEMA_V10_ASCII_TEXT_CODEC)
+  static BudgetedPlanDraft MutateAsciiTextDraft(
+      BudgetedPlanDraft draft, pae::test_support::AsciiTextDraftMutation mutation) {
+    auto& message = draft.draft_->messages[0];
+    switch (mutation) {
+      case pae::test_support::AsciiTextDraftMutation::CORRUPTED_PREFIX_TABLE:
+        message.ascii_text->decode->segments[2].prefix_table[0] = 1U;
+        break;
+      case pae::test_support::AsciiTextDraftMutation::RESOURCE_COUNT_MISMATCH:
+        --draft.draft_->resource_requirements.total_text_segment_count;
+        break;
+      case pae::test_support::AsciiTextDraftMutation::OLD_SCHEMA_RESIDUE:
+        draft.draft_->schema_version = "0.9";
+        break;
+      case pae::test_support::AsciiTextDraftMutation::FIELD_TYPE_MISMATCH:
+        message.fields[0].value_type = ValueType::UINT64;
+        break;
+    }
+    return draft;
+  }
+#endif
+
 #if defined(PAE_ENABLE_SCHEMA_V07_LENGTH_COMPILER)
   static BudgetedPlanDraft MakeLengthDraft() {
     auto draft = std::make_unique<detail::PlanDraftData>();
@@ -614,6 +636,14 @@ protocol_plan::BudgetedPlanDraft MakeInt64DraftWithOutOfRangeConstant() {
 #if defined(PAE_ENABLE_SCHEMA_V09_STREAM_FRAMING)
 protocol_plan::BudgetedPlanDraft MakeCorruptedStreamDraft(StreamDraftMutation mutation) {
   return protocol_plan::test_only::PlanBuilderTestPeer::MakeCorruptedStreamDraft(mutation);
+}
+#endif
+
+#if defined(PAE_ENABLE_SCHEMA_V10_ASCII_TEXT_CODEC)
+protocol_plan::BudgetedPlanDraft MutateAsciiTextDraft(protocol_plan::BudgetedPlanDraft draft,
+                                                      AsciiTextDraftMutation mutation) {
+  return protocol_plan::test_only::PlanBuilderTestPeer::MutateAsciiTextDraft(std::move(draft),
+                                                                             mutation);
 }
 #endif
 

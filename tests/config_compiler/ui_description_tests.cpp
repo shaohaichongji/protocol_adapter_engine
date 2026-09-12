@@ -91,8 +91,11 @@ void CheckSuccessfulArtifact(Runner& runner, std::string_view case_prefix, const
   const std::size_t limit = DerivedUiDescriptionMemoryLimit(ResourceProfile::DESKTOP);
   CompileUiArtifactsResult result = CompileJsonToPlanWithUiDescription(json, limit);
   const CompiledUiArtifacts* artifacts = result.Artifacts();
+  const std::string compile_detail = result.Diagnostic() == nullptr
+                                         ? "sidecar compile failed"
+                                         : "sidecar compile failed: " + result.Diagnostic()->detail;
   runner.Check(result.Succeeded() && artifacts != nullptr, std::string(case_prefix) + "_compile",
-               "sidecar compile failed");
+               compile_detail);
   if (artifacts == nullptr || artifacts->Plan() == nullptr) {
     return;
   }
@@ -224,7 +227,10 @@ int main(int argc, char** argv) {
     ScopedUiDescriptionTestProbe scoped{success_probe};
     const auto result = CompileJsonToPlanWithUiDescription(
         minimal, DerivedUiDescriptionMemoryLimit(ResourceProfile::DESKTOP));
-    runner.Check(result.Succeeded(), "probe_success", "valid UI compilation failed");
+    const std::string detail = result.Diagnostic() == nullptr
+                                   ? "valid UI compilation failed"
+                                   : "valid UI compilation failed: " + result.Diagnostic()->detail;
+    runner.Check(result.Succeeded(), "probe_success", detail);
   }
   runner.Check(
       success_probe.layout_count == 1U && success_probe.storage_allocation_count == 1U &&

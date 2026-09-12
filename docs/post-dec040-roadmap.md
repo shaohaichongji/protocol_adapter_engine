@@ -2,6 +2,14 @@
 
 ## 2026-09-10 当前入口
 
+最新交付基线为 `main@1a5467c`：流式宿主示例与Lab Schema 0.8 UI已合并。
+下一轮采用[ASCII文本与Lab输入可靠性契约](ascii-text-codec-minimal-contract.md)，八项及六项接口
+决策已确认。Compiler/Plan/Core、隔离测试和最小宿主示例已实施；2026-09-12限定纠错及总控复核完成，
+用户已授权本检查点提交和推送，交付结果以Git历史为准。ASCII UI、网络及Lab证据格式未授权。
+先冻结文本接口，再实施引擎和离线UI；端点绑定、流式观察及通信后续单独推进。
+
+### 上轮交付前快照（历史，保留原时点）
+
 `main@4a04afb`已合并并Push：PAE有界流式切帧、Lab离线Inspect集成交付完成。
 集成Windows Debug/Release各10/10通过，未升级网络、Linux、Golden或现场结论。
 下一轮[三组八项确认契约](post-stream-host-and-ui-v08-checkpoint.md)：PAE完善流式宿主示例，

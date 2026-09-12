@@ -94,7 +94,9 @@ std::string_view ToString(protocol_plan::FramingStrategy value) noexcept {
   }
   return "invalid";
 }
+#endif
 
+#if defined(PAE_ENABLE_SCHEMA_V09_STREAM_FRAMING) || defined(PAE_ENABLE_SCHEMA_V10_ASCII_TEXT_CODEC)
 void AppendHexBytes(const protocol_plan::FrozenArray<std::uint8_t>& bytes, std::string& output) {
   constexpr char kHex[] = "0123456789ABCDEF";
   output.push_back('"');
@@ -141,6 +143,10 @@ std::string_view ToString(WireCodec value) noexcept {
       return "bytes";
     case WireCodec::BITFIELD:
       return "bitfield";
+#if defined(PAE_ENABLE_SCHEMA_V10_ASCII_TEXT_CODEC)
+    case WireCodec::ASCII_TEXT:
+      return "ascii_text";
+#endif
   }
   return "invalid";
 }
@@ -250,8 +256,14 @@ std::string MakeDeterministicPlanSnapshot(const PlanBundle& plan) {
 #else
   const bool v09 = false;
 #endif
+#if defined(PAE_ENABLE_SCHEMA_V10_ASCII_TEXT_CODEC)
+  const bool v10 = plan.SchemaVersion() == "0.10";
+#else
+  const bool v10 = false;
+#endif
   AppendStringProperty("snapshot_format",
-                       v09   ? "pae_plan_bundle_v0.9_stream_framing_slice"
+                       v10   ? "pae_plan_bundle_v0.10_ascii_text_slice"
+                       : v09 ? "pae_plan_bundle_v0.9_stream_framing_slice"
                        : v08 ? "pae_plan_bundle_v0.8_bounded_variable_slice"
                        : v07 ? "pae_plan_bundle_v0.7_length_slice"
                        : v06 ? "pae_plan_bundle_v0.6_crc_slice"
@@ -303,6 +315,13 @@ std::string MakeDeterministicPlanSnapshot(const PlanBundle& plan) {
     AppendIntegerProperty("max_sync_bytes", requirements.max_sync_bytes, output);
     output.push_back(',');
     AppendIntegerProperty("max_framing_buffer_bytes", requirements.max_framing_buffer_bytes,
+                          output);
+  }
+#endif
+#if defined(PAE_ENABLE_SCHEMA_V10_ASCII_TEXT_CODEC)
+  if (v10) {
+    output.push_back(',');
+    AppendIntegerProperty("total_text_segment_count", requirements.total_text_segment_count,
                           output);
   }
 #endif
@@ -442,6 +461,51 @@ std::string MakeDeterministicPlanSnapshot(const PlanBundle& plan) {
     AppendStringProperty("direction_id", message.direction_id, output);
     output.push_back(',');
     AppendIntegerProperty("frame_length_bytes", message.frame_length_bytes, output);
+#if defined(PAE_ENABLE_SCHEMA_V10_ASCII_TEXT_CODEC)
+    if (v10) {
+      const auto& execution = plan.MessageExecutionPlans()[message_index];
+      const auto append_action =
+          [&output](std::string_view name,
+                    const std::optional<protocol_plan::TextActionExecutionPlan>& action) {
+            output.append(",\"");
+            output.append(name);
+            output.append("\":");
+            if (!action.has_value()) {
+              output.append("null");
+              return;
+            }
+            output.push_back('{');
+            AppendIntegerProperty("min_record_length", action->min_record_length, output);
+            output.push_back(',');
+            AppendIntegerProperty("max_record_length", action->max_record_length, output);
+            output.append(",\"segments\":[");
+            for (std::size_t index = 0U; index < action->segments.size(); ++index) {
+              if (index != 0U) output.push_back(',');
+              const auto& segment = action->segments[index];
+              output.push_back('{');
+              if (segment.kind == protocol_plan::TextSegmentKind::LITERAL) {
+                AppendStringProperty("kind", "literal", output);
+                output.append(",\"bytes\":");
+                AppendHexBytes(segment.literal, output);
+                output.append(",\"prefix_table\":[");
+                for (std::size_t prefix = 0U; prefix < segment.prefix_table.size(); ++prefix) {
+                  if (prefix != 0U) output.push_back(',');
+                  AppendInteger(segment.prefix_table[prefix], output);
+                }
+                output.push_back(']');
+              } else {
+                AppendStringProperty("kind", "field", output);
+                output.push_back(',');
+                AppendIntegerProperty("field_index", segment.field_index, output);
+              }
+              output.push_back('}');
+            }
+            output.append("]}");
+          };
+      append_action("text_decode", execution.text_decode);
+      append_action("text_encode", execution.text_encode);
+    }
+#endif
 #if defined(PAE_ENABLE_SCHEMA_V08_VARIABLE_COMPILER)
     if (v08 || v09) {
       output.append(",\"bounded_payload\":");
@@ -614,7 +678,19 @@ std::string MakeDeterministicPlanSnapshot(const PlanBundle& plan) {
         AppendIntegerProperty("bit_offset", field.bit_offset, output);
         output.push_back(',');
         AppendIntegerProperty("bit_width", field.bit_width, output);
-      } else {
+      }
+#if defined(PAE_ENABLE_SCHEMA_V10_ASCII_TEXT_CODEC)
+      else if (field.wire_codec == WireCodec::ASCII_TEXT) {
+        AppendIntegerProperty("min_byte_length", field.text_min_length, output);
+        output.push_back(',');
+        AppendIntegerProperty("max_byte_length", field.text_max_length, output);
+        output.push_back(',');
+        AppendIntegerProperty("allowed_ascii_low", field.allowed_ascii_low, output);
+        output.push_back(',');
+        AppendIntegerProperty("allowed_ascii_high", field.allowed_ascii_high, output);
+      }
+#endif
+      else {
         AppendIntegerProperty("byte_offset", field.byte_offset, output);
         output.push_back(',');
         AppendIntegerProperty("byte_width", field.byte_width, output);

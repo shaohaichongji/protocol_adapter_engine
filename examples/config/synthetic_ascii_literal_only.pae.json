@@ -1,0 +1,45 @@
+{
+  "schema_version": "0.10",
+  "protocol_id": "synthetic_ascii_literal_only",
+  "protocol_version": "1.0",
+  "display_name": "Synthetic ASCII literal-only",
+  "description": "Public from-scratch complete-record literal-only ASCII vector.",
+  "source_ref": "SYNTHETIC_FROM_SCRATCH:ASCII_LITERAL_ONLY",
+  "resource_profile": "desktop",
+  "framing_profiles": [
+    {
+      "id": "record",
+      "display_name": "Complete record",
+      "description": "Host supplies one complete record.",
+      "source_ref": "SYNTHETIC_FROM_SCRATCH:ASCII_LITERAL_ONLY",
+      "input_kind": "complete_record"
+    }
+  ],
+  "pipelines": [
+    {
+      "id": "ascii_pipeline",
+      "display_name": "ASCII pipeline",
+      "description": "Synthetic literal-only pipeline.",
+      "source_ref": "SYNTHETIC_FROM_SCRATCH:ASCII_LITERAL_ONLY",
+      "direction_id": "synthetic",
+      "input_framing_profile_id": "record",
+      "message_ids": ["ping"]
+    }
+  ],
+  "messages": [
+    {
+      "id": "ping",
+      "display_name": "PING",
+      "description": "Independent literal-only receive and transmit actions.",
+      "source_ref": "SYNTHETIC_FROM_SCRATCH:ASCII_LITERAL_ONLY",
+      "direction_id": "synthetic",
+      "layout": {
+        "kind": "text",
+        "encoding": "ascii",
+        "decode": {"segments": [{"kind": "literal", "text": "PING\r\n"}]},
+        "encode": {"segments": [{"kind": "literal", "text": "PONG\r\n"}]}
+      },
+      "fields": []
+    }
+  ]
+}
