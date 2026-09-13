@@ -31,6 +31,11 @@ if(PAE_BUILD_TESTING)
         PUBLIC PAE_PROTOCOL_LAB_ASCII_TEST_HOOKS=1
     )
 endif()
+if(PAE_BUILD_PROTOCOL_LAB_HOST_OBSERVER)
+    target_sources(pae_protocol_lab_ascii_adapter_internal PRIVATE host_observer_adapter.cpp host_observer_adapter.h)
+    target_link_libraries(pae_protocol_lab_ascii_adapter_internal PUBLIC pae_host_endpoint)
+    target_compile_definitions(pae_protocol_lab_ascii_adapter_internal PUBLIC PAE_BUILD_PROTOCOL_LAB_HOST_OBSERVER=1)
+endif()
 set_target_properties(
     pae_protocol_lab_ascii_adapter_internal
     PROPERTIES

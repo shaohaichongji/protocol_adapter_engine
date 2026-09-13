@@ -39,6 +39,12 @@ enum class SegmentKind {
 };
 
 struct ExecutionIdentity {
+#if defined(PAE_BUILD_PROTOCOL_LAB_HOST_OBSERVER)
+  std::optional<std::size_t> binding_index;
+  std::optional<std::size_t> stream_index;
+  std::uint64_t stream_generation = 0U;
+  std::uint64_t operation_sequence = 0U;
+#endif
   std::uint64_t document_id = 0U;
   std::uint64_t load_revision = 0U;
   std::uint64_t plan_generation = 0U;
@@ -167,6 +173,10 @@ struct StreamObservation {
   std::uint64_t step_sequence = 0U;
   std::uint64_t total_candidates = 0U;
   std::uint64_t total_decode_successes = 0U;
+#if defined(PAE_BUILD_PROTOCOL_LAB_HOST_OBSERVER)
+  std::uint64_t total_observed_candidates = 0U;
+  std::uint64_t total_business_outputs = 0U;
+#endif
   std::size_t total_discarded_bytes = 0U;
   std::size_t total_malformed_candidates = 0U;
 };
@@ -189,6 +199,11 @@ struct StreamStepResult {
 // this adapter is destroyed.
 class OfflineAdapter final {
  public:
+#if defined(PAE_BUILD_PROTOCOL_LAB_HOST_OBSERVER)
+  static bool Describe(const config_compiler::CompiledUiArtifacts& artifacts,
+                       DocumentDescription& description, std::string& error);
+  std::size_t HostTransitionAdmissionBytes() const noexcept;
+#endif
   static bool Supports(const config_compiler::CompiledUiArtifacts& artifacts) noexcept;
   static std::unique_ptr<OfflineAdapter> AdoptCompiledArtifacts(
       config_compiler::CompiledUiArtifacts artifacts, std::string& error

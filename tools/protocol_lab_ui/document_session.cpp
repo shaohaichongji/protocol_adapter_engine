@@ -120,6 +120,129 @@ std::vector<UiFieldResult> CopyAsciiFields(
 
 DocumentSession::DocumentSession(DocumentId document_id) : document_id_(document_id) {}
 
+bool DocumentSession::AsciiBackendReady() const noexcept {
+#if defined(PAE_ENABLE_SCHEMA_V10_ASCII_TEXT_CODEC)
+  return prepared_ && (prepared_->ascii_adapter
+#if defined(PAE_BUILD_PROTOCOL_LAB_HOST_OBSERVER)
+                       || prepared_->host_adapter
+#endif
+                      );
+#else
+  return false;
+#endif
+}
+
+#if defined(PAE_BUILD_PROTOCOL_LAB_HOST_OBSERVER)
+bool DocumentSession::ApplyHostAdapter(
+    std::unique_ptr<protocol_lab::ascii::HostObserverAdapter> adapter) {
+  if (!IsAsciiDocument() || !adapter || adapter->Bindings().empty()) return false;
+  DocumentDescription mapped;
+  std::string error;
+  if (!BuildDocumentDescription(adapter->Description(), mapped, error)) return false;
+  std::vector<HostView> views(adapter->Bindings().size() * 2U);
+  if (plan_generation_ == (std::numeric_limits<Revision>::max)()) return false;
+  const auto& first_binding = adapter->Bindings().front();
+  const auto& first_pipeline = mapped.pipelines[first_binding.pipeline_index];
+  if (first_pipeline.message_indices.empty()) return false;
+  const auto& first_message = mapped.messages[first_pipeline.message_indices.front()];
+  SelectionKey initial{plan_generation_ + 1U, first_binding.pipeline_index, first_pipeline.id,
+                       first_message.message_index, first_message.id};
+  const auto initial_mode = first_binding.action == host_endpoint::Action::ENCODE
+                                ? OperationMode::ENCODE
+                                : (first_pipeline.stream_ascii_crlf ? OperationMode::STREAM_INSPECT
+                                                                    : OperationMode::INSPECT);
+  prepared_->ascii_adapter.reset();
+  prepared_->host_adapter = std::move(adapter);
+  description_ = std::move(mapped);
+  ++plan_generation_;
+  host_views_ = std::move(views);
+  host_binding_ = 0U;
+  host_stream_ = 0U;
+  ClearSelectionAndPreview();
+  ClearInspectOutcome();
+  inspect_draft_.clear();
+  inspect_draft_utf16_.clear();
+  submitted_stream_input_revision_.reset();
+  selected_pipeline_index_ = initial.pipeline_index;
+  selection_ = std::move(initial);
+  mode_ = initial_mode;
+  representation_ = ByteRepresentation::HEX;
+  diagnostic_id_.clear();
+  diagnostic_detail_.clear();
+  state_ = DocumentState::READY;
+  return true;
+}
+void DocumentSession::SaveHostView() {
+  if (!HostActive() || !selected_pipeline_index_) return;
+  auto& saved = host_views_[host_binding_ * 2U + host_stream_];
+  saved.draft = inspect_draft_;
+  saved.utf16 = inspect_draft_utf16_;
+  saved.representation = representation_;
+  saved.result = inspect_result_;
+  saved.failure = inspect_failure_;
+  saved.step = stream_step_;
+  saved.submitted = submitted_stream_input_revision_;
+  saved.input_revision = inspect_input_revision_;
+  saved.encode_drafts = drafts_;
+  saved.invalid_drafts = invalid_drafts_;
+  saved.preview = preview_;
+  saved.encode_failure = encode_failure_;
+  saved.selection = selection_;
+  saved.diagnostic_id = diagnostic_id_;
+  saved.diagnostic_detail = diagnostic_detail_;
+}
+bool DocumentSession::SelectHostFlow(std::size_t b, std::size_t s) {
+  if (!HostActive() || b >= prepared_->host_adapter->Bindings().size()) return false;
+  const auto& binding = prepared_->host_adapter->Bindings()[b];
+  if (s >= (binding.action == host_endpoint::Action::DECODE ? 2U : 1U)) return false;
+  if (b == host_binding_ && s == host_stream_ && selected_pipeline_index_) return true;
+  SaveHostView();
+  host_binding_ = b;
+  host_stream_ = s;
+  if (!SelectPipeline(binding.pipeline_index)) return false;
+  mode_ = binding.action == host_endpoint::Action::ENCODE
+              ? OperationMode::ENCODE
+              : (description_->pipelines[binding.pipeline_index].stream_ascii_crlf
+                     ? OperationMode::STREAM_INSPECT
+                     : OperationMode::INSPECT);
+  const auto& messages = description_->pipelines[binding.pipeline_index].message_indices;
+  if (!messages.empty()) SelectMessage(messages.front());
+  const auto& saved = host_views_[b * 2U + s];
+  inspect_draft_ = saved.draft;
+  inspect_draft_utf16_ = saved.utf16;
+  representation_ = saved.representation;
+  inspect_input_revision_ = saved.input_revision;
+  inspect_result_ = saved.result;
+  inspect_failure_ = saved.failure;
+  stream_step_ = saved.step;
+  submitted_stream_input_revision_ = saved.submitted;
+  drafts_ = saved.encode_drafts;
+  invalid_drafts_ = saved.invalid_drafts;
+  preview_ = saved.preview;
+  encode_failure_ = saved.encode_failure;
+  if (saved.selection) {
+    selection_ = saved.selection;
+    selection_->plan_generation = plan_generation_;
+  }
+  if (inspect_result_) inspect_result_->key = MakeInspectResultKey();
+  if (preview_) preview_->key = MakePreviewKey();
+  diagnostic_id_ = saved.diagnostic_id;
+  diagnostic_detail_ = saved.diagnostic_detail;
+  RefreshDocumentState();
+  return true;
+}
+void DocumentSession::ResetAllHostStreams() {
+  if (!HostActive()) return;
+  for (std::size_t b = 0U; b < prepared_->host_adapter->Bindings().size(); ++b)
+    for (std::size_t s = 0U; s < 2U; ++s)
+      if (prepared_->host_adapter->Reset(b, s)) host_views_[b * 2U + s] = {};
+  inspect_draft_.clear();
+  inspect_draft_utf16_.clear();
+  submitted_stream_input_revision_.reset();
+  ClearInspectOutcome();
+}
+#endif
+
 InspectFailure MakeStructuralInspectFailure(std::string status,
                                             std::vector<std::uint8_t> input_frame) {
   InspectFailure failure;
@@ -136,6 +259,9 @@ DocumentSession::~DocumentSession() { Close(); }
 Revision DocumentSession::BeginLoad() {
   if (state_ == DocumentState::CLOSING || state_ == DocumentState::CLOSED) return load_revision_;
   ++load_revision_;
+#if defined(PAE_BUILD_PROTOCOL_LAB_HOST_OBSERVER)
+  host_views_.clear();
+#endif
   prepared_.reset();
   description_.reset();
   ClearSelectionAndPreview();
@@ -410,11 +536,19 @@ bool DocumentSession::SetRepresentation(ByteRepresentation representation) {
 }
 
 bool DocumentSession::EncodeAvailable() const noexcept {
+#if defined(PAE_BUILD_PROTOCOL_LAB_HOST_OBSERVER)
+  if (HostActive() && prepared_->host_adapter->Bindings()[host_binding_].action != host_endpoint::Action::ENCODE)
+    return false;
+#endif
   const MessageDescriptor* message = nullptr;
   return CurrentMessage(message) && message->encode_available;
 }
 
 bool DocumentSession::InspectAvailable() const noexcept {
+#if defined(PAE_BUILD_PROTOCOL_LAB_HOST_OBSERVER)
+  if (HostActive() && prepared_->host_adapter->Bindings()[host_binding_].action != host_endpoint::Action::DECODE)
+    return false;
+#endif
   return description_.has_value() && selected_pipeline_index_.has_value() &&
          *selected_pipeline_index_ < description_->pipelines.size() &&
          !description_->pipelines[*selected_pipeline_index_].decode_message_indices.empty()
@@ -545,7 +679,7 @@ bool DocumentSession::Encode(protocol_lab::v06::ExecutionObserver* observer,
   }
 #if defined(PAE_ENABLE_SCHEMA_V10_ASCII_TEXT_CODEC)
   if (IsAsciiDocument()) {
-    if (prepared_->ascii_adapter == nullptr) {
+    if (!AsciiBackendReady()) {
       SetEncodeFailure("UI_ENCODE_NOT_READY", "ASCII adapter is not ready");
       ClearPreview();
       return false;
@@ -587,7 +721,11 @@ bool DocumentSession::Encode(protocol_lab::v06::ExecutionObserver* observer,
     identity.message_index = selection_->message_index;
     identity.message_id = selection_->message_id;
     const PreviewKey requested_key = MakePreviewKey();
-    auto outcome = prepared_->ascii_adapter->Encode(std::move(identity), inputs);
+    auto outcome =
+#if defined(PAE_BUILD_PROTOCOL_LAB_HOST_OBSERVER)
+        HostActive() ? prepared_->host_adapter->Encode(host_binding_, identity, inputs) :
+#endif
+        prepared_->ascii_adapter->Encode(std::move(identity), inputs);
     if (!PreviewKeyStillCurrent(requested_key) ||
         outcome.status != protocol_lab::ascii::AdapterStatus::OK) {
       const std::string status =
@@ -784,7 +922,7 @@ bool DocumentSession::Inspect(protocol_lab::v06::ExecutionObserver* observer) {
       return false;
     }
 #endif
-    if (prepared_->ascii_adapter == nullptr) {
+    if (!AsciiBackendReady()) {
       InspectFailure failure;
       failure.diagnostic_id = "UI_INSPECT_NOT_READY";
       failure.detail = "ASCII adapter is not ready";
@@ -848,7 +986,11 @@ bool DocumentSession::Inspect(protocol_lab::v06::ExecutionObserver* observer) {
     identity.input_revision = inspect_input_revision_;
     identity.pipeline_index = pipeline.pipeline_index;
     identity.pipeline_id = pipeline.id;
-    auto outcome = prepared_->ascii_adapter->Inspect(std::move(identity), input);
+    auto outcome =
+#if defined(PAE_BUILD_PROTOCOL_LAB_HOST_OBSERVER)
+        HostActive() ? prepared_->host_adapter->Inspect(host_binding_, host_stream_, identity, input) :
+#endif
+        prepared_->ascii_adapter->Inspect(std::move(identity), input);
     if (!InspectKeyStillCurrent(requested_key)) return false;
     if (outcome.status != protocol_lab::ascii::AdapterStatus::OK) {
       InspectFailure failure;
@@ -1012,7 +1154,10 @@ bool DocumentSession::Inspect(protocol_lab::v06::ExecutionObserver* observer) {
 
 #if defined(PAE_BUILD_PROTOCOL_LAB_ASCII_STREAM_OBSERVER)
 bool DocumentSession::StreamInspectAvailable() const noexcept {
-  return prepared_ != nullptr && prepared_->ascii_adapter != nullptr && description_.has_value() &&
+#if defined(PAE_BUILD_PROTOCOL_LAB_HOST_OBSERVER)
+  if (HostActive()) return prepared_->host_adapter->Observe(host_binding_, host_stream_).has_value();
+#endif
+  return AsciiBackendReady() && description_.has_value() &&
          selected_pipeline_index_.has_value() &&
          *selected_pipeline_index_ < description_->pipelines.size() &&
          description_->pipelines[*selected_pipeline_index_].stream_ascii_crlf;
@@ -1021,6 +1166,9 @@ bool DocumentSession::StreamInspectAvailable() const noexcept {
 std::optional<protocol_lab::ascii::StreamObservation> DocumentSession::StreamObservation()
     const noexcept {
   if (!StreamInspectAvailable()) return std::nullopt;
+#if defined(PAE_BUILD_PROTOCOL_LAB_HOST_OBSERVER)
+  if (HostActive()) return prepared_->host_adapter->Observe(host_binding_, host_stream_);
+#endif
   return prepared_->ascii_adapter->ObserveStream(*selected_pipeline_index_);
 }
 
@@ -1032,11 +1180,20 @@ bool DocumentSession::StreamContinueAvailable() const noexcept {
 }
 
 bool DocumentSession::StreamHasDiscardableState() const noexcept {
+#if defined(PAE_BUILD_PROTOCOL_LAB_HOST_OBSERVER)
+  if (HostActive()) return prepared_->host_adapter->HasDiscardableState();
+#endif
   return StreamInspectAvailable() &&
          prepared_->ascii_adapter->StreamHasDiscardableState(*selected_pipeline_index_);
 }
 
 std::size_t DocumentSession::StreamChunkBudget() const noexcept {
+#if defined(PAE_BUILD_PROTOCOL_LAB_HOST_OBSERVER)
+  if (HostActive()) {
+    const auto state = StreamObservation();
+    return state ? (std::min)(std::size_t{65536}, state->effective_max_submit_bytes) : 0U;
+  }
+#endif
   return StreamInspectAvailable()
              ? prepared_->ascii_adapter->StreamChunkCapacity(*selected_pipeline_index_)
              : 0U;
@@ -1120,7 +1277,11 @@ bool DocumentSession::SubmitStream() {
   identity.pipeline_index = pipeline.pipeline_index;
   identity.pipeline_id = pipeline.id;
   ++inspect_request_revision_;
-  stream_step_ = prepared_->ascii_adapter->SubmitStreamChunk(std::move(identity), input);
+  stream_step_ =
+#if defined(PAE_BUILD_PROTOCOL_LAB_HOST_OBSERVER)
+      HostActive() ? prepared_->host_adapter->Submit(host_binding_, host_stream_, identity, input) :
+#endif
+      prepared_->ascii_adapter->SubmitStreamChunk(std::move(identity), input);
   if (stream_step_->push_called) submitted_stream_input_revision_ = inspect_input_revision_;
   inspect_result_.reset();
   inspect_failure_.reset();
@@ -1169,7 +1330,11 @@ bool DocumentSession::ContinueStream() {
   identity.pipeline_index = pipeline.pipeline_index;
   identity.pipeline_id = pipeline.id;
   ++inspect_request_revision_;
-  stream_step_ = prepared_->ascii_adapter->ContinueStream(std::move(identity));
+  stream_step_ =
+#if defined(PAE_BUILD_PROTOCOL_LAB_HOST_OBSERVER)
+      HostActive() ? prepared_->host_adapter->Continue(host_binding_, host_stream_, identity) :
+#endif
+      prepared_->ascii_adapter->ContinueStream(std::move(identity));
   inspect_result_.reset();
   inspect_failure_.reset();
   if (stream_step_->status != protocol_lab::ascii::AdapterStatus::OK) {
@@ -1203,7 +1368,12 @@ bool DocumentSession::ResetStream() {
   if (!StreamInspectAvailable()) return false;
   const auto& pipeline = description_->pipelines[*selected_pipeline_index_];
   std::string error;
-  if (!prepared_->ascii_adapter->ResetStream(pipeline.pipeline_index, pipeline.id, error)) {
+  const bool reset =
+#if defined(PAE_BUILD_PROTOCOL_LAB_HOST_OBSERVER)
+      HostActive() ? prepared_->host_adapter->Reset(host_binding_, host_stream_) :
+#endif
+      prepared_->ascii_adapter->ResetStream(pipeline.pipeline_index, pipeline.id, error);
+  if (!reset) {
     SetDiagnostic("UI_STREAM_RESET_FAILED", std::move(error));
     return false;
   }
@@ -1222,6 +1392,9 @@ bool DocumentSession::ResetStream() {
 void DocumentSession::Close() {
   if (state_ == DocumentState::CLOSED) return;
   state_ = DocumentState::CLOSING;
+#if defined(PAE_BUILD_PROTOCOL_LAB_HOST_OBSERVER)
+  host_views_.clear();
+#endif
   ClearSelectionAndPreview();
   inspect_draft_.clear();
   inspect_draft_utf16_.clear();

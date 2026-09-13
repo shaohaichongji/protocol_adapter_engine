@@ -72,12 +72,28 @@ struct Sink {
   SinkAction (*function)(const Output&, void*) = nullptr;
   void* context = nullptr;
 };
+// Diagnostic only; all views expire when the callback returns. Failed candidates have no fields.
+struct Candidate {
+  std::uint64_t generation = 0U;
+  const protocol_plan::PlanBundle* plan = nullptr;
+  protocol_core::ByteView frame;
+  protocol_core::DecodeResult decoded;
+  const protocol_core::DecodedFieldSlot* fields = nullptr;
+  std::size_t field_count = 0U;
+};
+struct CandidateObserver {
+  // Runs before the success Sink. Normal STOP keeps current success delivery; exceptions do not.
+  SinkAction (*function)(const Candidate&, void*) = nullptr;
+  void* context = nullptr;
+};
 struct Result {
   Status status = Status::INVALID_ARGUMENT;
   std::uint64_t generation = 0U;
   bool codec_attempted = false;
   protocol_core::CodecStatus codec_status = protocol_core::CodecStatus::INVALID_ARGUMENT;
   std::size_t successful_outputs = 0U;
+  std::size_t decode_successes = 0U;
+  std::size_t observed_candidates = 0U;  // Observer returned normally, including STOP.
   std::size_t decode_failures =
       0U;  // Per-call aggregate; codec_status is the last candidate status.
   bool framing_attempted = false;
@@ -102,8 +118,8 @@ class Session final {
   Session(const Session&) = delete;
   Session& operator=(const Session&) = delete;
   Handle Find(std::string_view endpoint, Action action, std::size_t stream = 0U) const noexcept;
-  Result Decode(const Handle&, protocol_core::ByteView, Sink) noexcept;
-  Result Push(const Handle&, protocol_core::ByteView, Sink) noexcept;
+  Result Decode(const Handle&, protocol_core::ByteView, Sink, CandidateObserver = {}) noexcept;
+  Result Push(const Handle&, protocol_core::ByteView, Sink, CandidateObserver = {}) noexcept;
   Result Encode(const Handle&, std::string_view message, const NamedValue*, std::size_t,
                 Sink) noexcept;
   Status Reset(const Handle&) noexcept;

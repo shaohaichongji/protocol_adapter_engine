@@ -17,6 +17,7 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 
 option(PAE_BUILD_JSON_PARSER_SPIKE "Build the disposable JSON parser comparison spike" OFF)
 option(PAE_BUILD_HOST_ENDPOINT_SLICE "Build the internal serialized host endpoint binding slice" OFF)
+option(PAE_BUILD_PROTOCOL_LAB_HOST_OBSERVER "Build the internal Lab host endpoint observer" OFF)
 option(
     PAE_BUILD_LOADER_SCHEMA_IR_SLICE
     "Build the internal Loader/SchemaIr executable vertical slice"
@@ -127,6 +128,11 @@ option(
     "Build the internal minimal business embedding example"
     OFF
 )
+
+if(PAE_BUILD_PROTOCOL_LAB_HOST_OBSERVER AND
+   (NOT PAE_BUILD_HOST_ENDPOINT_SLICE OR NOT PAE_BUILD_PROTOCOL_LAB_ASCII_STREAM_OBSERVER))
+    message(FATAL_ERROR "Lab host observer requires explicit Host endpoint and ASCII stream observer options.")
+endif()
 
 if(PAE_BUILD_HOST_ENDPOINT_SLICE AND
    (NOT PAE_BUILD_LOADER_SCHEMA_IR_SLICE OR NOT PAE_BUILD_COMPLETE_RECORD_CODEC_SLICE OR

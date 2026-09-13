@@ -44,10 +44,19 @@ endif()
 if(PAE_BUILD_PROTOCOL_LAB_ASCII_STREAM_OBSERVER)
     list(APPEND pae_protocol_lab_ui_headless_test_names ascii_stream_session)
 endif()
+if(PAE_BUILD_PROTOCOL_LAB_HOST_OBSERVER)
+    list(APPEND pae_protocol_lab_ui_headless_test_names host_session)
+endif()
 
 foreach(pae_ui_test_name IN LISTS pae_protocol_lab_ui_headless_test_names)
     set(pae_ui_test_target "pae_protocol_lab_ui_${pae_ui_test_name}_tests")
     add_executable("${pae_ui_test_target}" "${pae_ui_test_name}_tests.cpp")
+    # These tests use assert for both checks and setup; Release must execute them too.
+    if(MSVC)
+        target_compile_options("${pae_ui_test_target}" PRIVATE /UNDEBUG)
+    else()
+        target_compile_options("${pae_ui_test_target}" PRIVATE -UNDEBUG)
+    endif()
     target_link_libraries(
         "${pae_ui_test_target}"
         PRIVATE
@@ -67,7 +76,7 @@ foreach(pae_ui_test_name IN LISTS pae_protocol_lab_ui_headless_test_names)
                 "PAE_ASCII_LITERAL_CONFIG=L\"${PROJECT_SOURCE_DIR}/examples/config/synthetic_ascii_literal_only.pae.json\""
         )
     endif()
-    if(pae_ui_test_name STREQUAL "ascii_stream_session")
+    if(pae_ui_test_name STREQUAL "ascii_stream_session" OR pae_ui_test_name STREQUAL "host_session")
         target_compile_definitions(
             "${pae_ui_test_target}"
             PRIVATE

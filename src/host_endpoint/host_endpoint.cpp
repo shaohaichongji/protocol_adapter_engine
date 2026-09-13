@@ -82,7 +82,8 @@ struct Session::Impl {
       return false;
     }
   }
-  bool DecodeCandidate(Channel& channel, core::ByteView bytes, Sink sink, Result& result) noexcept {
+  bool DecodeCandidate(Channel& channel, core::ByteView bytes, Sink sink, Result& result,
+                       CandidateObserver observer) noexcept {
     const auto decoded =
         core::DecodeCompleteRecord(*owner, *channel.core, bindings[channel.binding].pipeline, bytes,
                                    channel.fields.data(), channel.fields.size());
@@ -91,13 +92,36 @@ struct Session::Impl {
     if (decoded.status != core::CodecStatus::OK) {
       ++result.decode_failures;
       result.status = Status::CODEC_FAILED;
-      return true;
+    } else {
+      ++result.decode_successes;
     }
+    bool continue_observing = true;
+    if (observer.function) {
+      Candidate candidate;
+      candidate.generation = channel.generation;
+      candidate.plan = owner.get();
+      candidate.frame = bytes;
+      candidate.decoded = decoded;
+      if (decoded.status == core::CodecStatus::OK) {
+        candidate.fields = channel.fields.data();
+        candidate.field_count = decoded.field_count;
+      }
+      try {
+        continue_observing = observer.function(candidate, observer.context) == SinkAction::CONTINUE;
+        ++result.observed_candidates;
+      } catch (...) {
+        channel.faulted = true;
+        result.status = Status::CALLBACK_FAILED;
+        return false;
+      }
+    }
+    if (decoded.status != core::CodecStatus::OK) return continue_observing;
     Output output;
     output.message_index = decoded.message_index;
     output.fields = channel.fields.data();
     output.field_count = decoded.field_count;
-    return Deliver(channel, output, sink, result);
+    const bool continue_business = Deliver(channel, output, sink, result);
+    return continue_business && continue_observing;
   }
 };
 
@@ -291,7 +315,8 @@ Status Session::Reset(const Handle& handle) noexcept {
   channel.faulted = false;
   return Status::OK;
 }
-Result Session::Decode(const Handle& handle, core::ByteView bytes, Sink sink) noexcept {
+Result Session::Decode(const Handle& handle, core::ByteView bytes, Sink sink,
+                       CandidateObserver observer) noexcept {
   Result result;
   if (impl_->busy) {
     result.status = Status::BUSY;
@@ -317,10 +342,11 @@ Result Session::Decode(const Handle& handle, core::ByteView bytes, Sink sink) no
   }
   Lease lease(impl_->busy);
   result.status = Status::OK;
-  impl_->DecodeCandidate(channel, bytes, sink, result);
+  impl_->DecodeCandidate(channel, bytes, sink, result, observer);
   return result;
 }
-Result Session::Push(const Handle& handle, core::ByteView bytes, Sink sink) noexcept {
+Result Session::Push(const Handle& handle, core::ByteView bytes, Sink sink,
+                     CandidateObserver observer) noexcept {
   Result result;
   if (impl_->busy) {
     result.status = Status::BUSY;
@@ -351,8 +377,9 @@ Result Session::Push(const Handle& handle, core::ByteView bytes, Sink sink) noex
     Impl::Channel* channel;
     Sink sink;
     Result* result;
+    CandidateObserver observer;
   };
-  Context context{impl_.get(), &channel, sink, &result};
+  Context context{impl_.get(), &channel, sink, &result, observer};
   result.status = Status::OK;
   result.framing_attempted = true;
   result.framing = framing::PushStreamChunk(
@@ -361,7 +388,7 @@ Result Session::Push(const Handle& handle, core::ByteView bytes, Sink sink) noex
       {[](framing::ByteView frame, void* opaque) noexcept {
          auto& ctx = *static_cast<Context*>(opaque);
          return ctx.impl->DecodeCandidate(*ctx.channel, {frame.data, frame.size}, ctx.sink,
-                                          *ctx.result)
+                                          *ctx.result, ctx.observer)
                     ? framing::FrameSinkAction::CONTINUE
                     : framing::FrameSinkAction::STOP;
        },

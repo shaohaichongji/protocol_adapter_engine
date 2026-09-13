@@ -15,6 +15,8 @@ class QLineEdit;
 class QPlainTextEdit;
 class QPushButton;
 class QTableView;
+class QTableWidget;
+class QVBoxLayout;
 class QTextBrowser;
 
 namespace pae::protocol_lab_ui {
@@ -63,6 +65,9 @@ class DocumentTab final : public QWidget {
   bool VerifyInvalidDraftRetentionForSmoke(QString& error);
   bool VerifyBoundedV08ForSmoke(QString& error);
   bool VerifyAsciiForSmoke(QString& error);
+#if defined(PAE_BUILD_PROTOCOL_LAB_HOST_OBSERVER)
+  bool VerifyHostForSmoke(QString& error);
+#endif
 #if defined(PAE_BUILD_PROTOCOL_LAB_ASCII_STREAM_OBSERVER)
   bool IsAsciiStreamForSmoke() const noexcept { return session_.StreamInspectAvailable(); }
   bool VerifyAsciiStreamForSmoke(QString& error);
@@ -80,6 +85,24 @@ class DocumentTab final : public QWidget {
   const EncodeTimingSnapshot& LastTiming() const noexcept { return timing_; }
 
  private:
+#if defined(PAE_BUILD_PROTOCOL_LAB_HOST_OBSERVER)
+  void BuildHostUi(QVBoxLayout* root);
+  void InitializeHostDraft();
+  void AddHostDraftRow();
+  void ApplyHostDraft();
+  void AcceptHostCompletion(std::unique_ptr<CompileCompletion> completion);
+  void SelectHostView();
+  QWidget* host_panel_ = nullptr;
+  QTableWidget* host_draft_ = nullptr;
+  QPushButton* host_apply_ = nullptr;
+  QComboBox* host_binding_combo_ = nullptr;
+  QComboBox* host_flow_combo_ = nullptr;
+  QLabel* host_status_ = nullptr;
+  std::string host_config_text_;
+  std::optional<Revision> host_pending_revision_;
+  Revision host_request_sequence_ = 0U;
+  std::vector<protocol_lab::ascii::HostBinding> host_pending_bindings_;
+#endif
   void BuildUi();
   void BeginLoadFromPath();
   void ResetVisibleDocument();

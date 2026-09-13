@@ -327,6 +327,12 @@ void ApplicationWindow::AdvanceSmoke() {
                                .arg(error));
         return;
       }
+#if defined(PAE_BUILD_PROTOCOL_LAB_HOST_OBSERVER)
+      if (!document->VerifyHostForSmoke(error)) {
+        FinishSmoke(false, QStringLiteral("Host observer: %1").arg(error));
+        return;
+      }
+#endif
       std::fprintf(stdout, "UI_ASCII_SMOKE_DOCUMENT index=%zu frame_bytes=%zu fields=%d\n",
                    index + 1U, document->PreviewFrameSizeForSmoke(),
                    document->InspectFieldCountForSmoke());

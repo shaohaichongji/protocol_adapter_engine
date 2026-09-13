@@ -402,6 +402,72 @@ void Binary(std::string json) {
             capture.number == 6U && capture.fields == 2U,
         "sync length split");
 }
+void CandidateObservation(const std::string& json) {
+  const host::BindingSpec specs[] = {{"rx", host::Action::DECODE, "ascii_pipeline"},
+                                     {"record", host::Action::DECODE, "decode_only_pipeline"}};
+  auto session = Make(json, specs, 2U);
+  const auto rx = session->Find("rx", host::Action::DECODE);
+  Capture business;
+  business.stop = false;
+  struct Diagnostic {
+    std::size_t calls = 0U;
+    std::string frame, value;
+    bool throws = false;
+    bool stop = true;
+    std::uint64_t generation = 0U;
+    host::Session* session = nullptr;
+    host::Handle handle;
+    static host::SinkAction Call(const host::Candidate& candidate, void* data) {
+      auto& d = *static_cast<Diagnostic*>(data);
+      ++d.calls;
+      Check(d.session->Reset(d.handle) == host::Status::BUSY, "observer reentry rejected");
+      if (d.throws) throw std::runtime_error("diagnostic copy fault");
+      d.frame.assign(reinterpret_cast<const char*>(candidate.frame.data), candidate.frame.size);
+      d.generation = candidate.generation;
+      if (candidate.decoded.status != core::CodecStatus::OK)
+        Check(!candidate.fields && candidate.field_count == 0U, "failure has no valid fields");
+      if (candidate.field_count) {
+        const auto bytes = candidate.fields[0].bytes_value;
+        d.value.assign(reinterpret_cast<const char*>(bytes.data), bytes.size);
+      }
+      return d.stop ? host::SinkAction::STOP : host::SinkAction::CONTINUE;
+    }
+  } diagnostic;
+  diagnostic.session = session.get();
+  diagnostic.handle = rx;
+  host::CandidateObserver observer{Diagnostic::Call, &diagnostic};
+  auto bad = session->Push(rx, Bytes("BAD\r\nONLY\r\n"), business.Sink(), observer);
+  Check(bad.framing.bytes_consumed == 5U && bad.decode_failures == 1U &&
+            bad.successful_outputs == 0U && diagnostic.calls == 1U && diagnostic.frame == "BAD\r\n",
+        "failed candidate STOP before next success");
+  auto good = session->Push(rx, Bytes("ONLY\r\n"), business.Sink(), observer);
+  Check(good.successful_outputs == 1U && good.decode_successes == 1U &&
+            good.observed_candidates == 1U && diagnostic.calls == 2U,
+        "observer STOP keeps current zero-field success");
+  session->Push(rx, Bytes("RX A!OK\r\n"), business.Sink(), observer);
+  Check(diagnostic.value == "A" && diagnostic.frame == "RX A!OK\r\n", "borrowed field copied");
+  auto early = session->Push({}, Bytes("ONLY\r\n"), business.Sink(), observer);
+  Check(!early.codec_attempted && diagnostic.calls == 3U, "early reject no candidate");
+  diagnostic.throws = true;
+  auto fault = session->Push(rx, Bytes("ONLY\r\nONLY\r\n"), business.Sink(), observer);
+  Check(fault.status == host::Status::CALLBACK_FAILED && fault.framing.bytes_consumed == 6U &&
+            fault.decode_successes == 1U && fault.observed_candidates == 0U &&
+            fault.successful_outputs == 0U && session->Observe(rx).reset_required,
+        "observation fault keeps consumption and suppresses business");
+  session->Reset(rx);
+  diagnostic.throws = false;
+  session->Push(rx, Bytes("ONLY\r\n"), business.Sink(), observer);
+  Check(diagnostic.generation == 1U, "observation generation");
+  auto record = session->Decode(session->Find("record", host::Action::DECODE), Bytes("ONLY\r\n"),
+                                business.Sink(), observer);
+  Check(record.observed_candidates == 1U && record.successful_outputs == 1U,
+        "complete record observation");
+  diagnostic.stop = false;
+  business.stop = true;
+  auto stopped = session->Push(rx, Bytes("ONLY\r\nONLY\r\n"), business.Sink(), observer);
+  Check(stopped.framing.bytes_consumed == 6U && stopped.observed_candidates == 1U,
+        "business STOP still stops candidates");
+}
 }  // namespace
 int main(int argc, char** argv) {
 #if defined(_MSC_VER)
@@ -416,6 +482,7 @@ int main(int argc, char** argv) {
     Ascii(ascii, Read(argv[3]));
     Budgets(ascii);
     Binary(Read(argv[2]));
+    CandidateObservation(ascii);
     std::cout << "HOST_ENDPOINT_CONTRACT=PASS\n";
     return 0;
   } catch (const std::exception& error) {

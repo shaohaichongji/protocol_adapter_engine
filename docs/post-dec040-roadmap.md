@@ -16,8 +16,31 @@ Lab已随`0636e178461078dd8b408e86b14a967afd4b6e5f`提交并推送；旧契约�
 下一检查点为[宿主端点方向绑定与最小接入层六项契约](host-endpoint-binding-contract.md)：
 用户已确认六项、授权落盘并随后授权PAE实施；内部绑定/调用/独立流状态及合成宿主示例已实现，
 Windows Debug/Release各32/32及三个配置门禁通过，见[实施验证报告](host-endpoint-binding-validation.md)。
-当前未Stage、Commit或Push；后续交付复核后另行确定并授权Lab观察接线；
-不并发修改未稳定共享接口，不扩展网络、UTF-8、跨协议映射、自动转发或Evidence。
+PAE首片已随`e7078b29dd50548c84f3161ab45a1dc02e4c6f60`提交推送；原契约及验证报告中的
+未提交文字保留为交付前快照，实际Git状态以提交及远端引用为准。
+当前进入[Lab宿主端点绑定观察首片](lab-host-endpoint-observer-contract.md)：六项已确认，
+随后获得实施授权，已先完成PAE可选候选观察及单候选STOP验证，再串行完成Lab Plan移交、
+显式绑定、双流状态与UI；自动验证及人工验收入口见[检查点报告](lab-host-endpoint-observer-validation.md)。
+用户已确认本检查点全部人工验收符合预期且Lab已关闭，并独立授权核对、提交和推送。
+交付状态以Git提交及远端引用为准。
+保留旧Binary路径，不开放Binary流式UI；不并发修改未稳定共享接口，不扩展网络、UTF-8、
+跨协议映射、自动转发或Evidence。
+
+### 下一检查点规划（建议，尚未授权实施）
+
+1. 先做Lab表示切换易用性小闭环：保留按字节转换和失败不丢草稿的语义，明确提示
+   当前格式、失败原因以及清空后切换的方法；补非空非法草稿与跨Flow表示恢复回归。
+   不自动清空、不静默重解释、不修改PAE。完成定向Debug/Release与一次人工复验。
+2. 再评估并冻结Binary流式Host观察契约，补齐Lab与已有PAE Binary能力之间的差距。
+   先核对现有Framer策略、字段类型和位范围来源，再确定自有DTO、单候选停止及失败语义；
+   不能把仅支持ASCII BYTES的HostObserverAdapter直接作为通用Binary适配器。
+3. 契约批准后串行实施非Qt Binary适配及测试，再接UI和人工验收；若需改变PAE接口，
+   先单独实现验证接口，避免共享DTO、document_session、document_tab与CMake并发冲突。
+4. 上述稳定后再评估单连接UDP宿主接入；TCP/串口、UTF-8、绑定持久化、跨协议映射、
+   自动转发与Evidence分别规划，不合并为一次扩范围实现，不自动启动网络操作。
+
+下一步优先级理由：先消除本次人工验收暴露的操作歧义，再补齐离线Binary观察覆盖，
+最后增加通信复杂度。每步区分契约确认、实施、自动验证、人工验收及Git交付。
 
 ### 2026-09-12 Lab集成交付前快照（历史）
 

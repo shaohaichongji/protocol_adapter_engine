@@ -14,6 +14,9 @@
 #include "compile_worker.h"
 #include "description_mapping.h"
 #include "inspect_hex_input.h"
+#if defined(PAE_BUILD_PROTOCOL_LAB_HOST_OBSERVER)
+#include "../protocol_lab_ascii/host_observer_adapter.h"
+#endif
 #if defined(PAE_ENABLE_SCHEMA_V10_ASCII_TEXT_CODEC)
 #include "../protocol_lab_ascii/ascii_offline_adapter.h"
 #endif
@@ -134,6 +137,9 @@ InspectFailure MakeStructuralInspectFailure(std::string status,
                                             std::vector<std::uint8_t> input_frame);
 
 struct PreparedDocument {
+#if defined(PAE_BUILD_PROTOCOL_LAB_HOST_OBSERVER)
+  std::unique_ptr<protocol_lab::ascii::HostObserverAdapter> host_adapter;
+#endif
   // Declaration order is intentional: destruction is reverse, so the bridge (and its workspaces
   // and Plan) dies before the sidecar storage.
   config_compiler::UiDescriptionSidecar description;
@@ -154,6 +160,14 @@ class InputMaterializationTimer {
 class DocumentSession final {
  public:
   explicit DocumentSession(DocumentId document_id);
+#if defined(PAE_BUILD_PROTOCOL_LAB_HOST_OBSERVER)
+  bool ApplyHostAdapter(std::unique_ptr<protocol_lab::ascii::HostObserverAdapter> adapter);
+  bool SelectHostFlow(std::size_t binding, std::size_t stream);
+  bool HostActive() const noexcept { return prepared_ && prepared_->host_adapter; }
+  std::size_t HostBindingIndex() const noexcept { return host_binding_; }
+  std::size_t HostStreamIndex() const noexcept { return host_stream_; }
+  void ResetAllHostStreams();
+#endif
   DocumentSession(const DocumentSession&) = delete;
   DocumentSession& operator=(const DocumentSession&) = delete;
   ~DocumentSession();
@@ -230,6 +244,29 @@ class DocumentSession final {
   const std::string& diagnostic_detail() const noexcept { return diagnostic_detail_; }
 
  private:
+  bool AsciiBackendReady() const noexcept;
+#if defined(PAE_BUILD_PROTOCOL_LAB_HOST_OBSERVER)
+  struct HostView {
+    std::string draft;
+    std::u16string utf16;
+    ByteRepresentation representation = ByteRepresentation::HEX;
+    std::optional<InspectResult> result;
+    std::optional<InspectFailure> failure;
+    std::optional<protocol_lab::ascii::StreamStepResult> step;
+    std::optional<Revision> submitted;
+    Revision input_revision = 0U;
+    std::unordered_map<std::size_t, TypedDraft> encode_drafts;
+    std::unordered_map<std::size_t, InvalidDraftState> invalid_drafts;
+    std::optional<PreviewResult> preview;
+    std::optional<OperationDiagnostic> encode_failure;
+    std::optional<SelectionKey> selection;
+    std::string diagnostic_id, diagnostic_detail;
+  };
+  void SaveHostView();
+  std::vector<HostView> host_views_;
+  std::size_t host_binding_ = 0U;
+  std::size_t host_stream_ = 0U;
+#endif
   void ClearSelectionAndPreview();
   void ClearPreview();
   void ClearInspectOutcome();

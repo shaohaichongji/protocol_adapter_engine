@@ -312,6 +312,40 @@ OfflineAdapter::OfflineAdapter(protocol_plan::PlanOwner plan,
 
 OfflineAdapter::~OfflineAdapter() = default;
 
+#if defined(PAE_BUILD_PROTOCOL_LAB_HOST_OBSERVER)
+std::size_t OfflineAdapter::HostTransitionAdmissionBytes() const noexcept {
+  const auto maximum = (std::numeric_limits<std::size_t>::max)();
+  std::size_t total = plan_->GetPlanMemoryReport().accounted_total_bytes;
+  const auto charge = [&](std::size_t count, std::size_t width) {
+    if (width != 0U && count > (maximum - total) / width) return false;
+    total += count * width;
+    return true;
+  };
+  if (!charge(sidecar_.MemoryReport().accounted_total_bytes, 8U) ||
+      !charge(plan_->GetExecutionResourceLayout().estimated_workspace_bytes, 1U) ||
+      !charge(description_.max_record_bytes, 32U) || !charge(8U, 1024U * 1024U))
+    return maximum;
+  for (const auto& message : description_.messages) {
+    if (!charge(message.fields.size(), 2048U)) return maximum;
+    for (const auto& field : message.fields)
+      if (!charge(field.max_byte_length, 32U)) return maximum;
+  }
+  for (const auto& stream : streams_) {
+    if (stream && (!charge(stream->workspace->AccountedWorkspaceBytes(), 1U) ||
+                   !charge((std::max)(stream->frozen_input.capacity(), std::size_t{65536}), 2U) ||
+                   !charge(1U, sizeof(StreamContext))))
+      return maximum;
+  }
+  return total;
+}
+
+bool OfflineAdapter::Describe(const config_compiler::CompiledUiArtifacts& artifacts,
+                              DocumentDescription& description, std::string& error) {
+  return Supports(artifacts) &&
+         BuildDescription(*artifacts.Plan(), artifacts.Description(), description, error);
+}
+#endif
+
 bool OfflineAdapter::Supports(const config_compiler::CompiledUiArtifacts& artifacts) noexcept {
   if (artifacts.Plan() == nullptr) return false;
   if (artifacts.Plan()->SchemaVersion() == "0.10") return true;

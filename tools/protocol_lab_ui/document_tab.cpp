@@ -19,6 +19,11 @@
 #include <QSplitter>
 #include <QStandardItemModel>
 #include <QTableView>
+#if defined(PAE_BUILD_PROTOCOL_LAB_HOST_OBSERVER)
+#include <QTableWidget>
+#include <QThread>
+#include <QTimer>
+#endif
 #include <QTextBrowser>
 #include <QTextCursor>
 #include <QVBoxLayout>
@@ -302,10 +307,20 @@ void DocumentTab::AcceptCompletion(std::unique_ptr<CompileCompletion> completion
   if (closed_ || completion == nullptr || completion->document_id != session_.id()) {
     return;
   }
+#if defined(PAE_BUILD_PROTOCOL_LAB_HOST_OBSERVER)
+  if (host_pending_revision_ && completion->load_revision == *host_pending_revision_) {
+    AcceptHostCompletion(std::move(completion));
+    return;
+  }
+  if (completion->load_revision != session_.load_revision()) return;
+#endif
   const bool published = session_.ApplyCompileCompletion(std::move(completion));
   ResetVisibleDocument();
   if (published) {
     RebuildSelectorsAndModel();
+#if defined(PAE_BUILD_PROTOCOL_LAB_HOST_OBSERVER)
+    InitializeHostDraft();
+#endif
   }
   RefreshState();
 }
@@ -1144,6 +1159,333 @@ std::uint8_t DocumentTab::HighlightMaskForSmoke(std::size_t frame_byte_index) co
   return hex_view_->HighlightMaskAt(frame_byte_index);
 }
 
+#if defined(PAE_BUILD_PROTOCOL_LAB_HOST_OBSERVER)
+bool DocumentTab::VerifyHostForSmoke(QString& error) {
+  if (!session_.IsAsciiDocument()) return true;
+  const bool stream = session_.StreamInspectAvailable();
+  const auto& pipeline = session_.description()->pipelines.front();
+  bool has_encode = false;
+  for (const auto index : pipeline.message_indices)
+    has_encode = has_encode || session_.description()->messages[index].encode_available;
+  if (pipeline.decode_message_indices.empty() || !has_encode) return true;
+  if (stream) ResetStream();
+  InitializeHostDraft();
+  auto apply = [this] {
+    host_apply_->click();
+    QElapsedTimer timer;
+    timer.start();
+    while (host_pending_revision_ && timer.elapsed() < 10000) {
+      for (const auto ticket : worker_.DrainReadyTickets())
+        AcceptCompletion(worker_.TakeResult(ticket));
+      if (host_pending_revision_) QThread::msleep(5);
+    }
+    return !host_pending_revision_;
+  };
+  auto check = [&](bool condition, const char* why) {
+    if (!condition) error = QString::fromLatin1(why);
+    return condition;
+  };
+  if (!check(apply() && session_.HostActive(), "Host Apply publication")) return false;
+  representation_combo_->setCurrentIndex(
+      representation_combo_->findData(static_cast<int>(ByteRepresentation::ASCII_ESCAPED)));
+  if (!stream) {
+    const bool literal = CurrentMessage()->fields.empty();
+    inspect_input_->setPlainText(literal ? QStringLiteral("PING\\r\\n")
+                                         : QStringLiteral("RX ALICE!OK\\r\\n"));
+    inspect_button_->click();
+    if (!check(session_.inspect_result().has_value(), "Host complete record Decode")) return false;
+    host_binding_combo_->setCurrentIndex(1);
+    representation_combo_->setCurrentIndex(
+        representation_combo_->findData(static_cast<int>(ByteRepresentation::ASCII_ESCAPED)));
+    if (!literal && (!field_model_->setData(field_model_->index(0, FieldTableModel::VALUE),
+                                            QStringLiteral("ALICE")) ||
+                     !field_model_->setData(field_model_->index(2, FieldTableModel::VALUE),
+                                            QStringLiteral("Z"))))
+      return check(false, "Host complete Encode inputs");
+    encode_button_->click();
+    const std::string expected = literal ? "PONG\r\n" : "TX ALICE!Z\r\n";
+    return check(
+        session_.preview() && session_.preview()->encoded_frame ==
+                                  std::vector<std::uint8_t>(expected.begin(), expected.end()),
+        "Host complete Encode bytes");
+  }
+  inspect_input_->setPlainText(QStringLiteral("RX A!"));
+  inspect_button_->click();
+  if (!check(session_.StreamObservation()->buffered_bytes == 5, "Host flow0 half")) return false;
+  host_flow_combo_->setCurrentIndex(1);
+  representation_combo_->setCurrentIndex(
+      representation_combo_->findData(static_cast<int>(ByteRepresentation::ASCII_ESCAPED)));
+  inspect_input_->setPlainText(QStringLiteral("ON"));
+  inspect_button_->click();
+  host_binding_combo_->setCurrentIndex(1);
+  if (!check(session_.mode() == OperationMode::ENCODE && session_.StreamHasDiscardableState(),
+             "Host binding switch"))
+    return false;
+  const auto generation = session_.plan_generation();
+  auto* action = qobject_cast<QComboBox*>(host_draft_->cellWidget(1, 1));
+  action->setCurrentIndex(0);
+  if (!check(apply() && session_.plan_generation() == generation && session_.HostActive(),
+             "Invalid Apply preserves Session"))
+    return false;
+  action->setCurrentIndex(1);
+  QTimer cancel_timer;
+  connect(&cancel_timer, &QTimer::timeout, this, [] {
+    if (auto* box = qobject_cast<QMessageBox*>(QApplication::activeModalWidget()))
+      box->done(QMessageBox::No);
+  });
+  cancel_timer.start(10);
+  if (!check(apply() && session_.plan_generation() == generation, "Cancel Apply preserves Session"))
+    return false;
+  cancel_timer.stop();
+  host_binding_combo_->setCurrentIndex(0);
+  if (!check(session_.StreamObservation()->buffered_bytes == 5 &&
+                 inspect_input_->toPlainText() == QStringLiteral("RX A!"),
+             "Restore flow0 draft"))
+    return false;
+  inspect_input_->setPlainText(QStringLiteral("OK\\r\\nBAD\\r\\nONLY\\r\\n"));
+  inspect_button_->click();
+  if (!check(session_.inspect_result() && session_.inspect_result()->fields[0].logical_value == "A",
+             "Host success candidate"))
+    return false;
+  continue_button_->click();
+  if (!check(session_.inspect_failure() && !session_.inspect_result(), "Host failed candidate"))
+    return false;
+  continue_button_->click();
+  if (!check(session_.inspect_result() && session_.inspect_result()->zero_field_success,
+             "Host zero field success"))
+    return false;
+  reset_stream_button_->click();
+  host_flow_combo_->setCurrentIndex(1);
+  if (!check(session_.StreamObservation()->buffered_bytes == 2, "Reset selected flow only"))
+    return false;
+  inspect_input_->setPlainText(QStringLiteral("LY\\r\\n"));
+  inspect_button_->click();
+  if (!check(session_.inspect_result() && session_.inspect_result()->zero_field_success,
+             "Flow1 continuation"))
+    return false;
+  ResetStream();
+  host_flow_combo_->setCurrentIndex(0);
+  return true;
+}
+
+void DocumentTab::BuildHostUi(QVBoxLayout* root) {
+  host_panel_ = new QWidget(this);
+  auto* layout = new QVBoxLayout(host_panel_);
+  layout->setContentsMargins(0, 0, 0, 0);
+  host_draft_ = new QTableWidget(0, 3, host_panel_);
+  host_draft_->setObjectName(QStringLiteral("hostBindingDraft"));
+  host_draft_->setHorizontalHeaderLabels({QStringLiteral("Endpoint (draft)"),
+                                          QStringLiteral("Action"), QStringLiteral("Pipeline ID")});
+  host_draft_->horizontalHeader()->setStretchLastSection(true);
+  host_draft_->setMaximumHeight(110);
+  layout->addWidget(host_draft_);
+  auto* row = new QHBoxLayout;
+  auto* add = new QPushButton(QStringLiteral("Add binding"), host_panel_);
+  auto* remove = new QPushButton(QStringLiteral("Remove selected"), host_panel_);
+  host_apply_ = new QPushButton(QStringLiteral("Apply binding table"), host_panel_);
+  host_apply_->setObjectName(QStringLiteral("hostApply"));
+  host_binding_combo_ = new QComboBox(host_panel_);
+  host_binding_combo_->setObjectName(QStringLiteral("hostBinding"));
+  host_flow_combo_ = new QComboBox(host_panel_);
+  host_flow_combo_->setObjectName(QStringLiteral("hostFlow"));
+  host_flow_combo_->addItems({QStringLiteral("Flow 0"), QStringLiteral("Flow 1")});
+  row->addWidget(add);
+  row->addWidget(remove);
+  row->addWidget(host_apply_);
+  row->addWidget(new QLabel(QStringLiteral("Active binding"), host_panel_));
+  row->addWidget(host_binding_combo_, 1);
+  row->addWidget(host_flow_combo_);
+  layout->addLayout(row);
+  host_status_ = new QLabel(host_panel_);
+  host_status_->setObjectName(QStringLiteral("hostStatus"));
+  host_status_->setWordWrap(true);
+  layout->addWidget(host_status_);
+  root->addWidget(host_panel_);
+  connect(add, &QPushButton::clicked, this, [this] {
+    if (!host_pending_revision_) AddHostDraftRow();
+  });
+  connect(remove, &QPushButton::clicked, this, [this] {
+    if (!host_pending_revision_ && host_draft_->currentRow() >= 0)
+      host_draft_->removeRow(host_draft_->currentRow());
+  });
+  connect(host_apply_, &QPushButton::clicked, this, [this] { ApplyHostDraft(); });
+  connect(host_binding_combo_, qOverload<int>(&QComboBox::currentIndexChanged), this, [this](int) {
+    if (!rebuilding_selectors_) {
+      rebuilding_selectors_ = true;
+      host_flow_combo_->setCurrentIndex(0);
+      rebuilding_selectors_ = false;
+      SelectHostView();
+    }
+  });
+  connect(host_flow_combo_, qOverload<int>(&QComboBox::currentIndexChanged), this, [this](int) {
+    if (!rebuilding_selectors_) SelectHostView();
+  });
+}
+void DocumentTab::AddHostDraftRow() {
+  if (!session_.description() || host_draft_->rowCount() >= 64) return;
+  const int row = host_draft_->rowCount();
+  host_draft_->insertRow(row);
+  auto* endpoint = new QLineEdit(QStringLiteral("device"), host_draft_);
+  endpoint->setMaxLength(256);
+  auto* action = new QComboBox(host_draft_);
+  action->addItems({QStringLiteral("Decode"), QStringLiteral("Encode")});
+  auto* pipeline = new QComboBox(host_draft_);
+  for (const auto& item : session_.description()->pipelines)
+    pipeline->addItem(FromUtf8(item.id),
+                      QVariant::fromValue(static_cast<qulonglong>(item.pipeline_index)));
+  host_draft_->setCellWidget(row, 0, endpoint);
+  host_draft_->setCellWidget(row, 1, action);
+  host_draft_->setCellWidget(row, 2, pipeline);
+}
+void DocumentTab::InitializeHostDraft() {
+  rebuilding_selectors_ = true;
+  host_draft_->setRowCount(0);
+  host_binding_combo_->clear();
+  host_flow_combo_->setCurrentIndex(0);
+  if (session_.IsAsciiDocument()) {
+    AddHostDraftRow();
+    AddHostDraftRow();
+    if (auto* action = qobject_cast<QComboBox*>(host_draft_->cellWidget(1, 1)))
+      action->setCurrentIndex(1);
+    host_status_->setText(
+        QStringLiteral("Draft only. Apply explicitly to activate Host Session; current execution "
+                       "is legacy offline."));
+  }
+  rebuilding_selectors_ = false;
+}
+void DocumentTab::ApplyHostDraft() {
+  if (!session_.IsAsciiDocument() || host_pending_revision_ || host_config_text_.empty()) return;
+  const auto current_bytes =
+      session_.HostActive() ? session_.prepared()->host_adapter->AccountedBytes()
+                            : session_.prepared()->ascii_adapter->HostTransitionAdmissionBytes();
+  if (current_bytes > protocol_lab::ascii::HostObserverAdapter::kMaximumAccountedBytes) {
+    host_status_->setText(QStringLiteral(
+        "Active document exceeds Host transition admission limit; no candidate created."));
+    return;
+  }
+  const auto high_bit = Revision{1} << 63U;
+  if (host_request_sequence_ == high_bit - 1U) {
+    host_status_->setText(QStringLiteral("Binding request sequence exhausted; reopen document."));
+    return;
+  }
+  std::vector<protocol_lab::ascii::HostBinding> bindings;
+  for (int row = 0; row < host_draft_->rowCount(); ++row) {
+    const auto* endpoint = qobject_cast<QLineEdit*>(host_draft_->cellWidget(row, 0));
+    const auto* action = qobject_cast<QComboBox*>(host_draft_->cellWidget(row, 1));
+    const auto* pipeline = qobject_cast<QComboBox*>(host_draft_->cellWidget(row, 2));
+    if (!endpoint || !action || !pipeline || pipeline->currentIndex() < 0 ||
+        endpoint->text().isEmpty() || endpoint->text().toUtf8().size() > 256) {
+      host_status_->setText(QStringLiteral("Invalid binding draft; active Session unchanged."));
+      return;
+    }
+    bindings.push_back({Utf8(endpoint->text()),
+                        action->currentIndex() == 0 ? host_endpoint::Action::DECODE
+                                                    : host_endpoint::Action::ENCODE,
+                        static_cast<std::size_t>(pipeline->currentData().toULongLong())});
+  }
+  if (bindings.empty()) {
+    host_status_->setText(QStringLiteral("At least one binding required."));
+    return;
+  }
+  host_pending_bindings_ = std::move(bindings);
+  host_pending_revision_ = high_bit | ++host_request_sequence_;
+  if (worker_.Submit(session_.id(), *host_pending_revision_, host_config_text_) !=
+      SubmitStatus::ACCEPTED) {
+    host_pending_revision_.reset();
+    host_pending_bindings_.clear();
+    host_status_->setText(
+        QStringLiteral("Preparation scheduler rejected request; active Session unchanged."));
+  } else
+    host_status_->setText(QStringLiteral(
+        "Preparing candidate Session. Active state retained until confirmed publication."));
+  RefreshState();
+}
+void DocumentTab::AcceptHostCompletion(std::unique_ptr<CompileCompletion> completion) {
+  host_pending_revision_.reset();
+  std::string error;
+  std::unique_ptr<protocol_lab::ascii::HostObserverAdapter> candidate;
+  if (completion->artifacts && !completion->diagnostic && session_.prepared() &&
+      completion->config_sha256 == session_.prepared()->config_sha256)
+    candidate = protocol_lab::ascii::HostObserverAdapter::Create(
+        std::move(*completion->artifacts), std::move(host_pending_bindings_), error);
+  host_pending_bindings_.clear();
+  if (!candidate) {
+    host_status_->setText(
+        QStringLiteral("Preparation failed; active state unchanged: %1").arg(FromUtf8(error)));
+    RefreshState();
+    return;
+  }
+  // Each active/candidate adapter has an admission cap; both may coexist only during preparation.
+  if (session_.HostActive() &&
+      candidate->AccountedBytes() >
+          2U * protocol_lab::ascii::HostObserverAdapter::kMaximumAccountedBytes -
+              session_.prepared()->host_adapter->AccountedBytes()) {
+    host_status_->setText(
+        QStringLiteral("Rebinding peak admission limit; active state unchanged."));
+    RefreshState();
+    return;
+  }
+  if (!ConfirmStreamDiscardOnly(QStringLiteral("publish replacement binding table"))) {
+    host_status_->setText(QStringLiteral("Publication cancelled; all active flows preserved."));
+    RefreshState();
+    return;
+  }
+  try {
+    if (!session_.ApplyHostAdapter(std::move(candidate))) {
+      host_status_->setText(QStringLiteral("Candidate publication rejected."));
+      RefreshState();
+      return;
+    }
+  } catch (const std::exception&) {
+    host_status_->setText(
+        QStringLiteral("Publication preparation allocation failed; active Session unchanged."));
+    RefreshState();
+    return;
+  }
+  rebuilding_selectors_ = true;
+  host_binding_combo_->clear();
+  for (const auto& binding : session_.prepared()->host_adapter->Bindings())
+    host_binding_combo_->addItem(
+        FromUtf8(binding.endpoint) +
+        (binding.action == host_endpoint::Action::DECODE ? QStringLiteral(" / Decode / ")
+                                                         : QStringLiteral(" / Encode / ")) +
+        FromUtf8(session_.description()->pipelines[binding.pipeline_index].id));
+  host_binding_combo_->setCurrentIndex(0);
+  host_flow_combo_->setCurrentIndex(0);
+  rebuilding_selectors_ = false;
+  SelectHostView();
+}
+void DocumentTab::SelectHostView() {
+  if (!session_.HostActive() || host_binding_combo_->currentIndex() < 0) return;
+  if (!session_.SelectHostFlow(static_cast<std::size_t>(host_binding_combo_->currentIndex()),
+                               static_cast<std::size_t>(host_flow_combo_->currentIndex())))
+    return;
+  rebuilding_selectors_ = true;
+  mode_combo_->setCurrentIndex(mode_combo_->findData(static_cast<int>(session_.mode())));
+  representation_combo_->setCurrentIndex(
+      representation_combo_->findData(static_cast<int>(session_.representation())));
+  const auto& text = session_.inspect_draft_utf16();
+  inspect_input_->setPlainText(QString::fromUtf16(reinterpret_cast<const ushort*>(text.data()),
+                                                  static_cast<int>(text.size())));
+  accepted_inspect_text_ = inspect_input_->toPlainText();
+  rebuilding_selectors_ = false;
+  timing_label_->clear();
+  RebuildSelectorsAndModel();
+  RefreshInspect();
+  RefreshPreview();
+  RefreshModePresentation();
+  RefreshState();
+  host_status_->setText(
+      QStringLiteral("Host Session active | Tab=%1 load=%2 session=%3 binding=%4 flow=%5. Draft "
+                     "edits require Apply; view switches preserve flows.")
+          .arg(session_.id())
+          .arg(session_.load_revision())
+          .arg(session_.plan_generation())
+          .arg(session_.HostBindingIndex())
+          .arg(session_.HostStreamIndex()));
+}
+#endif
+
 void DocumentTab::BuildUi() {
   auto* root = new QVBoxLayout(this);
   auto* path_row = new QHBoxLayout;
@@ -1159,6 +1501,9 @@ void DocumentTab::BuildUi() {
   identity_label_ = new QLabel(this);
   identity_label_->setTextInteractionFlags(Qt::TextSelectableByMouse);
   root->addWidget(identity_label_);
+#if defined(PAE_BUILD_PROTOCOL_LAB_HOST_OBSERVER)
+  BuildHostUi(root);
+#endif
 
   auto* selection_row = new QHBoxLayout;
   pipeline_combo_ = new QComboBox(this);
@@ -1313,6 +1658,11 @@ void DocumentTab::BeginLoadFromPath() {
 #if defined(PAE_BUILD_PROTOCOL_LAB_ASCII_STREAM_OBSERVER)
   if (!ConfirmStreamDiscard(QStringLiteral("reload this configuration"))) return;
 #endif
+#if defined(PAE_BUILD_PROTOCOL_LAB_HOST_OBSERVER)
+  host_pending_revision_.reset();
+  host_pending_bindings_.clear();
+  host_config_text_.clear();
+#endif
   const auto revision = session_.BeginLoad();
   ResetVisibleDocument();
   RefreshState();
@@ -1340,6 +1690,9 @@ void DocumentTab::BeginLoadFromPath() {
     AcceptCompletion(std::move(completion));
     return;
   }
+#if defined(PAE_BUILD_PROTOCOL_LAB_HOST_OBSERVER)
+  host_config_text_.assign(bytes.constData(), static_cast<std::size_t>(bytes.size()));
+#endif
   const auto status =
       worker_.Submit(session_.id(), revision,
                      std::string_view(bytes.constData(), static_cast<std::size_t>(bytes.size())));
@@ -1385,9 +1738,9 @@ void DocumentTab::RebuildSelectorsAndModel() {
     pipeline_combo_->addItem(FromUtf8(label),
                              QVariant::fromValue(static_cast<qulonglong>(pipeline.pipeline_index)));
   }
-  if (session_.selection().has_value()) {
+  if (session_.selected_pipeline_index().has_value()) {
     for (int index = 0; index < pipeline_combo_->count(); ++index) {
-      if (pipeline_combo_->itemData(index).toULongLong() == session_.selection()->pipeline_index) {
+      if (pipeline_combo_->itemData(index).toULongLong() == *session_.selected_pipeline_index()) {
         pipeline_combo_->setCurrentIndex(index);
         break;
       }
@@ -1475,6 +1828,18 @@ void DocumentTab::RefreshState() {
   const bool loading = session_.state() == DocumentState::LOADING;
   pipeline_combo_->setEnabled(description != nullptr && !loading);
   mode_combo_->setEnabled(description != nullptr && !loading);
+#if defined(PAE_BUILD_PROTOCOL_LAB_HOST_OBSERVER)
+  host_panel_->setVisible(session_.IsAsciiDocument());
+  host_apply_->setEnabled(session_.IsAsciiDocument() && !loading && !host_pending_revision_);
+  host_draft_->setEnabled(!host_pending_revision_);
+  host_binding_combo_->setEnabled(session_.HostActive());
+  host_flow_combo_->setEnabled(session_.HostActive() &&
+      session_.prepared()->host_adapter->Bindings()[session_.HostBindingIndex()].action == host_endpoint::Action::DECODE);
+  if (session_.HostActive()) {
+    pipeline_combo_->setEnabled(false);
+    mode_combo_->setEnabled(false);
+  }
+#endif
 #if defined(PAE_BUILD_PROTOCOL_LAB_ASCII_STREAM_OBSERVER)
   if (auto* model = qobject_cast<QStandardItemModel*>(mode_combo_->model())) {
     const int inspect_index = mode_combo_->findData(static_cast<int>(OperationMode::INSPECT));
@@ -1558,6 +1923,10 @@ void DocumentTab::RefreshState() {
                     .arg(FramingIssueName(step.framing.last_framing_issue))
                     .arg(static_cast<qulonglong>(step.framing.work_units_used));
       }
+#if defined(PAE_BUILD_PROTOCOL_LAB_HOST_OBSERVER)
+      if (session_.HostActive()) text += QStringLiteral(" | observed=%1 | business=%2")
+          .arg(observation->total_observed_candidates).arg(observation->total_business_outputs);
+#endif
       stream_status_label_->setText(text);
     } else {
       stream_status_label_->setText(QStringLiteral("Stream observer unavailable"));
@@ -2078,6 +2447,10 @@ void DocumentTab::ResetStream() {
 bool DocumentTab::ConfirmStreamDiscard(const QString& action) {
   if (!ConfirmStreamDiscardOnly(action)) return false;
   if (!session_.StreamHasDiscardableState()) return true;
+#if defined(PAE_BUILD_PROTOCOL_LAB_HOST_OBSERVER)
+  if (session_.HostActive()) session_.ResetAllHostStreams();
+  else
+#endif
   if (!session_.ResetStream()) return false;
   rebuilding_selectors_ = true;
   inspect_input_->clear();
@@ -2090,7 +2463,7 @@ bool DocumentTab::ConfirmStreamDiscardOnly(const QString& action) {
   if (!session_.StreamHasDiscardableState()) return true;
   const auto answer = QMessageBox::question(
       this, QStringLiteral("Discard stream state?"),
-      QStringLiteral("%1 will discard buffered/framing state and any frozen suffix. Continue?")
+      QStringLiteral("%1 will discard affected stream state (including non-selected flows) and any frozen suffix. Continue?")
           .arg(action),
       QMessageBox::Yes | QMessageBox::No, QMessageBox::No);
   return answer == QMessageBox::Yes;
