@@ -12,7 +12,12 @@ PAE已随`716ff00ea8aa3d3f46b914008890f9706670d32b`提交并推送。
 [Lab离线chunk观察六项契约](lab-ascii-stream-observer-contract.md)已完成接口和Lab串行实施。
 接口Debug/Release各2/2通过；Lab初版各17/17定向及47/47整配置回归通过，三项限定修复后各3/3通过。
 用户于2026-09-13确认完整人工流程符合预期并关闭Lab，见[验收记录](lab-ascii-stream-observer-validation.md)。
-当前收口提交候选及提交信息，未Stage、Commit、Push。不扩展网络、端点注册、UTF-8或Evidence。
+Lab已随`0636e178461078dd8b408e86b14a967afd4b6e5f`提交并推送；旧契约中的未提交文字保留为交付前快照。
+下一检查点为[宿主端点方向绑定与最小接入层六项契约](host-endpoint-binding-contract.md)：
+用户已确认六项、授权落盘并随后授权PAE实施；内部绑定/调用/独立流状态及合成宿主示例已实现，
+Windows Debug/Release各32/32及三个配置门禁通过，见[实施验证报告](host-endpoint-binding-validation.md)。
+当前未Stage、Commit或Push；后续交付复核后另行确定并授权Lab观察接线；
+不并发修改未稳定共享接口，不扩展网络、UTF-8、跨协议映射、自动转发或Evidence。
 
 ### 2026-09-12 Lab集成交付前快照（历史）
 

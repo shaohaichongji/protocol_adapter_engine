@@ -16,6 +16,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
 option(PAE_BUILD_JSON_PARSER_SPIKE "Build the disposable JSON parser comparison spike" OFF)
+option(PAE_BUILD_HOST_ENDPOINT_SLICE "Build the internal serialized host endpoint binding slice" OFF)
 option(
     PAE_BUILD_LOADER_SCHEMA_IR_SLICE
     "Build the internal Loader/SchemaIr executable vertical slice"
@@ -126,6 +127,12 @@ option(
     "Build the internal minimal business embedding example"
     OFF
 )
+
+if(PAE_BUILD_HOST_ENDPOINT_SLICE AND
+   (NOT PAE_BUILD_LOADER_SCHEMA_IR_SLICE OR NOT PAE_BUILD_COMPLETE_RECORD_CODEC_SLICE OR
+    NOT PAE_BUILD_STREAM_FRAMING_SLICE OR NOT PAE_ENABLE_SCHEMA_V11_ASCII_STREAM_FRAMING))
+    message(FATAL_ERROR "Host endpoint slice requires explicit Loader, Core, Framing and V11 options.")
+endif()
 
 if(PAE_BUILD_PROTOCOL_LAB_ASCII_STREAM_OBSERVER AND
    (NOT PAE_ENABLE_SCHEMA_V11_ASCII_STREAM_FRAMING OR
@@ -475,6 +482,14 @@ if(PAE_BUILD_COMPLETE_RECORD_CODEC_SLICE OR
    PAE_BUILD_PROTOCOL_LAB_UI OR
    PAE_BUILD_BUSINESS_EMBEDDING_EXAMPLE)
     add_subdirectory(src/protocol_core)
+endif()
+
+if(PAE_BUILD_HOST_ENDPOINT_SLICE)
+    add_subdirectory(src/host_endpoint)
+    add_subdirectory(examples/host_endpoint)
+    if(PAE_BUILD_TESTING)
+        add_subdirectory(tests/host_endpoint)
+    endif()
 endif()
 
 if(PAE_BUILD_STREAM_FRAMING_SLICE AND PAE_BUILD_TESTING)
