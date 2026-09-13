@@ -2,6 +2,8 @@
 
 这里保存可随通用引擎仓库分发的架构、API、Schema 和验证文档，不复制上层工作区中的真实协议资料或外部生产项目内容。
 
+- [Lab表示切换UX验证、人工复验与Binary Host后续评估](lab-representation-ux-validation.md)
+
 - [2026-09-10 流式宿主接入与Lab Schema 0.8 UI：三组八项确认契约](post-stream-host-and-ui-v08-checkpoint.md)
 - [ASCII文本编解码与Lab输入可靠性契约（Compiler/Plan/Core最小切片已实现并完成限定复核）](ascii-text-codec-minimal-contract.md)
 - [ASCII完整记录Windows验证报告](windows-msvc-2026-ascii-text-slice.md)

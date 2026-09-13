@@ -420,14 +420,25 @@ bool DocumentSession::SetRepresentation(ByteRepresentation representation) {
   if (!IsAsciiDocument()) return representation == ByteRepresentation::HEX;
   if (representation_ == representation) return true;
 
+  const auto reject_conversion = [&](std::string reason) {
+    const char* current = representation_ == ByteRepresentation::HEX ? "Hex" : "ASCII (escaped)";
+    const char* requested = representation == ByteRepresentation::HEX ? "Hex" : "ASCII (escaped)";
+    SetDiagnostic("UI_ASCII_INPUT_INVALID",
+                  std::string("Representation switch rejected (") + current + " -> " + requested +
+                      "). Current format remains " + current + "; draft and stream state preserved. " +
+                      "Reason: " + reason +
+                      ". Correct the draft in the current format, or copy/clear the draft, "
+                      "switch format, then enter new input.");
+    return false;
+  };
+
   std::unordered_map<std::size_t, InvalidDraftState> converted_invalid;
   for (const auto& item : invalid_drafts_) {
     std::vector<std::uint8_t> bytes;
     if (representation_ == ByteRepresentation::ASCII_ESCAPED) {
       const auto parsed = ParseAsciiEscaped(item.second.text);
       if (!parsed.ok()) {
-        SetDiagnostic("UI_ASCII_INPUT_INVALID", parsed.detail);
-        return false;
+        return reject_conversion(parsed.detail);
       }
       bytes = parsed.bytes;
     } else {
@@ -435,15 +446,13 @@ bool DocumentSession::SetRepresentation(ByteRepresentation representation) {
       source.reserve(item.second.text.size());
       for (const char16_t value : item.second.text) {
         if (value > 0x7FU) {
-          SetDiagnostic("UI_ASCII_INPUT_INVALID", "Hex draft contains non-ASCII Unicode");
-          return false;
+          return reject_conversion("Hex draft contains non-ASCII Unicode");
         }
         source.push_back(static_cast<char>(value));
       }
       std::size_t error_offset = 0U;
       if (!ParseContinuousUpperHex(source, bytes, error_offset)) {
-        SetDiagnostic("UI_ASCII_INPUT_INVALID", "Hex draft is not continuous uppercase Hex");
-        return false;
+        return reject_conversion("Hex draft is not continuous uppercase Hex");
       }
     }
     InvalidDraftState converted;
@@ -452,8 +461,7 @@ bool DocumentSession::SetRepresentation(ByteRepresentation representation) {
       std::string error;
       const auto formatted = FormatAsciiEscaped(bytes, error);
       if (!formatted.has_value()) {
-        SetDiagnostic("UI_ASCII_INPUT_INVALID", std::move(error));
-        return false;
+        return reject_conversion(std::move(error));
       }
       converted.text = *formatted;
     } else {
@@ -468,8 +476,7 @@ bool DocumentSession::SetRepresentation(ByteRepresentation representation) {
     if (representation_ == ByteRepresentation::ASCII_ESCAPED) {
       const auto parsed = ParseAsciiEscaped(inspect_draft_utf16_);
       if (!parsed.ok()) {
-        SetDiagnostic("UI_ASCII_INPUT_INVALID", parsed.detail);
-        return false;
+        return reject_conversion(parsed.detail);
       }
       bytes = parsed.bytes;
     } else {
@@ -477,8 +484,7 @@ bool DocumentSession::SetRepresentation(ByteRepresentation representation) {
       source.reserve(inspect_draft_utf16_.size());
       for (const char16_t value : inspect_draft_utf16_) {
         if (value > 0x7FU) {
-          SetDiagnostic("UI_ASCII_INPUT_INVALID", "Inspect Hex contains non-ASCII Unicode");
-          return false;
+          return reject_conversion("Inspect Hex contains non-ASCII Unicode");
         }
         source.push_back(static_cast<char>(value));
       }
@@ -488,8 +494,7 @@ bool DocumentSession::SetRepresentation(ByteRepresentation representation) {
               : description_->max_frame_bytes + 1U;
       const auto parsed = ParseInspectHex(source, conversion_budget);
       if (!parsed.ok()) {
-        SetDiagnostic("UI_ASCII_INPUT_INVALID", InspectHexErrorDetail(parsed.error));
-        return false;
+        return reject_conversion(InspectHexErrorDetail(parsed.error));
       }
       bytes = parsed.bytes;
     }
@@ -497,8 +502,7 @@ bool DocumentSession::SetRepresentation(ByteRepresentation representation) {
       std::string error;
       const auto formatted = FormatAsciiEscaped(bytes, error);
       if (!formatted.has_value()) {
-        SetDiagnostic("UI_ASCII_INPUT_INVALID", std::move(error));
-        return false;
+        return reject_conversion(std::move(error));
       }
       inspect_draft_utf16_ = *formatted;
     } else {

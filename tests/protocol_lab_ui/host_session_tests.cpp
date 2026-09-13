@@ -1,12 +1,16 @@
 #include <filesystem>
+#include <cstdlib>
+#include <iostream>
 #include <fstream>
 #include <iterator>
-#include <stdexcept>
 
 #include "../../tools/protocol_lab_ui/document_session.h"
 
 void Check(bool condition) {
-  if (!condition) throw std::runtime_error("host session assertion failed");
+  if (!condition) {
+    std::cerr << "host session assertion failed\n";
+    std::exit(EXIT_FAILURE);
+  }
 }
 
 namespace ui = pae::protocol_lab_ui;
@@ -43,12 +47,34 @@ int main() {
   Load(first);
   Load(second);
   Check(first.ApplyHostAdapter(Adapter()) && second.ApplyHostAdapter(Adapter()));
+  Check(second.SetInspectDraftUtf16(u"4F 4E"));
+  Check(second.SetRepresentation(ui::ByteRepresentation::ASCII_ESCAPED));
+  Check(second.inspect_draft_utf16() == u"ON");
+  Check(second.SetInspectDraftUtf16(u"ON\\q"));
+  Check(!second.SetRepresentation(ui::ByteRepresentation::HEX));
+  Check(second.representation() == ui::ByteRepresentation::ASCII_ESCAPED &&
+        second.inspect_draft_utf16() == u"ON\\q");
+  Check(second.diagnostic_detail().find("ASCII (escaped) -> Hex") != std::string::npos);
+  Check(second.SelectHostFlow(0, 1) && second.representation() == ui::ByteRepresentation::HEX);
+  Check(second.SelectHostFlow(0, 0) &&
+        second.representation() == ui::ByteRepresentation::ASCII_ESCAPED &&
+        second.inspect_draft_utf16() == u"ON\\q");
+  Check(second.SetInspectDraftUtf16(u"ON"));
+  Check(second.SetRepresentation(ui::ByteRepresentation::HEX) &&
+        second.inspect_draft_utf16() == u"4F4E" && second.diagnostic_detail().empty());
   Check(first.prepared()->ascii_adapter == nullptr && first.HostActive());
   Check(first.mode() == ui::OperationMode::STREAM_INSPECT);
   Check(first.SetRepresentation(ui::ByteRepresentation::ASCII_ESCAPED));
   Check(first.SetInspectDraftUtf16(u"RX A!") && first.SubmitStream());
   Check(first.StreamObservation()->buffered_bytes == 5);
   Check(first.SelectHostFlow(0, 1));
+  Check(first.SetInspectDraftUtf16(u"ON"));
+  Check(!first.SetRepresentation(ui::ByteRepresentation::ASCII_ESCAPED));
+  Check(first.representation() == ui::ByteRepresentation::HEX &&
+        first.inspect_draft_utf16() == u"ON" && first.StreamObservation()->buffered_bytes == 0);
+  Check(first.diagnostic_detail().find("Hex -> ASCII (escaped)") != std::string::npos);
+  Check(first.diagnostic_detail().find("clear") != std::string::npos);
+  Check(first.SetInspectDraftUtf16(u""));
   Check(first.SetRepresentation(ui::ByteRepresentation::ASCII_ESCAPED));
   Check(first.SetInspectDraftUtf16(u"ON") && first.SubmitStream());
   Check(first.SelectHostFlow(1, 0));

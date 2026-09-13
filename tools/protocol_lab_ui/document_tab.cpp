@@ -1213,6 +1213,19 @@ bool DocumentTab::VerifyHostForSmoke(QString& error) {
   inspect_button_->click();
   if (!check(session_.StreamObservation()->buffered_bytes == 5, "Host flow0 half")) return false;
   host_flow_combo_->setCurrentIndex(1);
+  inspect_input_->setPlainText(QStringLiteral("ON"));
+  representation_combo_->setCurrentIndex(
+      representation_combo_->findData(static_cast<int>(ByteRepresentation::ASCII_ESCAPED)));
+  if (!check(session_.representation() == ByteRepresentation::HEX &&
+                 representation_combo_->currentData().toInt() ==
+                     static_cast<int>(ByteRepresentation::HEX) &&
+                 inspect_input_->toPlainText() == QStringLiteral("ON") &&
+                 diagnostic_label_->text().contains(QStringLiteral("Hex -> ASCII (escaped)")) &&
+                 diagnostic_label_->text().contains(QStringLiteral("clear")) &&
+                 session_.StreamObservation()->buffered_bytes == 0,
+             "Rejected representation switch preserves draft and explains recovery"))
+    return false;
+  inspect_input_->clear();
   representation_combo_->setCurrentIndex(
       representation_combo_->findData(static_cast<int>(ByteRepresentation::ASCII_ESCAPED)));
   inspect_input_->setPlainText(QStringLiteral("ON"));
@@ -1516,6 +1529,9 @@ void DocumentTab::BuildUi() {
 #endif
   message_combo_ = new QComboBox(this);
   representation_combo_ = new QComboBox(this);
+  representation_combo_->setToolTip(QStringLiteral(
+      "切换表示会按当前格式解析并转换已有草稿，不会重新解释输入。\n"
+      "转换失败时保留当前格式与草稿；请修正草稿，或先复制/清空，再切换格式并输入。"));
   representation_combo_->addItem(QStringLiteral("Hex"), static_cast<int>(ByteRepresentation::HEX));
   representation_combo_->addItem(QStringLiteral("ASCII (escaped)"),
                                  static_cast<int>(ByteRepresentation::ASCII_ESCAPED));
