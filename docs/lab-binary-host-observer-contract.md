@@ -1,0 +1,129 @@
+# Lab Binary Host 观察首片：已确认契约
+
+状态：2026-09-13用户授权“提交推送，再推进Binary Host契约细化”。
+UX检查点已随`84644338b06be378e542b72f5eed03f48a2e2bd5`提交并推送。
+用户随后确认本文六项，契约已冻结；代码实施尚待独立授权，不代表已经实现。
+当前进行独立文档交付准备，仅编辑文档，不修改PAE、Lab代码，不运行新Binary测试。
+Qt依赖检查点已随`c0da00f9e41a6edbe3311c4fcc66508a11b59d9d`提交推送，后续消费仓库内
+`third_party/qt`固定副本；本契约的Git交付和代码实施分别授权。
+
+## 0. 已核对事实与必须处理的差异
+
+| 来源 | 当前事实 | 对本契约的约束 |
+| --- | --- | --- |
+| `src/host_endpoint/host_endpoint.cpp::Session::Create` | 仅接受0.9、0.10、0.11 | Binary首片限定0.9，不顺带扩大Host历史Schema接受域 |
+| `tools/protocol_lab/v06_execution.cpp::ExecutionBridge::AdoptCompiledPlan` | 旧Binary桥只接受启用的0.5–0.8 | 不能靠放宽版本判断或再次执行旧桥实现Host显示 |
+| `src/config_compiler/config_compiler.cpp`的0.9解析分支 | 接续Binary转换、长度和有界负载能力 | 不能把现有简单UINT64示例当成完整类型覆盖 |
+| `src/host_endpoint/host_endpoint.h::Candidate` | 借用frame、Plan、DecodeResult和成功字段，没有raw整数观察 | DECIMAL64逻辑值已在slot，但原始整数不在Candidate |
+| `v06_execution.cpp::MaterializeFields` | 从workspace逐项读取raw整数，关联转换字段 | 不允许由逻辑小数反算raw，也不能另做Decode取得raw |
+| `tools/protocol_lab_ui/description_mapping.cpp` | 固定位mask按执行Plan解析；有界负载按实际帧长解析 | 可复用映射算法，但须核对新身份、成功前提及范围 |
+| `tests/host_endpoint/host_endpoint_tests.cpp::Binary` | 已有三种Framer、UINT64、完整记录及Encode用例 | 属于已有PAE证据，不是新Lab Binary验收 |
+
+与此前“优先不扩PAE”的初步评估相比，发现raw整数观察缺口。推荐保留DECIMAL64能力，
+只补宿主候选的最小raw读取接口；若选择完全不改PAE，则必须明确排除转换字段并在加载时拒绝。
+本草案推荐前者，不用空Raw列掩盖能力缺失。
+
+## 1. 接受域与默认关闭门禁
+
+推荐首片：Schema 0.9 Binary；Decode完整记录、流片段和Encode完整记录。
+流策略仅`fixed_length`、`sync_fixed_length`、`sync_length_field`，参数仍由Compiler/Framer校验。
+支持已启用能力的UINT64、INT64、BOOL、ENUM、BYTES，以及转换后的DECIMAL64；
+覆盖大小端、位字段、现有SUM8/CRC、计算长度及有界BYTES负载，不新增算法或布局语义。
+DECIMAL64是逻辑结果类型，不新增名为DECIMAL64的wire codec。
+
+不是任意Schema×策略×布局笛卡尔积：仅接受Compiler、Core与Framer共同支持的组合；
+在注册前遍历准备显示的全部Message/字段，未支持组合明确拒绝整次准备，不半加载、不回退执行。
+0.5–0.8保留旧Lab路径，0.10/0.11保留现有ASCII Host路径；不将ASCII改为Binary，不自动改写JSON。
+同一文档按已编译Plan选择适配路径，不引入混合Schema文档。
+
+新Binary Lab能力单独默认OFF，显式依赖Host、V09和所需Binary编译能力，缺依赖配置失败。
+不自动扩大CLI/Evidence或旧ExecutionBridge的接受域，不升级Qt，不改变Core/Framer依赖方向。
+
+## 2. 候选观察、类型化DTO及所有权
+
+先在PAE宿主层补可选raw整数只读访问：仅本次成功Candidate回调有效，提供count及按index拷出
+RawIntegerValue的受检读取；具体C++命名由实现确定，不暴露可变workspace，也不将其指针交给UI。
+失败Candidate的字段和raw均为空；无observer时不新增raw拷贝或热路径分配。
+读取必须检查边界，不允许跨回调保存访问器；枚举/字段的Plan引用同样只在回调内有效。
+这只是内部诊断接口，不承诺并发读取或公共ABI；Core与Framer不改协议语义。
+
+Lab非Qt适配层在回调内形成自有结果：
+- 身份：Tab/load/session修订、绑定、flow、generation、operation、Message ID及索引。
+- 帧：自有完整候选字节；失败原帧单独标为诊断材料。
+- 字段：稳定ID/索引、明确类型及对应整数/布尔/字节/小数值，不全部降为BYTES。
+- ENUM：复制raw、known、已知项ID/显示文本；未知枚举保留unknown，不伪造已知项。
+- DECIMAL64：复制coefficient/scale；raw按同Plan/Message/Field关联并校验有且仅有一项。
+  缺失、重复或类型不匹配为结果物化失败，不展示部分成功字段，不从逻辑值反算raw。
+
+不得把借用FieldRef、EnumValueRef、ByteView或Plan指针保存在显示DTO；销毁Session后旧DTO仍可读，
+但不能以旧DTO身份执行新Session。Encode输入在活动Plan作用域重新解析枚举ID及字段身份。
+正常观察STOP仍交付当前成功业务结果一次；复制/关联异常停止且抑制当前业务交付，保留实际消费并要求Reset。
+
+## 3. 字节、位范围与执行层复用
+
+固定范围从当前Message冻结执行Plan取得；位容器遵守大小端与数值位mask到物理字节mask的映射，
+禁止以field序号或逻辑值猜物理位置。范围均为当前帧内零基偏移，不声称全流绝对偏移。
+有界负载仅在本次Core成功且实际帧长通过范围检查后，按header/trailer及实际帧长推导范围，
+再与本次BYTES长度交叉验证。payload末尾的校验存储位置使用动态位置；零长度不高亮任何字节。
+范围越界或关联不一致按物化失败处理，不裁剪出貌似有效的高亮。
+
+失败Candidate只展示原帧、Core错误及可确认的失败定位；不得残留上一次成功字段或成功高亮。
+无候选、输入早拒绝与协议失败分别显示。API OK、候选数、业务成功数不能互相替代。
+
+复用现有非Qt描述映射及格式化算法，可作限定提取，但不调用旧ExecutionBridge::Inspect/Encode
+获取第二份“复核”结果。Encode只执行Host Encode一次，展示TX输出与本次输入/执行Plan对应关系，
+不经RX Decode回环证明成功。旧完整记录路径继续独立回归，不做全项目适配器重构。
+
+## 4. 流驱动、切换与生命周期
+
+沿用ASCII Host的显式endpoint/action/pipeline绑定；每Decode绑定两条串行逻辑流，Encode一条。
+Submit先整次校验Hex和容量，冻结chunk后最多一次Push；单个成功或失败候选均STOP。
+Continue严格提交未消费后缀；只有has_internal_work才能空Push，不强行刷新半包。
+候选、decode成功、观察完成、业务输出、Framer丢弃/畸形计数分离；丢弃字节不伪造Core候选。
+fixed_length失败不额外找同步头；sync策略保持既有重同步及预算语义。
+
+每流保存当前草稿、冻结游标和一份当前结果，无结果历史/队列；切绑定、Flow、Tab不提交或Reset。
+Reset只清目标流并更新generation。重绑先准备独立Plan/Session及显示资源，成功且确认后原子发布；
+准备失败或取消保留所有旧流、当前选择和草稿。Reload保留既有不同语义，确认丢弃后加载失败不恢复旧半包。
+关闭、重载和重绑检查所有受影响流，包括非选中流、pending及冻结后缀。
+延迟编译结果按完整修订身份拒绝，旧结果不能覆盖新视图。禁止同Session回调重入。
+
+## 5. 有界资源与构建顺序
+
+建议沿用明确上限而重新核算Binary副本：最多64绑定/64总通道、身份256字节，
+单帧最大65536字节、描述字段总数1024、最大字段BYTES长度求和1MiB、描述报告4MiB。
+单chunk容量C=min(65536,effective_max_submit_bytes)，不是单帧长度M。
+单适配实例准入128MiB、同Tab新旧准备峰值256MiB；这些是计费上限，不是进程RSS承诺。
+
+准入报告必须逐项列出：Plan、Session工作区、sidecar/自有描述、每流冻结字节、输入UTF16/Hex字符串、
+当前及临时DTO、raw整数与枚举复制、UI视图/预览副本和Encode输入输出。共享只计一次，真实共存副本逐份计费。
+乘加先检查溢出，字符串/容器采用可审计最大容量；复制临时峰值计入预算，禁止借用ASCII公式宣称已覆盖。
+至少在创建、回调复制、切换保存、重绑准备四个点验证预算；边界故障注入证明不半发布、不污染其他流。
+准备旧Binary桥向新Host移交时也要计入旧Plan/Core/描述，不再持有第二个同Plan的owner。
+
+先验证PAE raw观察扩展，再实现非Qt Binary适配/物化与描述，最后串行修改document_session、UI和CMake。
+采用现有Lab Qt 5.13.x x64/v142同套全链编译；不混用其他MSVC产物。
+预算明细及数据结构须在非Qt阶段提交复核，未闭合前不得进入UI接线。
+
+## 6. 验收矩阵与停点
+
+以下均为未来验收要求，当前没有新执行结果：
+1. PAE raw观察：正/负转换、无转换、早拒绝、失败、零字段、越界读取、raw关联及observer遗漏；
+   证明一次Core调用，正常STOP及异常消费/业务计数保持原契约，无observer旧路径不新增分配。
+2. 非Qt DTO：所有类型、已知/未知枚举、大小端跨字节位mask、整数极值、Decimal精度及有界负载零/最大值；
+   析构Session后自有DTO存活，错Plan/字段关联和复制失败明确拒绝。
+3. 三种Framer：任意切分、粘包、同步头跨块、坏候选后好候选、非法长度重同步、工作预算、
+   STOP精确后缀和内部pending；一个动作不自动耗尽所有输入，零进展不忙循环。
+4. 状态：双流交错、Reset隔离、Encode不清半包、跨Tab、重绑失败/取消/成功、未选流关闭及Reload保护。
+5. Windows Debug/Release：新增针对性测试及受影响旧Binary/ASCII/Host回归；默认OFF及缺依赖门禁。
+   保留独立手算期望，不把Encode→Decode自循环作为唯一向量，不累加不同批次测试冒充最终全量。
+6. 人工UI：三种策略各一条分片与恢复链、类型/Raw/Logical和位高亮、绑定切换/资源拒绝；
+   验收说明必须给出最终EXE和所有合成JSON完整路径。
+
+现成入口为`examples/config/synthetic_stream_framing_slice.pae.json`（0.9，三种策略，主要UINT64）；
+它不足以覆盖上述类型/转换/有界负载，实施阶段另补从零设计的公开合成向量，不使用客户协议。
+本文六项已获用户确认；随后另行实施授权。自动验证完成后交人工验收，Git交付单独授权。
+不包含网络、串口、自动转发、UTF-8、持久化、历史记录、Evidence、Linux/硬件/现场或性能认证。
+
+相关：[路线图](post-dec040-roadmap.md)、[ASCII Host契约](lab-host-endpoint-observer-contract.md)、
+[UX验收](lab-representation-ux-validation.md)。

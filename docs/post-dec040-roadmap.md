@@ -32,12 +32,28 @@ PAE首片已随`e7078b29dd50548c84f3161ab45a1dc02e4c6f60`提交推送；原契�
 用户随后授权规划并推进下一阶段。本轮先完成第1项实现和Windows定向自动验证，
 用户已提交三张截图并确认本次人工复验符合预期且Lab已关闭；第1项验收完成。
 第2项先做源码评估，不据此直接实施Binary或通信接入。
-本轮未Stage、Commit、Push。见[表示切换UX验证及后续评估](lab-representation-ux-validation.md)。
+UX已随`84644338b06be378e542b72f5eed03f48a2e2bd5`提交推送，验收时未提交状态保留为历史快照。
+见[表示切换UX验证及后续评估](lab-representation-ux-validation.md)。随后按授权细化
+[Binary Host六项契约](lab-binary-host-observer-contract.md)：限定0.9，先补候选raw整数读取，
+再接非Qt类型化DTO和UI；用户已确认六项，尚待独立实施授权，未实施、未提交推送。
 
-1. 先做Lab表示切换易用性小闭环：保留按字节转换和失败不丢草稿的语义，明确提示
+随后获准先完成[Qt依赖只读核验与随仓方案](lab-qt-dependency-audit-plan.md)。
+用户随后明确决定完整复制DEI现有Qt并长期使用：2440文件已复制至third_party/qt，逐文件Hash一致；
+新配置默认采用仓库副本，Windows Debug/Release UI构建和各7/7窗口烟测通过。
+原始来源及分发材料仍有未闭合项；官方重组路线停止，用户手动删除审计目录后已核对不存在。
+Qt检查点收尾：全包Hash及Git属性通过，UI OFF配置隔离通过，独立工具版本及最小uic生成通过。
+Qt已随`c0da00f9e41a6edbe3311c4fcc66508a11b59d9d`提交推送；这一交付不扩大为Binary Host实施授权。
+
+当前先独立交付Binary Host契约、文档索引与本路线图。实现顺序保持：
+PAE最小raw候选观察及Debug/Release验证 → 非Qt类型化DTO/物化/资源计费 → Lab UI接线 → 人工验收。
+PAE接口实现须另行授权；非Qt数据结构和预算明细复核闭合前，不进入UI接线。
+
+以下为既定路线，第1项已完成，第2项契约已确认，第3项尚待实施授权：
+
+1. Lab表示切换易用性小闭环：保留按字节转换和失败不丢草稿的语义，明确提示
    当前格式、失败原因以及清空后切换的方法；补非空非法草稿与跨Flow表示恢复回归。
    不自动清空、不静默重解释、不修改PAE。完成定向Debug/Release与一次人工复验。
-2. 再评估并冻结Binary流式Host观察契约，补齐Lab与已有PAE Binary能力之间的差距。
+2. 已评估并冻结Binary流式Host观察契约，规划补齐Lab与已有PAE Binary能力之间的差距。
    先核对现有Framer策略、字段类型和位范围来源，再确定自有DTO、单候选停止及失败语义；
    不能把仅支持ASCII BYTES的HostObserverAdapter直接作为通用Binary适配器。
 3. 契约批准后串行实施非Qt Binary适配及测试，再接UI和人工验收；若需改变PAE接口，
