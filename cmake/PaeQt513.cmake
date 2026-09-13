@@ -2,9 +2,9 @@ include_guard(GLOBAL)
 
 set(
     PAE_QT_ROOT
-    ""
+    "${CMAKE_CURRENT_LIST_DIR}/../third_party/qt"
     CACHE PATH
-    "External Qt 5.13 root used only by the optional Protocol Lab UI"
+    "Qt 5.13 root for the optional Protocol Lab UI (defaults to the vendored package)"
 )
 
 function(pae_require_protocol_lab_ui_toolchain)

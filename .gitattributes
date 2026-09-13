@@ -19,3 +19,4 @@ CMakeLists.txt text eol=lf
 third_party/yyjson/LICENSE -text
 third_party/yyjson/src/yyjson.h -text
 third_party/yyjson/src/yyjson.c -text
+third_party/qt/** -text

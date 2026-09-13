@@ -1,5 +1,9 @@
 # Third-party Source Policy
 
+Qt 5.13.0 按用户决定完整复制现有 DEI 包，作为可选 Lab UI 的长期本地依赖。
+范围、来源和验证边界见 [Qt 包说明](qt-package.md)，逐文件快照见 `qt-files.json`。
+这次明确采用全包保留策略，不按当前 Lab 模块裁剪；不代表每个模块均已通过 Lab 验证。
+
 最终依赖必须固定版本或 Commit、上游地址、License、源文件范围、SHA-256、本地修改和更新方式。
 
 yyjson 0.12.0已经确认为Compiler和Protocol Lab的内部JSON Parser（解析器）依赖。正式随仓范围和
