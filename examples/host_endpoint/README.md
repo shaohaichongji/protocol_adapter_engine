@@ -6,7 +6,7 @@
 再用独立Encode-only动作得到手算期望`SEND\r\n`。不打开Socket、不建立线程、不自动转发。
 
 入口是内部非安装的`pae::host_endpoint::Session`，见
-[契约](../../docs/host-endpoint-binding-contract.md)及[实施验证报告](../../docs/host-endpoint-binding-validation.md)。
+[契约](../../docs/engineering/host-endpoint-binding-contract.md)及[实施验证报告](../../docs/engineering/host-endpoint-binding-validation.md)。
 
 ## 调用与生命周期
 

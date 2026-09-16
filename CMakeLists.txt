@@ -15,9 +15,29 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
+set(
+    PAE_MSVC_RUNTIME_LIBRARY
+    "MultiThreaded$<$<CONFIG:Debug>:Debug>DLL"
+    CACHE STRING
+    "MSVC runtime used by PAE targets; Windows SDK packages use /MDd for Debug and /MD for Release"
+)
+if(MSVC)
+    set(CMAKE_MSVC_RUNTIME_LIBRARY "${PAE_MSVC_RUNTIME_LIBRARY}")
+endif()
+
 option(PAE_BUILD_JSON_PARSER_SPIKE "Build the disposable JSON parser comparison spike" OFF)
+option(
+    PAE_BUILD_PUBLIC_API_STAGE1
+    "Build the experimental public compiler, metadata, COMPLETE_RECORD codec, and StreamFramer API"
+    OFF
+)
 option(PAE_BUILD_HOST_ENDPOINT_SLICE "Build the internal serialized host endpoint binding slice" OFF)
 option(PAE_BUILD_PROTOCOL_LAB_HOST_OBSERVER "Build the internal Lab host endpoint observer" OFF)
+option(PAE_BUILD_PROTOCOL_LAB_BINARY_MATERIALIZER "Build the internal non-Qt Binary candidate DTO slice" OFF)
+option(PAE_BUILD_PROTOCOL_LAB_BINARY_PUBLIC_H1 "Build public-only non-Qt Binary complete Decode H1 adapter" OFF)
+option(PAE_BUILD_PROTOCOL_LAB_BINARY_PUBLIC_H2 "Route the Qt Lab Binary complete Decode through public PAE" OFF)
+option(PAE_BUILD_PROTOCOL_LAB_ASCII_SMOKE_DIAGNOSTIC "Instrument ASCII Qt UI smoke only in an isolated diagnostic build" OFF)
+option(PAE_BUILD_PROTOCOL_LAB_BINARY_UI "Connect the Schema 0.9 Binary Host observer to the Qt Lab" OFF)
 option(
     PAE_BUILD_LOADER_SCHEMA_IR_SLICE
     "Build the internal Loader/SchemaIr executable vertical slice"
@@ -128,6 +148,66 @@ option(
     "Build the internal minimal business embedding example"
     OFF
 )
+
+if(PAE_BUILD_PUBLIC_API_STAGE1)
+    foreach(
+        pae_public_api_required_option
+        IN ITEMS
+            PAE_BUILD_LOADER_SCHEMA_IR_SLICE
+            PAE_BUILD_COMPLETE_RECORD_CODEC_SLICE
+            PAE_ENABLE_SCHEMA_V05_COMPILER
+            PAE_ENABLE_SCHEMA_V06_CRC_COMPILER
+            PAE_ENABLE_SCHEMA_V07_LENGTH_COMPILER
+            PAE_ENABLE_SCHEMA_V08_VARIABLE_COMPILER
+            PAE_ENABLE_SCHEMA_V09_STREAM_FRAMING
+            PAE_ENABLE_SCHEMA_V10_ASCII_TEXT_CODEC
+            PAE_ENABLE_SCHEMA_V11_ASCII_STREAM_FRAMING
+            PAE_BUILD_STREAM_FRAMING_SLICE
+    )
+        if(NOT ${pae_public_api_required_option})
+            message(STATUS "PAE_BUILD_PUBLIC_API_STAGE1 enables ${pae_public_api_required_option}.")
+            set(
+                ${pae_public_api_required_option}
+                ON
+                CACHE BOOL "Enabled by PAE_BUILD_PUBLIC_API_STAGE1"
+                FORCE
+            )
+        endif()
+    endforeach()
+    unset(pae_public_api_required_option)
+endif()
+
+if(PAE_BUILD_PROTOCOL_LAB_BINARY_PUBLIC_H1 AND NOT PAE_BUILD_PUBLIC_API_STAGE1)
+    message(FATAL_ERROR "PAE_BUILD_PROTOCOL_LAB_BINARY_PUBLIC_H1 requires PAE_BUILD_PUBLIC_API_STAGE1=ON.")
+endif()
+
+if(PAE_BUILD_PROTOCOL_LAB_ASCII_SMOKE_DIAGNOSTIC AND
+   (NOT PAE_BUILD_PROTOCOL_LAB_UI OR NOT PAE_ENABLE_SCHEMA_V10_ASCII_TEXT_CODEC))
+    message(FATAL_ERROR "ASCII smoke diagnostic requires Qt Lab UI and Schema 0.10 ASCII text codec.")
+endif()
+
+if(PAE_BUILD_PROTOCOL_LAB_BINARY_PUBLIC_H2 AND
+   (NOT PAE_BUILD_PROTOCOL_LAB_UI OR NOT PAE_BUILD_PROTOCOL_LAB_BINARY_UI OR
+    NOT PAE_BUILD_PROTOCOL_LAB_BINARY_PUBLIC_H1 OR NOT PAE_BUILD_PUBLIC_API_STAGE1))
+    message(FATAL_ERROR "Binary public H2 requires UI, Binary UI, public H1 and public API Stage 1.")
+endif()
+
+if(PAE_BUILD_PROTOCOL_LAB_BINARY_MATERIALIZER AND
+   (NOT PAE_BUILD_HOST_ENDPOINT_SLICE OR NOT PAE_ENABLE_SCHEMA_V05_COMPILER OR
+    NOT PAE_ENABLE_SCHEMA_V06_CRC_COMPILER OR NOT PAE_ENABLE_SCHEMA_V07_LENGTH_COMPILER OR
+    NOT PAE_ENABLE_SCHEMA_V08_VARIABLE_COMPILER OR NOT PAE_ENABLE_SCHEMA_V09_STREAM_FRAMING))
+    message(FATAL_ERROR "Binary materializer requires explicit Host and V05/V06/V07/V08/V09 options.")
+endif()
+
+if(PAE_BUILD_PROTOCOL_LAB_BINARY_UI AND NOT PAE_BUILD_PROTOCOL_LAB_BINARY_PUBLIC_H2 AND
+   (NOT PAE_BUILD_PROTOCOL_LAB_UI OR NOT PAE_BUILD_PROTOCOL_LAB_BINARY_MATERIALIZER OR
+    NOT PAE_BUILD_PROTOCOL_LAB_HOST_OBSERVER OR
+    NOT PAE_BUILD_HOST_ENDPOINT_SLICE OR NOT PAE_BUILD_COMPLETE_RECORD_CODEC_SLICE OR
+    NOT PAE_BUILD_STREAM_FRAMING_SLICE OR NOT PAE_ENABLE_SCHEMA_V05_COMPILER OR
+    NOT PAE_ENABLE_SCHEMA_V06_CRC_COMPILER OR NOT PAE_ENABLE_SCHEMA_V07_LENGTH_COMPILER OR
+    NOT PAE_ENABLE_SCHEMA_V08_VARIABLE_COMPILER OR NOT PAE_ENABLE_SCHEMA_V09_STREAM_FRAMING))
+    message(FATAL_ERROR "Binary Protocol Lab UI requires explicit UI, shared Host-panel observer, Binary materializer, Host, Core, Framing and V05-V09 options.")
+endif()
 
 if(PAE_BUILD_PROTOCOL_LAB_HOST_OBSERVER AND
    (NOT PAE_BUILD_HOST_ENDPOINT_SLICE OR NOT PAE_BUILD_PROTOCOL_LAB_ASCII_STREAM_OBSERVER))
@@ -259,56 +339,56 @@ endif()
 if(PAE_ENABLE_SCHEMA_V06_CRC_COMPILER AND
    (NOT PAE_ENABLE_SCHEMA_V05_COMPILER OR
     NOT PAE_BUILD_LOADER_SCHEMA_IR_SLICE OR
-    NOT PAE_BUILD_COMPLETE_RECORD_CODEC_SLICE))
+    (NOT PAE_BUILD_COMPLETE_RECORD_CODEC_SLICE AND NOT PAE_BUILD_PUBLIC_API_STAGE1)))
     message(
         FATAL_ERROR
-        "PAE_ENABLE_SCHEMA_V06_CRC_COMPILER requires the Loader, Core, and explicit Schema 0.5 compiler slices."
+        "PAE_ENABLE_SCHEMA_V06_CRC_COMPILER requires Loader, Schema 0.5, and either Core or the public compiler stage."
     )
 endif()
 if(PAE_ENABLE_SCHEMA_V07_LENGTH_COMPILER AND
    (NOT PAE_ENABLE_SCHEMA_V06_CRC_COMPILER OR
     NOT PAE_BUILD_LOADER_SCHEMA_IR_SLICE OR
-    NOT PAE_BUILD_COMPLETE_RECORD_CODEC_SLICE))
+    (NOT PAE_BUILD_COMPLETE_RECORD_CODEC_SLICE AND NOT PAE_BUILD_PUBLIC_API_STAGE1)))
     message(
         FATAL_ERROR
-        "PAE_ENABLE_SCHEMA_V07_LENGTH_COMPILER requires the Loader, Core, and explicit Schema 0.6 CRC compiler slice."
+        "PAE_ENABLE_SCHEMA_V07_LENGTH_COMPILER requires Loader, Schema 0.6, and either Core or the public compiler stage."
     )
 endif()
 if(PAE_ENABLE_SCHEMA_V08_VARIABLE_COMPILER AND
    (NOT PAE_ENABLE_SCHEMA_V07_LENGTH_COMPILER OR
     NOT PAE_BUILD_LOADER_SCHEMA_IR_SLICE OR
-    NOT PAE_BUILD_COMPLETE_RECORD_CODEC_SLICE))
+    (NOT PAE_BUILD_COMPLETE_RECORD_CODEC_SLICE AND NOT PAE_BUILD_PUBLIC_API_STAGE1)))
     message(
         FATAL_ERROR
-        "PAE_ENABLE_SCHEMA_V08_VARIABLE_COMPILER requires the Loader, Core, and explicit Schema 0.7 length compiler slice."
+        "PAE_ENABLE_SCHEMA_V08_VARIABLE_COMPILER requires Loader, Schema 0.7, and either Core or the public compiler stage."
     )
 endif()
 if(PAE_ENABLE_SCHEMA_V09_STREAM_FRAMING AND
    (NOT PAE_ENABLE_SCHEMA_V08_VARIABLE_COMPILER OR
     NOT PAE_BUILD_LOADER_SCHEMA_IR_SLICE OR
-    NOT PAE_BUILD_COMPLETE_RECORD_CODEC_SLICE))
+    (NOT PAE_BUILD_COMPLETE_RECORD_CODEC_SLICE AND NOT PAE_BUILD_PUBLIC_API_STAGE1)))
     message(
         FATAL_ERROR
-        "PAE_ENABLE_SCHEMA_V09_STREAM_FRAMING requires the Loader, Core, and explicit Schema 0.8 compiler slice."
+        "PAE_ENABLE_SCHEMA_V09_STREAM_FRAMING requires Loader, Schema 0.8, and either Core or the public compiler stage."
     )
 endif()
 if(PAE_ENABLE_SCHEMA_V10_ASCII_TEXT_CODEC AND
    (NOT PAE_ENABLE_SCHEMA_V09_STREAM_FRAMING OR
     NOT PAE_BUILD_LOADER_SCHEMA_IR_SLICE OR
-    NOT PAE_BUILD_COMPLETE_RECORD_CODEC_SLICE))
+    (NOT PAE_BUILD_COMPLETE_RECORD_CODEC_SLICE AND NOT PAE_BUILD_PUBLIC_API_STAGE1)))
     message(
         FATAL_ERROR
-        "PAE_ENABLE_SCHEMA_V10_ASCII_TEXT_CODEC requires the Loader, Core, and explicit Schema 0.9 slice."
+        "PAE_ENABLE_SCHEMA_V10_ASCII_TEXT_CODEC requires Loader, Schema 0.9, and either Core or the public compiler stage."
     )
 endif()
 if(PAE_ENABLE_SCHEMA_V11_ASCII_STREAM_FRAMING AND
    (NOT PAE_ENABLE_SCHEMA_V10_ASCII_TEXT_CODEC OR
     NOT PAE_ENABLE_SCHEMA_V09_STREAM_FRAMING OR
     NOT PAE_BUILD_LOADER_SCHEMA_IR_SLICE OR
-    NOT PAE_BUILD_COMPLETE_RECORD_CODEC_SLICE))
+    (NOT PAE_BUILD_COMPLETE_RECORD_CODEC_SLICE AND NOT PAE_BUILD_PUBLIC_API_STAGE1)))
     message(
         FATAL_ERROR
-        "PAE_ENABLE_SCHEMA_V11_ASCII_STREAM_FRAMING requires the Schema 0.10 ASCII, Schema 0.9 Framing, Loader, and Core slices."
+        "PAE_ENABLE_SCHEMA_V11_ASCII_STREAM_FRAMING requires Schema 0.10, Schema 0.9, Loader, and either Core or the public compiler stage."
     )
 endif()
 if(PAE_ENABLE_SCHEMA_V10_ASCII_TEXT_CODEC AND PAE_BUILD_PROTOCOL_LAB)
@@ -454,6 +534,7 @@ endif()
 
 if(PAE_BUILD_LOADER_SCHEMA_IR_SLICE OR
    PAE_BUILD_COMPLETE_RECORD_CODEC_SLICE OR
+   PAE_BUILD_PUBLIC_API_STAGE1 OR
    PAE_BUILD_PROTOCOL_LAB OR
    PAE_BUILD_PROTOCOL_LAB_UI OR
    PAE_BUILD_BUSINESS_EMBEDDING_EXAMPLE OR
@@ -464,6 +545,7 @@ endif()
 
 if(PAE_BUILD_LOADER_SCHEMA_IR_SLICE OR
    (PAE_BUILD_COMPLETE_RECORD_CODEC_SLICE AND PAE_BUILD_TESTING) OR
+   PAE_BUILD_PUBLIC_API_STAGE1 OR
    PAE_BUILD_PROTOCOL_LAB OR
    PAE_BUILD_PROTOCOL_LAB_UI OR
    PAE_BUILD_BUSINESS_EMBEDDING_EXAMPLE OR
@@ -484,10 +566,22 @@ if((PAE_BUILD_LOADER_SCHEMA_IR_SLICE OR
 endif()
 
 if(PAE_BUILD_COMPLETE_RECORD_CODEC_SLICE OR
+   PAE_BUILD_PUBLIC_API_STAGE1 OR
    PAE_BUILD_PROTOCOL_LAB OR
    PAE_BUILD_PROTOCOL_LAB_UI OR
    PAE_BUILD_BUSINESS_EMBEDDING_EXAMPLE)
     add_subdirectory(src/protocol_core)
+endif()
+
+if(PAE_BUILD_PUBLIC_API_STAGE1)
+    add_subdirectory(src/public_api)
+    add_subdirectory(examples/public_api_codec)
+    add_subdirectory(examples/public_api_framer)
+    add_subdirectory(examples/public_api_host)
+    if(PAE_BUILD_TESTING)
+        add_subdirectory(tests/public_api)
+    endif()
+    include("${PROJECT_SOURCE_DIR}/cmake/PaeSdkInstall.cmake")
 endif()
 
 if(PAE_BUILD_HOST_ENDPOINT_SLICE)
@@ -495,6 +589,13 @@ if(PAE_BUILD_HOST_ENDPOINT_SLICE)
     add_subdirectory(examples/host_endpoint)
     if(PAE_BUILD_TESTING)
         add_subdirectory(tests/host_endpoint)
+    endif()
+endif()
+
+if(PAE_BUILD_PROTOCOL_LAB_BINARY_MATERIALIZER OR PAE_BUILD_PROTOCOL_LAB_BINARY_PUBLIC_H1)
+    add_subdirectory(tools/protocol_lab_binary)
+    if(PAE_BUILD_TESTING)
+        add_subdirectory(tests/protocol_lab_binary)
     endif()
 endif()
 

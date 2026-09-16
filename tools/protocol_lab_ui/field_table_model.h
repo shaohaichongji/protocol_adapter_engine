@@ -64,6 +64,8 @@ class FieldTableModel final : public QAbstractTableModel {
              DraftInvalidated draft_invalidated = {}, bool editable = true,
              ByteRepresentation representation = ByteRepresentation::HEX,
              FieldPresentationAction action = FieldPresentationAction::ENCODE);
+  bool PrepareCapacity(std::size_t row_capacity) noexcept;
+  std::size_t AccountedRowCapacityBytes() const noexcept;
   void ApplyDrafts(const std::unordered_map<std::size_t, TypedDraft>& drafts);
   void ApplyInvalidDrafts(const std::unordered_map<std::size_t, InvalidDraftState>& invalid_drafts);
   void ClearResults();
@@ -79,10 +81,7 @@ class FieldTableModel final : public QAbstractTableModel {
     std::optional<std::size_t> enum_entry_index;
     bool bool_value = false;
     bool has_bool_value = false;
-    std::string raw_result;
-    std::string logical_result;
     QString validation_error;
-    std::optional<ByteRange> actual_range;
   };
 
   bool ParseDraft(int row, const QVariant& value, int role, TypedDraft& output, QString& canonical,
@@ -90,6 +89,7 @@ class FieldTableModel final : public QAbstractTableModel {
   void EmitValueChanged(int row);
 
   const MessageDescriptor* message_ = nullptr;
+  const std::vector<UiFieldResult>* results_ = nullptr;
   std::vector<RowState> rows_;
   DraftChanged draft_changed_;
   DraftInvalidated draft_invalidated_;

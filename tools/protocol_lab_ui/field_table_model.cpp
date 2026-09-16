@@ -3,6 +3,8 @@
 #include <QBrush>
 #include <QColor>
 #include <QStringList>
+#include <algorithm>
+#include <exception>
 #include <limits>
 #include <type_traits>
 #include <utility>
@@ -72,6 +74,19 @@ QString FromUtf16(const std::u16string& value) {
 
 FieldTableModel::FieldTableModel(QObject* parent) : QAbstractTableModel(parent) {}
 
+bool FieldTableModel::PrepareCapacity(std::size_t row_capacity) noexcept {
+  try {
+    rows_.reserve(row_capacity);
+    return rows_.capacity() >= row_capacity;
+  } catch (const std::exception&) {
+    return false;
+  }
+}
+
+std::size_t FieldTableModel::AccountedRowCapacityBytes() const noexcept {
+  return rows_.capacity() * sizeof(RowState);
+}
+
 int FieldTableModel::rowCount(const QModelIndex& parent) const {
   return parent.isValid() ? 0 : static_cast<int>(rows_.size());
 }
@@ -86,6 +101,13 @@ QVariant FieldTableModel::data(const QModelIndex& index, int role) const {
     return {};
   }
   const auto& row = rows_[static_cast<std::size_t>(index.row())];
+  const UiFieldResult* result = nullptr;
+  if (results_ != nullptr) {
+    const auto found = std::find_if(results_->begin(), results_->end(), [&](const auto& value) {
+      return value.field_index == field->field_index && value.id == field->id;
+    });
+    if (found != results_->end()) result = &*found;
+  }
   if (role == ValueTypeRole) {
     return static_cast<int>(field->value_type);
   }
@@ -112,9 +134,9 @@ QVariant FieldTableModel::data(const QModelIndex& index, int role) const {
   }
   if (role == HasConversionRole) {
 #if defined(PAE_ENABLE_SCHEMA_V05_COMPILER)
-    return field->conversion.has_value();
+    return field->decode_decimal64 || field->conversion.has_value();
 #else
-    return false;
+    return field->decode_decimal64;
 #endif
   }
   if (role == EnumIdsRole || role == EnumNamesRole) {
@@ -168,7 +190,8 @@ QVariant FieldTableModel::data(const QModelIndex& index, int role) const {
       return QString::fromUtf8(name.data(), static_cast<int>(name.size()));
     }
     case TYPE:
-      return ValueTypeName(field->value_type);
+      return field->decode_decimal64 ? QStringLiteral("DECIMAL64")
+                                     : ValueTypeName(field->value_type);
     case SOURCE:
       if (field->ascii_text) {
         if (!ReferencedByPresentedAction(*field, action_)) return QStringLiteral("not referenced");
@@ -195,15 +218,20 @@ QVariant FieldTableModel::data(const QModelIndex& index, int role) const {
       }
       return row.draft_text;
     case RAW_RESULT:
-      return QString::fromUtf8(row.raw_result.data(), static_cast<int>(row.raw_result.size()));
+      return result == nullptr
+                 ? QVariant{}
+                 : QVariant(QString::fromUtf8(result->raw_value.data(),
+                                              static_cast<int>(result->raw_value.size())));
     case LOGICAL_RESULT:
-      return QString::fromUtf8(row.logical_result.data(),
-                               static_cast<int>(row.logical_result.size()));
+      return result == nullptr
+                 ? QVariant{}
+                 : QVariant(QString::fromUtf8(result->logical_value.data(),
+                                              static_cast<int>(result->logical_value.size())));
     case PHYSICAL_LOCATION: {
-      if (row.actual_range.has_value()) {
+      if (result != nullptr && result->actual_range.has_value()) {
         return QStringLiteral("%1 + %2")
-            .arg(static_cast<qulonglong>(row.actual_range->offset))
-            .arg(static_cast<qulonglong>(row.actual_range->length));
+            .arg(static_cast<qulonglong>(result->actual_range->offset))
+            .arg(static_cast<qulonglong>(result->actual_range->length));
       }
       if (field->ascii_text) {
         return ReferencedByPresentedAction(*field, action_)
@@ -312,6 +340,7 @@ void FieldTableModel::Reset(const MessageDescriptor* message, DraftChanged draft
                             ByteRepresentation representation, FieldPresentationAction action) {
   beginResetModel();
   message_ = message;
+  results_ = nullptr;
   rows_.assign(message_ == nullptr ? 0U : message_->fields.size(), RowState{});
   draft_changed_ = std::move(draft_changed);
   draft_invalidated_ = std::move(draft_invalidated);
@@ -377,32 +406,13 @@ void FieldTableModel::ApplyInvalidDrafts(
 }
 
 void FieldTableModel::ClearResults() {
-  if (rows_.empty()) {
-    return;
-  }
-  for (auto& row : rows_) {
-    row.raw_result.clear();
-    row.logical_result.clear();
-    row.actual_range.reset();
-  }
+  results_ = nullptr;
+  if (rows_.empty()) return;
   emit dataChanged(index(0, RAW_RESULT), index(rowCount() - 1, PHYSICAL_LOCATION));
 }
 
 void FieldTableModel::ApplyResults(const std::vector<UiFieldResult>& results) {
-  ClearResults();
-  if (message_ == nullptr) {
-    return;
-  }
-  for (const auto& result : results) {
-    for (std::size_t row_index = 0; row_index < message_->fields.size(); ++row_index) {
-      if (message_->fields[row_index].id == result.id) {
-        rows_[row_index].raw_result = result.raw_value;
-        rows_[row_index].logical_result = result.logical_value;
-        rows_[row_index].actual_range = result.actual_range;
-        break;
-      }
-    }
-  }
+  results_ = &results;
   if (!rows_.empty()) {
     emit dataChanged(index(0, RAW_RESULT), index(rowCount() - 1, PHYSICAL_LOCATION));
   }

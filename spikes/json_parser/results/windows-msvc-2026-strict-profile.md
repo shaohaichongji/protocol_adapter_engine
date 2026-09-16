@@ -30,7 +30,7 @@
 - JSON Number完整词法边界，以及小数/指数误入整数属性；
 - 所有合法JSON根值的语法接受与PAE根Object（对象）结构门禁分层；
 - 独立的[Strict JSON Profile V0.1](../../../schema/strict_json_profile_v0.1.md)工作规范；
-- [Loader与Compiler架构边界](../../../docs/loader_compiler_boundary_v0.1.md)草案。
+- [Loader与Compiler架构边界](../../../docs/engineering/loader_compiler_boundary_v0.1.md)草案。
 
 本轮没有实现生产Loader、StructuralValidator（结构校验器）、DomainValidator（领域校验器）、ProtocolPlan、协议Core或PoC（Proof of Concept，概念验证）。
 

@@ -72,7 +72,7 @@ allocator ledger（分配记录表）采用固定 8 个槽位，自身不在回�
 
 ### 2.3 诊断定位
 
-本轮新增[JSON Loader 诊断定位契约 V0.1](../../../docs/json_loader_diagnostic_contract_v0.1.md)：
+本轮新增[JSON Loader 诊断定位契约 V0.1](../../../docs/engineering/json_loader_diagnostic_contract_v0.1.md)：
 
 - byte offset（字节偏移）统一为零基；
 - 公共 BOM、UTF-8 和深度预检使用`EXACT_INPUT_BYTE`；

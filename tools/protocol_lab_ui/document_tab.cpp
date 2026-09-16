@@ -15,10 +15,12 @@
 #include <QMessageBox>
 #include <QMimeData>
 #include <QPlainTextEdit>
+#include <QPointer>
 #include <QPushButton>
 #include <QSplitter>
 #include <QStandardItemModel>
 #include <QTableView>
+#include <QTemporaryFile>
 #if defined(PAE_BUILD_PROTOCOL_LAB_HOST_OBSERVER)
 #include <QTableWidget>
 #include <QThread>
@@ -29,12 +31,17 @@
 #include <QVBoxLayout>
 #include <algorithm>
 #include <limits>
+#include <new>
 #include <optional>
 #include <utility>
 
 #include "exact_value_delegate.h"
 #include "field_table_model.h"
 #include "hex_view.h"
+#include "smoke_editor_target.h"
+#if defined(PAE_BUILD_PROTOCOL_LAB_ASCII_SMOKE_DIAGNOSTIC)
+#include "ascii_smoke_diagnostic.h"
+#endif
 
 namespace pae::protocol_lab_ui {
 namespace {
@@ -120,16 +127,17 @@ QString FramingIssueName(protocol_framing::FramingIssue value) {
 }
 #endif
 
-std::vector<PhysicalBitMask> FieldHighlights(const MessageDescriptor* message,
-                                             const FieldDescriptor* field,
-                                             std::optional<std::size_t> actual_frame_size) {
+void FillFieldHighlights(const MessageDescriptor* message, const FieldDescriptor* field,
+                         std::optional<std::size_t> actual_frame_size,
+                         std::vector<PhysicalBitMask>& output) {
+  output.clear();
   if (message == nullptr || field == nullptr) {
-    return {};
+    return;
   }
   if (!field->physical_bits.empty()) {
-    return field->physical_bits;
+    output.assign(field->physical_bits.begin(), field->physical_bits.end());
+    return;
   }
-  std::vector<PhysicalBitMask> output;
   auto range = field->byte_range;
   if (field->byte_length_bounds.has_value()) {
     range = actual_frame_size.has_value()
@@ -142,6 +150,13 @@ std::vector<PhysicalBitMask> FieldHighlights(const MessageDescriptor* message,
       output.push_back(PhysicalBitMask{range->offset + index, 0xFFU});
     }
   }
+}
+
+std::vector<PhysicalBitMask> FieldHighlights(const MessageDescriptor* message,
+                                             const FieldDescriptor* field,
+                                             std::optional<std::size_t> actual_frame_size) {
+  std::vector<PhysicalBitMask> output;
+  FillFieldHighlights(message, field, actual_frame_size, output);
   return output;
 }
 
@@ -254,31 +269,110 @@ class ClipboardMimeGuard final {
   std::vector<std::pair<QString, QByteArray>> original_data_;
 };
 
-void ReplaceEditorTextByKeyboard(QLineEdit& editor, const QString& text) {
-  editor.selectAll();
+bool ReplaceEditorTextByKeyboard(QLineEdit& editor, const QString& text) {
+  QPointer<QLineEdit> guarded(&editor);
+#if defined(PAE_BUILD_PROTOCOL_LAB_ASCII_SMOKE_DIAGNOSTIC)
+  const auto editor_id = ascii_smoke_diagnostic::EditorId(guarded.data());
+  ascii_smoke_diagnostic::Trace("keyboard_before_select", guarded.data(), editor_id);
+#endif
+  guarded->selectAll();
   for (const QChar character : text) {
+    if (!guarded) {
+#if defined(PAE_BUILD_PROTOCOL_LAB_ASCII_SMOKE_DIAGNOSTIC)
+      ascii_smoke_diagnostic::MarkEditorLost("keyboard_editor_lost", editor_id);
+#endif
+      return false;
+    }
+#if defined(PAE_BUILD_PROTOCOL_LAB_ASCII_SMOKE_DIAGNOSTIC)
+    ascii_smoke_diagnostic::Trace("keyboard_before_key", guarded.data(), editor_id);
+#endif
     QKeyEvent event{QEvent::KeyPress, static_cast<int>(character.unicode()), Qt::NoModifier,
                     QString{character}};
-    QApplication::sendEvent(&editor, &event);
+    if (!smoke_editor_target::SendIfLive(guarded, event)) {
+#if defined(PAE_BUILD_PROTOCOL_LAB_ASCII_SMOKE_DIAGNOSTIC)
+      ascii_smoke_diagnostic::MarkEditorLost("keyboard_editor_lost_after_key", editor_id);
+#endif
+      return false;
+    }
+#if defined(PAE_BUILD_PROTOCOL_LAB_ASCII_SMOKE_DIAGNOSTIC)
+    ascii_smoke_diagnostic::Trace("keyboard_after_key", guarded.data(), editor_id);
+#endif
   }
+#if defined(PAE_BUILD_PROTOCOL_LAB_ASCII_SMOKE_DIAGNOSTIC)
+  ascii_smoke_diagnostic::Trace("keyboard_before_pump", guarded.data(), editor_id);
+#endif
   QApplication::processEvents(QEventLoop::ExcludeUserInputEvents);
+#if defined(PAE_BUILD_PROTOCOL_LAB_ASCII_SMOKE_DIAGNOSTIC)
+  ascii_smoke_diagnostic::Trace("keyboard_after_pump", guarded.data(), editor_id);
+  if (!guarded) ascii_smoke_diagnostic::MarkEditorLost("keyboard_editor_lost", editor_id);
+#endif
+  return guarded != nullptr;
 }
 
-void ReplaceEditorTextByPaste(QLineEdit& editor, const QString& text) {
+bool ReplaceEditorTextByPaste(QLineEdit& editor, const QString& text) {
+  QPointer<QLineEdit> guarded(&editor);
+#if defined(PAE_BUILD_PROTOCOL_LAB_ASCII_SMOKE_DIAGNOSTIC)
+  const auto editor_id = ascii_smoke_diagnostic::EditorId(guarded.data());
+  ascii_smoke_diagnostic::Trace("paste_before_clipboard", guarded.data(), editor_id);
+#endif
   QApplication::clipboard()->setText(text);
-  editor.selectAll();
+  if (!guarded) return false;
+  guarded->selectAll();
+  if (!guarded) return false;
+#if defined(PAE_BUILD_PROTOCOL_LAB_ASCII_SMOKE_DIAGNOSTIC)
+  ascii_smoke_diagnostic::Trace("paste_before_key", guarded.data(), editor_id);
+#endif
   QKeyEvent event{QEvent::KeyPress, Qt::Key_V, Qt::ControlModifier};
-  QApplication::sendEvent(&editor, &event);
+  if (!smoke_editor_target::SendIfLive(guarded, event)) {
+#if defined(PAE_BUILD_PROTOCOL_LAB_ASCII_SMOKE_DIAGNOSTIC)
+    ascii_smoke_diagnostic::MarkEditorLost("paste_editor_lost_after_key", editor_id);
+#endif
+    return false;
+  }
+#if defined(PAE_BUILD_PROTOCOL_LAB_ASCII_SMOKE_DIAGNOSTIC)
+  ascii_smoke_diagnostic::Trace("paste_after_key", guarded.data(), editor_id);
+  ascii_smoke_diagnostic::Trace("paste_before_pump", guarded.data(), editor_id);
+#endif
   QApplication::processEvents(QEventLoop::ExcludeUserInputEvents);
+#if defined(PAE_BUILD_PROTOCOL_LAB_ASCII_SMOKE_DIAGNOSTIC)
+  ascii_smoke_diagnostic::Trace("paste_after_pump", guarded.data(), editor_id);
+  if (!guarded) ascii_smoke_diagnostic::MarkEditorLost("paste_editor_lost", editor_id);
+#endif
+  return guarded != nullptr;
 }
 
 void CommitEditorByKey(QLineEdit& editor, int key) {
+  QPointer<QLineEdit> guarded(&editor);
+#if defined(PAE_BUILD_PROTOCOL_LAB_ASCII_SMOKE_DIAGNOSTIC)
+  const auto editor_id = ascii_smoke_diagnostic::EditorId(guarded.data());
+  ascii_smoke_diagnostic::Trace("commit_before_press", guarded.data(), editor_id);
+#endif
   QKeyEvent press{QEvent::KeyPress, key, Qt::NoModifier};
-  QApplication::sendEvent(&editor, &press);
-  QKeyEvent release{QEvent::KeyRelease, key, Qt::NoModifier};
-  QApplication::sendEvent(&editor, &release);
+  smoke_editor_target::SendIfLive(guarded, press);
+#if defined(PAE_BUILD_PROTOCOL_LAB_ASCII_SMOKE_DIAGNOSTIC)
+  ascii_smoke_diagnostic::Trace("commit_after_press", guarded.data(), editor_id);
+#endif
+  // A successful delegate commit may close its editor during KeyPress.
+  if (guarded) {
+#if defined(PAE_BUILD_PROTOCOL_LAB_ASCII_SMOKE_DIAGNOSTIC)
+    ascii_smoke_diagnostic::Trace("commit_before_release", guarded.data(), editor_id);
+#endif
+    QKeyEvent release{QEvent::KeyRelease, key, Qt::NoModifier};
+    smoke_editor_target::SendIfLive(guarded, release);
+  }
+#if defined(PAE_BUILD_PROTOCOL_LAB_ASCII_SMOKE_DIAGNOSTIC)
+  ascii_smoke_diagnostic::Trace("commit_after_release", guarded.data(), editor_id);
+  ascii_smoke_diagnostic::Trace("commit_before_pump", guarded.data(), editor_id);
+#endif
   QApplication::processEvents(QEventLoop::ExcludeUserInputEvents);
+#if defined(PAE_BUILD_PROTOCOL_LAB_ASCII_SMOKE_DIAGNOSTIC)
+  ascii_smoke_diagnostic::Trace("commit_after_pump", guarded.data(), editor_id);
+#endif
   QApplication::sendPostedEvents(nullptr, QEvent::DeferredDelete);
+#if defined(PAE_BUILD_PROTOCOL_LAB_ASCII_SMOKE_DIAGNOSTIC)
+  ascii_smoke_diagnostic::Trace("commit_after_deferred_delete", guarded.data(), editor_id);
+#endif
+  // Callers verify the model/result; editor closure itself is permitted.
 }
 
 }  // namespace
@@ -304,12 +398,21 @@ void DocumentTab::LoadPath(const QString& path) {
 }
 
 void DocumentTab::AcceptCompletion(std::unique_ptr<CompileCompletion> completion) {
+#if defined(PAE_BUILD_PROTOCOL_LAB_ASCII_SMOKE_DIAGNOSTIC)
+  ascii_smoke_diagnostic::Trace("document_completion_enter", this);
+#endif
   if (closed_ || completion == nullptr || completion->document_id != session_.id()) {
     return;
   }
 #if defined(PAE_BUILD_PROTOCOL_LAB_HOST_OBSERVER)
   if (host_pending_revision_ && completion->load_revision == *host_pending_revision_) {
+#if defined(PAE_BUILD_PROTOCOL_LAB_ASCII_SMOKE_DIAGNOSTIC)
+    ascii_smoke_diagnostic::Trace("host_completion_before_publish", this);
+#endif
     AcceptHostCompletion(std::move(completion));
+#if defined(PAE_BUILD_PROTOCOL_LAB_ASCII_SMOKE_DIAGNOSTIC)
+    ascii_smoke_diagnostic::Trace("host_completion_after_publish", this);
+#endif
     return;
   }
   if (completion->load_revision != session_.load_revision()) return;
@@ -326,6 +429,9 @@ void DocumentTab::AcceptCompletion(std::unique_ptr<CompileCompletion> completion
 }
 
 bool DocumentTab::CloseDocument(bool require_confirmation) {
+#if defined(PAE_BUILD_PROTOCOL_LAB_ASCII_SMOKE_DIAGNOSTIC)
+  ascii_smoke_diagnostic::Trace("document_close_enter", this);
+#endif
   if (closed_) {
     return true;
   }
@@ -334,19 +440,45 @@ bool DocumentTab::CloseDocument(bool require_confirmation) {
     return false;
   }
 #endif
+#if defined(PAE_BUILD_PROTOCOL_LAB_BINARY_UI) && defined(PAE_BUILD_PROTOCOL_LAB_HOST_OBSERVER)
+  if (require_confirmation && (session_.BinaryHasDiscardableState() ||
+                               (session_.IsBinaryHostDocument() && host_pending_revision_))) {
+    const auto answer = QMessageBox::question(
+        this, QStringLiteral("Close Binary Host document"),
+        QStringLiteral(
+            "Closing will discard Binary flow drafts/results or pending preparation. Continue?"),
+        QMessageBox::Yes | QMessageBox::No, QMessageBox::No);
+    if (answer != QMessageBox::Yes) return false;
+  }
+#endif
   closed_ = true;
   worker_.CloseDocument(session_.id());
   field_model_->Reset(nullptr, {});
   hex_view_->ClearFrame();
   session_.Close();
+#if defined(PAE_BUILD_PROTOCOL_LAB_ASCII_SMOKE_DIAGNOSTIC)
+  ascii_smoke_diagnostic::Trace("document_close_end", this);
+#endif
   return true;
 }
 
-#if defined(PAE_BUILD_PROTOCOL_LAB_ASCII_STREAM_OBSERVER)
 bool DocumentTab::ConfirmClose() {
-  return ConfirmStreamDiscardOnly(QStringLiteral("close the application"));
-}
+#if defined(PAE_BUILD_PROTOCOL_LAB_ASCII_STREAM_OBSERVER)
+  if (!ConfirmStreamDiscardOnly(QStringLiteral("close the application"))) return false;
 #endif
+#if defined(PAE_BUILD_PROTOCOL_LAB_BINARY_UI) && defined(PAE_BUILD_PROTOCOL_LAB_HOST_OBSERVER)
+  if (session_.BinaryHasDiscardableState() ||
+      (session_.IsBinaryHostDocument() && host_pending_revision_)) {
+    const auto answer = QMessageBox::question(
+        this, QStringLiteral("Close Binary Host document"),
+        QStringLiteral(
+            "Closing will discard Binary flow drafts/results or pending preparation. Continue?"),
+        QMessageBox::Yes | QMessageBox::No, QMessageBox::No);
+    if (answer != QMessageBox::Yes) return false;
+  }
+#endif
+  return true;
+}
 
 bool DocumentTab::PopulateCanonicalDraftsForSmoke(QString& error) {
   const auto* message = CurrentMessage();
@@ -562,12 +694,15 @@ bool DocumentTab::VerifyBoundedV08ForSmoke(QString& error) {
     return nullptr;
   };
 
-  auto* editor = open_editor();
+  QPointer<QLineEdit> editor = open_editor();
   if (editor == nullptr || editor->property("paeEditCapacity").toInt() != 8) {
     error = QStringLiteral("bounded BYTES editor capacity is not the expected 8 Hex characters");
     return false;
   }
-  ReplaceEditorTextByKeyboard(*editor, QStringLiteral("1020"));
+  if (!ReplaceEditorTextByKeyboard(*editor, QStringLiteral("1020"))) {
+    error = QStringLiteral("bounded BYTES editor vanished during keyboard entry");
+    return false;
+  }
   CommitEditorByKey(*editor, Qt::Key_Return);
   if (field_model_->data(payload_index, Qt::EditRole).toString() != QStringLiteral("1020")) {
     error = QStringLiteral("Enter did not commit legal BYTES through the table delegate");
@@ -587,7 +722,10 @@ bool DocumentTab::VerifyBoundedV08ForSmoke(QString& error) {
     error = QStringLiteral("failed to reopen table editor for Tab submission");
     return false;
   }
-  ReplaceEditorTextByKeyboard(*editor, QStringLiteral("01020304"));
+  if (!ReplaceEditorTextByKeyboard(*editor, QStringLiteral("01020304"))) {
+    error = QStringLiteral("bounded BYTES editor vanished during keyboard entry");
+    return false;
+  }
   if (editor->text() != QStringLiteral("01020304") || session_.preview().has_value()) {
     error = QStringLiteral("keyboard over-protocol draft was truncated or retained old output");
     return false;
@@ -605,7 +743,10 @@ bool DocumentTab::VerifyBoundedV08ForSmoke(QString& error) {
     error = QStringLiteral("failed to reopen table editor for paste submission");
     return false;
   }
-  ReplaceEditorTextByPaste(*editor, QStringLiteral("01020304"));
+  if (!ReplaceEditorTextByPaste(*editor, QStringLiteral("01020304"))) {
+    error = QStringLiteral("bounded BYTES editor vanished during paste");
+    return false;
+  }
   if (editor->text() != QStringLiteral("01020304")) {
     error = QStringLiteral("paste over-protocol draft was truncated before submission");
     return false;
@@ -622,7 +763,10 @@ bool DocumentTab::VerifyBoundedV08ForSmoke(QString& error) {
     error = QStringLiteral("failed to reopen table editor for focus-out recovery");
     return false;
   }
-  ReplaceEditorTextByKeyboard(*editor, QStringLiteral("010203"));
+  if (!ReplaceEditorTextByKeyboard(*editor, QStringLiteral("010203"))) {
+    error = QStringLiteral("bounded BYTES editor vanished during keyboard entry");
+    return false;
+  }
   encode_button_->setFocus(Qt::OtherFocusReason);
   QApplication::processEvents(QEventLoop::ExcludeUserInputEvents);
   QApplication::sendPostedEvents(nullptr, QEvent::DeferredDelete);
@@ -641,7 +785,10 @@ bool DocumentTab::VerifyBoundedV08ForSmoke(QString& error) {
     error = QStringLiteral("failed to open BYTES editor for capacity rejection");
     return false;
   }
-  ReplaceEditorTextByPaste(*editor, QStringLiteral("0102030405"));
+  if (!ReplaceEditorTextByPaste(*editor, QStringLiteral("0102030405"))) {
+    error = QStringLiteral("bounded BYTES editor vanished during paste");
+    return false;
+  }
   if (editor->text() != QStringLiteral("010203") ||
       !editor->property("paeCapacityRejected").toBool() || editor->toolTip().isEmpty() ||
       session_.preview().has_value() ||
@@ -661,7 +808,10 @@ bool DocumentTab::VerifyBoundedV08ForSmoke(QString& error) {
     error = QStringLiteral("failed to reopen table editor after capacity rejection");
     return false;
   }
-  ReplaceEditorTextByKeyboard(*editor, QStringLiteral("1020"));
+  if (!ReplaceEditorTextByKeyboard(*editor, QStringLiteral("1020"))) {
+    error = QStringLiteral("bounded BYTES editor vanished during keyboard entry");
+    return false;
+  }
   CommitEditorByKey(*editor, Qt::Key_Return);
   EncodeCurrent();
   if (!session_.preview().has_value() ||
@@ -878,6 +1028,9 @@ void DocumentTab::ResetStreamForSmoke() { ResetStream(); }
 #endif
 
 bool DocumentTab::VerifyAsciiForSmoke(QString& error) {
+#if defined(PAE_BUILD_PROTOCOL_LAB_ASCII_SMOKE_DIAGNOSTIC)
+  ascii_smoke_diagnostic::Trace("ascii_document_verify_enter", this);
+#endif
   if (!session_.IsAsciiDocument()) {
     error = QStringLiteral("document is not Schema 0.10 ASCII");
     return false;
@@ -953,16 +1106,38 @@ bool DocumentTab::VerifyAsciiForSmoke(QString& error) {
   mode_combo_->setCurrentIndex(0);
   QModelIndex name_index = field_model_->index(name_row, FieldTableModel::VALUE);
   field_table_->setCurrentIndex(name_index);
+#if defined(PAE_BUILD_PROTOCOL_LAB_ASCII_SMOKE_DIAGNOSTIC)
+  ascii_smoke_diagnostic::Trace("editor_first_before_edit", this);
+#endif
   field_table_->edit(name_index);
+#if defined(PAE_BUILD_PROTOCOL_LAB_ASCII_SMOKE_DIAGNOSTIC)
+  ascii_smoke_diagnostic::Trace("editor_first_before_pump", this);
+#endif
   QApplication::processEvents(QEventLoop::ExcludeUserInputEvents);
-  auto* editor = qobject_cast<QLineEdit*>(QApplication::focusWidget());
-  if (editor == nullptr || editor->property("paeEditCapacity").toInt() != 36 ||
+  QPointer<QLineEdit> editor = smoke_editor_target::Find(*field_table_, name_index, error);
+#if defined(PAE_BUILD_PROTOCOL_LAB_ASCII_SMOKE_DIAGNOSTIC)
+  ascii_smoke_diagnostic::Trace("editor_first_after_pump", editor.data(),
+                                ascii_smoke_diagnostic::EditorId(editor.data()));
+#endif
+  if (!editor) return false;
+  if (editor->property("paeEditCapacity").toInt() != 36 ||
       editor->property("paeByteRepresentation").toInt() !=
           static_cast<int>(ByteRepresentation::ASCII_ESCAPED)) {
     error = QStringLiteral("ASCII table editor did not expose expected escaped capacity=36");
     return false;
   }
-  ReplaceEditorTextByKeyboard(*editor, QStringLiteral("ALICE"));
+  if (!ReplaceEditorTextByKeyboard(*editor, QStringLiteral("ALICE"))) {
+    error = QStringLiteral("ASCII smoke first editor vanished during keyboard entry");
+    return false;
+  }
+#if defined(PAE_BUILD_PROTOCOL_LAB_ASCII_SMOKE_DIAGNOSTIC)
+  if (ascii_smoke_diagnostic::EditorLost()) {
+    error = QStringLiteral("ASCII_DIAG_EDITOR_LOST during first keyboard entry");
+    return false;
+  }
+  ascii_smoke_diagnostic::Trace("editor_first_before_focus_commit", editor.data(),
+                                ascii_smoke_diagnostic::EditorId(editor.data()));
+#endif
   encode_button_->setFocus(Qt::OtherFocusReason);
   QApplication::processEvents(QEventLoop::ExcludeUserInputEvents);
   QApplication::sendPostedEvents(nullptr, QEvent::DeferredDelete);
@@ -1008,32 +1183,88 @@ bool DocumentTab::VerifyAsciiForSmoke(QString& error) {
     return false;
   }
 
+#if defined(PAE_BUILD_PROTOCOL_LAB_ASCII_SMOKE_DIAGNOSTIC)
+  ascii_smoke_diagnostic::Trace("editor_second_before_edit", this);
+#endif
   field_table_->edit(name_index);
+#if defined(PAE_BUILD_PROTOCOL_LAB_ASCII_SMOKE_DIAGNOSTIC)
+  ascii_smoke_diagnostic::Trace("editor_second_before_pump", this);
+#endif
   QApplication::processEvents(QEventLoop::ExcludeUserInputEvents);
-  editor = qobject_cast<QLineEdit*>(QApplication::focusWidget());
-  if (editor == nullptr) {
-    error = QStringLiteral("failed to reopen ASCII table editor");
+  editor = smoke_editor_target::Find(*field_table_, name_index, error);
+#if defined(PAE_BUILD_PROTOCOL_LAB_ASCII_SMOKE_DIAGNOSTIC)
+  ascii_smoke_diagnostic::Trace("editor_second_after_pump", editor.data(),
+                                ascii_smoke_diagnostic::EditorId(editor.data()));
+#endif
+  if (!editor) return false;
+  if (!ReplaceEditorTextByPaste(*editor, QStringLiteral("ABCDEFGHI"))) {
+    error = QStringLiteral("ASCII smoke second editor vanished during paste");
     return false;
   }
-  ReplaceEditorTextByPaste(*editor, QStringLiteral("ABCDEFGHI"));
+#if defined(PAE_BUILD_PROTOCOL_LAB_ASCII_SMOKE_DIAGNOSTIC)
+  if (ascii_smoke_diagnostic::EditorLost()) {
+    error = QStringLiteral("ASCII_DIAG_EDITOR_LOST during second editor paste");
+    return false;
+  }
+#endif
   CommitEditorByKey(*editor, Qt::Key_Tab);
+#if defined(PAE_BUILD_PROTOCOL_LAB_ASCII_SMOKE_DIAGNOSTIC)
+  if (ascii_smoke_diagnostic::EditorLost()) {
+    error = QStringLiteral("ASCII_DIAG_EDITOR_LOST before second editor key release");
+    return false;
+  }
+#endif
   if (!field_model_->ValidationError(name_row).contains(QStringLiteral("1..8 bytes")) ||
       session_.preview().has_value()) {
     error = QStringLiteral("ASCII over-protocol pasted draft was not retained as invalid");
     return false;
   }
+#if defined(PAE_BUILD_PROTOCOL_LAB_ASCII_SMOKE_DIAGNOSTIC)
+  ascii_smoke_diagnostic::Trace("editor_third_before_edit", this);
+#endif
   field_table_->edit(name_index);
+#if defined(PAE_BUILD_PROTOCOL_LAB_ASCII_SMOKE_DIAGNOSTIC)
+  ascii_smoke_diagnostic::Trace("editor_third_before_pump", this);
+#endif
   QApplication::processEvents(QEventLoop::ExcludeUserInputEvents);
-  editor = qobject_cast<QLineEdit*>(QApplication::focusWidget());
-  if (editor == nullptr) return false;
-  ReplaceEditorTextByPaste(*editor, QString(37, QLatin1Char('A')));
+  editor = smoke_editor_target::Find(*field_table_, name_index, error);
+#if defined(PAE_BUILD_PROTOCOL_LAB_ASCII_SMOKE_DIAGNOSTIC)
+  ascii_smoke_diagnostic::Trace("editor_third_after_pump", editor.data(),
+                                ascii_smoke_diagnostic::EditorId(editor.data()));
+#endif
+  if (!editor) return false;
+  if (!ReplaceEditorTextByPaste(*editor, QString(37, QLatin1Char('A')))) {
+    error = QStringLiteral("ASCII smoke third editor vanished during paste");
+    return false;
+  }
+#if defined(PAE_BUILD_PROTOCOL_LAB_ASCII_SMOKE_DIAGNOSTIC)
+  if (ascii_smoke_diagnostic::EditorLost()) {
+    error = QStringLiteral("ASCII_DIAG_EDITOR_LOST during third editor paste");
+    return false;
+  }
+#endif
   if (editor->text() != QStringLiteral("ABCDEFGHI") ||
       !editor->property("paeCapacityRejected").toBool()) {
     error = QStringLiteral("ASCII over-capacity paste was not wholly rejected");
     return false;
   }
-  ReplaceEditorTextByKeyboard(*editor, QStringLiteral("ALICE"));
+  if (!ReplaceEditorTextByKeyboard(*editor, QStringLiteral("ALICE"))) {
+    error = QStringLiteral("ASCII smoke third editor vanished during keyboard entry");
+    return false;
+  }
+#if defined(PAE_BUILD_PROTOCOL_LAB_ASCII_SMOKE_DIAGNOSTIC)
+  if (ascii_smoke_diagnostic::EditorLost()) {
+    error = QStringLiteral("ASCII_DIAG_EDITOR_LOST during third editor keyboard entry");
+    return false;
+  }
+#endif
   CommitEditorByKey(*editor, Qt::Key_Return);
+#if defined(PAE_BUILD_PROTOCOL_LAB_ASCII_SMOKE_DIAGNOSTIC)
+  if (ascii_smoke_diagnostic::EditorLost()) {
+    error = QStringLiteral("ASCII_DIAG_EDITOR_LOST before third editor key release");
+    return false;
+  }
+#endif
   EncodeCurrent();
   if (!session_.preview().has_value()) {
     error = QStringLiteral("ASCII field did not recover after invalid/capacity input");
@@ -1171,6 +1402,9 @@ bool DocumentTab::VerifyHostForSmoke(QString& error) {
   if (stream) ResetStream();
   InitializeHostDraft();
   auto apply = [this] {
+#if defined(PAE_BUILD_PROTOCOL_LAB_ASCII_SMOKE_DIAGNOSTIC)
+    ascii_smoke_diagnostic::Trace("host_apply_before_click", this);
+#endif
     host_apply_->click();
     QElapsedTimer timer;
     timer.start();
@@ -1179,6 +1413,10 @@ bool DocumentTab::VerifyHostForSmoke(QString& error) {
         AcceptCompletion(worker_.TakeResult(ticket));
       if (host_pending_revision_) QThread::msleep(5);
     }
+#if defined(PAE_BUILD_PROTOCOL_LAB_ASCII_SMOKE_DIAGNOSTIC)
+    ascii_smoke_diagnostic::Trace(host_pending_revision_ ? "host_apply_pending_timeout"
+                                                      : "host_apply_after_completion", this);
+#endif
     return !host_pending_revision_;
   };
   auto check = [&](bool condition, const char* why) {
@@ -1281,6 +1519,327 @@ bool DocumentTab::VerifyHostForSmoke(QString& error) {
   return true;
 }
 
+#if defined(PAE_BUILD_PROTOCOL_LAB_BINARY_UI)
+bool DocumentTab::VerifyBinaryHostStage1ForSmoke(QString& error) {
+  if (!session_.IsBinaryHostDocument() || session_.BinaryHostActive() ||
+      session_.InspectAvailable() || !host_apply_->isEnabled()) {
+    error = QStringLiteral("Schema 0.9 did not start unbound");
+    return false;
+  }
+  host_apply_->click();
+  QElapsedTimer timer;
+  timer.start();
+  while (host_pending_revision_ && timer.elapsed() < 10000) {
+    for (const auto ticket : worker_.DrainReadyTickets())
+      AcceptCompletion(worker_.TakeResult(ticket));
+    if (host_pending_revision_) QThread::msleep(5);
+  }
+  if (host_pending_revision_ || !session_.BinaryHostActive() || !session_.InspectAvailable()) {
+    error = QStringLiteral("explicit Apply did not publish complete-record Decode");
+    return false;
+  }
+  const auto selector_model_count = [this] {
+    return host_binding_combo_
+               ->findChildren<QAbstractItemModel*>(QString{}, Qt::FindDirectChildrenOnly)
+               .size() +
+           pipeline_combo_->findChildren<QAbstractItemModel*>(QString{}, Qt::FindDirectChildrenOnly)
+               .size() +
+           message_combo_->findChildren<QAbstractItemModel*>(QString{}, Qt::FindDirectChildrenOnly)
+               .size();
+  };
+  const int initial_selector_model_count = selector_model_count();
+  if (!InspectTextForSmoke(QStringLiteral("80 0D 03 00 01 00 CA FE 05 5A"), error) ||
+      InspectFieldCountForSmoke() != 9 ||
+      InspectRawValueForSmoke(0) != QStringLiteral("未单独提供") ||
+      InspectLogicalValueForSmoke(0) != QStringLiteral("true") ||
+      InspectRawValueForSmoke(6) != QStringLiteral("CAFE") ||
+      InspectRawValueForSmoke(7) != QStringLiteral("5") ||
+      InspectLogicalValueForSmoke(7) != QStringLiteral("5@0")) {
+    if (error.isEmpty()) error = QStringLiteral("owned typed/raw result differs");
+    return false;
+  }
+  if (!VerifyInspectFailureForSmoke(QStringLiteral("AA:"), InspectFailureStage::INPUT, QString{},
+                                    2U, QString{}, error) ||
+      session_.inspect_result()) {
+    if (error.isEmpty()) error = QStringLiteral("local rejection retained stale result");
+    return false;
+  }
+  if (!InspectTextForSmoke(QStringLiteral("80 0D 03 00 01 00 CA FE 05 5A"), error)) return false;
+  host_flow_combo_->setCurrentIndex(1);
+  QApplication::processEvents();
+  if (!session_.inspect_draft().empty() || session_.inspect_result()
+#if defined(PAE_BUILD_PROTOCOL_LAB_BINARY_PUBLIC_H2)
+      || !inspect_input_->toPlainText().isEmpty() ||
+      !session_.prepared()->binary_host_adapter->Draft(0U, 1U).empty()
+#endif
+      ) {
+    error = QStringLiteral("fresh flow inherited another flow view");
+    return false;
+  }
+#if defined(PAE_BUILD_PROTOCOL_LAB_BINARY_PUBLIC_H2)
+  if (!InspectTextForSmoke(QStringLiteral("80 0D 03 00 02 00 CA FE 05 5A"), error)) return false;
+  const auto flow_matches = [this](int flow, const QString& text, int count) {
+    const auto& result = session_.inspect_result();
+    return host_flow_combo_->currentIndex() == flow &&
+           session_.BinaryHostFlowIndex() == static_cast<std::size_t>(flow) &&
+           inspect_input_->toPlainText() == text &&
+           QString::fromStdString(session_.inspect_draft()) == text && result &&
+           result->fields.size() == 9U &&
+           result->fields[4].logical_value == std::to_string(count) &&
+           result->input_frame.size() == 10U &&
+           result->input_frame[4] == static_cast<std::uint8_t>(count);
+  };
+  const QString first_text = QStringLiteral("80 0D 03 00 01 00 CA FE 05 5A");
+  const QString second_text = QStringLiteral("80 0D 03 00 02 00 CA FE 05 5A");
+  for (int cycle = 0; cycle < 3; ++cycle) {
+    host_flow_combo_->setCurrentIndex(0);
+    QApplication::processEvents();
+    if (!flow_matches(0, first_text, 1)) {
+      error = QStringLiteral("Flow0 editor, Session draft and decoded count/frame differ");
+      return false;
+    }
+    host_flow_combo_->setCurrentIndex(1);
+    QApplication::processEvents();
+    if (!flow_matches(1, second_text, 2)) {
+      error = QStringLiteral("Flow1 editor, Session draft and decoded count/frame differ");
+      return false;
+    }
+  }
+#else
+  if (!InspectTextForSmoke(QStringLiteral("80 0D 03 00 01 00 CA FE 05 5A"), error)) return false;
+#endif
+  if (session_.prepared()->binary_host_adapter->Current(0U, 1U) == nullptr) {
+    error = QStringLiteral("second Binary flow did not retain its result");
+    return false;
+  }
+  host_flow_combo_->setCurrentIndex(0);
+  QApplication::processEvents();
+  if (!session_.inspect_result() || session_.inspect_result()->fields.size() != 9U
+#if defined(PAE_BUILD_PROTOCOL_LAB_BINARY_PUBLIC_H2)
+      || !flow_matches(0, first_text, 1)
+#endif
+      ) {
+    error = QStringLiteral("flow switch did not restore the owned result");
+    return false;
+  }
+#if defined(PAE_BUILD_PROTOCOL_LAB_BINARY_PUBLIC_H2)
+  const QString uninspected_text = QStringLiteral("80 0D 03 00 03 00 CA FE 05 5A");
+  inspect_input_->setPlainText(uninspected_text);
+  if (session_.inspect_result()) {
+    error = QStringLiteral("editing an uninspected Flow0 draft retained current UI result");
+    return false;
+  }
+  host_flow_combo_->setCurrentIndex(1);
+  QApplication::processEvents();
+  if (!flow_matches(1, second_text, 2)) {
+    error = QStringLiteral("uninspected Flow0 draft overwrote Flow1 view");
+    return false;
+  }
+  host_flow_combo_->setCurrentIndex(0);
+  QApplication::processEvents();
+  if (inspect_input_->toPlainText() != uninspected_text ||
+      QString::fromStdString(session_.inspect_draft()) != uninspected_text ||
+      session_.BinaryHostFlowIndex() != 0U ||
+      session_.prepared()->binary_host_adapter->Draft(0U, 0U) != Utf16(uninspected_text)) {
+    error = QStringLiteral("uninspected Flow0 editor draft was lost on return");
+    return false;
+  }
+  if (!InspectTextForSmoke(first_text, error) || !flow_matches(0, first_text, 1)) return false;
+#endif
+  const QString before_flow_failure = BinaryStateSignatureForSmoke();
+  auto* active_adapter = session_.prepared()->binary_host_adapter.get();
+#if defined(PAE_BUILD_PROTOCOL_LAB_BINARY_PUBLIC_H2)
+  const std::u16string before_flow0_draft(active_adapter->Draft(0U, 0U));
+  const std::u16string before_flow1_draft(active_adapter->Draft(0U, 1U));
+#endif
+  const auto active_view_bytes = session_.BinaryActiveViewBytes();
+  const auto target_upper = active_adapter->CurrentResultCopyUpperBoundBytes(0U, 1U);
+  const auto original_presentation = active_adapter->PresentationRetainedBytes();
+  const auto mapped_view_budget = active_adapter->UiViewReserveBytes() / 2U;
+  if (target_upper == 0U || active_view_bytes > target_upper || target_upper > mapped_view_budget) {
+    error = QStringLiteral("could not arrange Binary combined-view minus-one budget");
+    return false;
+  }
+  const auto injected_presentation = mapped_view_budget - target_upper + 1U;
+  if (!active_adapter->SetPresentationRetainedBytes(injected_presentation)) {
+    error = QStringLiteral("could not arrange Binary combined-view minus-one budget");
+    return false;
+  }
+  host_flow_combo_->setCurrentIndex(1);
+  QApplication::processEvents();
+  active_adapter->SetPresentationRetainedBytes(original_presentation);
+  if (host_flow_combo_->currentIndex() != 0 ||
+      BinaryStateSignatureForSmoke() != before_flow_failure
+#if defined(PAE_BUILD_PROTOCOL_LAB_BINARY_PUBLIC_H2)
+      || inspect_input_->toPlainText() != first_text ||
+      active_adapter->Draft(0U, 0U) != before_flow0_draft ||
+      active_adapter->Draft(0U, 1U) != before_flow1_draft
+#endif
+      ) {
+    error = QStringLiteral("combined-view rejection split Qt and Session state");
+    return false;
+  }
+  const auto generation = session_.plan_generation();
+  auto* endpoint = qobject_cast<QLineEdit*>(host_draft_->cellWidget(0, 0));
+  if (!endpoint) {
+    error = QStringLiteral("Binary binding draft endpoint is missing");
+    return false;
+  }
+  const QString endpoint_text = endpoint->text();
+  endpoint->clear();
+  host_apply_->click();
+  if (host_pending_revision_ || session_.plan_generation() != generation ||
+      !session_.inspect_result()) {
+    error = QStringLiteral("invalid Apply changed the active Session or view");
+    return false;
+  }
+  endpoint->setText(endpoint_text);
+  hex_view_->FailNextCapacityPreparationForTest();
+  host_apply_->click();
+  timer.restart();
+  while (host_pending_revision_ && timer.elapsed() < 10000) {
+    for (const auto ticket : worker_.DrainReadyTickets())
+      AcceptCompletion(worker_.TakeResult(ticket));
+    QApplication::processEvents(QEventLoop::AllEvents, 20);
+    if (host_pending_revision_) QThread::msleep(5);
+  }
+  if (host_pending_revision_ || session_.plan_generation() != generation ||
+      !session_.inspect_result()) {
+    error = QStringLiteral("UI capacity preparation failure half-published replacement");
+    return false;
+  }
+  QTimer publish_timer;
+  connect(&publish_timer, &QTimer::timeout, this, [&publish_timer] {
+    if (auto* box = qobject_cast<QMessageBox*>(QApplication::activeModalWidget())) {
+      publish_timer.stop();
+      box->button(QMessageBox::Yes)->click();
+    }
+  });
+  publish_timer.start(10);
+  host_status_->setText(QStringLiteral("Starting successful replacement smoke."));
+  host_apply_->click();
+  if (!host_pending_revision_) {
+    error = QStringLiteral("successful replacement was not submitted: config_bytes=%1 status=%2")
+                .arg(host_config_text_.size())
+                .arg(host_status_->text());
+    return false;
+  }
+  timer.restart();
+  while (host_pending_revision_ && timer.elapsed() < 10000) {
+    for (const auto ticket : worker_.DrainReadyTickets())
+      AcceptCompletion(worker_.TakeResult(ticket));
+    QApplication::processEvents(QEventLoop::AllEvents, 20);
+    if (host_pending_revision_) QThread::msleep(5);
+  }
+  publish_timer.stop();
+  if (host_pending_revision_ || session_.plan_generation() != generation + 1U ||
+      session_.inspect_result() || selector_model_count() != initial_selector_model_count) {
+    error = QStringLiteral(
+                "successful replacement mismatch: pending=%1 generation=%2 expected=%3 "
+                "result=%4 selector_models=%5 expected_models=%6 apply_enabled=%7")
+                .arg(host_pending_revision_.has_value())
+                .arg(session_.plan_generation())
+                .arg(generation + 1U)
+                .arg(session_.inspect_result().has_value())
+                .arg(selector_model_count())
+                .arg(initial_selector_model_count)
+                .arg(host_apply_->isEnabled()) +
+            QStringLiteral(" status=%1").arg(host_status_->text());
+    return false;
+  }
+  if (!InspectTextForSmoke(QStringLiteral("80 0D 03 00 01 00 CA FE 05 5A"), error)) return false;
+  {
+    QTimer cancel_timer;
+    connect(&cancel_timer, &QTimer::timeout, this, [&cancel_timer] {
+      if (auto* box = qobject_cast<QMessageBox*>(QApplication::activeModalWidget())) {
+        cancel_timer.stop();
+        box->done(QMessageBox::No);
+      }
+    });
+    cancel_timer.start(10);
+    host_apply_->click();
+    timer.restart();
+    while (host_pending_revision_ && timer.elapsed() < 10000) {
+      for (const auto ticket : worker_.DrainReadyTickets())
+        AcceptCompletion(worker_.TakeResult(ticket));
+      QApplication::processEvents(QEventLoop::AllEvents, 20);
+      if (host_pending_revision_) QThread::msleep(5);
+    }
+  }
+  if (host_pending_revision_ || session_.plan_generation() != generation + 1U ||
+      !session_.inspect_result() || selector_model_count() != initial_selector_model_count) {
+    error = QStringLiteral("cancelled replacement changed Session, result, or selector ownership");
+    return false;
+  }
+  const auto load = session_.load_revision();
+  QTimer reload_cancel;
+  connect(&reload_cancel, &QTimer::timeout, this, [] {
+    if (auto* box = qobject_cast<QMessageBox*>(QApplication::activeModalWidget()))
+      box->done(QMessageBox::No);
+  });
+  reload_cancel.start(10);
+  LoadPath(ConfigPath());
+  reload_cancel.stop();
+  if (session_.load_revision() != load || !session_.inspect_result()) {
+    error = QStringLiteral("cancelled reload changed the active Binary document");
+    return false;
+  }
+  QTimer close_cancel;
+  connect(&close_cancel, &QTimer::timeout, this, [] {
+    if (auto* box = qobject_cast<QMessageBox*>(QApplication::activeModalWidget()))
+      box->done(QMessageBox::No);
+  });
+  close_cancel.start(10);
+  const bool closed = CloseDocument(true);
+  close_cancel.stop();
+  if (closed || session_.state() == DocumentState::CLOSED || !session_.inspect_result()) {
+    error = QStringLiteral("cancelled close changed the active Binary document");
+    return false;
+  }
+  return true;
+}
+
+QString DocumentTab::BinaryStateSignatureForSmoke() const {
+  return QStringLiteral("%1|%2|%3|%4|%5|%6|%7|%8")
+      .arg(session_.load_revision())
+      .arg(session_.plan_generation())
+      .arg(session_.BinarySessionRevision())
+      .arg(session_.BinaryHostBindingIndex())
+      .arg(session_.BinaryHostFlowIndex())
+      .arg(QString::fromStdString(session_.inspect_draft()))
+      .arg(session_.inspect_result() ? session_.inspect_result()->fields.size() : 0U)
+      .arg(session_.prepared() && session_.prepared()->binary_host_adapter
+               ? session_.prepared()->binary_host_adapter->Instance()
+               : 0U);
+}
+
+bool DocumentTab::VerifyBinaryReloadFailureForSmoke(QString& error) {
+  QTemporaryFile invalid;
+  if (!invalid.open() || invalid.write("{\"schema_version\":\"0.9\"}") <= 0 || !invalid.flush()) {
+    error = QStringLiteral("could not create invalid reload fixture");
+    return false;
+  }
+  path_edit_->setText(invalid.fileName());
+  BeginLoadFromPath(true);
+  QElapsedTimer timer;
+  timer.start();
+  while (session_.state() == DocumentState::LOADING && timer.elapsed() < 10000) {
+    for (const auto ticket : worker_.DrainReadyTickets())
+      AcceptCompletion(worker_.TakeResult(ticket));
+    QApplication::processEvents(QEventLoop::AllEvents, 20);
+    if (session_.state() == DocumentState::LOADING) QThread::msleep(5);
+  }
+  if (session_.state() != DocumentState::CONFIG_ERROR || session_.BinaryHostActive()) {
+    error = QStringLiteral("confirmed failed reload state=%1 active=%2 load=%3")
+                .arg(static_cast<int>(session_.state()))
+                .arg(session_.BinaryHostActive())
+                .arg(session_.load_revision());
+    return false;
+  }
+  return true;
+}
+#endif
+
 void DocumentTab::BuildHostUi(QVBoxLayout* root) {
   host_panel_ = new QWidget(this);
   auto* layout = new QVBoxLayout(host_panel_);
@@ -1341,7 +1900,12 @@ void DocumentTab::AddHostDraftRow() {
   auto* endpoint = new QLineEdit(QStringLiteral("device"), host_draft_);
   endpoint->setMaxLength(256);
   auto* action = new QComboBox(host_draft_);
-  action->addItems({QStringLiteral("Decode"), QStringLiteral("Encode")});
+#if defined(PAE_BUILD_PROTOCOL_LAB_BINARY_UI)
+  if (session_.IsBinaryHostDocument()) {
+    action->addItem(QStringLiteral("Decode"));
+  } else
+#endif
+    action->addItems({QStringLiteral("Decode"), QStringLiteral("Encode")});
   auto* pipeline = new QComboBox(host_draft_);
   for (const auto& item : session_.description()->pipelines)
     pipeline->addItem(FromUtf8(item.id),
@@ -1355,8 +1919,23 @@ void DocumentTab::InitializeHostDraft() {
   host_draft_->setRowCount(0);
   host_binding_combo_->clear();
   host_flow_combo_->setCurrentIndex(0);
-  if (session_.IsAsciiDocument()) {
+  if (session_.IsAsciiDocument()
+#if defined(PAE_BUILD_PROTOCOL_LAB_BINARY_UI)
+      || session_.IsBinaryHostDocument()
+#endif
+  ) {
     AddHostDraftRow();
+#if defined(PAE_BUILD_PROTOCOL_LAB_BINARY_UI)
+    if (session_.IsBinaryHostDocument()) {
+      if (auto* action = qobject_cast<QComboBox*>(host_draft_->cellWidget(0, 1)))
+        action->setCurrentIndex(0);
+      host_status_->setText(QStringLiteral(
+          "Schema 0.9 is unbound. Edit the draft and Apply explicitly; Decode remains disabled "
+          "until publication succeeds."));
+      rebuilding_selectors_ = false;
+      return;
+    }
+#endif
     AddHostDraftRow();
     if (auto* action = qobject_cast<QComboBox*>(host_draft_->cellWidget(1, 1)))
       action->setCurrentIndex(1);
@@ -1367,14 +1946,27 @@ void DocumentTab::InitializeHostDraft() {
   rebuilding_selectors_ = false;
 }
 void DocumentTab::ApplyHostDraft() {
-  if (!session_.IsAsciiDocument() || host_pending_revision_ || host_config_text_.empty()) return;
-  const auto current_bytes =
-      session_.HostActive() ? session_.prepared()->host_adapter->AccountedBytes()
-                            : session_.prepared()->ascii_adapter->HostTransitionAdmissionBytes();
-  if (current_bytes > protocol_lab::ascii::HostObserverAdapter::kMaximumAccountedBytes) {
-    host_status_->setText(QStringLiteral(
-        "Active document exceeds Host transition admission limit; no candidate created."));
+  if ((!session_.IsAsciiDocument()
+#if defined(PAE_BUILD_PROTOCOL_LAB_BINARY_UI)
+       && !session_.IsBinaryHostDocument()
+#endif
+           ) ||
+      host_pending_revision_ || host_config_text_.empty())
     return;
+#if defined(PAE_BUILD_PROTOCOL_LAB_BINARY_UI)
+  const bool binary = session_.IsBinaryHostDocument();
+#else
+  const bool binary = false;
+#endif
+  if (!binary) {
+    const auto current_bytes =
+        session_.HostActive() ? session_.prepared()->host_adapter->AccountedBytes()
+                              : session_.prepared()->ascii_adapter->HostTransitionAdmissionBytes();
+    if (current_bytes > protocol_lab::ascii::HostObserverAdapter::kMaximumAccountedBytes) {
+      host_status_->setText(QStringLiteral(
+          "Active document exceeds Host transition admission limit; no candidate created."));
+      return;
+    }
   }
   const auto high_bit = Revision{1} << 63U;
   if (host_request_sequence_ == high_bit - 1U) {
@@ -1382,6 +1974,9 @@ void DocumentTab::ApplyHostDraft() {
     return;
   }
   std::vector<protocol_lab::ascii::HostBinding> bindings;
+#if defined(PAE_BUILD_PROTOCOL_LAB_BINARY_UI)
+  std::vector<BinaryHostBinding> binary_bindings;
+#endif
   for (int row = 0; row < host_draft_->rowCount(); ++row) {
     const auto* endpoint = qobject_cast<QLineEdit*>(host_draft_->cellWidget(row, 0));
     const auto* action = qobject_cast<QComboBox*>(host_draft_->cellWidget(row, 1));
@@ -1391,21 +1986,55 @@ void DocumentTab::ApplyHostDraft() {
       host_status_->setText(QStringLiteral("Invalid binding draft; active Session unchanged."));
       return;
     }
-    bindings.push_back({Utf8(endpoint->text()),
-                        action->currentIndex() == 0 ? host_endpoint::Action::DECODE
-                                                    : host_endpoint::Action::ENCODE,
-                        static_cast<std::size_t>(pipeline->currentData().toULongLong())});
+    const auto pipeline_index = static_cast<std::size_t>(pipeline->currentData().toULongLong());
+#if defined(PAE_BUILD_PROTOCOL_LAB_BINARY_UI)
+    if (binary) {
+      if (action->currentIndex() != 0 ||
+          pipeline_index >= session_.description()->pipelines.size()) {
+        host_status_->setText(
+            QStringLiteral("Stage 1 accepts Decode bindings only; active Session unchanged."));
+        return;
+      }
+      binary_bindings.push_back({Utf8(endpoint->text()),
+#if defined(PAE_BUILD_PROTOCOL_LAB_BINARY_PUBLIC_H2)
+                                 pae::HostAction::DECODE,
+#else
+                                 host_endpoint::Action::DECODE,
+#endif
+                                 session_.description()->pipelines[pipeline_index].id, 2U});
+    } else
+#endif
+      bindings.push_back({Utf8(endpoint->text()),
+                          action->currentIndex() == 0 ? host_endpoint::Action::DECODE
+                                                      : host_endpoint::Action::ENCODE,
+                          pipeline_index});
   }
-  if (bindings.empty()) {
+  if (bindings.empty()
+#if defined(PAE_BUILD_PROTOCOL_LAB_BINARY_UI)
+      && binary_bindings.empty()
+#endif
+  ) {
     host_status_->setText(QStringLiteral("At least one binding required."));
     return;
   }
-  host_pending_bindings_ = std::move(bindings);
   host_pending_revision_ = high_bit | ++host_request_sequence_;
+#if defined(PAE_BUILD_PROTOCOL_LAB_BINARY_UI)
+  if (binary) {
+    binary_host_pending_bindings_ = std::move(binary_bindings);
+    binary_host_pending_identity_ = BinaryPreparationIdentity{
+        session_.id(), session_.load_revision(), session_.BinarySessionRevision() + 1U,
+        *host_pending_revision_, session_.prepared()->config_sha256};
+  } else
+#endif
+    host_pending_bindings_ = std::move(bindings);
   if (worker_.Submit(session_.id(), *host_pending_revision_, host_config_text_) !=
       SubmitStatus::ACCEPTED) {
     host_pending_revision_.reset();
     host_pending_bindings_.clear();
+#if defined(PAE_BUILD_PROTOCOL_LAB_BINARY_UI)
+    binary_host_pending_bindings_.clear();
+    binary_host_pending_identity_.reset();
+#endif
     host_status_->setText(
         QStringLiteral("Preparation scheduler rejected request; active Session unchanged."));
   } else
@@ -1416,6 +2045,233 @@ void DocumentTab::ApplyHostDraft() {
 void DocumentTab::AcceptHostCompletion(std::unique_ptr<CompileCompletion> completion) {
   host_pending_revision_.reset();
   std::string error;
+#if defined(PAE_BUILD_PROTOCOL_LAB_BINARY_UI)
+  if (binary_host_pending_identity_) {
+    auto identity = std::move(*binary_host_pending_identity_);
+    binary_host_pending_identity_.reset();
+    std::unique_ptr<BinaryHostAdapter> candidate;
+    QStandardItemModel* selector_model = nullptr;
+    QStandardItemModel* pipeline_model = nullptr;
+    QStandardItemModel* message_model = nullptr;
+    if (completion->document_id == identity.document &&
+        completion->load_revision == identity.request &&
+#if defined(PAE_BUILD_PROTOCOL_LAB_BINARY_PUBLIC_H2)
+        completion->route == SchemaDispatchStatus::BINARY_PUBLIC &&
+        completion->public_compiled && !completion->public_diagnostic &&
+#else
+        completion->artifacts && !completion->diagnostic &&
+#endif
+        session_.prepared() &&
+        completion->config_sha256 == identity.config_sha256 &&
+        session_.load_revision() == identity.load &&
+        session_.BinarySessionRevision() + 1U == identity.session) {
+      const auto* previous =
+          session_.BinaryHostActive() ? session_.prepared()->binary_host_adapter.get() : nullptr;
+      try {
+        selector_model = new QStandardItemModel(host_binding_combo_);
+        pipeline_model = new QStandardItemModel(pipeline_combo_);
+        message_model = new QStandardItemModel(message_combo_);
+        for (const auto& binding : binary_host_pending_bindings_)
+          selector_model->appendRow(new QStandardItem(FromUtf8(binding.endpoint) +
+                                                      QStringLiteral(" / Decode / ") +
+                                                      FromUtf8(binding.pipeline_id)));
+        for (const auto& pipeline : session_.description()->pipelines) {
+          const auto& label = pipeline.display_name.empty() ? pipeline.id : pipeline.display_name;
+          auto* item = new QStandardItem(FromUtf8(label));
+          item->setData(QVariant::fromValue(static_cast<qulonglong>(pipeline.pipeline_index)),
+                        Qt::UserRole);
+          pipeline_model->appendRow(item);
+        }
+        for (const auto& message : session_.description()->messages) {
+          const auto& label = message.display_name.empty() ? message.id : message.display_name;
+          auto* item = new QStandardItem(FromUtf8(label));
+          item->setData(QVariant::fromValue(static_cast<qulonglong>(message.message_index)),
+                        Qt::UserRole);
+          message_model->appendRow(item);
+        }
+        std::size_t retained_ui_bytes = host_config_text_.capacity() + 1U;
+        const auto add_qstring = [&](const QString& value) {
+          const auto bytes = static_cast<std::size_t>(value.capacity()) * sizeof(QChar);
+          if (retained_ui_bytes > (std::numeric_limits<std::size_t>::max)() - bytes)
+            throw std::bad_alloc{};
+          retained_ui_bytes += bytes;
+        };
+        for (int row = 0; row < host_draft_->rowCount(); ++row) {
+          for (int column = 0; column < host_draft_->columnCount(); ++column) {
+            if (auto* edit = qobject_cast<QLineEdit*>(host_draft_->cellWidget(row, column)))
+              add_qstring(edit->text());
+            if (auto* combo = qobject_cast<QComboBox*>(host_draft_->cellWidget(row, column)))
+              add_qstring(combo->currentText());
+          }
+        }
+        for (int row = 0; row < selector_model->rowCount(); ++row)
+          add_qstring(selector_model->item(row)->text());
+        for (int row = 0; row < pipeline_model->rowCount(); ++row)
+          add_qstring(pipeline_model->item(row)->text());
+        for (int row = 0; row < message_model->rowCount(); ++row)
+          add_qstring(message_model->item(row)->text());
+        const auto selector_items = static_cast<std::size_t>(
+            selector_model->rowCount() + pipeline_model->rowCount() + message_model->rowCount());
+        constexpr auto selector_item_bytes = sizeof(QStandardItem) + sizeof(QStandardItem*);
+        if (selector_items >
+            ((std::numeric_limits<std::size_t>::max)() - 3U * sizeof(QStandardItemModel)) /
+                selector_item_bytes)
+          throw std::bad_alloc{};
+        const auto selector_objects =
+            3U * sizeof(QStandardItemModel) + selector_items * selector_item_bytes;
+        if (retained_ui_bytes > (std::numeric_limits<std::size_t>::max)() - selector_objects)
+          throw std::bad_alloc{};
+        retained_ui_bytes += selector_objects;
+        std::size_t preparation_coexisting_bytes =
+            previous == nullptr && session_.description()
+                ? BinaryHostAdapter::AccountDescriptionBytes(*session_.description())
+                : 0U;
+        const auto add_coexisting = [&](std::size_t bytes) {
+          if (preparation_coexisting_bytes > (std::numeric_limits<std::size_t>::max)() - bytes)
+            throw std::bad_alloc{};
+          preparation_coexisting_bytes += bytes;
+        };
+        add_coexisting(static_cast<std::size_t>(inspect_input_->toPlainText().capacity()) *
+                       sizeof(QChar));
+        add_coexisting(session_.inspect_draft().capacity() + 1U);
+        add_coexisting((session_.inspect_draft_utf16().capacity() + 1U) * sizeof(char16_t));
+#if defined(PAE_BUILD_PROTOCOL_LAB_BINARY_PUBLIC_H2)
+        candidate = BinaryHostAdapter::CreatePublic(
+            std::move(*completion->public_compiled), std::move(binary_host_pending_bindings_),
+            std::move(identity), previous, retained_ui_bytes, preparation_coexisting_bytes, error);
+#else
+        candidate = BinaryHostAdapter::Create(
+            std::move(*completion->artifacts), std::move(binary_host_pending_bindings_),
+            std::move(identity), previous, retained_ui_bytes, preparation_coexisting_bytes, error);
+#endif
+      } catch (const std::exception& exception) {
+        error = exception.what();
+      }
+    }
+    binary_host_pending_bindings_.clear();
+    if (!candidate) {
+#if defined(PAE_BUILD_PROTOCOL_LAB_BINARY_PUBLIC_H2)
+      if (error.empty()) {
+        if (completion->route == SchemaDispatchStatus::CLASSIFICATION_FAILED)
+          error = "schema classification failed: " + completion->classification_error;
+        else if (completion->public_diagnostic)
+          error = "public Binary compiler failed: " + completion->public_diagnostic->detail;
+        else
+          error = "public Binary preparation result was stale or incomplete";
+      }
+#endif
+      delete selector_model;
+      delete pipeline_model;
+      delete message_model;
+      host_status_->setText(
+          QStringLiteral("Preparation failed; active Session and retry draft retained: %1")
+              .arg(FromUtf8(error)));
+      RefreshState();
+      return;
+    }
+    auto publication =
+        session_.PrepareBinaryHostPublication(std::move(candidate), completion->load_revision);
+    if (!publication) {
+      delete selector_model;
+      delete pipeline_model;
+      delete message_model;
+      host_status_->setText(QStringLiteral(
+          "Candidate publication preparation failed; active Session and retry draft retained."));
+      RefreshState();
+      return;
+    }
+    std::size_t maximum_fields = 0U;
+    try {
+      for (const auto& message : publication->description.messages)
+        maximum_fields = (std::max)(maximum_fields, message.fields.size());
+    } catch (const std::exception&) {
+      delete selector_model;
+      delete pipeline_model;
+      delete message_model;
+      host_status_->setText(QStringLiteral(
+          "Selector preparation allocation failed; active Session and retry draft retained."));
+      RefreshState();
+      return;
+    }
+    bool presentation_prepared = false;
+    try {
+      binary_highlights_.reserve(publication->description.max_frame_bytes);
+      presentation_prepared = field_model_->PrepareCapacity(maximum_fields) &&
+                              hex_view_->PrepareCapacity(publication->description.max_frame_bytes);
+    } catch (const std::exception&) {
+      presentation_prepared = false;
+    }
+    const auto row_bytes = field_model_->AccountedRowCapacityBytes();
+    const auto highlight_bytes = binary_highlights_.capacity() * sizeof(PhysicalBitMask);
+    const auto presentation_budget = publication->adapter->UiViewReserveBytes() / 2U;
+    const auto presentation_within_budget =
+        row_bytes <= presentation_budget && highlight_bytes <= presentation_budget - row_bytes;
+    if (!presentation_prepared || !presentation_within_budget ||
+        hex_view_->AccountedCapacityBytes() > publication->adapter->HexPreviewReserveBytes()) {
+      delete selector_model;
+      delete pipeline_model;
+      delete message_model;
+      host_status_->setText(QStringLiteral(
+          "UI view preparation allocation failed; active Session and retry draft retained."));
+      RefreshState();
+      return;
+    }
+    if (!publication->adapter->SetPresentationRetainedBytes(row_bytes + highlight_bytes)) {
+      delete selector_model;
+      delete pipeline_model;
+      delete message_model;
+      host_status_->setText(QStringLiteral(
+          "UI presentation accounting failed; active Session and retry draft retained."));
+      RefreshState();
+      return;
+    }
+    if (session_.BinaryHasDiscardableState()) {
+      const auto answer = QMessageBox::question(
+          this, QStringLiteral("Replace Binary Host Session"),
+          QStringLiteral("Publishing will discard active Binary flow drafts/results. Continue?"),
+          QMessageBox::Yes | QMessageBox::No, QMessageBox::No);
+      if (answer != QMessageBox::Yes) {
+        delete selector_model;
+        delete pipeline_model;
+        delete message_model;
+        host_status_->setText(
+            QStringLiteral("Publication cancelled; active Session and retry draft retained."));
+        RefreshState();
+        return;
+      }
+    }
+    rebuilding_selectors_ = true;
+    QPointer<QAbstractItemModel> old_host_model = host_binding_combo_->model();
+    QPointer<QAbstractItemModel> old_pipeline_model = pipeline_combo_->model();
+    QPointer<QAbstractItemModel> old_message_model = message_combo_->model();
+    host_binding_combo_->setModel(selector_model);
+    pipeline_combo_->setModel(pipeline_model);
+    message_combo_->setModel(message_model);
+    host_binding_combo_->setCurrentIndex(0);
+    host_flow_combo_->setCurrentIndex(0);
+    pipeline_combo_->setCurrentIndex(
+        pipeline_combo_->findData(static_cast<qulonglong>(publication->selection.pipeline_index)));
+    message_combo_->setCurrentIndex(
+        message_combo_->findData(static_cast<qulonglong>(publication->selection.message_index)));
+    mode_combo_->setCurrentIndex(mode_combo_->findData(static_cast<int>(session_.mode())));
+    representation_combo_->setCurrentIndex(
+        representation_combo_->findData(static_cast<int>(session_.representation())));
+    inspect_input_->clear();
+    accepted_inspect_text_.clear();
+    rebuilding_selectors_ = false;
+    if (old_host_model) delete old_host_model.data();
+    if (old_pipeline_model) delete old_pipeline_model.data();
+    if (old_message_model) delete old_message_model.data();
+    session_.PublishBinaryHostPublication(std::move(*publication));
+    field_model_->Reset(CurrentMessage(), {}, {}, false, session_.representation(),
+                        FieldPresentationAction::INSPECT);
+    RefreshInspect();
+    RefreshModePresentation();
+    RefreshState();
+    host_status_->setText(QStringLiteral("Binary Host Session published."));
+    return;
+  }
+#endif
   std::unique_ptr<protocol_lab::ascii::HostObserverAdapter> candidate;
   if (completion->artifacts && !completion->diagnostic && session_.prepared() &&
       completion->config_sha256 == session_.prepared()->config_sha256)
@@ -1469,21 +2325,70 @@ void DocumentTab::AcceptHostCompletion(std::unique_ptr<CompileCompletion> comple
   SelectHostView();
 }
 void DocumentTab::SelectHostView() {
-  if (!session_.HostActive() || host_binding_combo_->currentIndex() < 0) return;
-  if (!session_.SelectHostFlow(static_cast<std::size_t>(host_binding_combo_->currentIndex()),
-                               static_cast<std::size_t>(host_flow_combo_->currentIndex())))
-    return;
+  if (host_binding_combo_->currentIndex() < 0) return;
+#if defined(PAE_BUILD_PROTOCOL_LAB_BINARY_UI)
+  if (session_.BinaryHostActive()) {
+    const int previous_binding = static_cast<int>(session_.BinaryHostBindingIndex());
+    const int previous_flow = static_cast<int>(session_.BinaryHostFlowIndex());
+    const QString previous_text = accepted_inspect_text_;
+    const auto rollback_binary_ui = [&] {
+      rebuilding_selectors_ = true;
+      host_binding_combo_->setCurrentIndex(previous_binding);
+      host_flow_combo_->setCurrentIndex(previous_flow);
+      inspect_input_->setPlainText(previous_text);
+      accepted_inspect_text_ = previous_text;
+      rebuilding_selectors_ = false;
+    };
+    auto publication = session_.PrepareBinaryHostFlow(
+        static_cast<std::size_t>(host_binding_combo_->currentIndex()),
+        static_cast<std::size_t>(host_flow_combo_->currentIndex()));
+    if (!publication) {
+      rollback_binary_ui();
+      return;
+    }
+    const QString target_text =
+        QString::fromUtf16(reinterpret_cast<const ushort*>(publication->inspect_draft_utf16.data()),
+                           static_cast<int>(publication->inspect_draft_utf16.size()));
+    rebuilding_selectors_ = true;
+    inspect_input_->setPlainText(target_text);
+    accepted_inspect_text_ = target_text;
+    rebuilding_selectors_ = false;
+    const bool published = session_.PublishBinaryHostFlow(std::move(*publication));
+    if (!published) {
+      rollback_binary_ui();
+      return;
+    }
+  } else
+#endif
+  {
+    if (!session_.HostActive()) return;
+    if (!session_.SelectHostFlow(static_cast<std::size_t>(host_binding_combo_->currentIndex()),
+                                 static_cast<std::size_t>(host_flow_combo_->currentIndex())))
+      return;
+  }
   rebuilding_selectors_ = true;
   mode_combo_->setCurrentIndex(mode_combo_->findData(static_cast<int>(session_.mode())));
   representation_combo_->setCurrentIndex(
       representation_combo_->findData(static_cast<int>(session_.representation())));
-  const auto& text = session_.inspect_draft_utf16();
-  inspect_input_->setPlainText(QString::fromUtf16(reinterpret_cast<const ushort*>(text.data()),
-                                                  static_cast<int>(text.size())));
-  accepted_inspect_text_ = inspect_input_->toPlainText();
+  if (!session_.BinaryHostActive()) {
+    const auto& text = session_.inspect_draft_utf16();
+    inspect_input_->setPlainText(QString::fromUtf16(reinterpret_cast<const ushort*>(text.data()),
+                                                    static_cast<int>(text.size())));
+    accepted_inspect_text_ = inspect_input_->toPlainText();
+  } else {
+    pipeline_combo_->setCurrentIndex(
+        pipeline_combo_->findData(static_cast<qulonglong>(*session_.selected_pipeline_index())));
+    message_combo_->setCurrentIndex(
+        message_combo_->findData(static_cast<qulonglong>(session_.selection()->message_index)));
+  }
   rebuilding_selectors_ = false;
   timing_label_->clear();
-  RebuildSelectorsAndModel();
+  if (session_.BinaryHostActive()) {
+    field_model_->Reset(CurrentMessage(), {}, {}, false, session_.representation(),
+                        FieldPresentationAction::INSPECT);
+  } else {
+    RebuildSelectorsAndModel();
+  }
   RefreshInspect();
   RefreshPreview();
   RefreshModePresentation();
@@ -1494,8 +2399,16 @@ void DocumentTab::SelectHostView() {
           .arg(session_.id())
           .arg(session_.load_revision())
           .arg(session_.plan_generation())
-          .arg(session_.HostBindingIndex())
-          .arg(session_.HostStreamIndex()));
+          .arg(
+#if defined(PAE_BUILD_PROTOCOL_LAB_BINARY_UI)
+              session_.BinaryHostActive() ? session_.BinaryHostBindingIndex() :
+#endif
+                                          session_.HostBindingIndex())
+          .arg(
+#if defined(PAE_BUILD_PROTOCOL_LAB_BINARY_UI)
+              session_.BinaryHostActive() ? session_.BinaryHostFlowIndex() :
+#endif
+                                          session_.HostStreamIndex()));
 }
 #endif
 
@@ -1654,8 +2567,14 @@ void DocumentTab::BuildUi() {
       RefreshState();
       return;
     }
+    if (!session_.SetInspectDraftUtf16(Utf16(text))) {
+      rebuilding_selectors_ = true;
+      inspect_input_->setPlainText(accepted_inspect_text_);
+      rebuilding_selectors_ = false;
+      RefreshState();
+      return;
+    }
     accepted_inspect_text_ = text;
-    session_.SetInspectDraftUtf16(Utf16(text));
     RefreshInspect();
     RefreshState();
   });
@@ -1667,16 +2586,32 @@ void DocumentTab::BuildUi() {
       [this](std::size_t field_index) { InvalidateEditedDraft(field_index); });
 }
 
-void DocumentTab::BeginLoadFromPath() {
+void DocumentTab::BeginLoadFromPath(bool discard_confirmed) {
   if (closed_) {
     return;
   }
 #if defined(PAE_BUILD_PROTOCOL_LAB_ASCII_STREAM_OBSERVER)
-  if (!ConfirmStreamDiscard(QStringLiteral("reload this configuration"))) return;
+  if (!discard_confirmed && !ConfirmStreamDiscard(QStringLiteral("reload this configuration")))
+    return;
+#endif
+#if defined(PAE_BUILD_PROTOCOL_LAB_BINARY_UI) && defined(PAE_BUILD_PROTOCOL_LAB_HOST_OBSERVER)
+  if (!discard_confirmed &&
+      (session_.BinaryHasDiscardableState() ||
+       (session_.IsBinaryHostDocument() && host_pending_revision_)) &&
+      QMessageBox::question(this, QStringLiteral("Reload Binary Host document"),
+                            QStringLiteral("Reloading will discard Binary flow drafts/results or "
+                                           "pending preparation. Continue?"),
+                            QMessageBox::Yes | QMessageBox::No,
+                            QMessageBox::No) != QMessageBox::Yes)
+    return;
 #endif
 #if defined(PAE_BUILD_PROTOCOL_LAB_HOST_OBSERVER)
   host_pending_revision_.reset();
   host_pending_bindings_.clear();
+#if defined(PAE_BUILD_PROTOCOL_LAB_BINARY_UI)
+  binary_host_pending_bindings_.clear();
+  binary_host_pending_identity_.reset();
+#endif
   host_config_text_.clear();
 #endif
   const auto revision = session_.BeginLoad();
@@ -1845,13 +2780,33 @@ void DocumentTab::RefreshState() {
   pipeline_combo_->setEnabled(description != nullptr && !loading);
   mode_combo_->setEnabled(description != nullptr && !loading);
 #if defined(PAE_BUILD_PROTOCOL_LAB_HOST_OBSERVER)
-  host_panel_->setVisible(session_.IsAsciiDocument());
-  host_apply_->setEnabled(session_.IsAsciiDocument() && !loading && !host_pending_revision_);
+  const bool host_document = session_.IsAsciiDocument()
+#if defined(PAE_BUILD_PROTOCOL_LAB_BINARY_UI)
+                             || session_.IsBinaryHostDocument()
+#endif
+      ;
+  host_panel_->setVisible(host_document);
+  host_apply_->setEnabled(host_document && !loading && !host_pending_revision_);
   host_draft_->setEnabled(!host_pending_revision_);
-  host_binding_combo_->setEnabled(session_.HostActive());
-  host_flow_combo_->setEnabled(session_.HostActive() &&
-      session_.prepared()->host_adapter->Bindings()[session_.HostBindingIndex()].action == host_endpoint::Action::DECODE);
-  if (session_.HostActive()) {
+  const bool active_host = session_.HostActive()
+#if defined(PAE_BUILD_PROTOCOL_LAB_BINARY_UI)
+                           || session_.BinaryHostActive()
+#endif
+      ;
+  host_binding_combo_->setEnabled(active_host);
+  host_flow_combo_->setEnabled(
+      active_host &&
+#if defined(PAE_BUILD_PROTOCOL_LAB_BINARY_UI)
+      (session_.BinaryHostActive() ||
+#endif
+       (session_.HostActive() &&
+        session_.prepared()->host_adapter->Bindings()[session_.HostBindingIndex()].action ==
+            host_endpoint::Action::DECODE)
+#if defined(PAE_BUILD_PROTOCOL_LAB_BINARY_UI)
+           )
+#endif
+  );
+  if (active_host) {
     pipeline_combo_->setEnabled(false);
     mode_combo_->setEnabled(false);
   }
@@ -1868,6 +2823,9 @@ void DocumentTab::RefreshState() {
 #endif
   representation_combo_->setVisible(session_.IsAsciiDocument());
   representation_combo_->setEnabled(session_.IsAsciiDocument() && !loading);
+#if defined(PAE_BUILD_PROTOCOL_LAB_BINARY_UI)
+  encode_button_->setVisible(!session_.IsBinaryHostDocument());
+#endif
   const bool encode_mode = session_.mode() == OperationMode::ENCODE;
   const bool inspect_mode = session_.mode() == OperationMode::INSPECT;
 #if defined(PAE_BUILD_PROTOCOL_LAB_ASCII_STREAM_OBSERVER)
@@ -1940,8 +2898,10 @@ void DocumentTab::RefreshState() {
                     .arg(static_cast<qulonglong>(step.framing.work_units_used));
       }
 #if defined(PAE_BUILD_PROTOCOL_LAB_HOST_OBSERVER)
-      if (session_.HostActive()) text += QStringLiteral(" | observed=%1 | business=%2")
-          .arg(observation->total_observed_candidates).arg(observation->total_business_outputs);
+      if (session_.HostActive())
+        text += QStringLiteral(" | observed=%1 | business=%2")
+                    .arg(observation->total_observed_candidates)
+                    .arg(observation->total_business_outputs);
 #endif
       stream_status_label_->setText(text);
     } else {
@@ -2012,12 +2972,19 @@ void DocumentTab::RefreshInspect() {
   const auto* message = DisplayedMessage();
   field_model_->Reset(message, {}, {}, false, session_.representation(),
                       FieldPresentationAction::INSPECT);
-  std::vector<std::uint8_t> frame;
-  std::vector<PhysicalBitMask> highlights;
+  static const std::vector<std::uint8_t> empty_frame;
+  const std::vector<std::uint8_t>* frame = &empty_frame;
+  std::vector<PhysicalBitMask> local_highlights;
+#if defined(PAE_BUILD_PROTOCOL_LAB_BINARY_UI)
+  auto& highlights = session_.BinaryHostActive() ? binary_highlights_ : local_highlights;
+#else
+  auto& highlights = local_highlights;
+#endif
+  highlights.clear();
   std::optional<int> failed_detail_row;
   if (session_.inspect_result().has_value()) {
-    frame = session_.inspect_result()->input_frame;
-    field_model_->SetActualFrameSize(frame.size());
+    frame = &session_.inspect_result()->input_frame;
+    field_model_->SetActualFrameSize(frame->size());
     field_model_->ApplyResults(session_.inspect_result()->fields);
     result_kind_label_->setText(
         QStringLiteral(
@@ -2025,15 +2992,21 @@ void DocumentTab::RefreshInspect() {
             .arg(FromUtf8(session_.inspect_result()->message_id).toHtmlEscaped())
             .arg(session_.inspect_result()->fields.size()));
     const auto* field = field_model_->FieldAt(field_table_->currentIndex().row());
-    highlights = session_.IsAsciiDocument()
-                     ? ActualFieldHighlights(session_.inspect_result()->fields, field)
-                     : FieldHighlights(message, field, frame.size());
+    if (session_.IsAsciiDocument()
+#if defined(PAE_BUILD_PROTOCOL_LAB_BINARY_PUBLIC_H2)
+        || (session_.BinaryHostActive() && field && field->physical_bits.empty() &&
+            field->byte_length_bounds.has_value())
+#endif
+    )
+      highlights = ActualFieldHighlights(session_.inspect_result()->fields, field);
+    else
+      FillFieldHighlights(message, field, frame->size(), highlights);
   } else if (session_.inspect_failure().has_value()) {
     const auto& failure = *session_.inspect_failure();
-    frame = failure.input_frame;
+    frame = &failure.input_frame;
     result_kind_label_->setText(QStringLiteral("Failure location / 失败定位（非有效结果）"));
     field_model_->SetFailedField(failure.failed_field_index);
-    highlights = InspectFailureHighlights(message);
+    FillInspectFailureHighlights(message, highlights);
     if (message != nullptr && failure.failed_field_index.has_value() &&
         *failure.failed_field_index < message->fields.size()) {
       failed_detail_row = static_cast<int>(*failure.failed_field_index);
@@ -2047,10 +3020,10 @@ void DocumentTab::RefreshInspect() {
 #endif
             QStringLiteral("Raw input / 原始输入（尚无有效解码结果）"));
   }
-  if (frame.empty()) {
+  if (frame->empty()) {
     hex_view_->ClearFrame();
   } else {
-    hex_view_->SetFrame(std::move(frame), highlights);
+    hex_view_->SetFrame(*frame, highlights);
   }
   if (failed_detail_row.has_value()) {
     field_table_->selectRow(*failed_detail_row);
@@ -2167,14 +3140,21 @@ void DocumentTab::RefreshFieldDetails(int row, bool refresh_frame) {
                           .arg(FromUtf8(field->read_only_annotation).toHtmlEscaped()));
   }
 #if defined(PAE_ENABLE_SCHEMA_V05_COMPILER)
-  if (field->conversion.has_value()) {
+  if (field->conversion.has_value() || field->decode_decimal64) {
     details.push_back(
-        QStringLiteral("<b>Conversion</b>: logical Decimal64 input; Core performs "
-                       "logical/raw representability checks"));
+        field->decode_decimal64
+            ? QStringLiteral("<b>Conversion</b>: logical Decimal64 result; Core performs "
+                             "logical/raw representability checks")
+            : QStringLiteral("<b>Conversion</b>: logical Decimal64 input; Core performs "
+                             "logical/raw representability checks"));
   }
 #endif
-  std::optional<ByteRange> ascii_actual_range;
-  if (session_.IsAsciiDocument()) {
+  std::optional<ByteRange> actual_result_range;
+  if (session_.IsAsciiDocument()
+#if defined(PAE_BUILD_PROTOCOL_LAB_BINARY_PUBLIC_H2)
+      || session_.BinaryHostActive()
+#endif
+  ) {
     const std::vector<UiFieldResult>* results = nullptr;
     if (session_.mode() == OperationMode::ENCODE && session_.preview().has_value())
       results = &session_.preview()->fields;
@@ -2184,17 +3164,17 @@ void DocumentTab::RefreshFieldDetails(int row, bool refresh_frame) {
       const auto found = std::find_if(results->begin(), results->end(), [&](const auto& result) {
         return result.field_index == field->field_index && result.id == field->id;
       });
-      if (found != results->end()) ascii_actual_range = found->actual_range;
+      if (found != results->end()) actual_result_range = found->actual_range;
     }
   }
   if (field->byte_length_bounds.has_value()) {
     details.push_back(QStringLiteral("<b>Payload length bounds</b>: %1..%2 bytes")
                           .arg(static_cast<qulonglong>(field->byte_length_bounds->minimum))
                           .arg(static_cast<qulonglong>(field->byte_length_bounds->maximum)));
-    if (ascii_actual_range.has_value()) {
+    if (actual_result_range.has_value()) {
       details.push_back(QStringLiteral("<b>Actual byte range</b>: %1 + %2")
-                            .arg(static_cast<qulonglong>(ascii_actual_range->offset))
-                            .arg(static_cast<qulonglong>(ascii_actual_range->length)));
+                            .arg(static_cast<qulonglong>(actual_result_range->offset))
+                            .arg(static_cast<qulonglong>(actual_result_range->length)));
     } else if (!session_.IsAsciiDocument() && ActualFrameSize().has_value()) {
       const auto range = ResolveActualFieldRange(*message, *field, *ActualFrameSize());
       if (range.has_value()) {
@@ -2213,17 +3193,26 @@ void DocumentTab::RefreshFieldDetails(int row, bool refresh_frame) {
                           .arg(static_cast<qulonglong>(field->physical_bits.size())));
   }
   if (session_.IsAsciiDocument()) {
-    if (ascii_actual_range.has_value()) {
+    if (actual_result_range.has_value()) {
       details.push_back(QStringLiteral("<b>Actual physical bytes (zero-based)</b>: [%1, %2), "
                                        "full-byte range")
-                            .arg(static_cast<qulonglong>(ascii_actual_range->offset))
-                            .arg(static_cast<qulonglong>(ascii_actual_range->offset +
-                                                         ascii_actual_range->length)));
+                            .arg(static_cast<qulonglong>(actual_result_range->offset))
+                            .arg(static_cast<qulonglong>(actual_result_range->offset +
+                                                         actual_result_range->length)));
     }
   } else {
-    const auto physical = message == nullptr
-                              ? FormatPhysicalLocation(*field)
-                              : FormatPhysicalLocation(*message, *field, ActualFrameSize());
+    const auto physical =
+#if defined(PAE_BUILD_PROTOCOL_LAB_BINARY_PUBLIC_H2)
+        session_.BinaryHostActive() && field->byte_length_bounds && actual_result_range
+            ? QStringLiteral("byte[%1..%2), full-byte range")
+                  .arg(static_cast<qulonglong>(actual_result_range->offset))
+                  .arg(static_cast<qulonglong>(actual_result_range->offset +
+                                               actual_result_range->length))
+                  .toStdString()
+            :
+#endif
+        message == nullptr ? FormatPhysicalLocation(*field)
+                           : FormatPhysicalLocation(*message, *field, ActualFrameSize());
     if (!physical.empty()) {
       details.push_back(QStringLiteral("<b>Physical byte / bit / mask (zero-based, LSB0)</b>: %1")
                             .arg(FromUtf8(physical).toHtmlEscaped()));
@@ -2232,18 +3221,31 @@ void DocumentTab::RefreshFieldDetails(int row, bool refresh_frame) {
   details_view_->setHtml(details.join(QStringLiteral("<br/>")));
   if (!refresh_frame) return;
   if (session_.mode() != OperationMode::ENCODE) {
-    std::vector<std::uint8_t> frame;
-    std::vector<PhysicalBitMask> highlights;
+    static const std::vector<std::uint8_t> empty_frame;
+    const std::vector<std::uint8_t>* frame = &empty_frame;
+    std::vector<PhysicalBitMask> local_highlights;
+#if defined(PAE_BUILD_PROTOCOL_LAB_BINARY_UI)
+    auto& highlights = session_.BinaryHostActive() ? binary_highlights_ : local_highlights;
+#else
+    auto& highlights = local_highlights;
+#endif
+    highlights.clear();
     if (session_.inspect_result().has_value()) {
-      frame = session_.inspect_result()->input_frame;
-      highlights = session_.IsAsciiDocument()
-                       ? ActualFieldHighlights(session_.inspect_result()->fields, field)
-                       : FieldHighlights(message, field, frame.size());
+      frame = &session_.inspect_result()->input_frame;
+      if (session_.IsAsciiDocument()
+#if defined(PAE_BUILD_PROTOCOL_LAB_BINARY_PUBLIC_H2)
+          || (session_.BinaryHostActive() && field && field->physical_bits.empty() &&
+              field->byte_length_bounds.has_value())
+#endif
+      )
+        highlights = ActualFieldHighlights(session_.inspect_result()->fields, field);
+      else
+        FillFieldHighlights(message, field, frame->size(), highlights);
     } else if (session_.inspect_failure().has_value()) {
-      frame = session_.inspect_failure()->input_frame;
-      highlights = InspectFailureHighlights(message);
+      frame = &session_.inspect_failure()->input_frame;
+      FillInspectFailureHighlights(message, highlights);
     }
-    hex_view_->SetFrame(std::move(frame), highlights);
+    hex_view_->SetFrame(*frame, highlights);
   } else {
     RefreshPreview();
   }
@@ -2464,10 +3466,12 @@ bool DocumentTab::ConfirmStreamDiscard(const QString& action) {
   if (!ConfirmStreamDiscardOnly(action)) return false;
   if (!session_.StreamHasDiscardableState()) return true;
 #if defined(PAE_BUILD_PROTOCOL_LAB_HOST_OBSERVER)
-  if (session_.HostActive()) session_.ResetAllHostStreams();
+  if (session_.HostActive())
+    session_.ResetAllHostStreams();
   else
 #endif
-  if (!session_.ResetStream()) return false;
+      if (!session_.ResetStream())
+    return false;
   rebuilding_selectors_ = true;
   inspect_input_->clear();
   rebuilding_selectors_ = false;
@@ -2477,11 +3481,12 @@ bool DocumentTab::ConfirmStreamDiscard(const QString& action) {
 
 bool DocumentTab::ConfirmStreamDiscardOnly(const QString& action) {
   if (!session_.StreamHasDiscardableState()) return true;
-  const auto answer = QMessageBox::question(
-      this, QStringLiteral("Discard stream state?"),
-      QStringLiteral("%1 will discard affected stream state (including non-selected flows) and any frozen suffix. Continue?")
-          .arg(action),
-      QMessageBox::Yes | QMessageBox::No, QMessageBox::No);
+  const auto answer =
+      QMessageBox::question(this, QStringLiteral("Discard stream state?"),
+                            QStringLiteral("%1 will discard affected stream state (including "
+                                           "non-selected flows) and any frozen suffix. Continue?")
+                                .arg(action),
+                            QMessageBox::Yes | QMessageBox::No, QMessageBox::No);
   return answer == QMessageBox::Yes;
 }
 #endif
@@ -2502,15 +3507,17 @@ void DocumentTab::InvalidateEditedDraft(std::size_t field_index) {
   RefreshState();
 }
 
-std::vector<PhysicalBitMask> DocumentTab::InspectFailureHighlights(
-    const MessageDescriptor* message) const {
-  std::vector<PhysicalBitMask> highlights;
-  if (message == nullptr || !session_.inspect_failure().has_value()) return highlights;
-  if (session_.IsAsciiDocument()) return highlights;
+void DocumentTab::FillInspectFailureHighlights(const MessageDescriptor* message,
+                                               std::vector<PhysicalBitMask>& highlights) const {
+  highlights.clear();
+  if (message == nullptr || !session_.inspect_failure().has_value()) return;
+  if (session_.IsAsciiDocument()) return;
   const auto& failure = *session_.inspect_failure();
   if (failure.failed_field_index.has_value() &&
       *failure.failed_field_index < message->fields.size()) {
-    return FieldHighlights(message, &message->fields[*failure.failed_field_index], std::nullopt);
+    FillFieldHighlights(message, &message->fields[*failure.failed_field_index], std::nullopt,
+                        highlights);
+    return;
   }
   if (failure.status == "INTEGRITY_FAILED" && message->integrity_storage.has_value() &&
       !message->integrity_storage_at_payload_end) {
@@ -2519,7 +3526,6 @@ std::vector<PhysicalBitMask> DocumentTab::InspectFailureHighlights(
       highlights.push_back(PhysicalBitMask{message->integrity_storage->offset + index, 0xFFU});
     }
   }
-  return highlights;
 }
 
 std::optional<std::size_t> DocumentTab::ActualFrameSize() const noexcept {

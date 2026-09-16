@@ -14,6 +14,10 @@
 #include "compile_worker.h"
 #include "description_mapping.h"
 #include "inspect_hex_input.h"
+#include "ui_field_result.h"
+#if defined(PAE_BUILD_PROTOCOL_LAB_BINARY_UI)
+#include "binary_host_adapter.h"
+#endif
 #if defined(PAE_BUILD_PROTOCOL_LAB_HOST_OBSERVER)
 #include "../protocol_lab_ascii/host_observer_adapter.h"
 #endif
@@ -80,14 +84,6 @@ struct OperationDiagnostic {
   std::string detail;
 };
 
-struct UiFieldResult {
-  std::size_t field_index = 0U;
-  std::string id;
-  std::string raw_value;
-  std::string logical_value;
-  std::optional<ByteRange> actual_range;
-};
-
 using TypedDraft = std::variant<std::uint64_t, std::int64_t, std::vector<std::uint8_t>,
                                 EnumSelection, bool, protocol_lab::v06::Decimal64>;
 
@@ -137,6 +133,9 @@ InspectFailure MakeStructuralInspectFailure(std::string status,
                                             std::vector<std::uint8_t> input_frame);
 
 struct PreparedDocument {
+#if defined(PAE_BUILD_PROTOCOL_LAB_BINARY_UI)
+  std::unique_ptr<BinaryHostAdapter> binary_host_adapter;
+#endif
 #if defined(PAE_BUILD_PROTOCOL_LAB_HOST_OBSERVER)
   std::unique_ptr<protocol_lab::ascii::HostObserverAdapter> host_adapter;
 #endif
@@ -160,6 +159,47 @@ class InputMaterializationTimer {
 class DocumentSession final {
  public:
   explicit DocumentSession(DocumentId document_id);
+#if defined(PAE_BUILD_PROTOCOL_LAB_BINARY_UI)
+  struct BinaryPublication {
+    std::unique_ptr<BinaryHostAdapter> adapter;
+    DocumentDescription description;
+    SelectionKey selection;
+    std::string inspect_draft;
+    std::u16string inspect_draft_utf16;
+    std::optional<InspectResult> inspect_result;
+    std::optional<InspectFailure> inspect_failure;
+    std::size_t mapped_view_bytes = 0U;
+    Revision session_revision = 0U;
+  };
+  struct BinaryFlowPublication {
+    std::size_t binding = 0U;
+    std::size_t flow = 0U;
+    std::size_t pipeline_index = 0U;
+    SelectionKey selection;
+    std::string inspect_draft;
+    std::u16string inspect_draft_utf16;
+    std::optional<InspectResult> inspect_result;
+    std::optional<InspectFailure> inspect_failure;
+    std::size_t mapped_view_bytes = 0U;
+  };
+  using BinaryPreparationHook = void (*)();
+  std::optional<BinaryPublication> PrepareBinaryHostPublication(
+      std::unique_ptr<BinaryHostAdapter> adapter, Revision expected_request,
+      BinaryPreparationHook before_copy = nullptr);
+  void PublishBinaryHostPublication(BinaryPublication publication) noexcept;
+  std::optional<BinaryFlowPublication> PrepareBinaryHostFlow(
+      std::size_t binding, std::size_t flow, BinaryPreparationHook before_copy = nullptr) const;
+  bool PublishBinaryHostFlow(BinaryFlowPublication publication);
+  bool BinaryHostActive() const noexcept { return prepared_ && prepared_->binary_host_adapter; }
+  bool IsBinaryHostDocument() const noexcept {
+    return description_.has_value() && description_->schema_version == "0.9";
+  }
+  std::size_t BinaryHostBindingIndex() const noexcept { return binary_host_binding_; }
+  std::size_t BinaryHostFlowIndex() const noexcept { return binary_host_flow_; }
+  Revision BinarySessionRevision() const noexcept { return binary_session_revision_; }
+  std::size_t BinaryActiveViewBytes() const noexcept { return binary_active_view_bytes_; }
+  bool BinaryHasDiscardableState() const noexcept;
+#endif
 #if defined(PAE_BUILD_PROTOCOL_LAB_HOST_OBSERVER)
   bool ApplyHostAdapter(std::unique_ptr<protocol_lab::ascii::HostObserverAdapter> adapter);
   bool SelectHostFlow(std::size_t binding, std::size_t stream);
@@ -245,6 +285,12 @@ class DocumentSession final {
 
  private:
   bool AsciiBackendReady() const noexcept;
+#if defined(PAE_BUILD_PROTOCOL_LAB_BINARY_UI)
+  std::size_t binary_host_binding_ = 0U;
+  std::size_t binary_host_flow_ = 0U;
+  Revision binary_session_revision_ = 0U;
+  std::size_t binary_active_view_bytes_ = 0U;
+#endif
 #if defined(PAE_BUILD_PROTOCOL_LAB_HOST_OBSERVER)
   struct HostView {
     std::string draft;

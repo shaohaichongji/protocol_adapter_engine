@@ -82,6 +82,75 @@
       }
     },
     {
+      "name": "windows-msvc-pae-lab",
+      "displayName": "Windows MSVC PAE and Qt Lab (recommended)",
+      "description": "Explicit current PAE plus Qt Lab development combination; uses v142 14.29.30133 and vendored Qt 5.13.",
+      "generator": "Visual Studio 18 2026",
+      "architecture": "x64",
+      "toolset": "v142,version=14.29.30133",
+      "binaryDir": "${sourceDir}/out/build/${presetName}",
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Windows"
+      },
+      "cacheVariables": {
+        "BUILD_TESTING": "ON",
+        "PAE_BUILD_TESTING": "ON",
+        "PAE_BUILD_JSON_PARSER_SPIKE": "OFF",
+        "PAE_BUILD_LOADER_SCHEMA_IR_SLICE": "ON",
+        "PAE_BUILD_COMPLETE_RECORD_CODEC_SLICE": "ON",
+        "PAE_BUILD_PROTOCOL_LAB": "OFF",
+        "PAE_BUILD_PROTOCOL_LAB_UI": "ON",
+        "PAE_BUILD_PROTOCOL_LAB_ASCII_ADAPTER": "ON",
+        "PAE_BUILD_PROTOCOL_LAB_ASCII_STREAM_OBSERVER": "ON",
+        "PAE_BUILD_HOST_ENDPOINT_SLICE": "ON",
+        "PAE_BUILD_PROTOCOL_LAB_HOST_OBSERVER": "ON",
+        "PAE_BUILD_PROTOCOL_LAB_BINARY_MATERIALIZER": "ON",
+        "PAE_BUILD_PROTOCOL_LAB_BINARY_UI": "ON",
+        "PAE_BUILD_STREAM_FRAMING_SLICE": "ON",
+        "PAE_ENABLE_SCHEMA_V05_COMPILER": "ON",
+        "PAE_ENABLE_SCHEMA_V06_CRC_COMPILER": "ON",
+        "PAE_ENABLE_SCHEMA_V07_LENGTH_COMPILER": "ON",
+        "PAE_ENABLE_SCHEMA_V08_VARIABLE_COMPILER": "ON",
+        "PAE_ENABLE_SCHEMA_V09_STREAM_FRAMING": "ON",
+        "PAE_ENABLE_SCHEMA_V10_ASCII_TEXT_CODEC": "ON",
+        "PAE_ENABLE_SCHEMA_V11_ASCII_STREAM_FRAMING": "ON"
+      }
+    },
+    {
+      "name": "windows-msvc-public-api-stage1",
+      "displayName": "Windows MSVC public API Stage 1",
+      "description": "Experimental public C++17 compiler, metadata, COMPLETE_RECORD codec, and StreamFramer surface with Schema 0.1-0.11 enabled.",
+      "generator": "Visual Studio 18 2026",
+      "architecture": "x64",
+      "toolset": "v142,version=14.29.30133",
+      "binaryDir": "${sourceDir}/out/build/${presetName}",
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Windows"
+      },
+      "cacheVariables": {
+        "BUILD_TESTING": "ON",
+        "PAE_BUILD_TESTING": "ON",
+        "PAE_BUILD_JSON_PARSER_SPIKE": "OFF",
+        "PAE_BUILD_PUBLIC_API_STAGE1": "ON"
+      }
+    },
+    {
+      "name": "windows-msvc-stage4-h2",
+      "displayName": "Windows MSVC Qt Lab Binary public Decode H2",
+      "inherits": "windows-msvc-pae-lab",
+      "binaryDir": "${sourceDir}/out/build/${presetName}",
+      "cacheVariables": {
+        "PAE_BUILD_PUBLIC_API_STAGE1": "ON",
+        "PAE_BUILD_PROTOCOL_LAB_BINARY_MATERIALIZER": "OFF",
+        "PAE_BUILD_PROTOCOL_LAB_BINARY_PUBLIC_H1": "ON",
+        "PAE_BUILD_PROTOCOL_LAB_BINARY_PUBLIC_H2": "ON"
+      }
+    },
+    {
       "name": "linux-gcc-spike",
       "displayName": "Linux GCC JSON parser spike",
       "generator": "Ninja",
@@ -151,6 +220,26 @@
       "configuration": "Debug"
     },
     {
+      "name": "windows-msvc-pae-lab-debug",
+      "configurePreset": "windows-msvc-pae-lab",
+      "configuration": "Debug"
+    },
+    {
+      "name": "windows-msvc-pae-lab-release",
+      "configurePreset": "windows-msvc-pae-lab",
+      "configuration": "Release"
+    },
+    {
+      "name": "windows-msvc-public-api-stage1-debug",
+      "configurePreset": "windows-msvc-public-api-stage1",
+      "configuration": "Debug"
+    },
+    {
+      "name": "windows-msvc-public-api-stage1-release",
+      "configurePreset": "windows-msvc-public-api-stage1",
+      "configuration": "Release"
+    },
+    {
       "name": "linux-gcc-spike-release",
       "configurePreset": "linux-gcc-spike"
     },
@@ -196,6 +285,38 @@
       "name": "windows-msvc-protocol-lab-debug",
       "configurePreset": "windows-msvc-protocol-lab",
       "configuration": "Debug",
+      "output": {
+        "outputOnFailure": true
+      }
+    },
+    {
+      "name": "windows-msvc-pae-lab-debug",
+      "configurePreset": "windows-msvc-pae-lab",
+      "configuration": "Debug",
+      "output": {
+        "outputOnFailure": true
+      }
+    },
+    {
+      "name": "windows-msvc-pae-lab-release",
+      "configurePreset": "windows-msvc-pae-lab",
+      "configuration": "Release",
+      "output": {
+        "outputOnFailure": true
+      }
+    },
+    {
+      "name": "windows-msvc-public-api-stage1-debug",
+      "configurePreset": "windows-msvc-public-api-stage1",
+      "configuration": "Debug",
+      "output": {
+        "outputOnFailure": true
+      }
+    },
+    {
+      "name": "windows-msvc-public-api-stage1-release",
+      "configurePreset": "windows-msvc-public-api-stage1",
+      "configuration": "Release",
       "output": {
         "outputOnFailure": true
       }

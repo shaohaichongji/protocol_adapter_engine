@@ -25,6 +25,9 @@ add_library(
     STATIC
         compile_worker.cpp
         compile_worker.h
+        schema_dispatch.cpp
+        schema_dispatch.h
+        binary_host_adapter.h
         ascii_escaped_input.cpp
         ascii_escaped_input.h
         description_mapping.cpp
@@ -48,6 +51,7 @@ target_link_libraries(
         pae_protocol_core_slice
         pae::protocol_plan
         pae::project_options
+        pae::yyjson
 )
 if(PAE_ENABLE_SCHEMA_V10_ASCII_TEXT_CODEC)
     if(NOT TARGET pae_protocol_lab_ascii_adapter_internal)
@@ -57,6 +61,40 @@ if(PAE_ENABLE_SCHEMA_V10_ASCII_TEXT_CODEC)
         pae_protocol_lab_ui_headless_internal
         PUBLIC pae_protocol_lab_ascii_adapter_internal
     )
+endif()
+if(PAE_BUILD_PROTOCOL_LAB_BINARY_UI)
+    if(NOT PAE_BUILD_PROTOCOL_LAB_BINARY_PUBLIC_H2)
+        if(NOT TARGET pae_protocol_lab_binary_materializer)
+            message(FATAL_ERROR "Schema 0.9 Binary Protocol Lab UI requires the Binary materializer target.")
+        endif()
+        target_sources(pae_protocol_lab_ui_headless_internal PRIVATE binary_host_adapter.cpp)
+        target_link_libraries(
+            pae_protocol_lab_ui_headless_internal
+            PUBLIC pae_protocol_lab_binary_materializer
+        )
+    endif()
+    target_compile_definitions(
+        pae_protocol_lab_ui_headless_internal
+        PUBLIC PAE_BUILD_PROTOCOL_LAB_BINARY_UI=1
+    )
+endif()
+if(PAE_BUILD_PROTOCOL_LAB_BINARY_PUBLIC_H2)
+    if(NOT TARGET pae_protocol_lab_binary_public_h1)
+        message(FATAL_ERROR "Binary public H2 requires the public H1 adapter target.")
+    endif()
+    add_library(pae_protocol_lab_ui_binary_public_h2 STATIC
+        binary_host_adapter_public.cpp binary_host_adapter_public.h
+        public_binary_description.cpp public_binary_description.h)
+    target_include_directories(pae_protocol_lab_ui_binary_public_h2 PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}")
+    target_link_libraries(pae_protocol_lab_ui_binary_public_h2 PUBLIC pae_protocol_lab_binary_public_h1 PRIVATE pae::project_options)
+    foreach(pae_ui_dto_option IN ITEMS PAE_ENABLE_SCHEMA_V05_COMPILER PAE_ENABLE_SCHEMA_V07_LENGTH_COMPILER PAE_ENABLE_SCHEMA_V10_ASCII_TEXT_CODEC PAE_BUILD_PROTOCOL_LAB_ASCII_STREAM_OBSERVER)
+        if(${pae_ui_dto_option})
+            target_compile_definitions(pae_protocol_lab_ui_binary_public_h2 PUBLIC "${pae_ui_dto_option}=1")
+        endif()
+    endforeach()
+    set_target_properties(pae_protocol_lab_ui_binary_public_h2 PROPERTIES CXX_VISIBILITY_PRESET hidden VISIBILITY_INLINES_HIDDEN YES)
+    target_link_libraries(pae_protocol_lab_ui_headless_internal PUBLIC pae_protocol_lab_ui_binary_public_h2)
+    target_compile_definitions(pae_protocol_lab_ui_headless_internal PUBLIC PAE_BUILD_PROTOCOL_LAB_BINARY_PUBLIC_H2=1)
 endif()
 set_target_properties(
     pae_protocol_lab_ui_headless_internal
@@ -79,6 +117,10 @@ add_executable(
         hex_view.h
         main.cpp
 )
+if(PAE_BUILD_PROTOCOL_LAB_ASCII_SMOKE_DIAGNOSTIC)
+    target_compile_definitions(pae_protocol_lab_ui PRIVATE PAE_BUILD_PROTOCOL_LAB_ASCII_SMOKE_DIAGNOSTIC=1)
+    target_sources(pae_protocol_lab_ui PRIVATE ascii_smoke_diagnostic.h)
+endif()
 target_link_libraries(
     pae_protocol_lab_ui
     PRIVATE
@@ -108,6 +150,11 @@ if(PAE_ENABLE_SCHEMA_V10_ASCII_TEXT_CODEC)
         "${PROJECT_SOURCE_DIR}/examples/config/synthetic_ascii_literal_only.pae.json"
         "${PROJECT_SOURCE_DIR}/tests/protocol_lab_ui/fixtures/synthetic_ascii_decode_only.pae.json"
         "${PROJECT_SOURCE_DIR}/tests/protocol_lab_ui/fixtures/synthetic_ascii_encode_only.pae.json"
+    )
+endif()
+if(PAE_BUILD_PROTOCOL_LAB_BINARY_UI)
+    list(APPEND pae_protocol_lab_ui_deployment_configs
+        "${PROJECT_SOURCE_DIR}/tests/protocol_lab_ui/fixtures/synthetic_binary_ui_stage1.pae.json"
     )
 endif()
 pae_configure_protocol_lab_ui_deployment(

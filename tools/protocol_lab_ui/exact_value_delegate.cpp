@@ -1,4 +1,8 @@
 #include "exact_value_delegate.h"
+#include "smoke_editor_target.h"
+#if defined(PAE_BUILD_PROTOCOL_LAB_ASCII_SMOKE_DIAGNOSTIC)
+#include "ascii_smoke_diagnostic.h"
+#endif
 
 #include <QComboBox>
 #include <QHBoxLayout>
@@ -66,6 +70,9 @@ QWidget* ExactValueDelegate::createEditor(QWidget* parent, const QStyleOptionVie
                      [callback = editor_changed_, field_index](int) {
                        if (callback) callback(static_cast<std::size_t>(field_index));
                      });
+#if defined(PAE_BUILD_PROTOCOL_LAB_ASCII_SMOKE_DIAGNOSTIC)
+    ascii_smoke_diagnostic::RegisterEditor(editor);
+#endif
     return editor;
   }
   const auto value_type =
@@ -85,9 +92,13 @@ QWidget* ExactValueDelegate::createEditor(QWidget* parent, const QStyleOptionVie
                      [callback = editor_changed_, field_index](int) {
                        if (callback) callback(static_cast<std::size_t>(field_index));
                      });
+#if defined(PAE_BUILD_PROTOCOL_LAB_ASCII_SMOKE_DIAGNOSTIC)
+    ascii_smoke_diagnostic::RegisterEditor(combo);
+#endif
     return combo;
   }
   auto* line_edit = new QLineEdit(parent);
+  smoke_editor_target::Stamp(*line_edit, index);
   const auto field_index = index.data(FieldTableModel::FieldIndexRole).toULongLong();
   if (value_type == protocol_plan::ValueType::BYTES) {
     const auto width = index.data(FieldTableModel::ByteWidthRole).toULongLong();
@@ -143,6 +154,9 @@ QWidget* ExactValueDelegate::createEditor(QWidget* parent, const QStyleOptionVie
                    [callback = editor_changed_, field_index](const QString&) {
                      if (callback) callback(static_cast<std::size_t>(field_index));
                    });
+#if defined(PAE_BUILD_PROTOCOL_LAB_ASCII_SMOKE_DIAGNOSTIC)
+  ascii_smoke_diagnostic::RegisterEditor(line_edit);
+#endif
   return line_edit;
 }
 

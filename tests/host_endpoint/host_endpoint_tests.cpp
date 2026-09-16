@@ -1,3 +1,5 @@
+#include <algorithm>
+#include <array>
 #include <cstdlib>
 #include <fstream>
 #include <iostream>
@@ -358,7 +360,14 @@ void Binary(std::string json) {
   const auto rx = session->Find("binary", host::Action::DECODE);
   Capture capture;
   session->Push(rx, Bytes(std::string_view("\xAA\x12", 2U)), capture.Sink());
-  auto decoded = session->Push(rx, Bytes(std::string_view("\x34", 1U)), capture.Sink());
+  const host::CandidateObserver no_conversion{[](const host::Candidate& candidate, void*) {
+    core::RawIntegerValue raw;
+    Check(candidate.RawIntegerCount() == 0U && !candidate.GetRawInteger(0U, raw),
+          "unconverted Binary field has no conversion raw entry");
+    return host::SinkAction::CONTINUE;
+  }, nullptr};
+  auto decoded = session->Push(rx, Bytes(std::string_view("\x34", 1U)), capture.Sink(),
+                                no_conversion);
   Check(decoded.successful_outputs == 1U && capture.kind == core::LogicalValueKind::UINT64 &&
             capture.number == 0x1234U && capture.field == "fixed_payload",
         "binary stream uint64");
@@ -421,6 +430,9 @@ void CandidateObservation(const std::string& json) {
       auto& d = *static_cast<Diagnostic*>(data);
       ++d.calls;
       Check(d.session->Reset(d.handle) == host::Status::BUSY, "observer reentry rejected");
+      core::RawIntegerValue raw;
+      Check(candidate.RawIntegerCount() == 0U && !candidate.GetRawInteger(0U, raw),
+            "ASCII success, zero-field and failure candidates have no converted raw");
       if (d.throws) throw std::runtime_error("diagnostic copy fault");
       d.frame.assign(reinterpret_cast<const char*>(candidate.frame.data), candidate.frame.size);
       d.generation = candidate.generation;
@@ -468,6 +480,133 @@ void CandidateObservation(const std::string& json) {
   Check(stopped.framing.bytes_consumed == 6U && stopped.observed_candidates == 1U,
         "business STOP still stops candidates");
 }
+void RawCandidateObservation(std::string json) {
+  const auto version = json.find("\"0.5\"");
+  Check(version != std::string::npos, "raw fixture schema");
+  json.replace(version, 5U, "\"0.9\"");
+  const host::BindingSpec spec{"raw", host::Action::DECODE, "sample_pipeline"};
+  auto session = Make(json, &spec, 1U);
+  const auto handle = session->Find("raw", host::Action::DECODE);
+  std::array<std::uint8_t, 34> frame{};
+  frame[6] = 2U;
+  frame[7] = 11U;
+  for (std::size_t i = 8U; i < 16U; ++i) frame[i] = 0xFFU;
+  frame[24] = 0x80U;
+  frame[32] = 0xA5U;
+  frame[33] = 0x2AU;
+  struct Diagnostic {
+    std::size_t calls = 0U;
+    bool valid = true;
+    bool throws = false;
+    static host::SinkAction Call(const host::Candidate& candidate, void* opaque) {
+      auto& d = *static_cast<Diagnostic*>(opaque);
+      ++d.calls;
+      core::RawIntegerValue raw;
+      raw.uint64_value = 77U;
+      const auto count = candidate.RawIntegerCount();
+      d.valid &= !candidate.GetRawInteger(count, raw) && raw.uint64_value == 77U;
+      d.valid &= !candidate.GetRawInteger((std::numeric_limits<std::size_t>::max)(), raw);
+      if (candidate.decoded.status != core::CodecStatus::OK) {
+        d.valid &= count == 0U && candidate.field_count == 0U && !candidate.fields;
+      } else {
+        d.valid &= count == 4U && candidate.field_count == 5U;
+        for (std::size_t i = 0U; i < 4U; ++i) {
+          const bool read = candidate.GetRawInteger(i, raw);
+          d.valid &= read;
+          if (!read) continue;
+          d.valid &= raw.field.plan_scope == candidate.plan &&
+                     raw.field.message_index == candidate.decoded.message_index &&
+                     raw.field.field_index == i &&
+                     raw.field.field_index == candidate.fields[i].field.field_index;
+          if (i == 0U) {
+            d.valid &= raw.kind == core::RawIntegerKind::INT64 && raw.int64_value == 523 &&
+                       candidate.fields[i].decimal64_value.coefficient == 123 &&
+                       candidate.fields[i].decimal64_value.scale == 1;
+          } else if (i == 1U) {
+            d.valid &= raw.kind == core::RawIntegerKind::UINT64 &&
+                       raw.uint64_value == (std::numeric_limits<std::uint64_t>::max)();
+          } else if (i == 2U) {
+            d.valid &= raw.kind == core::RawIntegerKind::UINT64 && raw.uint64_value == 0U;
+          } else {
+            d.valid &= raw.kind == core::RawIntegerKind::INT64 &&
+                       raw.int64_value == (std::numeric_limits<std::int64_t>::min)() &&
+                       candidate.fields[i].decimal64_value.coefficient ==
+                           (std::numeric_limits<std::int64_t>::max)();
+          }
+        }
+      }
+      if (d.throws) throw std::runtime_error("raw observer fault");
+      return host::SinkAction::STOP;
+    }
+  } diagnostic;
+  std::size_t business_calls = 0U;
+  const host::Sink sink{[](const host::Output&, void* opaque) {
+    ++*static_cast<std::size_t*>(opaque);
+    return host::SinkAction::CONTINUE;
+  }, &business_calls};
+  const host::CandidateObserver observer{Diagnostic::Call, &diagnostic};
+  const core::ByteView bytes{frame.data(), frame.size()};
+  allocations = 0U;
+  count_allocations = true;
+  const auto result = session->Decode(handle, bytes, sink, observer);
+  count_allocations = false;
+  Check(result.status == host::Status::OK && diagnostic.valid, "raw candidate values and bounds");
+  Check(allocations == 0U && result.observed_candidates == 1U && business_calls == 1U,
+        "raw observer STOP delivers once without allocation");
+  allocations = 0U;
+  count_allocations = true;
+  const auto unobserved = session->Decode(handle, bytes, sink);
+  count_allocations = false;
+  Check(unobserved.status == host::Status::OK && allocations == 0U && diagnostic.calls == 1U,
+        "no observer no allocation or callback");
+  session->Decode({}, bytes, sink, observer);
+  Check(diagnostic.calls == 1U, "early rejection does not observe stale raw");
+  frame[33] ^= 1U;
+  const auto failed = session->Decode(handle, bytes, sink, observer);
+  Check(failed.status == host::Status::CODEC_FAILED && diagnostic.valid && business_calls == 2U,
+        "failed candidate hides previous raw");
+  frame[33] ^= 1U;
+  frame[16] = 0x80U;
+  frame[33] = 0xAAU;
+  const auto overflow = session->Decode(handle, bytes, sink, observer);
+  Check(overflow.status == host::Status::CODEC_FAILED && diagnostic.valid && business_calls == 2U,
+        "conversion failure hides partially collected raw");
+  frame[16] = 0U;
+  frame[33] = 0x2AU;
+  diagnostic.throws = true;
+  const auto fault = session->Decode(handle, bytes, sink, observer);
+  Check(fault.status == host::Status::CALLBACK_FAILED && diagnostic.valid && business_calls == 2U,
+        "raw observer exception suppresses business");
+
+  const auto framing_kind = json.find("\"input_kind\": \"complete_record\"");
+  Check(framing_kind != std::string::npos, "raw fixture framing");
+  json.replace(framing_kind, std::string("\"input_kind\": \"complete_record\"").size(),
+               "\"input_kind\": \"stream_chunk\", \"strategy\": \"fixed_length\", "
+               "\"frame_length_bytes\": 34");
+  session = Make(json, &spec, 1U);
+  const auto stream = session->Find("raw", host::Action::DECODE);
+  diagnostic.throws = false;
+  std::array<std::uint8_t, 68> pair{};
+  std::copy(frame.begin(), frame.end(), pair.begin());
+  std::copy(frame.begin(), frame.end(), pair.begin() + 34);
+  allocations = 0U;
+  count_allocations = true;
+  const auto stopped = session->Push(stream, {pair.data(), pair.size()}, sink, observer);
+  count_allocations = false;
+  Check(stopped.framing.bytes_consumed == 34U && stopped.successful_outputs == 1U &&
+            stopped.observed_candidates == 1U && diagnostic.valid && allocations == 0U,
+        "stream raw STOP preserves suffix and allocates nothing");
+  diagnostic.throws = true;
+  const auto stream_fault = session->Push(stream, {pair.data() + 34, 34U}, sink, observer);
+  Check(stream_fault.status == host::Status::CALLBACK_FAILED &&
+            stream_fault.framing.bytes_consumed == 34U && stream_fault.successful_outputs == 0U &&
+            session->Observe(stream).reset_required && diagnostic.valid,
+        "stream raw exception preserves consumption and requires reset");
+  Check(session->Reset(stream) == host::Status::OK, "raw stream reset");
+  diagnostic.throws = false;
+  Check(session->Push(stream, bytes, sink, observer).successful_outputs == 1U && diagnostic.valid,
+        "raw observation recovers after reset");
+}
 }  // namespace
 int main(int argc, char** argv) {
 #if defined(_MSC_VER)
@@ -475,7 +614,7 @@ int main(int argc, char** argv) {
   _CrtSetReportMode(_CRT_ASSERT, _CRTDBG_MODE_FILE);
   _CrtSetReportFile(_CRT_ASSERT, _CRTDBG_FILE_STDERR);
 #endif
-  if (argc != 4) return 1;
+  if (argc != 5) return 1;
   try {
     const auto ascii = Read(argv[1]);
     Registration(ascii);
@@ -483,6 +622,7 @@ int main(int argc, char** argv) {
     Budgets(ascii);
     Binary(Read(argv[2]));
     CandidateObservation(ascii);
+    RawCandidateObservation(Read(argv[4]));
     std::cout << "HOST_ENDPOINT_CONTRACT=PASS\n";
     return 0;
   } catch (const std::exception& error) {

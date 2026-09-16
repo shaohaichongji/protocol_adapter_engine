@@ -5,6 +5,7 @@
 #include <QHeaderView>
 #include <QString>
 #include <algorithm>
+#include <exception>
 
 namespace pae::protocol_lab_ui {
 namespace {
@@ -80,9 +81,16 @@ class HexView::Model final : public QAbstractTableModel {
     return QStringLiteral("%1").arg(section - 1, 2, 16, QLatin1Char('0')).toUpper();
   }
 
-  void SetFrame(std::vector<std::uint8_t> frame, const std::vector<PhysicalBitMask>& highlights) {
+  bool PrepareCapacity(std::size_t frame_capacity) {
+    frame_.reserve(frame_capacity);
+    highlight_masks_.reserve(frame_capacity);
+    return frame_.capacity() >= frame_capacity && highlight_masks_.capacity() >= frame_capacity;
+  }
+
+  void SetFrame(const std::vector<std::uint8_t>& frame,
+                const std::vector<PhysicalBitMask>& highlights) {
     beginResetModel();
-    frame_ = std::move(frame);
+    frame_.assign(frame.begin(), frame.end());
     highlight_masks_.assign(frame_.size(), 0U);
     for (const auto& highlight : highlights) {
       if (highlight.frame_byte_index < highlight_masks_.size()) {
@@ -93,9 +101,17 @@ class HexView::Model final : public QAbstractTableModel {
     endResetModel();
   }
 
-  void ClearFrame() { SetFrame({}, {}); }
+  void ClearFrame() {
+    static const std::vector<std::uint8_t> empty_frame;
+    static const std::vector<PhysicalBitMask> empty_highlights;
+    SetFrame(empty_frame, empty_highlights);
+  }
 
   std::size_t FrameSize() const noexcept { return frame_.size(); }
+
+  std::size_t AccountedCapacityBytes() const noexcept {
+    return frame_.capacity() + highlight_masks_.capacity();
+  }
 
   std::size_t HighlightedCellCount() const noexcept {
     return static_cast<std::size_t>(std::count_if(highlight_masks_.begin(), highlight_masks_.end(),
@@ -127,9 +143,29 @@ HexView::HexView(QWidget* parent) : QTableView(parent), model_(new Model(this)) 
 
 HexView::~HexView() = default;
 
-void HexView::SetFrame(std::vector<std::uint8_t> frame,
+bool HexView::PrepareCapacity(std::size_t frame_capacity) noexcept {
+  if (fail_next_capacity_preparation_) {
+    fail_next_capacity_preparation_ = false;
+    return false;
+  }
+  try {
+    return model_->PrepareCapacity(frame_capacity);
+  } catch (const std::exception&) {
+    return false;
+  }
+}
+
+void HexView::FailNextCapacityPreparationForTest() noexcept {
+  fail_next_capacity_preparation_ = true;
+}
+
+std::size_t HexView::AccountedCapacityBytes() const noexcept {
+  return model_->AccountedCapacityBytes();
+}
+
+void HexView::SetFrame(const std::vector<std::uint8_t>& frame,
                        const std::vector<PhysicalBitMask>& highlights) {
-  model_->SetFrame(std::move(frame), highlights);
+  model_->SetFrame(frame, highlights);
 }
 
 void HexView::ClearFrame() { model_->ClearFrame(); }

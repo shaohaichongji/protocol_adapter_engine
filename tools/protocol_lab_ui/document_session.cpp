@@ -1,4 +1,7 @@
 #include "document_session.h"
+#if defined(PAE_BUILD_PROTOCOL_LAB_BINARY_PUBLIC_H2)
+#include "public_binary_description.h"
+#endif
 
 #include <algorithm>
 #include <limits>
@@ -131,6 +134,203 @@ bool DocumentSession::AsciiBackendReady() const noexcept {
   return false;
 #endif
 }
+
+#if defined(PAE_BUILD_PROTOCOL_LAB_BINARY_UI)
+std::optional<DocumentSession::BinaryPublication> DocumentSession::PrepareBinaryHostPublication(
+    std::unique_ptr<BinaryHostAdapter> adapter, Revision expected_request,
+    BinaryPreparationHook before_copy) {
+  if (!IsBinaryHostDocument() || !adapter || adapter->Bindings().empty() || !prepared_)
+    return std::nullopt;
+  if (binary_session_revision_ == (std::numeric_limits<Revision>::max)() ||
+      plan_generation_ == (std::numeric_limits<Revision>::max)())
+    return std::nullopt;
+  const auto& identity = adapter->Identity();
+  if (identity.document != document_id_ || identity.load != load_revision_ ||
+      identity.session != binary_session_revision_ + 1U || identity.request != expected_request ||
+      identity.config_sha256 != prepared_->config_sha256 ||
+      adapter->Description().schema_version != "0.9")
+    return std::nullopt;
+  const auto& first = adapter->Bindings().front();
+  if (first.action !=
+#if defined(PAE_BUILD_PROTOCOL_LAB_BINARY_PUBLIC_H2)
+          pae::HostAction::DECODE
+#else
+          host_endpoint::Action::DECODE
+#endif
+      || adapter->FlowCount(0U) == 0U)
+    return std::nullopt;
+  const auto found =
+      std::find_if(adapter->Description().pipelines.begin(), adapter->Description().pipelines.end(),
+                   [&](const auto& value) { return value.id == first.pipeline_id; });
+  if (found == adapter->Description().pipelines.end() || found->message_indices.empty())
+    return std::nullopt;
+  const std::size_t initial_pipeline_index = found->pipeline_index;
+  const std::size_t initial_message_index = found->message_indices.front();
+  if (initial_message_index >= adapter->Description().messages.size()) return std::nullopt;
+  try {
+    if (before_copy != nullptr) before_copy();
+    BinaryPublication publication;
+    publication.session_revision = identity.session;
+    publication.description = adapter->TakeDescription();
+    const auto& pipeline = publication.description.pipelines[initial_pipeline_index];
+    const auto& message = publication.description.messages[initial_message_index];
+    publication.selection = SelectionKey{plan_generation_ + 1U, initial_pipeline_index, pipeline.id,
+                                         initial_message_index, message.id};
+    publication.adapter = std::move(adapter);
+    return publication;
+  } catch (const std::exception&) {
+    return std::nullopt;
+  }
+}
+
+void DocumentSession::PublishBinaryHostPublication(BinaryPublication publication) noexcept {
+  static_assert(std::is_nothrow_move_assignable_v<DocumentDescription>);
+  static_assert(std::is_nothrow_move_assignable_v<SelectionKey>);
+  description_ = std::move(publication.description);
+  prepared_->binary_host_adapter = std::move(publication.adapter);
+  binary_host_binding_ = 0U;
+  binary_host_flow_ = 0U;
+  binary_session_revision_ = publication.session_revision;
+  ++plan_generation_;
+  ClearSelectionAndPreview();
+  ClearInspectOutcome();
+  inspect_draft_ = std::move(publication.inspect_draft);
+  inspect_draft_utf16_ = std::move(publication.inspect_draft_utf16);
+  inspect_result_ = std::move(publication.inspect_result);
+  inspect_failure_ = std::move(publication.inspect_failure);
+  selected_pipeline_index_ = publication.selection.pipeline_index;
+  selection_ = std::move(publication.selection);
+  mode_ = OperationMode::INSPECT;
+  representation_ = ByteRepresentation::HEX;
+  diagnostic_id_.clear();
+  diagnostic_detail_.clear();
+  state_ = DocumentState::READY;
+}
+
+std::optional<DocumentSession::BinaryFlowPublication> DocumentSession::PrepareBinaryHostFlow(
+    std::size_t binding, std::size_t flow, BinaryPreparationHook before_copy) const {
+  if (!BinaryHostActive() || binding >= prepared_->binary_host_adapter->Bindings().size() ||
+      flow >= prepared_->binary_host_adapter->FlowCount(binding))
+    return std::nullopt;
+  if (binding == binary_host_binding_ && flow == binary_host_flow_) {
+    BinaryFlowPublication unchanged;
+    unchanged.binding = binding;
+    unchanged.flow = flow;
+    unchanged.pipeline_index = *selected_pipeline_index_;
+    return unchanged;
+  }
+  const auto& target = prepared_->binary_host_adapter->Bindings()[binding];
+  const auto found =
+      std::find_if(description_->pipelines.begin(), description_->pipelines.end(),
+                   [&](const auto& value) { return value.id == target.pipeline_id; });
+  if (found == description_->pipelines.end() || found->message_indices.empty()) return std::nullopt;
+  const auto message_index = found->message_indices.front();
+  if (message_index >= description_->messages.size()) return std::nullopt;
+  try {
+    if (before_copy != nullptr) before_copy();
+    BinaryFlowPublication publication;
+    publication.binding = binding;
+    publication.flow = flow;
+    publication.pipeline_index = found->pipeline_index;
+    publication.selection = SelectionKey{plan_generation_, found->pipeline_index, found->id,
+                                         message_index, description_->messages[message_index].id};
+    const auto draft = prepared_->binary_host_adapter->Draft(binding, flow);
+    publication.inspect_draft_utf16.assign(draft.begin(), draft.end());
+    publication.inspect_draft.reserve(draft.size());
+    for (const auto value : draft)
+      publication.inspect_draft.push_back(value <= 0xFFU ? static_cast<char>(value) : '?');
+    auto view =
+        prepared_->binary_host_adapter->MapCurrent(binding, flow, binary_active_view_bytes_);
+    InspectResultKey key;
+    key.document_id = document_id_;
+    key.load_revision = load_revision_;
+    key.plan_generation = plan_generation_;
+    key.pipeline_selection_revision = pipeline_selection_revision_ + 1U;
+    key.inspect_input_revision = inspect_input_revision_ + 1U;
+    key.inspect_request_revision = inspect_request_revision_;
+    key.pipeline_index = found->pipeline_index;
+    key.pipeline_id = found->id;
+    if (view.result) {
+      publication.mapped_view_bytes = view.result->accounted_bytes;
+      InspectResult result;
+      result.key = std::move(key);
+      result.input_frame = std::move(view.result->frame);
+      result.message_index = view.result->message_index;
+      result.message_id = std::move(view.result->message_id);
+      result.fields = std::move(view.result->fields);
+      result.zero_field_success = result.fields.empty();
+      publication.inspect_result = std::move(result);
+    } else if (view.failure) {
+      publication.mapped_view_bytes = view.failure->accounted_bytes;
+      InspectFailure failure;
+      failure.stage = InspectFailureStage::CODEC;
+#if defined(PAE_BUILD_PROTOCOL_LAB_BINARY_PUBLIC_H2)
+      failure.status = PublicBinaryCodecStatusName(view.public_host.codec_status);
+#else
+      failure.status = std::string{protocol_lab::ascii::CodecStatusName(view.host.codec_status)};
+#endif
+      failure.diagnostic_id = "UI_BINARY_HOST_DECODE_FAILED";
+      failure.detail = "Binary Host complete-record Decode failed";
+      failure.input_frame = std::move(view.failure->diagnostic_frame);
+      failure.message_index = view.failure->message_index;
+      failure.failed_field_index = view.failure->failed_field_index;
+      publication.inspect_failure = std::move(failure);
+    }
+    return publication;
+  } catch (const std::exception&) {
+    return std::nullopt;
+  }
+}
+
+bool DocumentSession::PublishBinaryHostFlow(BinaryFlowPublication publication) {
+  if (!BinaryHostActive() ||
+      publication.binding >= prepared_->binary_host_adapter->Bindings().size() ||
+      publication.flow >= prepared_->binary_host_adapter->FlowCount(publication.binding))
+    return false;
+  if (publication.binding == binary_host_binding_ && publication.flow == binary_host_flow_)
+    return true;
+  try {
+    prepared_->binary_host_adapter->SaveAndSelect(inspect_draft_utf16_, publication.binding,
+                                                  publication.flow);
+  } catch (const std::exception&) {
+    return false;
+  }
+  binary_host_binding_ = publication.binding;
+  binary_host_flow_ = publication.flow;
+  ++selection_revision_;
+  ++pipeline_selection_revision_;
+  ++inspect_input_revision_;
+  selected_pipeline_index_ = publication.pipeline_index;
+  selection_ = std::move(publication.selection);
+  drafts_.clear();
+  invalid_drafts_.clear();
+  ClearPreview();
+  ClearInspectOutcome();
+  inspect_draft_ = std::move(publication.inspect_draft);
+  inspect_draft_utf16_ = std::move(publication.inspect_draft_utf16);
+  inspect_result_ = std::move(publication.inspect_result);
+  inspect_failure_ = std::move(publication.inspect_failure);
+  binary_active_view_bytes_ = publication.mapped_view_bytes;
+  mode_ = OperationMode::INSPECT;
+  representation_ = ByteRepresentation::HEX;
+  ClearEncodeFailure();
+  diagnostic_id_.clear();
+  diagnostic_detail_.clear();
+  RefreshDocumentState();
+  return true;
+}
+
+bool DocumentSession::BinaryHasDiscardableState() const noexcept {
+  if (!BinaryHostActive()) return false;
+  if (!inspect_draft_.empty() || inspect_result_ || inspect_failure_) return true;
+  const auto& adapter = *prepared_->binary_host_adapter;
+  for (std::size_t binding = 0U; binding < adapter.Bindings().size(); ++binding)
+    for (std::size_t flow = 0U; flow < adapter.FlowCount(binding); ++flow)
+      if (!adapter.Draft(binding, flow).empty() || adapter.Current(binding, flow) != nullptr)
+        return true;
+  return false;
+}
+#endif
 
 #if defined(PAE_BUILD_PROTOCOL_LAB_HOST_OBSERVER)
 bool DocumentSession::ApplyHostAdapter(
@@ -284,6 +484,45 @@ bool DocumentSession::ApplyCompileCompletion(std::unique_ptr<CompileCompletion> 
       completion->document_id != document_id_ || completion->load_revision != load_revision_) {
     return false;
   }
+#if defined(PAE_BUILD_PROTOCOL_LAB_BINARY_PUBLIC_H2)
+  if (completion->route == SchemaDispatchStatus::CLASSIFICATION_FAILED) {
+    SetDiagnostic("UI_SCHEMA_CLASSIFICATION_FAILED", completion->classification_error);
+    state_ = DocumentState::CONFIG_ERROR;
+    return false;
+  }
+  if (completion->route == SchemaDispatchStatus::BINARY_PUBLIC) {
+    if (!completion->public_compiled || completion->public_diagnostic) {
+      SetDiagnostic("UI_PUBLIC_BINARY_COMPILE_FAILED",
+                    completion->public_diagnostic ? completion->public_diagnostic->detail
+                                                  : "public compiler returned no owner");
+      state_ = DocumentState::CONFIG_ERROR;
+      return false;
+    }
+    DocumentDescription neutral;
+    std::string mapping_error;
+    if (!BuildPublicBinaryDescription(*completion->public_compiled, neutral, mapping_error)) {
+      SetDiagnostic("UI_PUBLIC_BINARY_MAPPING_FAILED", std::move(mapping_error));
+      state_ = DocumentState::CONFIG_ERROR;
+      return false;
+    }
+    prepared_ = std::make_unique<PreparedDocument>();
+    prepared_->config_sha256 = std::move(completion->config_sha256);
+    description_ = std::move(neutral);
+    ++plan_generation_;
+    diagnostic_id_.clear();
+    diagnostic_detail_.clear();
+    if (!SetInitialSelection()) {
+      prepared_.reset();
+      description_.reset();
+      SetDiagnostic("UI_EMPTY_PLAN_SELECTION", "public Binary description has no selection");
+      state_ = DocumentState::CONFIG_ERROR;
+      return false;
+    }
+    mode_ = OperationMode::INSPECT;
+    state_ = DocumentState::READY;
+    return true;
+  }
+#endif
   if (completion->artifacts == nullptr || completion->diagnostic.has_value()) {
     if (completion->diagnostic.has_value()) {
       SetDiagnostic("UI_CONFIG_COMPILE_FAILED", completion->diagnostic->detail);
@@ -308,7 +547,12 @@ bool DocumentSession::ApplyCompileCompletion(std::unique_ptr<CompileCompletion> 
                             || schema == "0.11"
 #endif
       ;
-  if (!legacy_schema && !ascii_schema) {
+  const bool binary_host_schema = schema == "0.9"
+#if !defined(PAE_BUILD_PROTOCOL_LAB_BINARY_UI)
+                                  && false
+#endif
+      ;
+  if (!legacy_schema && !ascii_schema && !binary_host_schema) {
     SetDiagnostic("UI_SCHEMA_UNSUPPORTED", "the UI supports its explicitly compiled schemas");
     state_ = DocumentState::CONFIG_ERROR;
     return false;
@@ -318,23 +562,28 @@ bool DocumentSession::ApplyCompileCompletion(std::unique_ptr<CompileCompletion> 
   std::string mapping_error;
   auto prepared = std::make_unique<PreparedDocument>();
   prepared->config_sha256 = std::move(completion->config_sha256);
-  if (legacy_schema) {
+  if (legacy_schema || binary_host_schema) {
     if (!BuildDocumentDescription(*plan, artifacts.Description(), neutral_description,
                                   mapping_error)) {
       SetDiagnostic("UI_DESCRIPTION_MAPPING_FAILED", std::move(mapping_error));
       state_ = DocumentState::CONFIG_ERROR;
       return false;
     }
-    prepared->description = artifacts.TakeDescription();
-    protocol_lab::v06::PreparationFailure failure;
-    prepared->bridge = protocol_lab::v06::ExecutionBridge::AdoptCompiledPlan(
-        artifacts.TakePlan(), prepared->config_sha256, failure);
-    if (prepared->bridge == nullptr) {
-      SetDiagnostic(failure.diagnostic_id.empty() ? "UI_BRIDGE_ADOPTION_FAILED"
-                                                  : std::move(failure.diagnostic_id),
-                    std::move(failure.detail));
-      state_ = DocumentState::CONFIG_ERROR;
-      return false;
+    if (binary_host_schema) {
+      // Schema 0.9 starts deliberately unbound. Keep only the neutral UI description and
+      // config identity; an explicit Apply compiles a fresh uniquely-owned candidate.
+    } else {
+      prepared->description = artifacts.TakeDescription();
+      protocol_lab::v06::PreparationFailure failure;
+      prepared->bridge = protocol_lab::v06::ExecutionBridge::AdoptCompiledPlan(
+          artifacts.TakePlan(), prepared->config_sha256, failure);
+      if (prepared->bridge == nullptr) {
+        SetDiagnostic(failure.diagnostic_id.empty() ? "UI_BRIDGE_ADOPTION_FAILED"
+                                                    : std::move(failure.diagnostic_id),
+                      std::move(failure.detail));
+        state_ = DocumentState::CONFIG_ERROR;
+        return false;
+      }
     }
   } else {
 #if defined(PAE_ENABLE_SCHEMA_V10_ASCII_TEXT_CODEC)
@@ -370,6 +619,9 @@ bool DocumentSession::ApplyCompileCompletion(std::unique_ptr<CompileCompletion> 
     state_ = DocumentState::CONFIG_ERROR;
     return false;
   }
+#if defined(PAE_BUILD_PROTOCOL_LAB_BINARY_UI)
+  if (binary_host_schema) mode_ = OperationMode::INSPECT;
+#endif
   state_ = DocumentState::READY;
   return true;
 }
@@ -425,8 +677,8 @@ bool DocumentSession::SetRepresentation(ByteRepresentation representation) {
     const char* requested = representation == ByteRepresentation::HEX ? "Hex" : "ASCII (escaped)";
     SetDiagnostic("UI_ASCII_INPUT_INVALID",
                   std::string("Representation switch rejected (") + current + " -> " + requested +
-                      "). Current format remains " + current + "; draft and stream state preserved. " +
-                      "Reason: " + reason +
+                      "). Current format remains " + current +
+                      "; draft and stream state preserved. " + "Reason: " + reason +
                       ". Correct the draft in the current format, or copy/clear the draft, "
                       "switch format, then enter new input.");
     return false;
@@ -540,8 +792,12 @@ bool DocumentSession::SetRepresentation(ByteRepresentation representation) {
 }
 
 bool DocumentSession::EncodeAvailable() const noexcept {
+#if defined(PAE_BUILD_PROTOCOL_LAB_BINARY_UI)
+  if (IsBinaryHostDocument()) return false;
+#endif
 #if defined(PAE_BUILD_PROTOCOL_LAB_HOST_OBSERVER)
-  if (HostActive() && prepared_->host_adapter->Bindings()[host_binding_].action != host_endpoint::Action::ENCODE)
+  if (HostActive() &&
+      prepared_->host_adapter->Bindings()[host_binding_].action != host_endpoint::Action::ENCODE)
     return false;
 #endif
   const MessageDescriptor* message = nullptr;
@@ -549,8 +805,14 @@ bool DocumentSession::EncodeAvailable() const noexcept {
 }
 
 bool DocumentSession::InspectAvailable() const noexcept {
+#if defined(PAE_BUILD_PROTOCOL_LAB_BINARY_UI)
+  if (IsBinaryHostDocument())
+    return BinaryHostActive() && prepared_->binary_host_adapter->IsCompleteDecode(
+                                     binary_host_binding_, binary_host_flow_);
+#endif
 #if defined(PAE_BUILD_PROTOCOL_LAB_HOST_OBSERVER)
-  if (HostActive() && prepared_->host_adapter->Bindings()[host_binding_].action != host_endpoint::Action::DECODE)
+  if (HostActive() &&
+      prepared_->host_adapter->Bindings()[host_binding_].action != host_endpoint::Action::DECODE)
     return false;
 #endif
   return description_.has_value() && selected_pipeline_index_.has_value() &&
@@ -729,7 +991,7 @@ bool DocumentSession::Encode(protocol_lab::v06::ExecutionObserver* observer,
 #if defined(PAE_BUILD_PROTOCOL_LAB_HOST_OBSERVER)
         HostActive() ? prepared_->host_adapter->Encode(host_binding_, identity, inputs) :
 #endif
-        prepared_->ascii_adapter->Encode(std::move(identity), inputs);
+                     prepared_->ascii_adapter->Encode(std::move(identity), inputs);
     if (!PreviewKeyStillCurrent(requested_key) ||
         outcome.status != protocol_lab::ascii::AdapterStatus::OK) {
       const std::string status =
@@ -848,11 +1110,14 @@ bool DocumentSession::Encode(protocol_lab::v06::ExecutionObserver* observer,
 }
 
 bool DocumentSession::SetInspectDraft(std::string text) {
-  std::u16string converted;
-  converted.reserve(text.size());
-  for (const unsigned char value : text) converted.push_back(static_cast<char16_t>(value));
-  inspect_draft_ = text;
-  return SetInspectDraftUtf16(std::move(converted));
+  try {
+    std::u16string converted;
+    converted.reserve(text.size());
+    for (const unsigned char value : text) converted.push_back(static_cast<char16_t>(value));
+    return SetInspectDraftUtf16(std::move(converted));
+  } catch (const std::exception&) {
+    return false;
+  }
 }
 
 bool DocumentSession::SetInspectDraftUtf16(std::u16string text) {
@@ -861,12 +1126,16 @@ bool DocumentSession::SetInspectDraftUtf16(std::u16string text) {
     return false;
   }
   if (inspect_draft_utf16_ == text) return true;
-  inspect_draft_utf16_ = std::move(text);
-  inspect_draft_.clear();
-  inspect_draft_.reserve(inspect_draft_utf16_.size());
-  for (const char16_t value : inspect_draft_utf16_) {
-    inspect_draft_.push_back(value <= 0xFFU ? static_cast<char>(value) : '?');
+  std::string narrowed;
+  try {
+    narrowed.reserve(text.size());
+    for (const char16_t value : text)
+      narrowed.push_back(value <= 0xFFU ? static_cast<char>(value) : '?');
+  } catch (const std::exception&) {
+    return false;
   }
+  inspect_draft_utf16_ = std::move(text);
+  inspect_draft_ = std::move(narrowed);
   ++inspect_input_revision_;
   ClearInspectOutcome();
   diagnostic_id_.clear();
@@ -911,6 +1180,78 @@ bool DocumentSession::Inspect(protocol_lab::v06::ExecutionObserver* observer) {
 
   const InspectResultKey requested_key = MakeInspectResultKey();
   const std::size_t budget = InspectFrameBudget();
+#if defined(PAE_BUILD_PROTOCOL_LAB_BINARY_UI)
+  if (IsBinaryHostDocument()) {
+    if (!BinaryHostActive() || !prepared_->binary_host_adapter->IsCompleteDecode(
+                                   binary_host_binding_, binary_host_flow_)) {
+      inspect_failure_ = InspectFailure{
+          InspectFailureStage::INPUT, "UI_INSPECT_OPERATION_NOT_SUPPORTED",
+          "Schema 0.9 requires an active complete-record Decode binding", "WRONG_INPUT_KIND"};
+      SetDiagnostic(inspect_failure_->diagnostic_id, inspect_failure_->detail);
+      RefreshDocumentState();
+      return false;
+    }
+    auto parsed = ParseInspectHex(inspect_draft_, budget);
+    if (!parsed.ok()) {
+      InspectFailure failure;
+      failure.stage = InspectFailureStage::INPUT;
+      failure.diagnostic_id = InspectHexDiagnosticId(parsed.error);
+      failure.detail =
+          InspectFailureDetail(InspectHexErrorDetail(parsed.error), parsed.input_offset);
+      failure.input_offset = parsed.input_offset;
+      inspect_failure_ = std::move(failure);
+      SetDiagnostic(inspect_failure_->diagnostic_id, inspect_failure_->detail);
+      RefreshDocumentState();
+      return false;
+    }
+    try {
+      auto view = prepared_->binary_host_adapter->DecodeComplete(
+          binary_host_binding_, binary_host_flow_, parsed.bytes, binary_active_view_bytes_);
+      if (!InspectKeyStillCurrent(requested_key)) return false;
+      if (!view.ok || !view.result) {
+        InspectFailure failure;
+        failure.stage = InspectFailureStage::CODEC;
+#if defined(PAE_BUILD_PROTOCOL_LAB_BINARY_PUBLIC_H2)
+        failure.status = PublicBinaryCodecStatusName(view.public_host.codec_status);
+#else
+        failure.status = std::string{protocol_lab::ascii::CodecStatusName(view.host.codec_status)};
+#endif
+        failure.diagnostic_id = "UI_BINARY_HOST_DECODE_FAILED";
+        failure.detail = "Binary Host complete-record Decode failed";
+        if (view.failure) {
+          binary_active_view_bytes_ = view.failure->accounted_bytes;
+          failure.input_frame = std::move(view.failure->diagnostic_frame);
+          failure.message_index = view.failure->message_index;
+          failure.failed_field_index = view.failure->failed_field_index;
+        }
+        inspect_failure_ = std::move(failure);
+        SetDiagnostic(inspect_failure_->diagnostic_id, inspect_failure_->detail);
+        RefreshDocumentState();
+        return false;
+      }
+      InspectResult result;
+      binary_active_view_bytes_ = view.result->accounted_bytes;
+      result.key = requested_key;
+      result.input_frame = std::move(view.result->frame);
+      result.message_index = view.result->message_index;
+      result.message_id = std::move(view.result->message_id);
+      result.fields = std::move(view.result->fields);
+      result.zero_field_success = result.fields.empty();
+      inspect_result_ = std::move(result);
+      diagnostic_id_.clear();
+      diagnostic_detail_.clear();
+      RefreshDocumentState();
+      return true;
+    } catch (const std::exception& exception) {
+      inspect_failure_ = InspectFailure{InspectFailureStage::MATERIALIZATION,
+                                        "UI_BINARY_VIEW_MATERIALIZATION_FAILED", exception.what(),
+                                        "MATERIALIZATION_FAILED"};
+      SetDiagnostic(inspect_failure_->diagnostic_id, inspect_failure_->detail);
+      RefreshDocumentState();
+      return false;
+    }
+  }
+#endif
 #if defined(PAE_ENABLE_SCHEMA_V10_ASCII_TEXT_CODEC)
   if (IsAsciiDocument()) {
 #if defined(PAE_BUILD_PROTOCOL_LAB_ASCII_STREAM_OBSERVER)
@@ -992,9 +1333,11 @@ bool DocumentSession::Inspect(protocol_lab::v06::ExecutionObserver* observer) {
     identity.pipeline_id = pipeline.id;
     auto outcome =
 #if defined(PAE_BUILD_PROTOCOL_LAB_HOST_OBSERVER)
-        HostActive() ? prepared_->host_adapter->Inspect(host_binding_, host_stream_, identity, input) :
+        HostActive()
+            ? prepared_->host_adapter->Inspect(host_binding_, host_stream_, identity, input)
+            :
 #endif
-        prepared_->ascii_adapter->Inspect(std::move(identity), input);
+            prepared_->ascii_adapter->Inspect(std::move(identity), input);
     if (!InspectKeyStillCurrent(requested_key)) return false;
     if (outcome.status != protocol_lab::ascii::AdapterStatus::OK) {
       InspectFailure failure;
@@ -1159,10 +1502,10 @@ bool DocumentSession::Inspect(protocol_lab::v06::ExecutionObserver* observer) {
 #if defined(PAE_BUILD_PROTOCOL_LAB_ASCII_STREAM_OBSERVER)
 bool DocumentSession::StreamInspectAvailable() const noexcept {
 #if defined(PAE_BUILD_PROTOCOL_LAB_HOST_OBSERVER)
-  if (HostActive()) return prepared_->host_adapter->Observe(host_binding_, host_stream_).has_value();
+  if (HostActive())
+    return prepared_->host_adapter->Observe(host_binding_, host_stream_).has_value();
 #endif
-  return AsciiBackendReady() && description_.has_value() &&
-         selected_pipeline_index_.has_value() &&
+  return AsciiBackendReady() && description_.has_value() && selected_pipeline_index_.has_value() &&
          *selected_pipeline_index_ < description_->pipelines.size() &&
          description_->pipelines[*selected_pipeline_index_].stream_ascii_crlf;
 }
@@ -1285,7 +1628,7 @@ bool DocumentSession::SubmitStream() {
 #if defined(PAE_BUILD_PROTOCOL_LAB_HOST_OBSERVER)
       HostActive() ? prepared_->host_adapter->Submit(host_binding_, host_stream_, identity, input) :
 #endif
-      prepared_->ascii_adapter->SubmitStreamChunk(std::move(identity), input);
+                   prepared_->ascii_adapter->SubmitStreamChunk(std::move(identity), input);
   if (stream_step_->push_called) submitted_stream_input_revision_ = inspect_input_revision_;
   inspect_result_.reset();
   inspect_failure_.reset();
@@ -1338,7 +1681,7 @@ bool DocumentSession::ContinueStream() {
 #if defined(PAE_BUILD_PROTOCOL_LAB_HOST_OBSERVER)
       HostActive() ? prepared_->host_adapter->Continue(host_binding_, host_stream_, identity) :
 #endif
-      prepared_->ascii_adapter->ContinueStream(std::move(identity));
+                   prepared_->ascii_adapter->ContinueStream(std::move(identity));
   inspect_result_.reset();
   inspect_failure_.reset();
   if (stream_step_->status != protocol_lab::ascii::AdapterStatus::OK) {
@@ -1374,9 +1717,11 @@ bool DocumentSession::ResetStream() {
   std::string error;
   const bool reset =
 #if defined(PAE_BUILD_PROTOCOL_LAB_HOST_OBSERVER)
-      HostActive() ? prepared_->host_adapter->Reset(host_binding_, host_stream_) :
+      HostActive()
+          ? prepared_->host_adapter->Reset(host_binding_, host_stream_)
+          :
 #endif
-      prepared_->ascii_adapter->ResetStream(pipeline.pipeline_index, pipeline.id, error);
+          prepared_->ascii_adapter->ResetStream(pipeline.pipeline_index, pipeline.id, error);
   if (!reset) {
     SetDiagnostic("UI_STREAM_RESET_FAILED", std::move(error));
     return false;
@@ -1424,6 +1769,9 @@ void DocumentSession::ClearPreview() { preview_.reset(); }
 void DocumentSession::ClearInspectOutcome() {
   inspect_result_.reset();
   inspect_failure_.reset();
+#if defined(PAE_BUILD_PROTOCOL_LAB_BINARY_UI)
+  binary_active_view_bytes_ = 0U;
+#endif
 #if defined(PAE_BUILD_PROTOCOL_LAB_ASCII_STREAM_OBSERVER)
   stream_step_.reset();
 #endif

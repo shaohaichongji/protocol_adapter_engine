@@ -1,25 +1,56 @@
-# Source
+# Source layout
 
-当前源码包含三个相互分层的内部目标：
+本目录保存 PAE（Protocol Adapter Engine，协议适配引擎）的内部实现，以及面向
+`include/pae/` 公开头的薄适配层。推荐先阅读 [`../include/README.md`](../include/README.md)
+确认公开消费边界，再按所关心的能力进入本目录；仓库内部 target、头文件和命名空间不属于稳定公共 API。
 
-- `pae_protocol_plan`保存PAE（Protocol Adapter Engine，协议适配引擎）自有的内部草案载荷、`BudgetedPlanDraft（已预算计划草案）`、`PlanBuilder（计划构建器）`、不可变`PlanBundle`及其类型化冷元数据和热执行描述符。最终Plan的`FrozenString/FrozenArray`使用单一`PlanStorageBlock`，`PlanArena`精确分类计费，`PlanOwner`负责move-only（仅移动）所有权；`PlanBuilder`只接受不可伪造的`BudgetedPlanDraft`，`PlanBundle`不可复制或移动；该目标已经从`config_compiler`抽离，不依赖yyjson或其他JSON Parser（解析器）；
-- `pae_config_compiler`把严格JSON依次编译为`SchemaIr → ValidatedSchemaIr → BudgetedSchemaIr → BudgetedPlanDraft`，完成结构、领域和资源校验后生成完整`PlanBundle`；ResourceBudget阶段在产生Budgeted能力前完成精确单Plan内存准入并携带批准报告与Limit；三种能力对象只能移动，不能默认构造或复制，移动后的对象不能成功重复进入后续阶段；
-- `pae_protocol_core_slice`是首个`COMPLETE_RECORD（完整记录）`Codec（编解码器）内部切片，直接消费`PlanBundle`，不读取JSON，也不依赖`config_compiler`或yyjson。
+## 目录职责
 
-当前依赖方向为：
+- `protocol_plan/`：保存冻结 `PlanBundle`、类型化元数据、热执行描述符及预算后的所有权模型。
+- `config_compiler/`：把严格 JSON 经 Schema IR、校验和资源预算编译为完整 `PlanBundle`；
+  yyjson 只作为该层的私有配置加载依赖。
+- `protocol_core/`：按冻结 Plan 执行 `COMPLETE_RECORD` Decode/Encode；不读取 JSON，
+  不负责通信、线程、设备生命周期或 UI。
+- `protocol_framing/`：依据切帧契约从输入流形成候选记录；候选形成不等于 Codec 或业务成功。
+- `host_endpoint/`：提供内部 Host 绑定和调用边界；不默认拥有 Socket、串口、重试或业务路由。
+- `public_api/`：实现 `include/pae/` 声明的 experimental `0.x` C++17 facade，并由单一公开
+  CMake target `PAE::pae` 承载。当前已实现配置编译、通用及消费准备 metadata、
+  `COMPLETE_RECORD` Decode/Encode、有界 `STREAM_CHUNK` Framing，以及应用无关的同步 Host 组合层；
+  内部 Plan、映射和 workspace 不暴露给消费者。
+- `core/`：当前为空的历史占位目录，不承担现行构建职责。
+
+内部主要依赖方向为：
 
 ```text
-pae_config_compiler ──→ pae_protocol_plan ←── pae_protocol_core_slice
-         │
-         └──→ yyjson（仅配置加载私有依赖）
+config_compiler ──┐
+protocol_core ────┼──→ protocol_plan
+protocol_framing ─┘
+
+host_endpoint ──→ protocol_core + protocol_framing
+
+include/pae/* ←── public_api（公开适配层）──→ 已纳入公开契约的内部能力
 ```
 
-`pae_protocol_core_slice`的入口使用`PlanBundle + ExecutionWorkspace（执行工作区）+ pipeline_index`选择有向Pipeline（管线）。当前支持确定性Matcher、`UINT64`、字节对齐补码`INT64`、固定长度`BYTES`、`ENUM`和位成员`BOOL`，以及整数`input/constant`。INT64使用独立类型和`std::int64_t`，不与UINT64隐式转换。字段和Enum引用绑定原Plan作用域；完成输入预检、写入、完整性及最终复核后才交付结果。
+这是职责和依赖边界，不要求所有调用经过同一条串行链路。公开消费者应只 include
+`pae/*` 并链接 `PAE::pae`，不能直接依赖本目录的内部 target 或实现头。
 
-当前Codec入口声明为`noexcept`，逐帧调用不创建或扩容容器；Plan和Workspace内存由初始化阶段提前建立，输出槽位和输出Buffer由宿主提供。Workspace永久绑定并借用一个Plan，Plan必须比Workspace存活更久；每个并发或重入调用必须独占一个Workspace，复用正在使用的Workspace会返回`WORKSPACE_BUSY`。失败时Decode不交付部分字段，Encode的`bytes_written`保持为零；若错误发生在最终复核阶段，调用方仍必须把输出Buffer内容视为不可交付数据。
+## 阅读入口与当前边界
 
-`PAE_BUILD_TESTING（PAE测试构建开关）`控制测试、配置编译器测试依赖和操作计数版Core。PAE作为子项目嵌入时该选项默认关闭，不会因为宿主启用了通用`BUILD_TESTING`而自动引入yyjson、测试Runner或instrumented（带计数）Core；产品Core不保存或清零操作计数。
+1. 公开 API 与生命周期约束：[`../include/README.md`](../include/README.md)。
+2. 分阶段执行与交付边界：
+   [`../docs/engineering/pae-execution-delivery-organization-plan.md`](../docs/engineering/pae-execution-delivery-organization-plan.md)。
+3. 专项内部实现：进入上述对应子目录，并以其源码、CMake 和当前契约为准。
 
-上述三个目标均不安装、不导出，不属于稳定公共API（Application Programming Interface，应用程序接口）。当前切片不包含`STREAM_CHUNK（流式字节块）`Framer（切帧器）、Integrity（完整性校验）、Receive Gate（接收门禁）、Mapping（映射）、Session（会话）、Runtime（运行时）注册、Transport（传输层）、C ABI（Application Binary Interface，应用二进制接口）或字符串键值接口。
-
-JSON Parser Spike（技术探针）与生产切片隔离，位于`spikes/json_parser`。
+阶段 1/1B 实现已完成限定收口，并按
+[`公开 Codec 验证报告`](../docs/engineering/pae-public-codec-slice-validation.md)和
+[`消费准备 metadata 验证报告`](../docs/engineering/pae-public-consumer-metadata-validation.md)
+完成限定 Windows x64 Debug/Release 验证。阶段 2A 公开 `StreamFramer` 已实现，并有
+[`2A Windows 验证报告`](../docs/engineering/pae-public-framer-stage2a-validation.md)记录专项与独立
+consumer 结果；后置 Lab 只读复核及嵌套重入修正已完成限定总控收口。
+阶段 2B 公开 Host 已按 selector 修正后的最终契约实现，并有
+[`2B Windows 验证报告`](../docs/engineering/pae-public-host-stage2b-validation.md)记录最终专项、定向
+回归和 external consumer 结果；后置 Lab 针对复核和总控限定收口已完成。该结论仍不代表 C ABI、
+DLL/安装包、稳定 ABI、Lab 迁移或生产环境已经交付或验证。
+`PAE_BUILD_TESTING` 控制测试依赖和测试专用 instrumentation；PAE 作为子项目嵌入时不会仅因宿主
+启用通用 `BUILD_TESTING` 就自动把内部测试工具纳入公开消费边界。JSON Parser Spike 与生产切片隔离，
+位于 `spikes/json_parser/`。

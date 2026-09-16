@@ -10,6 +10,10 @@
 #include <vector>
 
 #include "../../src/config_compiler/config_compiler.h"
+#include "schema_dispatch.h"
+#if defined(PAE_BUILD_PROTOCOL_LAB_BINARY_PUBLIC_H2)
+#include "pae/compiler.h"
+#endif
 
 namespace pae::protocol_lab_ui {
 
@@ -25,6 +29,13 @@ struct CompileCompletion {
   std::string config_sha256;
   std::unique_ptr<config_compiler::CompiledUiArtifacts> artifacts;
   std::optional<config_compiler::CompileDiagnostic> diagnostic;
+  SchemaDispatchStatus route = SchemaDispatchStatus::PRIVATE_LEGACY;
+  std::string classification_error;
+  std::size_t compiler_attempt_count = 0U;
+#if defined(PAE_BUILD_PROTOCOL_LAB_BINARY_PUBLIC_H2)
+  std::unique_ptr<pae::CompiledProtocol> public_compiled;
+  std::optional<pae::CompileDiagnostic> public_diagnostic;
+#endif
 };
 
 enum class SubmitStatus {

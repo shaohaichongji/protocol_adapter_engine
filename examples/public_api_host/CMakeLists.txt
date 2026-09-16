@@ -1,0 +1,3 @@
+add_executable(pae_public_host_example main.cpp)
+target_link_libraries(pae_public_host_example PRIVATE PAE::pae)
+target_compile_features(pae_public_host_example PRIVATE cxx_std_17)

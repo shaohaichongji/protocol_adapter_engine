@@ -20,6 +20,9 @@
 #include <vector>
 
 #include "document_tab.h"
+#if defined(PAE_BUILD_PROTOCOL_LAB_ASCII_SMOKE_DIAGNOSTIC)
+#include "ascii_smoke_diagnostic.h"
+#endif
 
 namespace pae::protocol_lab_ui {
 namespace {
@@ -152,15 +155,20 @@ ApplicationWindow::ApplicationWindow(QWidget* parent) : QMainWindow(parent) {
 }
 
 ApplicationWindow::~ApplicationWindow() {
+#if defined(PAE_BUILD_PROTOCOL_LAB_ASCII_SMOKE_DIAGNOSTIC)
+  ascii_smoke_diagnostic::Trace("window_destructor_begin", this);
+#endif
   for (int index = 0; index < tabs_->count(); ++index) {
     if (auto* document = dynamic_cast<DocumentTab*>(tabs_->widget(index))) {
       document->CloseDocument(false);
     }
   }
+#if defined(PAE_BUILD_PROTOCOL_LAB_ASCII_SMOKE_DIAGNOSTIC)
+  ascii_smoke_diagnostic::Trace("window_destructor_end", this);
+#endif
 }
 
 void ApplicationWindow::closeEvent(QCloseEvent* event) {
-#if defined(PAE_BUILD_PROTOCOL_LAB_ASCII_STREAM_OBSERVER)
   for (int index = 0; index < tabs_->count(); ++index) {
     if (auto* document = dynamic_cast<DocumentTab*>(tabs_->widget(index));
         document != nullptr && !document->ConfirmClose()) {
@@ -168,7 +176,6 @@ void ApplicationWindow::closeEvent(QCloseEvent* event) {
       return;
     }
   }
-#endif
   for (int index = 0; index < tabs_->count(); ++index) {
     if (auto* document = dynamic_cast<DocumentTab*>(tabs_->widget(index))) {
       document->CloseDocument(false);
@@ -197,6 +204,11 @@ DocumentTab* ApplicationWindow::AddDocument(const QString& config_path) {
 int ApplicationWindow::DocumentCount() const noexcept { return tabs_->count(); }
 
 void ApplicationWindow::StartUiSmoke(QStringList config_paths) {
+#if defined(PAE_BUILD_PROTOCOL_LAB_ASCII_SMOKE_DIAGNOSTIC)
+  if (QApplication::arguments().contains(QStringLiteral("--ui-smoke"))) {
+    ascii_smoke_diagnostic::Begin();
+  }
+#endif
   if (smoke_running_) {
     return;
   }
@@ -258,7 +270,13 @@ void ApplicationWindow::PollCompileResults() {
     }
     auto* document = FindDocument(completion->document_id);
     if (document != nullptr) {
+#if defined(PAE_BUILD_PROTOCOL_LAB_ASCII_SMOKE_DIAGNOSTIC)
+      ascii_smoke_diagnostic::Trace("compile_completion_before_publish", document);
+#endif
       document->AcceptCompletion(std::move(completion));
+#if defined(PAE_BUILD_PROTOCOL_LAB_ASCII_SMOKE_DIAGNOSTIC)
+      ascii_smoke_diagnostic::Trace("compile_completion_after_publish", document);
+#endif
       const int index = tabs_->indexOf(document);
       if (index >= 0) {
         tabs_->setTabText(index, document->Title());
@@ -309,17 +327,43 @@ void ApplicationWindow::AdvanceSmoke() {
   for (std::size_t index = 0; index < smoke_documents_.size(); ++index) {
     auto* document = smoke_documents_[index];
     tabs_->setCurrentWidget(document);
+#if defined(PAE_BUILD_PROTOCOL_LAB_BINARY_UI)
+    if (document->IsBinaryHostForSmoke()) {
+      if (performance_mode_ || !document->VerifyBinaryHostStage1ForSmoke(error)) {
+        FinishSmoke(false, QStringLiteral("Binary Host document %1: %2")
+                               .arg(static_cast<qulonglong>(index + 1U))
+                               .arg(error));
+        return;
+      }
+      std::fprintf(stdout, "UI_BINARY_HOST_SMOKE_DOCUMENT index=%zu fields=%d\n", index + 1U,
+                   document->InspectFieldCountForSmoke());
+      continue;
+    }
+#endif
     if (document->IsAsciiForSmoke()) {
       if (performance_mode_) {
         FinishSmoke(false, QStringLiteral("ASCII UI smoke is not a performance benchmark"));
         return;
       }
 #if defined(PAE_BUILD_PROTOCOL_LAB_ASCII_STREAM_OBSERVER)
+#if defined(PAE_BUILD_PROTOCOL_LAB_ASCII_SMOKE_DIAGNOSTIC)
+      ascii_smoke_diagnostic::Trace("ascii_verify_before", document);
+#endif
       const bool ascii_ok = document->IsAsciiStreamForSmoke()
                                 ? document->VerifyAsciiStreamForSmoke(error)
                                 : document->VerifyAsciiForSmoke(error);
 #else
+#if defined(PAE_BUILD_PROTOCOL_LAB_ASCII_SMOKE_DIAGNOSTIC)
+      ascii_smoke_diagnostic::Trace("ascii_verify_before", document);
+#endif
       const bool ascii_ok = document->VerifyAsciiForSmoke(error);
+#endif
+#if defined(PAE_BUILD_PROTOCOL_LAB_ASCII_SMOKE_DIAGNOSTIC)
+      ascii_smoke_diagnostic::Trace("ascii_verify_after", document);
+      if (ascii_smoke_diagnostic::EditorLost()) {
+        FinishSmoke(false, QStringLiteral("ASCII_DIAG_EDITOR_LOST during ASCII verification"));
+        return;
+      }
 #endif
       if (!ascii_ok) {
         FinishSmoke(false, QStringLiteral("ASCII document %1: %2")
@@ -328,10 +372,20 @@ void ApplicationWindow::AdvanceSmoke() {
         return;
       }
 #if defined(PAE_BUILD_PROTOCOL_LAB_HOST_OBSERVER)
+#if defined(PAE_BUILD_PROTOCOL_LAB_ASCII_SMOKE_DIAGNOSTIC)
+      ascii_smoke_diagnostic::Trace("host_verify_before", document);
+#endif
       if (!document->VerifyHostForSmoke(error)) {
         FinishSmoke(false, QStringLiteral("Host observer: %1").arg(error));
         return;
       }
+#if defined(PAE_BUILD_PROTOCOL_LAB_ASCII_SMOKE_DIAGNOSTIC)
+      ascii_smoke_diagnostic::Trace("host_verify_after", document);
+      if (ascii_smoke_diagnostic::EditorLost()) {
+        FinishSmoke(false, QStringLiteral("ASCII_DIAG_EDITOR_LOST during Host verification"));
+        return;
+      }
+#endif
 #endif
       std::fprintf(stdout, "UI_ASCII_SMOKE_DOCUMENT index=%zu frame_bytes=%zu fields=%d\n",
                    index + 1U, document->PreviewFrameSizeForSmoke(),
@@ -479,7 +533,12 @@ void ApplicationWindow::AdvanceSmoke() {
   }
   if (!performance_mode_) {
     for (std::size_t index = 0; index < smoke_documents_.size(); ++index) {
-      if (smoke_documents_[index]->IsAsciiForSmoke()) continue;
+      if (smoke_documents_[index]->IsAsciiForSmoke()
+#if defined(PAE_BUILD_PROTOCOL_LAB_BINARY_UI)
+          || smoke_documents_[index]->IsBinaryHostForSmoke()
+#endif
+      )
+        continue;
       if (!smoke_documents_[index]->VerifyInvalidDraftRetentionForSmoke(error)) {
         FinishSmoke(
             false,
@@ -521,6 +580,37 @@ void ApplicationWindow::AdvanceSmoke() {
     smoke_documents_[1]->ResetStreamForSmoke();
   }
 #endif
+#if defined(PAE_BUILD_PROTOCOL_LAB_BINARY_UI)
+  if (!performance_mode_ && smoke_documents_.size() == 2U &&
+      smoke_documents_[0]->IsBinaryHostForSmoke() && smoke_documents_[1]->IsBinaryHostForSmoke()) {
+    const QString first_before = smoke_documents_[0]->BinaryStateSignatureForSmoke();
+    const QString second_before = smoke_documents_[1]->BinaryStateSignatureForSmoke();
+    QTimer::singleShot(0, qApp, [] {
+      if (auto* first = qobject_cast<QMessageBox*>(QApplication::activeModalWidget()))
+        first->done(QMessageBox::Yes);
+      QTimer::singleShot(0, qApp, [] {
+        if (auto* second = qobject_cast<QMessageBox*>(QApplication::activeModalWidget()))
+          second->done(QMessageBox::No);
+      });
+    });
+    const bool closed = close();
+    if (closed || !isVisible() ||
+        smoke_documents_[0]->BinaryStateSignatureForSmoke() != first_before ||
+        smoke_documents_[1]->BinaryStateSignatureForSmoke() != second_before) {
+      FinishSmoke(false,
+                  QStringLiteral("Binary two-Tab close Yes-then-No mutated state or closed"));
+      return;
+    }
+  }
+  if (!performance_mode_) {
+    for (auto* document : smoke_documents_) {
+      if (document->IsBinaryHostForSmoke() && !document->VerifyBinaryReloadFailureForSmoke(error)) {
+        FinishSmoke(false, QStringLiteral("Binary reload failure semantics differ: %1").arg(error));
+        return;
+      }
+    }
+  }
+#endif
   for (auto* document : smoke_documents_) {
     document->InvalidatePreviewForSmoke();
     if (document->PreviewFrameSizeForSmoke() != 0U) {
@@ -533,11 +623,19 @@ void ApplicationWindow::AdvanceSmoke() {
 
 void ApplicationWindow::FinishSmoke(bool success, const QString& detail) {
   smoke_running_ = false;
+#if defined(PAE_BUILD_PROTOCOL_LAB_ASCII_SMOKE_DIAGNOSTIC)
+  ascii_smoke_diagnostic::Trace(success ? "smoke_finish_pass" : "smoke_finish_fail", this);
+#endif
   const auto utf8 = detail.toUtf8();
   std::fprintf(success ? stdout : stderr, "%s detail=%s\n",
                success ? "UI_SMOKE_PASS" : "UI_SMOKE_FAIL", utf8.constData());
   std::fflush(success ? stdout : stderr);
-  QTimer::singleShot(0, qApp, [success] { qApp->exit(success ? 0 : 2); });
+  QTimer::singleShot(0, qApp, [success] {
+#if defined(PAE_BUILD_PROTOCOL_LAB_ASCII_SMOKE_DIAGNOSTIC)
+    ascii_smoke_diagnostic::Trace("smoke_exit_event");
+#endif
+    qApp->exit(success ? 0 : 2);
+  });
 }
 
 }  // namespace pae::protocol_lab_ui

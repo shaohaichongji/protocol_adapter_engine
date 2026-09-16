@@ -6,6 +6,8 @@
 #include <string>
 #include <vector>
 
+#include "ui_physical_types.h"
+
 #include "../../src/config_compiler/ui_description.h"
 #include "../../src/protocol_plan/plan_bundle.h"
 #if defined(PAE_ENABLE_SCHEMA_V10_ASCII_TEXT_CODEC)
@@ -19,16 +21,6 @@ enum class DocumentLayout {
   ASCII_TEXT,
 };
 
-struct PhysicalBitMask {
-  std::size_t frame_byte_index = 0U;
-  std::uint8_t uint8_mask = 0U;
-};
-
-struct ByteRange {
-  std::size_t offset = 0U;
-  std::size_t length = 0U;
-};
-
 struct BoundedPayloadDescriptor {
   std::size_t payload_field_index = 0U;
   std::size_t header_length = 0U;
@@ -38,19 +30,6 @@ struct BoundedPayloadDescriptor {
   std::size_t min_frame_length = 0U;
   std::size_t max_frame_length = 0U;
 };
-
-struct ByteLengthBounds {
-  std::size_t minimum = 0U;
-  std::size_t maximum = 0U;
-};
-
-inline bool operator==(const ByteLengthBounds& left, const ByteLengthBounds& right) noexcept {
-  return left.minimum == right.minimum && left.maximum == right.maximum;
-}
-
-inline bool operator==(const ByteRange& left, const ByteRange& right) noexcept {
-  return left.offset == right.offset && left.length == right.length;
-}
 
 struct EnumDescriptor {
   std::size_t entry_index = 0U;
@@ -79,6 +58,7 @@ struct FieldDescriptor {
   bool ascii_text = false;
   bool decode_referenced = false;
   bool encode_referenced = false;
+  bool decode_decimal64 = false;  // Public Binary logical kind; no private conversion payload.
   std::vector<std::uint8_t> allowed_control_bytes;
 #if defined(PAE_ENABLE_SCHEMA_V05_COMPILER)
   std::optional<protocol_plan::LinearConversionDescriptor> conversion;

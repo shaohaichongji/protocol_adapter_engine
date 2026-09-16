@@ -250,7 +250,7 @@ Structural 和 Domain 数字错误必须携带准确 RFC 6901 JSON Pointer；没
 
 ## 9. 诊断要求
 
-诊断位置遵循[JSON Loader 诊断定位契约](../docs/json_loader_diagnostic_contract_v0.1.md)：
+诊断位置遵循[JSON Loader 诊断定位契约](../docs/engineering/json_loader_diagnostic_contract_v0.1.md)：
 
 - BOM、非法 UTF-8、公共深度和代理项配对错误应给出零基、`EXACT_INPUT_BYTE`的 byte offset（字节偏移）；
 - 第三方 Parser 语法位置必须标记为`PARSER_REPORTED_POSITION`，不能伪装成跨 Parser 的精确位置；

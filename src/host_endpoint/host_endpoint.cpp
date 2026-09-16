@@ -7,6 +7,15 @@
 #include <vector>
 
 namespace pae::host_endpoint {
+std::size_t Candidate::RawIntegerCount() const noexcept {
+  return raw_workspace_ ? raw_workspace_->LastRawIntegerCount() : 0U;
+}
+
+bool Candidate::GetRawInteger(std::size_t index,
+                             protocol_core::RawIntegerValue& output) const noexcept {
+  return raw_workspace_ && raw_workspace_->GetLastRawInteger(index, output);
+}
+
 namespace {
 namespace core = protocol_core;
 namespace framing = protocol_framing;
@@ -105,6 +114,7 @@ struct Session::Impl {
       if (decoded.status == core::CodecStatus::OK) {
         candidate.fields = channel.fields.data();
         candidate.field_count = decoded.field_count;
+        candidate.raw_workspace_ = channel.core.get();
       }
       try {
         continue_observing = observer.function(candidate, observer.context) == SinkAction::CONTINUE;

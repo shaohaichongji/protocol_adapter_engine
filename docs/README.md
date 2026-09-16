@@ -1,66 +1,17 @@
-# Repository Documentation
+# 文档入口
 
-这里保存可随通用引擎仓库分发的架构、API、Schema 和验证文档，不复制上层工作区中的真实协议资料或外部生产项目内容。
+这里保存通用 PAE / Lab 文档，不包含真实协议资料或外部生产项目内容。先按阅读目的选择入口，不必从历史迭代记录开始。
 
-- [Lab表示切换UX验证、人工复验与Binary Host后续评估](lab-representation-ux-validation.md)
-- [Lab Binary Host观察首片契约（六项已确认，未实施）](lab-binary-host-observer-contract.md)
-- [Lab Qt依赖核验与随仓记录（完整副本已接线，工程验证完成）](lab-qt-dependency-audit-plan.md)
+| 阅读目的 | 入口 |
+| --- | --- |
+| 使用 Windows x64 SDK 本地候选 | [SDK 快速入口](guides/pae-sdk-windows-quickstart.md)、包内 `PAE-SDK-README.md` 与 `examples/sdk_consumer` |
+| 理解项目、构建并启动 Lab | [仓库 README](../README.md)、[开发者指南](guides/README.md) |
+| 学习配置和已有示例 | [Schema 索引](../schema/README.md)、[开发者阅读路线](guides/README.md) |
+| 修改实现、核对契约或验证边界 | [工程依据](engineering/README.md) |
+| 查阅已替代的历史资料 | [历史归档](archive/README.md) |
 
-- [2026-09-10 流式宿主接入与Lab Schema 0.8 UI：三组八项确认契约](post-stream-host-and-ui-v08-checkpoint.md)
-- [ASCII文本编解码与Lab输入可靠性契约（Compiler/Plan/Core最小切片已实现并完成限定复核）](ascii-text-codec-minimal-contract.md)
-- [ASCII完整记录Windows验证报告](windows-msvc-2026-ascii-text-slice.md)
-- [Lab ASCII离线接入契约（已随407af0d合并并推送）](lab-ascii-offline-integration-contract.md)
-- [ASCII有界流式接收首片契约（PAE已随716ff00提交推送）](ascii-stream-framing-contract.md)
-- [Lab宿主端点绑定观察首片契约（已授权实施）](lab-host-endpoint-observer-contract.md)
-- [Lab宿主端点观察实施验证与人工验收入口](lab-host-endpoint-observer-validation.md)
-- [宿主端点方向绑定与最小接入层六项契约（已随e7078b2提交推送，正文保留交付前快照）](host-endpoint-binding-contract.md)
-- [宿主端点绑定首片Windows实施与验证报告](host-endpoint-binding-validation.md)
-- [Lab ASCII离线分块观察契约（已随0636e17提交推送，正文保留交付前快照）](lab-ascii-stream-observer-contract.md)
-- [Lab流式最小观察接口第一阶段验证](lab-ascii-stream-observation-stage1-validation.md)
-- [Lab ASCII流式观察自动化、限定修复与人工验收记录](lab-ascii-stream-observer-validation.md)
-- [ASCII有界流式接收Windows验证与Snapshot纠错报告](windows-msvc-2026-ascii-stream-framing-slice.md)
-- [Lab ASCII内部适配第1阶段验证报告（历史阶段）](lab-ascii-adapter-stage1-validation.md)
-- [Lab ASCII UI第2阶段自动化与限定人工验证报告](lab-ascii-ui-stage2-validation.md)
+当前工程整理方向以 [PAE / Lab 职责与独立交付边界](engineering/pae-lab-delivery-boundary.md)为准。
+Stage 3 `final6` Windows x64 三形态本地候选已完成限定技术复核，使用入口见
+[SDK 快速入口](guides/pae-sdk-windows-quickstart.md)；它尚未正式发布、迁移 Lab 或取得生产/Linux 证据。
 
-- [JSON Loader 诊断定位契约 V0.1（Spike Draft）](json_loader_diagnostic_contract_v0.1.md)
-- [Loader 与 Compiler 架构边界 V0.1](loader_compiler_boundary_v0.1.md)
-- [PAE-DEC-033A Plan计费内存实施切片方案](pae-dec-033a-accounted-plan-memory-implementation-slice.md)
-- [PAE-DEC-038 Protocol Lab离线加固方案](pae-dec-038-protocol-lab-offline-hardening.md)
-- [PAE-DEC-039 Protocol Lab Windows UDP Exchange方案](pae-dec-039-protocol-lab-windows-udp-exchange.md)
-- [PAE-DEC-040 位字段最小切片确认契约与实施清单](pae-dec-040-bitfield-contract-draft.md)
-- [PAE-DEC-033A Accounted Plan Memory Windows验证报告](windows-msvc-2026-accounted-plan-memory-slice.md)
-- [Loader/SchemaIr Windows 可执行切片验证报告](windows-msvc-2026-loader-schema-ir-slice.md)
-- [COMPLETE_RECORD Codec Windows 内部切片验证报告](windows-msvc-2026-complete-record-codec-slice.md)
-- [Frozen Execution Plan Windows 内部切片验证报告](windows-msvc-2026-frozen-execution-plan-slice.md)
-- [Validated/Budgeted能力链 Windows验证报告](windows-msvc-2026-validated-budgeted-capability-chain.md)
-- [Protocol Conformance Runner Windows验证报告](windows-msvc-2026-protocol-conformance-runner.md)
-- [PAE Protocol Lab Contract V0.1 Draft](protocol_lab_contract_v0.1.md)
-- [Protocol Lab Offline Slice Windows验证报告](windows-msvc-2026-protocol-lab-offline-slice.md)
-- [Protocol Lab Windows UDP Exchange验证报告](windows-msvc-2026-protocol-lab-udp-exchange-slice.md)
-- [Protocol Lab 人工Loopback验收报告（2026-09-06）](windows-protocol-lab-manual-loopback-acceptance-20260906.md)
-- [PAE-DEC-040 位字段最小切片Windows验证报告](windows-msvc-2026-dec040-bitfield-slice.md)
-- [DEC-040 后续推进路线与当前状态](post-dec040-roadmap.md)
-- [PAE-DEC-041 SUM8完整记录校验确认契约](pae-dec-041-sum8-contract.md)
-- [PAE-DEC-041 SUM8最小切片Windows验证报告](windows-msvc-2026-dec041-sum8-slice.md)
-- [PAE-DEC-042 数值转换范围与DEC-042A INT64确认契约](pae-dec-042-numeric-conversion-contract-draft.md)
-- [PAE-DEC-042A 字节对齐INT64 Windows验证报告](windows-msvc-2026-dec042a-int64-slice.md)
-- [PAE-DEC-042B 精确比例/偏置确认契约（C3离线CLI已实现，人工验收待执行）](pae-dec-042b-decimal-conversion-contract-draft.md)
-- [PAE-DEC-042B 精确算术Windows隔离验证报告](windows-msvc-2026-dec042b-arithmetic-spike.md)
-- [PAE-DEC-042B 编译冻结首段Windows验证报告](windows-msvc-2026-dec042b-compiler-slice.md)
-- [PAE-DEC-042B Core双向转换第二段Windows验证报告](windows-msvc-2026-dec042b-core-slice.md)
-- [PAE-DEC-042B Lab 0.6纯格式A阶段Windows验证报告](windows-msvc-2026-dec042b-lab-v06-format-stage-a.md)
-- [PAE-DEC-042B Lab Evidence 0.6 B阶段Windows验证报告](windows-msvc-2026-dec042b-lab-v06-evidence-stage-b.md)
-- [PAE-DEC-042B Lab 0.6执行桥接C1阶段Windows验证报告](windows-msvc-2026-dec042b-lab-v06-execution-stage-c1.md)
-- [PAE-DEC-042B Lab C3 CLI Windows验证报告](windows-msvc-2026-dec042b-lab-c3-cli.md)
-- [PAE-DEC-042B C3人工离线验收单（NOT_EVALUATED）](manual-dec042b-c3-offline-acceptance.md)
-- [PAE-UI-C1 离线Encode Inspector实施契约](lab-ui-offline-encode-inspector-contract.md)
-- [PAE-UI-C1 离线Encode Inspector Windows及Release基础人工验证报告](lab-ui-offline-encode-inspector-validation.md)
-- [参数化CRC-16/32最小检查点确认契约](crc-minimal-contract-draft.md)
-- [固定完整记录长度字段确认契约（已提交并Push）](length-field-minimal-contract.md)
-- [有界变长完整记录实施契约（已限定实现，待总控审查）](bounded-variable-record-contract.md)
-- [有界变长完整记录Windows验证报告](windows-msvc-2026-bounded-variable-record-slice.md)
-- [固定完整记录长度字段Windows验证报告](windows-msvc-2026-length-field-slice.md)
-- [参数化CRC-16/32最小检查点Windows验证报告](windows-msvc-2026-crc-minimal-slice.md)
-- [最小业务嵌入验证契约](business-embedding-minimal-contract.md)
-- [最小业务嵌入示例Windows验证报告](windows-msvc-2026-business-embedding-minimal.md)
-- [yyjson 0.12.0正式最小随仓依赖Windows验证报告](windows-msvc-2026-yyjson-vendor-dependency.md)
+完整契约与验证记录按主题收录在工程依据索引；旧路径迁移规则见[迁移映射](engineering/document-migration-map.md)。验证记录只证明其列明范围，历史文档中的“当前”“下一步”不自动代表现在的状态或授权。

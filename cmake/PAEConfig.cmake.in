@@ -1,0 +1,91 @@
+@PACKAGE_INIT@
+
+if(TARGET PAE::pae)
+    return()
+endif()
+
+set(PAE_VERSION "@PROJECT_VERSION@")
+set(PAE_LIBRARY_KIND "@PAE_SDK_LIBRARY_KIND@")
+set(PAE_PACKAGE_CONFIGURATION "@PAE_SDK_CONFIGURATION@")
+set(PAE_ARCHITECTURE "x64")
+set(PAE_MSVC_RUNTIME_LIBRARY "@PAE_MSVC_RUNTIME_LIBRARY@")
+string(TOUPPER "${PAE_PACKAGE_CONFIGURATION}" _pae_package_configuration_upper)
+set(_pae_imported_configurations Debug Release RelWithDebInfo MinSizeRel)
+set(
+    _pae_configuration_guard
+    "${PACKAGE_PREFIX_DIR}/@CMAKE_INSTALL_LIBDIR@/PAE_SDK_CONFIGURATION_MISMATCH_EXPECTED_${_pae_package_configuration_upper}_PACKAGE@CMAKE_IMPORT_LIBRARY_SUFFIX@"
+)
+
+if(PAE_LIBRARY_KIND STREQUAL "SHARED")
+    add_library(PAE::pae SHARED IMPORTED)
+    set_target_properties(
+        PAE::pae
+        PROPERTIES
+            IMPORTED_CONFIGURATIONS "${_pae_imported_configurations}"
+            INTERFACE_INCLUDE_DIRECTORIES "${PACKAGE_PREFIX_DIR}/@CMAKE_INSTALL_INCLUDEDIR@"
+            INTERFACE_COMPILE_FEATURES cxx_std_17
+    )
+    foreach(_pae_consumer_configuration IN LISTS _pae_imported_configurations)
+        string(TOUPPER "${_pae_consumer_configuration}" _pae_consumer_configuration_upper)
+        if(_pae_consumer_configuration STREQUAL PAE_PACKAGE_CONFIGURATION)
+            set_property(
+                TARGET PAE::pae
+                PROPERTY "IMPORTED_IMPLIB_${_pae_consumer_configuration_upper}"
+                         "${PACKAGE_PREFIX_DIR}/@CMAKE_INSTALL_LIBDIR@/@CMAKE_IMPORT_LIBRARY_PREFIX@pae@CMAKE_IMPORT_LIBRARY_SUFFIX@"
+            )
+            set_property(
+                TARGET PAE::pae
+                PROPERTY "IMPORTED_LOCATION_${_pae_consumer_configuration_upper}"
+                         "${PACKAGE_PREFIX_DIR}/@CMAKE_INSTALL_BINDIR@/@CMAKE_SHARED_LIBRARY_PREFIX@pae@CMAKE_SHARED_LIBRARY_SUFFIX@"
+            )
+        else()
+            set_property(
+                TARGET PAE::pae
+                PROPERTY "IMPORTED_IMPLIB_${_pae_consumer_configuration_upper}"
+                         "${_pae_configuration_guard}"
+            )
+            set_property(
+                TARGET PAE::pae
+                PROPERTY "IMPORTED_LOCATION_${_pae_consumer_configuration_upper}"
+                         "${_pae_configuration_guard}"
+            )
+        endif()
+    endforeach()
+else()
+    add_library(PAE::pae STATIC IMPORTED)
+    set(_pae_internal_dir "${PACKAGE_PREFIX_DIR}/@CMAKE_INSTALL_LIBDIR@/pae/internal")
+    set_target_properties(
+        PAE::pae
+        PROPERTIES
+            IMPORTED_CONFIGURATIONS "${_pae_imported_configurations}"
+            INTERFACE_INCLUDE_DIRECTORIES "${PACKAGE_PREFIX_DIR}/@CMAKE_INSTALL_INCLUDEDIR@"
+            INTERFACE_COMPILE_FEATURES cxx_std_17
+            INTERFACE_COMPILE_DEFINITIONS PAE_STATIC_DEFINE=1
+            INTERFACE_LINK_LIBRARIES "${_pae_internal_dir}/@CMAKE_STATIC_LIBRARY_PREFIX@pae_config_compiler@CMAKE_STATIC_LIBRARY_SUFFIX@;${_pae_internal_dir}/@CMAKE_STATIC_LIBRARY_PREFIX@pae_protocol_core_slice@CMAKE_STATIC_LIBRARY_SUFFIX@;${_pae_internal_dir}/@CMAKE_STATIC_LIBRARY_PREFIX@pae_protocol_framing@CMAKE_STATIC_LIBRARY_SUFFIX@;${_pae_internal_dir}/@CMAKE_STATIC_LIBRARY_PREFIX@pae_protocol_plan@CMAKE_STATIC_LIBRARY_SUFFIX@;${_pae_internal_dir}/@CMAKE_STATIC_LIBRARY_PREFIX@pae_yyjson_vendor@CMAKE_STATIC_LIBRARY_SUFFIX@"
+    )
+    foreach(_pae_consumer_configuration IN LISTS _pae_imported_configurations)
+        string(TOUPPER "${_pae_consumer_configuration}" _pae_consumer_configuration_upper)
+        if(_pae_consumer_configuration STREQUAL PAE_PACKAGE_CONFIGURATION)
+            set_property(
+                TARGET PAE::pae
+                PROPERTY "IMPORTED_LOCATION_${_pae_consumer_configuration_upper}"
+                         "${PACKAGE_PREFIX_DIR}/@CMAKE_INSTALL_LIBDIR@/@CMAKE_STATIC_LIBRARY_PREFIX@pae@CMAKE_STATIC_LIBRARY_SUFFIX@"
+            )
+        else()
+            set_property(
+                TARGET PAE::pae
+                PROPERTY "IMPORTED_LOCATION_${_pae_consumer_configuration_upper}"
+                         "${_pae_configuration_guard}"
+            )
+        endif()
+    endforeach()
+    unset(_pae_internal_dir)
+endif()
+
+unset(_pae_consumer_configuration)
+unset(_pae_consumer_configuration_upper)
+unset(_pae_configuration_guard)
+unset(_pae_imported_configurations)
+unset(_pae_package_configuration_upper)
+
+check_required_components(PAE)

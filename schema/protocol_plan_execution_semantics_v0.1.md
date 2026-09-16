@@ -318,9 +318,9 @@ PlanBuilder不得读取原始JSON、保留Parser DOM或修改Runtime。失败时
 - Codec只消费上述描述符，不再调用`ValidatePipeline`、`ValidateMessageLayout`、`MessageDefinesWholeFrame`或`FindEncodeValue`等旧逐帧静态检查/重复线性查找路径；
 - Encode最终Matcher和字段复核、调用方输入、引用归属、Buffer容量、alias、Matcher唯一性及Workspace独占检查继续在每次调用中执行。
 
-当前Config Compiler已经形成`SchemaIr → ValidatedSchemaIr → BudgetedSchemaIr → BudgetedPlanDraft → PlanBundle`单向能力链。作者配置错误与稳定JSON Pointer由Domain/Resource Validator（领域/资源校验器）作为单一语义权威报告；ResourceBudget在产生Budgeted能力前完成精确单Plan内存准入；Builder只接受Budgeted能力，并把尾部防御审计命中统一映射为内部契约违规。能力类型禁止默认构造和复制，移动后重复消费失败关闭；原始Draft不再是生产入口。Windows专项证据见`docs/windows-msvc-2026-validated-budgeted-capability-chain.md`和`docs/windows-msvc-2026-accounted-plan-memory-slice.md`。
+当前Config Compiler已经形成`SchemaIr → ValidatedSchemaIr → BudgetedSchemaIr → BudgetedPlanDraft → PlanBundle`单向能力链。作者配置错误与稳定JSON Pointer由Domain/Resource Validator（领域/资源校验器）作为单一语义权威报告；ResourceBudget在产生Budgeted能力前完成精确单Plan内存准入；Builder只接受Budgeted能力，并把尾部防御审计命中统一映射为内部契约违规。能力类型禁止默认构造和复制，移动后重复消费失败关闭；原始Draft不再是生产入口。Windows专项证据见`docs/engineering/windows-msvc-2026-validated-budgeted-capability-chain.md`和`docs/engineering/windows-msvc-2026-accounted-plan-memory-slice.md`。
 
-当前`PAE-DEC-033A`已实现：冷/热Plan长期对象使用单一Storage Block的`FrozenString/FrozenArray`，ResourceBudget完成单Plan精确准入，Builder复算与最终Arena报告必须匹配批准报告。`PlanMemoryReport`分类覆盖对象、字符串、Matcher、元数据容器、执行描述符、索引、扩展和对齐；当前候选单Plan上限Hard/Desktop/Constrained为`256/128/8 MiB`，仍是`CANDIDATE / UNVERIFIED`。`PAE-DEC-033B` Runtime活跃Plan/Session聚合准入仍未实现。实施与Windows证据分别见`docs/pae-dec-033a-accounted-plan-memory-implementation-slice.md`和`docs/windows-msvc-2026-accounted-plan-memory-slice.md`。
+当前`PAE-DEC-033A`已实现：冷/热Plan长期对象使用单一Storage Block的`FrozenString/FrozenArray`，ResourceBudget完成单Plan精确准入，Builder复算与最终Arena报告必须匹配批准报告。`PlanMemoryReport`分类覆盖对象、字符串、Matcher、元数据容器、执行描述符、索引、扩展和对齐；当前候选单Plan上限Hard/Desktop/Constrained为`256/128/8 MiB`，仍是`CANDIDATE / UNVERIFIED`。`PAE-DEC-033B` Runtime活跃Plan/Session聚合准入仍未实现。实施与Windows证据分别见`docs/engineering/pae-dec-033a-accounted-plan-memory-implementation-slice.md`和`docs/engineering/windows-msvc-2026-accounted-plan-memory-slice.md`。
 
 ### 11.3 Schema 0.2位容器执行规则
 
@@ -336,7 +336,7 @@ Workspace按单Message最大容器数预留`uint64_t`槽。Encode从`base_value`
 
 Core内部BOOL使用独立`LogicalValueKind::BOOL`和真正的`bool`值。位字段没有扩展Matcher、普通字段
 接收规则、Runtime/Session、公共API或C ABI。公开独立向量及Windows证据见
-[`windows-msvc-2026-dec040-bitfield-slice.md`](../docs/windows-msvc-2026-dec040-bitfield-slice.md)。
+[`windows-msvc-2026-dec040-bitfield-slice.md`](../docs/engineering/windows-msvc-2026-dec040-bitfield-slice.md)。
 
 ### 11.4 Schema 0.3 SUM8完整记录校验规则
 
@@ -355,7 +355,7 @@ SUM8成败消除结构歧义。Encode先写既有字段、常量、固定字节�
 规则以冻结枚举和偏移保存在现有单Arena Plan对象/执行描述符中，资源需求单独记录实际规则数；
 执行使用局部`uint8_t`累加器，不增加Workspace槽或逐帧分配。Decode校验计数为覆盖长度N，
 Encode生成和复算为2N；这是操作上界证据，不是性能结论。公开向量和Windows验证见
-[`windows-msvc-2026-dec041-sum8-slice.md`](../docs/windows-msvc-2026-dec041-sum8-slice.md)。
+[`windows-msvc-2026-dec041-sum8-slice.md`](../docs/engineering/windows-msvc-2026-dec041-sum8-slice.md)。
 
 ### 11.5 Schema 0.4字节对齐INT64规则
 
@@ -386,9 +386,9 @@ DECIMAL_SCALE_OUT_OF_RANGE；反算非整数、Wire越界和
 未知代际及缺省构建中的0.5执行均失败关闭。
 
 默认Schema 0.5及其Lab开关仍关闭；显式开启专用C3链时使用Values 0.4、Result 0.6、指纹0.6和
-Record 0.7。详见[编译首段报告](../docs/windows-msvc-2026-dec042b-compiler-slice.md)、
-[Core第二段报告](../docs/windows-msvc-2026-dec042b-core-slice.md)和
-[C3 CLI报告](../docs/windows-msvc-2026-dec042b-lab-c3-cli.md)。
+Record 0.7。详见[编译首段报告](../docs/engineering/windows-msvc-2026-dec042b-compiler-slice.md)、
+[Core第二段报告](../docs/engineering/windows-msvc-2026-dec042b-core-slice.md)和
+[C3 CLI报告](../docs/engineering/windows-msvc-2026-dec042b-lab-c3-cli.md)。
 
 ### 11.7 Schema 0.6参数化CRC规则
 
@@ -406,7 +406,7 @@ Encode 2N，这只是有界操作证据。
 Schema 0.6使用独立Result 0.7、确定性指纹0.7及Run Record 0.8；Event语法保持0.7，CLI保持0.1。
 旧Schema 0.1至0.5、旧指纹及历史Bundle不重写，跨0.5/0.6执行域Compare失败关闭，原始Frame比较
 仍可跨来源。公开合成向量与Windows证据见
-[`windows-msvc-2026-crc-minimal-slice.md`](../docs/windows-msvc-2026-crc-minimal-slice.md)。
+[`windows-msvc-2026-crc-minimal-slice.md`](../docs/engineering/windows-msvc-2026-crc-minimal-slice.md)。
 
 ### 11.8 Schema 0.7固定完整记录长度字段
 
@@ -422,7 +422,7 @@ Compiler推导期望值并纳入资源报告，Builder独立重算范围、值�
 
 Schema 0.7统一使用Result及指纹0.8、Run Record 0.9；Event 0.7、Values 0.1～0.4和CLI 0.1不变。
 旧代格式、指纹及证据不重写，跨代Run Compare失败关闭。公开合成证据见
-[`windows-msvc-2026-length-field-slice.md`](../docs/windows-msvc-2026-length-field-slice.md)。
+[`windows-msvc-2026-length-field-slice.md`](../docs/engineering/windows-msvc-2026-length-field-slice.md)。
 
 ### 11.9 Schema 0.8有界变长完整记录
 
@@ -438,7 +438,7 @@ Schema 0.8使用Result及指纹0.9、Run Record 0.10；Event 0.7和CLI 0.1不变
 保持原接受域；Values 0.5仅为Schema 0.8扩展显式空BYTES，缺失、null及旧代空BYTES仍拒绝。
 Result 0.9允许空BYTES的raw/logical同为空串且enum_known为false，旧Result接受域不改。
 旧格式及指纹不重写，跨代Run Compare失败关闭。公开合成证据见
-[`windows-msvc-2026-bounded-variable-record-slice.md`](../docs/windows-msvc-2026-bounded-variable-record-slice.md)。
+[`windows-msvc-2026-bounded-variable-record-slice.md`](../docs/engineering/windows-msvc-2026-bounded-variable-record-slice.md)。
 
 ## 12. Schema 0.9有界流式切帧内部切片
 
@@ -456,8 +456,8 @@ sink返回STOP后未消费后缀仍归宿主，工作/回调预算留下的内�
 Framer只交付完整候选帧，随后宿主同步调用既有`DecodeCompleteRecord`。下游UNKNOWN、AMBIGUOUS、
 长度、完整性或字段错误不触发Framer回扫。Protocol Lab不执行Schema 0.9，也不新增Result/Record/
 Event格式；它在配置成功编译后、输入/Codec/网络/证据动作前以既有配置编译失败类别统一拒绝。
-公开实现及Windows离线证据见`docs/bounded-stream-framing-contract.md`和
-`docs/windows-msvc-2026-bounded-stream-framing-slice.md`。
+公开实现及Windows离线证据见`docs/engineering/bounded-stream-framing-contract.md`和
+`docs/engineering/windows-msvc-2026-bounded-stream-framing-slice.md`。
 
 ## 13. Schema 0.10 ASCII Text完整记录内部切片
 
@@ -478,9 +478,9 @@ Encode拒绝缺失、重复、未知字段、字符/长度错误及跨字段边�
 
 首轮不接入Protocol Lab，不定义新Result/Record/Event或指纹域；Lab必须在Codec、网络和证据动作前
 拒绝0.10。该切片不包含UTF-8、数字文本转换、CR/LF流分帧、网络或稳定公共API。公开契约、合成样例
-和Windows离线证据见`docs/ascii-text-codec-minimal-contract.md`、
+和Windows离线证据见`docs/engineering/ascii-text-codec-minimal-contract.md`、
 `examples/config/synthetic_ascii_text_slice.pae.json`和
-`docs/windows-msvc-2026-ascii-text-slice.md`。
+`docs/engineering/windows-msvc-2026-ascii-text-slice.md`。
 
 ## 14. 当前不覆盖的完整 V0.1 能力
 
@@ -503,7 +503,7 @@ Encode拒绝缺失、重复、未知字段、字符/长度错误及跨字段边�
 - 合法人工实验样例生成的Canonical Plan（规范化计划）与稳定ID Golden Snapshot逐字节一致；
 - 代表性Structural/Domain负例均验证失败时不交付部分`PlanBundle`。
 
-仓库当前另保存了内部Codec源码和两条预先写定的Synthetic Engine Vector。最新Windows MSVC Release/Debug证据为：Config Compiler各`28/28`，Codec CTest各`6/6`，主合同Runner各`60/60`，首次Decode/Encode分配各`1/1`，操作计数`4/4`，共享Plan并发`2/2`；Parser、Loader、Plan和Codec共存CTest各`26/26`。详细命令和边界记录在`docs/windows-msvc-2026-accounted-plan-memory-slice.md`、`docs/windows-msvc-2026-validated-budgeted-capability-chain.md`与`docs/windows-msvc-2026-frozen-execution-plan-slice.md`；此前`52/52`报告只作为历史基线保留。
+仓库当前另保存了内部Codec源码和两条预先写定的Synthetic Engine Vector。最新Windows MSVC Release/Debug证据为：Config Compiler各`28/28`，Codec CTest各`6/6`，主合同Runner各`60/60`，首次Decode/Encode分配各`1/1`，操作计数`4/4`，共享Plan并发`2/2`；Parser、Loader、Plan和Codec共存CTest各`26/26`。详细命令和边界记录在`docs/engineering/windows-msvc-2026-accounted-plan-memory-slice.md`、`docs/engineering/windows-msvc-2026-validated-budgeted-capability-chain.md`与`docs/engineering/windows-msvc-2026-frozen-execution-plan-slice.md`；此前`52/52`报告只作为历史基线保留。
 
 上述Loader/Compiler执行证据及Synthetic资产仍不证明：
 

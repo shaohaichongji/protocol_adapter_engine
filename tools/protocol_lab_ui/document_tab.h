@@ -47,9 +47,7 @@ class DocumentTab final : public QWidget {
   void LoadPath(const QString& path);
   void AcceptCompletion(std::unique_ptr<CompileCompletion> completion);
   bool CloseDocument(bool require_confirmation = true);
-#if defined(PAE_BUILD_PROTOCOL_LAB_ASCII_STREAM_OBSERVER)
   bool ConfirmClose();
-#endif
 
   bool PopulateCanonicalDraftsForSmoke(QString& error);
   bool EncodeForSmoke(QString& error);
@@ -67,6 +65,12 @@ class DocumentTab final : public QWidget {
   bool VerifyAsciiForSmoke(QString& error);
 #if defined(PAE_BUILD_PROTOCOL_LAB_HOST_OBSERVER)
   bool VerifyHostForSmoke(QString& error);
+#endif
+#if defined(PAE_BUILD_PROTOCOL_LAB_BINARY_UI)
+  bool IsBinaryHostForSmoke() const noexcept { return session_.IsBinaryHostDocument(); }
+  bool VerifyBinaryHostStage1ForSmoke(QString& error);
+  QString BinaryStateSignatureForSmoke() const;
+  bool VerifyBinaryReloadFailureForSmoke(QString& error);
 #endif
 #if defined(PAE_BUILD_PROTOCOL_LAB_ASCII_STREAM_OBSERVER)
   bool IsAsciiStreamForSmoke() const noexcept { return session_.StreamInspectAvailable(); }
@@ -102,9 +106,13 @@ class DocumentTab final : public QWidget {
   std::optional<Revision> host_pending_revision_;
   Revision host_request_sequence_ = 0U;
   std::vector<protocol_lab::ascii::HostBinding> host_pending_bindings_;
+#if defined(PAE_BUILD_PROTOCOL_LAB_BINARY_UI)
+  std::vector<BinaryHostBinding> binary_host_pending_bindings_;
+  std::optional<BinaryPreparationIdentity> binary_host_pending_identity_;
+#endif
 #endif
   void BuildUi();
-  void BeginLoadFromPath();
+  void BeginLoadFromPath(bool discard_confirmed = false);
   void ResetVisibleDocument();
   void RebuildSelectorsAndModel();
   void RebuildMessageSelector();
@@ -127,7 +135,8 @@ class DocumentTab final : public QWidget {
   void SelectRepresentation(int combo_index);
   void InvalidateEditedPreview();
   void InvalidateEditedDraft(std::size_t field_index);
-  std::vector<PhysicalBitMask> InspectFailureHighlights(const MessageDescriptor* message) const;
+  void FillInspectFailureHighlights(const MessageDescriptor* message,
+                                    std::vector<PhysicalBitMask>& output) const;
   std::optional<std::size_t> ActualFrameSize() const noexcept;
   const MessageDescriptor* CurrentMessage() const noexcept;
   const MessageDescriptor* DisplayedMessage() const noexcept;
@@ -164,6 +173,9 @@ class DocumentTab final : public QWidget {
   QLabel* timing_label_ = nullptr;
   EncodeTimingSnapshot timing_;
   QString accepted_inspect_text_;
+#if defined(PAE_BUILD_PROTOCOL_LAB_BINARY_UI)
+  std::vector<PhysicalBitMask> binary_highlights_;
+#endif
 };
 
 }  // namespace pae::protocol_lab_ui

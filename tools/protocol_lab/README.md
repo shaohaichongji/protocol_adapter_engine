@@ -120,26 +120,26 @@ Schema 0.5专用链中，inspect/encode/replay必须显式提供`--record-root`�
 Record 0.7 Bundle内的原配置、输入与指定Pipeline，不接受配置替换。Compare只读两个合格的
 C执行Bundle，不调用Codec也不发布新Bundle。CLI 0.1进程退出和`--expect-status`只控制终端判定，
 不改写Result 0.6的执行状态、退出码或确定性指纹；完整命令与人工记录方式见
-[C3人工离线验收单](../../docs/manual-dec042b-c3-offline-acceptance.md)。
+[C3人工离线验收单](../../docs/guides/manual-dec042b-c3-offline-acceptance.md)。
 
 Schema 0.6统一使用Result 0.7、指纹0.7和Record 0.8，包括无`integrity`及继续使用SUM8的消息。
 成功Run、完整性失败Run及其链式Replay均按新代完整读取；失败Replay即使比较`EQUAL`仍保留
 当前失败和退出5。Schema 0.5/0.6 Run直接Compare在确定性指纹域比较前拒绝，旧Result 0.6、
 Record 0.7及历史指纹保持不变。CRC参数、算法及证据边界见
-[CRC确认契约](../../docs/crc-minimal-contract-draft.md)。
+[CRC确认契约](../../docs/engineering/crc-minimal-contract-draft.md)。
 
 Schema 0.7固定完整记录长度字段链必须继续显式开启Schema 0.5、0.6及对应Lab能力，再增加
 `PAE_ENABLE_SCHEMA_V07_LENGTH_COMPILER=ON`和
 `PAE_ENABLE_PROTOCOL_LAB_SCHEMA_V07_LENGTH=ON`。它统一使用Result/指纹0.8、Record 0.9，
 Event仍为0.7。Encode业务Values必须省略computed长度字段；Inspect在结构唯一后先验证长度、
 再验证SUM8/CRC。长度失败及其Replay保持退出5，比较EQUAL不改变当前失败状态；跨代Run Compare
-失败关闭。详见[长度字段契约](../../docs/length-field-minimal-contract.md)。
+失败关闭。详见[长度字段契约](../../docs/engineering/length-field-minimal-contract.md)。
 
 Schema 0.8有界变长链使用Result/指纹0.9、Record 0.10及Event 0.7。旧Values 0.1～0.4
 继续保持原接受域；Values 0.5只新增显式空BYTES `"hex":""`，且仅可与Schema 0.8
 执行。Result 0.9对空BYTES要求raw/logical同为空串且enum_known为false；旧Result不放宽。
 空Encode/Inspect产物可读、可Compare并支持Replay A/B；Plan的非零最小载荷仍由Core
-拒绝。详见[有界变长契约](../../docs/bounded-variable-record-contract.md)。
+拒绝。详见[有界变长契约](../../docs/engineering/bounded-variable-record-contract.md)。
 
 UDP V0.2事件在真实TX持久化、发送和RX持久化阶段采集，使用同一Run单调时钟原点。RX在Peer
 检查和Decode前写入并复核原始字节及来源Metadata。Replay保留历史Transport事实，但当前Codec
@@ -156,8 +156,8 @@ Metadata和实际Frame，不能通过只重算文件清单绕过内部一致性�
 `--send --allow-non-loopback`。当前自动化执行证据仅覆盖Loopback。2026-09-06已完成
 NetAssist人工Loopback门禁，报告层记录本次场景`LAB_EXCHANGE_PASS=PASS`；原始机器证据中的
 `NOT_EVALUATED（未评估）`保持不变，协议Golden结论不升级。范围和待诊断项见
-[人工验收报告](../../docs/windows-protocol-lab-manual-loopback-acceptance-20260906.md)。
+[人工验收报告](../../docs/engineering/windows-protocol-lab-manual-loopback-acceptance-20260906.md)。
 
 完整契约、Values示例、退出码和证据边界见
-[Protocol Lab Contract V0.1](../../docs/protocol_lab_contract_v0.1.md)和
-[PAE-DEC-039 Windows UDP Exchange](../../docs/pae-dec-039-protocol-lab-windows-udp-exchange.md)。
+[Protocol Lab Contract V0.1](../../docs/engineering/protocol_lab_contract_v0.1.md)和
+[PAE-DEC-039 Windows UDP Exchange](../../docs/engineering/pae-dec-039-protocol-lab-windows-udp-exchange.md)。

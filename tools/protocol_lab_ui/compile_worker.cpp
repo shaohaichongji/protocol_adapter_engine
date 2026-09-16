@@ -19,8 +19,28 @@ std::unique_ptr<CompileCompletion> CompileRequest(CompileWorker::Request request
   completion->document_id = request.document_id;
   completion->load_revision = request.load_revision;
   completion->config_sha256 = protocol_lab::HashBytes(request.config_text);
+#if defined(PAE_BUILD_PROTOCOL_LAB_BINARY_PUBLIC_H2)
+  const auto dispatch = ClassifySchemaVersion(request.config_text);
+  completion->route = dispatch.status;
+  if (dispatch.status == SchemaDispatchStatus::CLASSIFICATION_FAILED) {
+    completion->classification_error = dispatch.detail;
+    return completion;
+  }
+  if (dispatch.status == SchemaDispatchStatus::BINARY_PUBLIC) {
+    ++completion->compiler_attempt_count;
+    auto result = pae::CompileProtocolJson(request.config_text);
+    if (!result.Succeeded()) {
+      if (result.Diagnostic()) completion->public_diagnostic = *result.Diagnostic();
+      return completion;
+    }
+    completion->public_compiled =
+        std::make_unique<pae::CompiledProtocol>(std::move(result).TakeCompiled());
+    return completion;
+  }
+#endif
   const std::size_t desktop_limit = config_compiler::DerivedUiDescriptionMemoryLimit(
       protocol_plan::ResourceProfile::DESKTOP);
+  ++completion->compiler_attempt_count;
   auto result = config_compiler::CompileJsonToPlanWithUiDescription(request.config_text,
                                                                      desktop_limit);
   if (!result.Succeeded()) {

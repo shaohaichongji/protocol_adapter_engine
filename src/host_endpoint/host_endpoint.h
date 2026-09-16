@@ -80,6 +80,17 @@ struct Candidate {
   protocol_core::DecodeResult decoded;
   const protocol_core::DecodedFieldSlot* fields = nullptr;
   std::size_t field_count = 0U;
+
+  // Converted integer fields only, not all decoded fields. Callback-scoped, serialized view.
+  // Failure candidates expose zero entries. A failed read leaves output unchanged.
+  // The copied value's FieldRef still borrows the Plan; do not retain it across callbacks.
+  [[nodiscard]] std::size_t RawIntegerCount() const noexcept;
+  [[nodiscard]] bool GetRawInteger(std::size_t index,
+                                  protocol_core::RawIntegerValue& output) const noexcept;
+
+ private:
+  friend class Session;
+  const protocol_core::ExecutionWorkspace* raw_workspace_ = nullptr;
 };
 struct CandidateObserver {
   // Runs before the success Sink. Normal STOP keeps current success delivery; exceptions do not.

@@ -14,7 +14,11 @@ class HexView final : public QTableView {
   explicit HexView(QWidget* parent = nullptr);
   ~HexView() override;
 
-  void SetFrame(std::vector<std::uint8_t> frame, const std::vector<PhysicalBitMask>& highlights);
+  bool PrepareCapacity(std::size_t frame_capacity) noexcept;
+  void FailNextCapacityPreparationForTest() noexcept;
+  std::size_t AccountedCapacityBytes() const noexcept;
+  void SetFrame(const std::vector<std::uint8_t>& frame,
+                const std::vector<PhysicalBitMask>& highlights);
   void ClearFrame();
 
   std::size_t FrameSize() const noexcept;
@@ -24,6 +28,7 @@ class HexView final : public QTableView {
  private:
   class Model;
   Model* model_ = nullptr;
+  bool fail_next_capacity_preparation_ = false;
 };
 
 }  // namespace pae::protocol_lab_ui
