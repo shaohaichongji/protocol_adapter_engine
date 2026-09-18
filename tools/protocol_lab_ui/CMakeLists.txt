@@ -113,6 +113,12 @@ if(PAE_BUILD_PROTOCOL_LAB_ASCII_PUBLIC_A2)
         PUBLIC PAE_BUILD_PROTOCOL_LAB_ASCII_PUBLIC_A2=1
     )
 endif()
+if(PAE_BUILD_PROTOCOL_LAB_ASCII_PUBLIC_STREAM_UI)
+    target_compile_definitions(
+        pae_protocol_lab_ui_headless_internal
+        PUBLIC PAE_BUILD_PROTOCOL_LAB_ASCII_PUBLIC_STREAM_UI=1
+    )
+endif()
 set_target_properties(
     pae_protocol_lab_ui_headless_internal
     PROPERTIES
@@ -167,6 +173,12 @@ if(PAE_ENABLE_SCHEMA_V10_ASCII_TEXT_CODEC)
         "${PROJECT_SOURCE_DIR}/examples/config/synthetic_ascii_literal_only.pae.json"
         "${PROJECT_SOURCE_DIR}/tests/protocol_lab_ui/fixtures/synthetic_ascii_decode_only.pae.json"
         "${PROJECT_SOURCE_DIR}/tests/protocol_lab_ui/fixtures/synthetic_ascii_encode_only.pae.json"
+    )
+endif()
+if(PAE_BUILD_PROTOCOL_LAB_ASCII_STREAM_OBSERVER)
+    list(
+        APPEND pae_protocol_lab_ui_deployment_configs
+        "${PROJECT_SOURCE_DIR}/examples/config/synthetic_ascii_stream_slice.pae.json"
     )
 endif()
 if(PAE_BUILD_PROTOCOL_LAB_BINARY_UI)

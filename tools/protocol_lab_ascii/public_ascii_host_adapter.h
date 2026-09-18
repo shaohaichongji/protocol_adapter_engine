@@ -1,7 +1,9 @@
 #pragma once
 
 #include <cstddef>
+#include <cstdint>
 #include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -14,6 +16,49 @@ struct HostBinding {
   std::string endpoint;
   HostAction action = HostAction::DECODE;
   std::size_t pipeline_index = 0U;
+  StreamFramerOptions framing_options;
+};
+
+struct StreamObservation {
+  StreamFramingPhase phase = StreamFramingPhase::COLLECTING;
+  std::size_t buffered_bytes = 0U;
+  bool has_internal_work = false;
+  std::size_t effective_max_submit_bytes = 0U;
+  std::size_t effective_max_work_units = 0U;
+  std::size_t maximum_candidate_frame_bytes = 0U;
+  std::size_t frozen_input_bytes = 0U;
+  std::size_t frozen_cursor = 0U;
+  bool reset_required = false;
+  std::uint64_t generation = 0U;
+  std::uint64_t step_sequence = 0U;
+  std::uint64_t total_candidates = 0U;
+  std::uint64_t total_decode_successes = 0U;
+  std::uint64_t total_observer_callbacks = 0U;
+  std::uint64_t total_business_callbacks = 0U;
+  std::size_t total_discarded_bytes = 0U;
+  std::size_t total_malformed_candidates = 0U;
+};
+
+enum class StreamDiagnostic {
+  NONE,
+  CHANNEL_NOT_ASCII_STREAM,
+  RESET_REQUIRED,
+  INVALID_CHUNK_OR_CONTINUE_REQUIRED,
+  CHUNK_ALLOCATION_FAILED,
+  CHUNK_MATERIALIZATION_FAILED,
+  NO_FROZEN_SUFFIX_OR_INTERNAL_WORK,
+  CANDIDATE_COPY_FAILED_RESET_REQUIRED,
+  STREAM_CONTRACT_VIOLATION_RESET_REQUIRED,
+};
+
+struct StreamStepResult {
+  LocalStatus status = LocalStatus::INVALID_INPUT;
+  bool host_called = false;
+  HostOperationResult host;
+  StreamObservation before;
+  StreamObservation after;
+  std::optional<OperationResult> candidate;
+  StreamDiagnostic diagnostic = StreamDiagnostic::NONE;
 };
 
 struct HostPrepareResult;
@@ -39,6 +84,14 @@ class HostAdapter final {
                                        ByteView frame) noexcept;
   [[nodiscard]] OperationResult Encode(std::size_t binding, std::size_t message_index,
                                        const std::vector<InputField>& inputs) noexcept;
+  [[nodiscard]] StreamStepResult SubmitStreamChunk(std::size_t binding, std::size_t flow,
+                                                   const std::vector<std::uint8_t>& chunk) noexcept;
+  [[nodiscard]] StreamStepResult ContinueStream(std::size_t binding, std::size_t flow) noexcept;
+  [[nodiscard]] std::optional<StreamObservation> ObserveStream(std::size_t binding,
+                                                               std::size_t flow) const noexcept;
+  [[nodiscard]] std::size_t StreamChunkCapacity(std::size_t binding,
+                                                std::size_t flow) const noexcept;
+  [[nodiscard]] bool StreamContinueAvailable(std::size_t binding, std::size_t flow) const noexcept;
   [[nodiscard]] bool Reset(std::size_t binding, std::size_t flow) noexcept;
 #if defined(PAE_PROTOCOL_LAB_ASCII_PUBLIC_A1_TEST_HOOKS)
   void FailNextCallbackAllocationForTesting() noexcept { fail_next_callback_allocation_ = true; }
@@ -47,11 +100,26 @@ class HostAdapter final {
  private:
   struct Channel {
     HostChannelHandle handle;
+    bool stream = false;
+    std::size_t maximum_candidate_frame_bytes = 0U;
+    std::size_t stream_capacity = 0U;
+    std::vector<std::uint8_t> frozen_input;
+    std::size_t cursor = 0U;
+    bool faulted = false;
+    std::size_t no_progress_steps = 0U;
+    std::uint64_t step_sequence = 0U;
+    std::uint64_t total_candidates = 0U;
+    std::uint64_t total_decode_successes = 0U;
+    std::uint64_t total_observer_callbacks = 0U;
+    std::uint64_t total_business_callbacks = 0U;
+    std::size_t total_discarded_bytes = 0U;
+    std::size_t total_malformed_candidates = 0U;
   };
 
   HostAdapter(std::unique_ptr<Adapter> owner, std::unique_ptr<HostEndpoint> host,
               std::vector<HostBinding> bindings, std::vector<std::vector<Channel>> channels,
               std::size_t accounted_bytes) noexcept;
+  [[nodiscard]] StreamStepResult RunStreamStep(std::size_t binding, std::size_t flow) noexcept;
 
   std::unique_ptr<Adapter> owner_;
   std::unique_ptr<HostEndpoint> host_;

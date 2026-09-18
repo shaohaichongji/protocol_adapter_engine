@@ -6,12 +6,13 @@
 
 #include "../../tools/protocol_lab_ui/document_session.h"
 
-void Check(bool condition) {
+void CheckAt(bool condition, int line) {
   if (!condition) {
-    std::cerr << "host session assertion failed\n";
+    std::cerr << "host session assertion failed at line " << line << "\n";
     std::exit(EXIT_FAILURE);
   }
 }
+#define Check(condition) CheckAt((condition), __LINE__)
 
 namespace ui = pae::protocol_lab_ui;
 namespace ascii = pae::protocol_lab::ascii;
@@ -31,15 +32,36 @@ void Load(ui::DocumentSession& session) {
   auto completion = std::make_unique<ui::CompileCompletion>();
   completion->document_id = session.id();
   completion->load_revision = session.BeginLoad();
+#if defined(PAE_BUILD_PROTOCOL_LAB_ASCII_PUBLIC_STREAM_UI)
+  auto compiled = pae::CompileProtocolJson(Text());
+  Check(compiled.Succeeded());
+  completion->route = ui::SchemaDispatchStatus::ASCII_PUBLIC;
+  completion->compiler_attempt_count = 1U;
+  completion->public_compiled =
+      std::make_unique<pae::CompiledProtocol>(std::move(compiled).TakeCompiled());
+#else
   completion->artifacts = std::make_unique<pae::config_compiler::CompiledUiArtifacts>(Artifacts());
+#endif
   Check(session.ApplyCompileCompletion(std::move(completion)));
 }
 #if defined(PAE_BUILD_PROTOCOL_LAB_ASCII_PUBLIC_A2)
 std::unique_ptr<ui::AsciiHostAdapter> Adapter() {
   std::string error;
+#if defined(PAE_BUILD_PROTOCOL_LAB_ASCII_PUBLIC_STREAM_UI)
+  auto compiled = pae::CompileProtocolJson(Text());
+  Check(compiled.Succeeded());
+  auto result = ui::AsciiHostAdapter::CreatePublic(
+      std::move(compiled).TakeCompiled(),
+      {{"device", host::Action::DECODE, 0},
+       {"device", host::Action::ENCODE, 0},
+       {"record", host::Action::DECODE, 2},
+       {"record", host::Action::ENCODE, 1}},
+      0U, error);
+#else
   auto result = ui::AsciiHostAdapter::CreatePrivate(
       Artifacts(), {{"device", host::Action::DECODE, 0}, {"device", host::Action::ENCODE, 0}},
       error);
+#endif
   Check(result && error.empty());
   return result;
 }
@@ -57,7 +79,39 @@ int main() {
   ui::DocumentSession first{1}, second{2};
   Load(first);
   Load(second);
+
+#if defined(PAE_BUILD_PROTOCOL_LAB_ASCII_PUBLIC_STREAM_UI)
+  Check(first.SelectPipeline(2U) && first.SelectMessage(1U));
+  Check(!first.StreamInspectAvailable() && !first.StreamObservation().has_value() &&
+        !first.StreamContinueAvailable() && !first.ResetStream());
+  Check(first.InspectAvailable());
+  Check(first.SetRepresentation(ui::ByteRepresentation::ASCII_ESCAPED));
+  Check(first.SetInspectDraftUtf16(u"ONLY\\r\\n") && first.Inspect());
+  Check(first.inspect_result() && first.inspect_result()->message_id == "decode_only" &&
+        first.inspect_result()->zero_field_success);
+
+  Check(first.SelectPipeline(1U) && first.SelectMessage(2U));
+  Check(!first.StreamInspectAvailable() && !first.StreamObservation().has_value() &&
+        !first.StreamContinueAvailable() && !first.ResetStream());
+  Check(!first.InspectAvailable() && first.EncodeAvailable());
+#endif
+
   Check(first.ApplyHostAdapter(Adapter()) && second.ApplyHostAdapter(Adapter()));
+#if defined(PAE_BUILD_PROTOCOL_LAB_ASCII_PUBLIC_STREAM_UI)
+  Check(first.SelectHostFlow(2U, 0U));
+  Check(!first.StreamInspectAvailable() && !first.StreamObservation().has_value() &&
+        !first.StreamContinueAvailable() && !first.ResetStream());
+  Check(first.InspectAvailable());
+  Check(first.SetRepresentation(ui::ByteRepresentation::ASCII_ESCAPED));
+  Check(first.SetInspectDraftUtf16(u"ONLY\\r\\n") && first.Inspect());
+  Check(first.inspect_result() && first.inspect_result()->message_id == "decode_only" &&
+        first.inspect_result()->zero_field_success);
+  Check(first.SelectHostFlow(3U, 0U));
+  Check(!first.StreamInspectAvailable() && !first.StreamObservation().has_value() &&
+        !first.StreamContinueAvailable() && !first.ResetStream());
+  Check(!first.InspectAvailable() && first.EncodeAvailable());
+  Check(first.SelectHostFlow(0U, 0U));
+#endif
   Check(second.SetInspectDraftUtf16(u"4F 4E"));
   Check(second.SetRepresentation(ui::ByteRepresentation::ASCII_ESCAPED));
   Check(second.inspect_draft_utf16() == u"ON");
@@ -101,7 +155,8 @@ int main() {
   Check(first.inspect_result() && first.inspect_result()->fields[0].logical_value == "A");
   Check(first.ContinueStream() && first.inspect_failure() && !first.inspect_result());
   Check(first.ContinueStream() && first.inspect_result()->zero_field_success);
-  Check(first.ResetStream() && first.StreamObservation()->generation == 1);
+  const auto generation = first.StreamObservation()->generation;
+  Check(first.ResetStream() && first.StreamObservation()->generation == generation + 1U);
   Check(first.SelectHostFlow(0, 1) && first.StreamObservation()->buffered_bytes == 2);
   Check(first.SetInspectDraftUtf16(u"LY\\r\\n") && first.SubmitStream());
   Check(first.inspect_result()->zero_field_success);

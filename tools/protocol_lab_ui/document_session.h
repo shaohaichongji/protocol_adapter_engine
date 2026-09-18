@@ -158,6 +158,9 @@ struct PreparedDocument {
 #if defined(PAE_BUILD_PROTOCOL_LAB_ASCII_PUBLIC_A2)
   std::unique_ptr<protocol_lab_ascii::public_offline::Adapter> public_ascii_adapter;
 #endif
+#if defined(PAE_BUILD_PROTOCOL_LAB_ASCII_PUBLIC_STREAM_UI)
+  std::unique_ptr<AsciiHostAdapter> public_ascii_stream_adapter;
+#endif
 };
 
 class InputMaterializationTimer {

@@ -129,6 +129,9 @@ bool DocumentSession::AsciiBackendReady() const noexcept {
 #if defined(PAE_BUILD_PROTOCOL_LAB_ASCII_PUBLIC_A2)
                        || prepared_->public_ascii_adapter
 #endif
+#if defined(PAE_BUILD_PROTOCOL_LAB_ASCII_PUBLIC_STREAM_UI)
+                       || prepared_->public_ascii_stream_adapter
+#endif
 #if defined(PAE_BUILD_PROTOCOL_LAB_HOST_OBSERVER)
                        || prepared_->host_adapter
 #endif
@@ -366,6 +369,9 @@ bool DocumentSession::ApplyHostAdapter(
 #if defined(PAE_BUILD_PROTOCOL_LAB_ASCII_PUBLIC_A2)
   prepared_->public_ascii_adapter.reset();
 #endif
+#if defined(PAE_BUILD_PROTOCOL_LAB_ASCII_PUBLIC_STREAM_UI)
+  prepared_->public_ascii_stream_adapter.reset();
+#endif
   prepared_->host_adapter = std::move(adapter);
   description_ = std::move(mapped);
   ++plan_generation_;
@@ -514,7 +520,8 @@ bool DocumentSession::ApplyCompileCompletion(std::unique_ptr<CompileCompletion> 
     return false;
   }
 #if defined(PAE_BUILD_PROTOCOL_LAB_BINARY_PUBLIC_H2) || \
-    defined(PAE_BUILD_PROTOCOL_LAB_ASCII_PUBLIC_A2)
+    defined(PAE_BUILD_PROTOCOL_LAB_ASCII_PUBLIC_A2) || \
+    defined(PAE_BUILD_PROTOCOL_LAB_ASCII_PUBLIC_STREAM_UI)
   if (completion->route == SchemaDispatchStatus::CLASSIFICATION_FAILED) {
     SetDiagnostic("UI_SCHEMA_CLASSIFICATION_FAILED", completion->classification_error);
     state_ = DocumentState::CONFIG_ERROR;
@@ -563,10 +570,40 @@ bool DocumentSession::ApplyCompileCompletion(std::unique_ptr<CompileCompletion> 
       state_ = DocumentState::CONFIG_ERROR;
       return false;
     }
-    auto adopted = protocol_lab_ascii::public_offline::Adapter::AdoptCompiled(
-        std::move(*completion->public_compiled));
     DocumentDescription neutral;
     std::string mapping_error;
+    const auto protocol = completion->public_compiled->Protocol();
+#if defined(PAE_BUILD_PROTOCOL_LAB_ASCII_PUBLIC_STREAM_UI)
+    if (protocol && protocol->schema_version == "0.11") {
+      auto stream = AsciiHostAdapter::CreatePublicDirect(std::move(*completion->public_compiled),
+                                                         mapping_error);
+      if (!stream) {
+        SetDiagnostic("UI_PUBLIC_ASCII_PREPARATION_FAILED", std::move(mapping_error));
+        state_ = DocumentState::CONFIG_ERROR;
+        return false;
+      }
+      neutral = stream->Description();
+      auto prepared = std::make_unique<PreparedDocument>();
+      prepared->config_sha256 = std::move(completion->config_sha256);
+      prepared->public_ascii_stream_adapter = std::move(stream);
+      prepared_ = std::move(prepared);
+      description_ = std::move(neutral);
+      ++plan_generation_;
+      diagnostic_id_.clear();
+      diagnostic_detail_.clear();
+      if (!SetInitialSelection()) {
+        prepared_.reset();
+        description_.reset();
+        SetDiagnostic("UI_EMPTY_PLAN_SELECTION", "public ASCII description has no selection");
+        state_ = DocumentState::CONFIG_ERROR;
+        return false;
+      }
+      state_ = DocumentState::READY;
+      return true;
+    }
+#endif
+    auto adopted = protocol_lab_ascii::public_offline::Adapter::AdoptCompiled(
+        std::move(*completion->public_compiled));
     if (!adopted.adapter ||
         !BuildDocumentDescription(adopted.adapter->Description(), neutral, mapping_error)) {
       SetDiagnostic("UI_PUBLIC_ASCII_PREPARATION_FAILED",
@@ -1071,6 +1108,14 @@ bool DocumentSession::Encode(protocol_lab::v06::ExecutionObserver* observer,
           identity, protocol_lab::ascii::Operation::ENCODE);
     } else
 #endif
+#if defined(PAE_BUILD_PROTOCOL_LAB_ASCII_PUBLIC_STREAM_UI)
+        if (prepared_->public_ascii_stream_adapter) {
+      const auto binding = prepared_->public_ascii_stream_adapter->FindBinding(
+          identity.pipeline_index, host_endpoint::Action::ENCODE);
+      outcome = binding ? prepared_->public_ascii_stream_adapter->Encode(*binding, identity, inputs)
+                        : protocol_lab::ascii::ExecutionResult{};
+    } else
+#endif
 #if defined(PAE_BUILD_PROTOCOL_LAB_HOST_OBSERVER)
         if (HostActive())
       outcome = prepared_->host_adapter->Encode(host_binding_, identity, inputs);
@@ -1424,6 +1469,15 @@ bool DocumentSession::Inspect(protocol_lab::v06::ExecutionObserver* observer) {
                                          identity, protocol_lab::ascii::Operation::INSPECT);
     } else
 #endif
+#if defined(PAE_BUILD_PROTOCOL_LAB_ASCII_PUBLIC_STREAM_UI)
+        if (prepared_->public_ascii_stream_adapter) {
+      const auto binding = prepared_->public_ascii_stream_adapter->FindBinding(
+          pipeline.pipeline_index, host_endpoint::Action::DECODE);
+      outcome = binding ? prepared_->public_ascii_stream_adapter->Inspect(*binding, 0U, identity,
+                                                                          input)
+                        : protocol_lab::ascii::ExecutionResult{};
+    } else
+#endif
 #if defined(PAE_BUILD_PROTOCOL_LAB_HOST_OBSERVER)
         if (HostActive())
       outcome = prepared_->host_adapter->Inspect(host_binding_, host_stream_, identity, input);
@@ -1597,6 +1651,13 @@ bool DocumentSession::StreamInspectAvailable() const noexcept {
   if (HostActive())
     return prepared_->host_adapter->Observe(host_binding_, host_stream_).has_value();
 #endif
+#if defined(PAE_BUILD_PROTOCOL_LAB_ASCII_PUBLIC_STREAM_UI)
+  if (prepared_ && prepared_->public_ascii_stream_adapter && selected_pipeline_index_) {
+    const auto binding = prepared_->public_ascii_stream_adapter->FindBinding(
+        *selected_pipeline_index_, host_endpoint::Action::DECODE);
+    return binding && prepared_->public_ascii_stream_adapter->Observe(*binding, 0U).has_value();
+  }
+#endif
   return AsciiBackendReady() && description_.has_value() && selected_pipeline_index_.has_value() &&
          *selected_pipeline_index_ < description_->pipelines.size() &&
          description_->pipelines[*selected_pipeline_index_].stream_ascii_crlf;
@@ -1607,6 +1668,13 @@ std::optional<protocol_lab::ascii::StreamObservation> DocumentSession::StreamObs
   if (!StreamInspectAvailable()) return std::nullopt;
 #if defined(PAE_BUILD_PROTOCOL_LAB_HOST_OBSERVER)
   if (HostActive()) return prepared_->host_adapter->Observe(host_binding_, host_stream_);
+#endif
+#if defined(PAE_BUILD_PROTOCOL_LAB_ASCII_PUBLIC_STREAM_UI)
+  if (prepared_->public_ascii_stream_adapter) {
+    const auto binding = prepared_->public_ascii_stream_adapter->FindBinding(
+        *selected_pipeline_index_, host_endpoint::Action::DECODE);
+    return binding ? prepared_->public_ascii_stream_adapter->Observe(*binding, 0U) : std::nullopt;
+  }
 #endif
   return prepared_->ascii_adapter->ObserveStream(*selected_pipeline_index_);
 }
@@ -1622,6 +1690,10 @@ bool DocumentSession::StreamHasDiscardableState() const noexcept {
 #if defined(PAE_BUILD_PROTOCOL_LAB_HOST_OBSERVER)
   if (HostActive()) return prepared_->host_adapter->HasDiscardableState();
 #endif
+#if defined(PAE_BUILD_PROTOCOL_LAB_ASCII_PUBLIC_STREAM_UI)
+  if (prepared_ && prepared_->public_ascii_stream_adapter)
+    return prepared_->public_ascii_stream_adapter->HasDiscardableState();
+#endif
   return StreamInspectAvailable() &&
          prepared_->ascii_adapter->StreamHasDiscardableState(*selected_pipeline_index_);
 }
@@ -1629,6 +1701,12 @@ bool DocumentSession::StreamHasDiscardableState() const noexcept {
 std::size_t DocumentSession::StreamChunkBudget() const noexcept {
 #if defined(PAE_BUILD_PROTOCOL_LAB_HOST_OBSERVER)
   if (HostActive()) {
+    const auto state = StreamObservation();
+    return state ? (std::min)(std::size_t{65536}, state->effective_max_submit_bytes) : 0U;
+  }
+#endif
+#if defined(PAE_BUILD_PROTOCOL_LAB_ASCII_PUBLIC_STREAM_UI)
+  if (prepared_ && prepared_->public_ascii_stream_adapter) {
     const auto state = StreamObservation();
     return state ? (std::min)(std::size_t{65536}, state->effective_max_submit_bytes) : 0U;
   }
@@ -1720,6 +1798,14 @@ bool DocumentSession::SubmitStream() {
 #if defined(PAE_BUILD_PROTOCOL_LAB_HOST_OBSERVER)
       HostActive() ? prepared_->host_adapter->Submit(host_binding_, host_stream_, identity, input) :
 #endif
+#if defined(PAE_BUILD_PROTOCOL_LAB_ASCII_PUBLIC_STREAM_UI)
+      prepared_->public_ascii_stream_adapter
+          ? prepared_->public_ascii_stream_adapter->Submit(
+                *prepared_->public_ascii_stream_adapter->FindBinding(
+                    pipeline.pipeline_index, host_endpoint::Action::DECODE),
+                0U, identity, input)
+          :
+#endif
                    prepared_->ascii_adapter->SubmitStreamChunk(std::move(identity), input);
   if (stream_step_->push_called) submitted_stream_input_revision_ = inspect_input_revision_;
   inspect_result_.reset();
@@ -1773,6 +1859,14 @@ bool DocumentSession::ContinueStream() {
 #if defined(PAE_BUILD_PROTOCOL_LAB_HOST_OBSERVER)
       HostActive() ? prepared_->host_adapter->Continue(host_binding_, host_stream_, identity) :
 #endif
+#if defined(PAE_BUILD_PROTOCOL_LAB_ASCII_PUBLIC_STREAM_UI)
+      prepared_->public_ascii_stream_adapter
+          ? prepared_->public_ascii_stream_adapter->Continue(
+                *prepared_->public_ascii_stream_adapter->FindBinding(
+                    pipeline.pipeline_index, host_endpoint::Action::DECODE),
+                0U, identity)
+          :
+#endif
                    prepared_->ascii_adapter->ContinueStream(std::move(identity));
   inspect_result_.reset();
   inspect_failure_.reset();
@@ -1811,6 +1905,14 @@ bool DocumentSession::ResetStream() {
 #if defined(PAE_BUILD_PROTOCOL_LAB_HOST_OBSERVER)
       HostActive()
           ? prepared_->host_adapter->Reset(host_binding_, host_stream_)
+          :
+#endif
+#if defined(PAE_BUILD_PROTOCOL_LAB_ASCII_PUBLIC_STREAM_UI)
+      prepared_->public_ascii_stream_adapter
+          ? prepared_->public_ascii_stream_adapter->Reset(
+                *prepared_->public_ascii_stream_adapter->FindBinding(
+                    pipeline.pipeline_index, host_endpoint::Action::DECODE),
+                0U)
           :
 #endif
           prepared_->ascii_adapter->ResetStream(pipeline.pipeline_index, pipeline.id, error);

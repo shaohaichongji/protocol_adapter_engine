@@ -1,5 +1,7 @@
 # ASCII 公开消费最小契约
 
+2026-09-18 更新：SDK/A1/A2 已在本地检查点 `dbf4798` 收口；用户授权推进 0.11。第 6 节现为静态 framing 查询的实施契约，具体派发以综合计划为准。下方初始授权描述为历史，不代表当前状态；无新的 Git/发布授权。
+
 实施授权更新（2026-09-15）：用户已授权第 7 节公开事实首片实施及相称验证，由《子任务推进》执行；Lab 迁移、流式静态描述及 Git/发布仍未授权。具体文件范围和构建停点见综合计划当前派发。下文“仅文档”描述为契约落盘时点，不否认本次独立授权。
 
 日期：2026-09-15。状态：用户已同意最小路线并授权契约落盘；**仅完成文档细化，代码实施、构建验证和 Lab 迁移尚未授权**。本文定义后续公开事实首片的行为边界，不宣称下列拟新增接口已经存在或 SDK 已支持。
@@ -77,9 +79,26 @@ PAE 仍只调用一次 Encode，内部 TX 独立复核保持不变。仅在返�
 
 ## 6. 后续流式片边界
 
-后续 stream 片再定义只读 Pipeline framing 查询，至少给明确 input kind、strategy、M（ASCII CRLF 的帧长含终止符）；不得从 `available=true` 猜策略，完整记录模式不得伪造 stream M。具体 C++ 形状和非 ASCII 策略映射在该片实施前细化。
+2026-09-18 总控根据两份预检定稿，采用独立查询，不扩展旧 `StreamFramingCapability` 布局：
 
-运行有效 submit/work 限和 phase 继续来自实例 Observe；chunk 容量 C 不等于跨 chunk 帧上限 M。现有 Push/Continue/Reset、精确 consumed、候选与业务结果分离保持不变。Lab 自有冻结后缀、游标、Flow/Tab/revision、取消/替换事务，不移入 PAE。此节是后续约束，不授权现在修改 Framer 或流式接线。
+- 在 `pae/stream_framer.h` 声明 `QueryPipelineFramingDescription(const CompiledProtocol&, std::size_t pipeline_index) noexcept`，返回 `PipelineFramingQueryResult`，函数导出为 `PAE_API`。
+- `PipelineInputKind`：`COMPLETE_RECORD`、`STREAM_CHUNK`。
+- `PipelineFramingStrategy`：`COMPLETE_RECORD`、`FIXED_LENGTH`、`SYNC_FIXED_LENGTH`、`SYNC_LENGTH_FIELD`、`ASCII_CRLF`。
+- `PipelineFramingQueryStatus`：`OK`、`INVALID_COMPILED_PROTOCOL`、`PIPELINE_OUT_OF_RANGE`、`INTERNAL_CONTRACT_VIOLATION`。
+- `PipelineFramingDescription`：`pipeline_index`、`input_kind`、`strategy` 和 `std::optional<std::size_t> maximum_candidate_frame_bytes`（M）。
+- `PipelineFramingQueryResult`：默认 invalid 的 `status` 与默认空的 `std::optional<PipelineFramingDescription> value`；仅 OK 返回 value。
+
+完整记录查询成功，返回 COMPLETE_RECORD/COMPLETE_RECORD、M=nullopt；非 stream 的拒绝属于执行器创建或 Lab stream 准入，不属于静态描述查询失败。此决定统一 Lab 预检中“非 stream 必须失败”的笼统表述。
+
+stream 的 M 映射：FIXED_LENGTH / SYNC_FIXED_LENGTH 取冻结 `frame_length_bytes`；SYNC_LENGTH_FIELD / ASCII_CRLF 取冻结 `maximum_frame_length`。ASCII M 包含终止 CRLF。未知枚举、非法 input/strategy 组合、坏 profile 索引、零 stream M、超 hard limit 或不可表示的 size_t 容量返回 INTERNAL_CONTRACT_VIOLATION，value 为空；无效/moved owner 与 Pipeline 越界分别返回对应状态。非法 Schema 仍由编译器拒绝，不以查询扩大接受域。
+
+返回值完全自有，无借用指针；owner 销毁后值仍安全，但 Pipeline 索引只对原 owner 有身份意义。只读同一冻结 Plan，不解析 JSON、不创建 Workspace、不做堆分配或缓存、不新增计费。公共枚举不随 feature macro 改变形状；未启用能力不得因此可执行。头文件直接包含 optional。
+
+保留旧 capability 函数、导出、布局及既有状态含义；若内部复用新查询，内部契约失败映射旧 INVALID_COMPILED_PROTOCOL，不新增旧枚举或改变合法输入结果。允许最小私有无分配容量 helper 供查询与 Workspace 共用，但不得改变原执行准入、内存计费、策略算法或 Core/Plan/Schema。无分配测试使用真实分配观察，不能只比较未变的报告计数；无法安全构造内部损坏测试时说明限制，不增加生产测试接口或使用未定义行为。
+
+本片不公开 profile id、sync 字节或长度字段细节，不修改 Host 生命周期。新增 C++ API 不宣称稳定 ABI 或任意旧二进制兼容。
+
+运行有效 submit/work 限和 phase 继续来自实例 Observe；chunk 容量 C 不等于跨 chunk 帧上限 M。现有 Push/Continue/Reset、精确 consumed、候选与业务结果分离保持不变。Lab 自有冻结后缀、游标、Flow/Tab/revision、取消/替换事务，不移入 PAE。静态查询实施后先完成定向验证，再验证新 SDK 消费；Lab 非 Qt 及 UI 接线仍须串行派发，不包含在本片实现中。
 
 ## 7. 实施顺序、职责与验收出口
 

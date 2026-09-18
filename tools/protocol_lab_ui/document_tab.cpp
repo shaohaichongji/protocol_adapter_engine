@@ -1981,7 +1981,13 @@ void DocumentTab::ApplyHostDraft() {
 #if defined(PAE_BUILD_PROTOCOL_LAB_ASCII_PUBLIC_A2)
             : (session_.prepared()->public_ascii_adapter
                    ? session_.prepared()->public_ascii_adapter->InstanceAdmissionBytes()
+#if defined(PAE_BUILD_PROTOCOL_LAB_ASCII_PUBLIC_STREAM_UI)
+                   : (session_.prepared()->public_ascii_stream_adapter
+                          ? session_.prepared()->public_ascii_stream_adapter->AccountedBytes()
+                          : session_.prepared()->ascii_adapter->HostTransitionAdmissionBytes()));
+#else
                    : session_.prepared()->ascii_adapter->HostTransitionAdmissionBytes());
+#endif
 #else
             : session_.prepared()->ascii_adapter->HostTransitionAdmissionBytes();
 #endif
@@ -2302,7 +2308,14 @@ void DocumentTab::AcceptHostCompletion(std::unique_ptr<CompileCompletion> comple
       const auto previous =
           session_.HostActive()
               ? session_.prepared()->host_adapter->AccountedBytes()
-              : session_.prepared()->public_ascii_adapter->InstanceAdmissionBytes();
+              : (session_.prepared()->public_ascii_adapter
+                     ? session_.prepared()->public_ascii_adapter->InstanceAdmissionBytes()
+#if defined(PAE_BUILD_PROTOCOL_LAB_ASCII_PUBLIC_STREAM_UI)
+                     : session_.prepared()->public_ascii_stream_adapter->AccountedBytes()
+#else
+                     : 0U
+#endif
+                );
       candidate =
           AsciiHostAdapter::CreatePublic(std::move(*completion->public_compiled),
                                          std::move(host_pending_bindings_), previous, error);

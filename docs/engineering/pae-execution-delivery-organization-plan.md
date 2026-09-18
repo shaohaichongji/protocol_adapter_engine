@@ -5,6 +5,69 @@
 
 ## 顺序与出口
 
+### 0.11 本地提交检查点（2026-09-19）
+
+用户在本片人工收口后同意推进下一步，本轮整理静态 framing 公开查询、新 SDK 消费验证、Lab 非 Qt stream 与 Qt 接线的累积变更形成本地提交；不 Push、不发布、不删除、不启动新功能。保留既有验证来源和 dirty SDK provenance，提交并不把旧候选改写为干净发布物。已核对文件范围和差异，沿用此前限定源码复核、D/R 专项、包外消费及三组用户烟测，不重复成功测试；提交前检查暂存差异及空白，提交后检查工作树。外层 AGENTS 不在仓库内，out 产物不纳入提交。下一步候选为剩余 Lab private 依赖及包外消费边界的定向盘点，尚未派发。
+
+### 当前实施：Lab 0.11 Qt 流式公开接线（2026-09-18）
+
+2026-09-19 最新收口：用户确认三组简短烟测通过、Lab 已关闭，本片 0.11 Qt 公开接线限定收口。实际人工范围为分片/粘包续传、显式 Host Flow 隔离、窗口关闭取消后续传，详见 validation 第 5 节，不扩大为原建议全部事务人工验证。执行任务停止；建议下一步整理本轮查询/SDK/非 Qt/UI 累积变更形成提交检查点，再处理剩余 Lab 公开消费边界。尚无新 Stage/Commit/Push/发布/删除授权，历史 Qt 访问违例独立保留。下方为过程记录。
+
+2026-09-19 最新回收：mixed Pipeline 修正已限定复核，direct 与显式 Host 均按公开 Observe 区分 stream/complete。已核对新增测试覆盖点、修复前两项失败、修复后 D/R 各 6/6 日志及部署 EXE SHA-256 `F2A39850FD947C29E8ADDBA4265A7750D9DCC3AEA6888EE40C9E8B972D97CF5E`，总控未重复执行测试。Lab 停止写入，进入最多三组简短人工烟测，尚未人工验收或整体收口；无 Git/发布/删除授权。下段为返修过程。
+
+2026-09-19 总控回收：已核对相关源码差异、D/R 日志及 Release EXE 哈希，未重复运行，暂不进入人工验收。发现 direct public 分支 `StreamInspectAvailable()` 仅检查 Decode binding 存在，未区分 complete 与 stream；当前示例含 complete 的 `decode_only_pipeline`，故需限定返修。Lab 在原范围先补 mixed Pipeline 模式/调用负例，再按公开观察或既有静态事实判断流式可用性，核对 complete Inspect 与 stream Submit/Continue/Reset 不混用；定向 D/R 及必要部署更新，保留旧日志，完成停止待复核。不扩大 PAE/Git/发布授权。
+
+用户授权下一步。非 Qt stream 及 noexcept 返修已限定复核；《Lab应用推进》独占本片，PAE/工程整理停止。现场 `main@dbf4798` 加既有未提交实现，保留所有变更。0.11 当前仍为 PRIVATE_ASCII；本片迁移首次加载、直接流式操作及显式 Host Apply，不新增 PAE 接口或第二套 Framer/Decode/冻结状态。
+
+- 沿用已确认 ASCII 公开契约、非 Qt 单一 Host owner 和自有 DTO；0.11 dispatch 仅严格读取顶层版本，一请求一个公开编译器，失败无 private fallback。静态 strategy/M 来自公开查询，C/work 来自实例观察；不私读 Plan/Schema 语义。0.11 Encode 若已有入口，保持既有功能并复用同源公开能力，不新增产品功能；无法同源保留时停报，不双编译。
+- 允许相关 `tools/protocol_lab_ui/` 的 dispatch/worker/session/tab、ASCII facade、description/result mapping 与对应 UI 测试；根/局部 CMake 仅必要默认 OFF 门禁与依赖接线。非 Qt `public_ascii_host_adapter.*` 及其专项只允许 UI 接线所需最小组合/观察扩展，不得改变已复核执行语义；其他缺口先报告。独占报告 `docs/engineering/lab-public-ascii-stream-ui-validation.md`，总控维护其余计划/索引。
+- Submit/Continue/Reset 直接消费已复核 adapter，单步一次 Host 调用；保留精确 consumed、冻结后缀及候选/业务计数。Qt 只映射无分配 diagnostic enum 为展示文本，不把映射塞回 noexcept 执行层。失败清旧成功字段，零字段成功不误判失败。direct 与显式 Host 共享实现，不并存两个活跃流状态真源。
+- 保留异步加载取消/迟到 completion 拒绝、document/load/plan/request 等身份检查；Flow/Tab 切换先保存真实源草稿再恢复目标，展示不跨流。Apply 候选准备失败/取消不替换旧 owner、后缀和结果，成功才发布；reload/close/格式切换沿用既有事务和转换拒绝语义，不另加用户步骤。0.10 A2、Binary H2、其他 legacy、CLI/Evidence 对 0.11 的拒绝不变。
+- 先补针对性断言再接线；新独立目录 `out/build/windows-msvc-lab-public-ascii-stream-ui`，证据 `out/lab-public-ascii-stream-ui/`，已占用则唯一后缀。串行 Windows x64 Debug/Release 覆盖单次公开编译、半包/粘包/失败后续传、Reset、Flow/Tab 隔离、Apply/加载/取消事务及受影响 A2/H2 回归；Release 断言必须有效。默认 OFF/Testing-off 检查；非 Qt helper 若变更，补受影响非 Qt 和 static 包外 D/R，不重打 SDK 或重复无关六组。若访问违例再现，留证停报，不无限复跑刷绿。
+- 在新目录部署可运行 Release EXE、随仓 Qt 与配置，记录精确路径和关键哈希，不覆盖旧部署或修改本机 Qt。交付最多三组简短人工烟测建议，待总控复核后才请用户操作。本片不是整个 Lab 包外 public-only 验证、正式发布或历史 Qt 崩溃修复。
+
+若公共能力缺失、兼容性/预算/所有权需改契约、共享文件冲突，停报总控。完成主动向总控反馈一次并停止写入。无 Stage/Commit/Push/发布/删除授权。
+
+### 当前实施：Lab 0.11 非 Qt 公开流式适配（2026-09-18）
+
+最新收口：`noexcept` 诊断返修已完成限定总控复核。流式错误诊断改为 Lab 自有 enum，移除动态文本分配及借用寿命问题；已核对入口/错误分支、Release 有效断言、修复前退出码 86 记录、最终 D/R 各 4/4 与 static 包外 D/R PASS 日志，以及三个实现/测试文件 SHA-256。总控未重复构建/运行。非 Qt 本片限定收口，Lab 停止写入；下一片为 Qt 0.11 流式公开接线，待另行派发。历史 Qt 访问违例、整个 Lab 包外消费及 Linux 等仍未关闭，无 Stage/Commit/Push/发布/删除授权。下段为返修过程。
+
+总控回收复核：Lab 已交付非 Qt 实现及专项/包外 static D/R 证据，尚未收口。源码发现 `StreamStepResult::detail` 使用 `std::string`，多个 `noexcept` 流式入口及 `bad_alloc` 处理分支仍赋长字符串，错误报告自身可能再次分配并触发 terminate。限定《Lab应用推进》在原文件范围修正为无分配且寿命明确的诊断表达，补针对性失败路径断言及受影响 D/R、static 包外验证；保留已有证据，使用独立日志前缀。PAE/工程整理继续停止，不进入 UI、不增加人工验收、不重打 SDK，无 Stage/Commit/Push/发布/删除授权。完成主动反馈并停止，待总控复核。
+
+SDK 前置已完成限定总控复核：六组运行/来源/导出记录、consumer 断言及关键源码/DLL 哈希已核对，未重跑构建或独立复算全部包文件。用户授权下一步；《Lab应用推进》独占本片，PAE/工程整理停止。基线 `dbf4798` 加保留的未提交查询实现和文档；使用 `out/sdk-public-stream-description/candidate1-20260918/` static D/R 候选，不重打包、不改公共 PAE。
+
+本片实施契约：复用 A1 同一 compiled owner、描述与结果物化；优先在现有 `public_ascii_host_adapter.*` 扩展唯一 Host stream 状态，direct stream 后续也通过该所有者使用，不再创建第二套 Framer/Decode 路径。按公开静态查询确认 ASCII_CRLF/STREAM_CHUNK/M；complete 查询合法但 Submit 拒绝，既有 complete Decode/Encode 行为保持。静态 M 包含 CRLF，实例提交 C=min(64KiB,effective_max_submit_bytes)，work 独立。每 Flow 独占冻结 chunk/cursor/Handle/计数/故障；每动作一次 Host 调用、最多一个候选，STOP consumed 仅推进已消费前缀，后续只续提剩余后缀；无后缀且 internal work 才空 Continue，无工作本地拒绝。禁止重复 Decode、复制已消费前缀或观察/业务各复制一份。
+
+失败候选只在 observer 物化并 STOP；成功 observer 只记事实并 STOP，business 物化一次并 STOP。交叉核对回调/候选/Decode 计数；本地物化异常保留原 Codec/Host/consumed 事实、清空候选有效 DTO并要求目标 Flow Reset。正常 CODEC_FAILED 不自动升级流故障。推进前检查 consumed<=submitted；无效 consumed 不更新 cursor，流进入故障而非回放。无进展保护必须允许合法 pending/work-budget 步骤，不以一轮零 consumed 误判故障。Reset 成功后重新 Find 新 Handle，旧 Handle stale；只有重新 Observe 成功才清本地状态，其他 Flow 不受影响。资源准入以饱和运算计入 owner/Host/本地状态/冻结 capacity/result，instance/replacement 在发布前检查；逻辑费用不是 RSS。
+
+允许文件：`tools/protocol_lab_ascii/public_ascii_host_adapter.*`、必要最小 `public_ascii_offline_adapter.*` 组合入口/stream 描述 DTO，必要单一 `public_ascii_stream_*` helper（不得形成第二状态真源）；该目录与 `tests/protocol_lab_ascii` 的局部 CMake、新 `public_ascii_stream_adapter_tests.cpp`、独立包外 `public_ascii_stream_consumer/`；根 CMake 仅新增默认 OFF `PAE_BUILD_PROTOCOL_LAB_ASCII_PUBLIC_STREAM` 及依赖/目录接线。该开关必须不依赖 A2 UI 或旧 private adapter，现有 A2 与新 stream 可分别引入共享 Host helper。若需要调整 `tests/CMakeLists.txt` 目录门禁仅限本开关接线。独占报告 `lab-public-ascii-stream-validation.md`。不改 Qt/UI/dispatch、PAE public/Core/Plan/Schema、旧桥或 SDK；其他文档由总控维护。实现范围不足先停报。
+
+先补专项断言，再实施；新 `out/build/windows-msvc-lab-public-ascii-stream`（已存在另唯一后缀），日志 `out/lab-public-ascii-stream/`，D/R 串行。覆盖 CR/LF 分片/粘包 STOP 后缀/失败后合法候选/零字段、work pending、超长 discard 恢复、两 Flow、Reset/新句柄、复制故障及独立预算 exact/minus-one；回归 A1 和 A2 非 Qt Host 可复用断言，A2 UI 不在本片。测试注入只能 Testing 构建；门禁验证默认 OFF 和 Testing-off，无 Qt/private PAE 依赖。包外 consumer 编译 Lab adapter 源码但只链接新安装 SDK 的 PAE::pae static D/R，记录实际来源，不用仓库 public target 冒充包验证。本片不运行 Qt，不新增人工烟测，不重跑 SDK 六组。
+
+交付写明单一状态所有者选择、实际文件、命令/结果/证据与未验证项；完成向总控主动反馈一次并停止。无 Stage/Commit/Push/发布/删除授权；历史 Qt 访问违例不因本片关闭。总控复核后再定 Qt 接线，不自动推进 UI。
+
+### 当前派发：0.11 查询新 SDK 消费验证（2026-09-18）
+
+静态 framing 查询已完成总控限定源码/测试差异与日志复核，未重复构建；内部损坏 Plan 负例仍未实测。用户授权下一步，由《子任务推进》独占新 SDK 生成和包外验证，Lab/工程整理停止。基线仍为 `dbf4798` 加当前未提交查询实现/文档，必须保留并如实记录 dirty provenance 与实际打包输入哈希，不能将候选标成该 HEAD 的干净发布。
+
+新候选根 `out/sdk-public-stream-description/candidate1-20260918/`，生成 source、static-debug/release、shared-debug/release 五包；独立构建 `out/build/windows-msvc-public-stream-sdk-*`，证据 `out/public-stream-sdk/`，仓库外消费根 `F:\PersonalWorkspace\pae-sdk-public-stream-validation-candidate1-20260918\`。已存在的路径不覆盖，另选唯一后缀并记录。沿用 Windows x64 v142 已验证配置；源码包与二进制包各自独立消费，六组 D/R 串行运行，禁止暗用开发仓库 private 头/库或源码 fallback。
+
+复用打包脚本和当前 consumer，确保实际执行新查询，覆盖 ASCII stream M、complete M 为空及既有 Codec/Framer/Host/ASCII/Binary 消费。必要最小修正仅限 `scripts/package_sdk_stage3.ps1`、`cmake/PaeSdkInstall.cmake`、`cmake/PAEConfig.cmake.in`、`examples/public_api_sdk_consumer/`；不改公共接口、Core/Plan/Schema/Host/Lab 或根 CMake。若功能缺陷阻断，留证停报，不扩修。独占报告 `docs/engineering/pae-public-stream-sdk-validation.md`，其他文档由总控维护。
+
+记录每组完整命令/退出码、actual include/prefix/库来源，检查新旧 DLL 导出、依赖、consumer 配套 DLL 哈希、五包 manifest/hash、外部复制一致性和开发路径泄漏；产品 Testing-off，不重复无关全量测试或 Qt 人工验收。本地候选不是正式发布/稳定 ABI/Linux/现场证据。不覆盖任何旧 SDK/部署，不改本机 Qt/全局环境，不删除；无 Stage/Commit/Push/发布授权。完成向总控主动反馈一次并停止，待复核后再派 Lab 非 Qt 流式适配。
+
+### 当前实施：0.11 静态 framing 公开查询（2026-09-18）
+
+SDK/A1/A2 已本地提交 `dbf4798`、未 Push。PAE/Lab 两份预检已回收并限定复核；用户授权继续推进。精确查询契约见 [ASCII 公开消费契约第 6 节](pae-public-ascii-consumption-contract.md)。complete 查询成功且 M 为空；Lab stream 准入另行拒绝 complete。静态 M 与运行 C/work 分离，旧 capability 布局/合法语义保持。
+
+本批《子任务推进》独占接口与针对验证；Lab、工程整理停止。允许 `include/pae/stream_framer.h`、`src/public_api/stream_framer.cpp`、必要最小 `src/protocol_framing/stream_framer.h/.cpp` 私有容量 helper、`tests/public_api/public_stream_framer_tests.cpp`、独立头测试及必要局部测试 CMake、`examples/public_api_sdk_consumer/main.cpp`；独占验证报告 `pae-public-stream-framing-validation.md`。不修改 Core/Plan/Schema/Host/Lab、根 CMake、旧部署、SDK 打包入口、其他报告或总控文档；需要扩大范围先报告。
+
+先加定向断言再实施。在新的 `out/build/windows-msvc-public-stream-description` 与必要 shared 独立目录串行进行 Windows x64 D/R，目录已存在则用唯一后缀；证据放 `out/public-stream-description/`。验证 complete、Binary 三策略、ASCII CRLF 的精确映射，invalid/moved/index 和可安全触达的内部失败，C/M 分离、真实无分配观察、旧 capability 兼容；回归公开 header/Framer/Host 与受影响内部 Framer，补 Product-only/Testing-off 门禁及新旧 DLL symbol/最小外部链接。未变的无关 Qt/全量矩阵不重复。本批不重打五包；接口复核后集中派发一次新 SDK 五包/六组消费验证，再接 Lab。
+
+停止条件：契约冲突、无法保持旧执行语义、需要新增缓存/预算或扩大文件范围时停报；测试失败保留证据，不刷绿。实现及定向验证完成后向总控主动反馈一次并停止。无 Stage/Commit/Push/发布/删除授权。总控只维护契约、综合计划、路线和外层 AGENTS，不与执行任务写入交叉。
+
+后续顺序：接口复核 → 新 SDK 消费 → Lab 单一状态所有者的非 Qt stream 适配 → UI 接线与最多三组人工烟测 → 有限包外 Lab/工程收尾。后续文件范围待各前置结果明确后再派，不并行猜测接口、不新增 TLV/通信业务。
+
 ### SDK/A1/A2 检查点与 0.11 后续顺序（2026-09-18）
 
 用户授权先整理 SDK/A1/A2 累积变更形成本地提交检查点，再推进 0.11 流式公开接口迁移；不包含 Push/发布/删除。检查点只纳入本轮 SDK consumer、A1/A2 adapter/UI/专项/CMake 和相关验证/索引，out 产物保持 ignored，外层 AGENTS 不属于 Git 仓库。既有 D/R 与人工证据沿用，不因只整理文档重复全矩阵。

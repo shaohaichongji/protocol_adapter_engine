@@ -12,7 +12,8 @@
 #include "../../src/config_compiler/config_compiler.h"
 #include "schema_dispatch.h"
 #if defined(PAE_BUILD_PROTOCOL_LAB_BINARY_PUBLIC_H2) || \
-    defined(PAE_BUILD_PROTOCOL_LAB_ASCII_PUBLIC_A2)
+    defined(PAE_BUILD_PROTOCOL_LAB_ASCII_PUBLIC_A2) || \
+    defined(PAE_BUILD_PROTOCOL_LAB_ASCII_PUBLIC_STREAM_UI)
 #include "pae/compiler.h"
 #endif
 
@@ -34,7 +35,8 @@ struct CompileCompletion {
   std::string classification_error;
   std::size_t compiler_attempt_count = 0U;
 #if defined(PAE_BUILD_PROTOCOL_LAB_BINARY_PUBLIC_H2) || \
-    defined(PAE_BUILD_PROTOCOL_LAB_ASCII_PUBLIC_A2)
+    defined(PAE_BUILD_PROTOCOL_LAB_ASCII_PUBLIC_A2) || \
+    defined(PAE_BUILD_PROTOCOL_LAB_ASCII_PUBLIC_STREAM_UI)
   std::unique_ptr<pae::CompiledProtocol> public_compiled;
   std::optional<pae::CompileDiagnostic> public_diagnostic;
 #endif

@@ -20,7 +20,8 @@ std::unique_ptr<CompileCompletion> CompileRequest(CompileWorker::Request request
   completion->load_revision = request.load_revision;
   completion->config_sha256 = protocol_lab::HashBytes(request.config_text);
 #if defined(PAE_BUILD_PROTOCOL_LAB_BINARY_PUBLIC_H2) || \
-    defined(PAE_BUILD_PROTOCOL_LAB_ASCII_PUBLIC_A2)
+    defined(PAE_BUILD_PROTOCOL_LAB_ASCII_PUBLIC_A2) || \
+    defined(PAE_BUILD_PROTOCOL_LAB_ASCII_PUBLIC_STREAM_UI)
   const auto dispatch = ClassifySchemaVersion(request.config_text);
   completion->route = dispatch.status;
   if (dispatch.status == SchemaDispatchStatus::CLASSIFICATION_FAILED) {
@@ -28,7 +29,8 @@ std::unique_ptr<CompileCompletion> CompileRequest(CompileWorker::Request request
     return completion;
   }
   if (dispatch.status == SchemaDispatchStatus::BINARY_PUBLIC
-#if defined(PAE_BUILD_PROTOCOL_LAB_ASCII_PUBLIC_A2)
+#if defined(PAE_BUILD_PROTOCOL_LAB_ASCII_PUBLIC_A2) || \
+    defined(PAE_BUILD_PROTOCOL_LAB_ASCII_PUBLIC_STREAM_UI)
       || dispatch.status == SchemaDispatchStatus::ASCII_PUBLIC
 #endif
   ) {

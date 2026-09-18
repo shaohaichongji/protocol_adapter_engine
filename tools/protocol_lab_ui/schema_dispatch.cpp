@@ -91,7 +91,14 @@ SchemaDispatchResult ClassifySchemaVersion(std::string_view json_bytes) {
         {}};
 #endif
 #if defined(PAE_BUILD_PROTOCOL_LAB_ASCII_STREAM_OBSERVER)
-  if (value == "0.11") return {SchemaDispatchStatus::PRIVATE_ASCII, {}};
+  if (value == "0.11")
+    return {
+#if defined(PAE_BUILD_PROTOCOL_LAB_ASCII_PUBLIC_STREAM_UI)
+        SchemaDispatchStatus::ASCII_PUBLIC,
+#else
+        SchemaDispatchStatus::PRIVATE_ASCII,
+#endif
+        {}};
 #endif
   return Fail("root schema_version is unsupported for this UI build");
 }

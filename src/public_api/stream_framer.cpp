@@ -262,22 +262,83 @@ StreamFramingMemoryReport StreamFramer::MemoryReport() const noexcept {
 StreamFramingCapability QueryStreamFramingCapability(const CompiledProtocol& compiled,
                                                      std::size_t pipeline_index) noexcept {
   StreamFramingCapability result;
-  internal::CompiledStateRef state = detail::CompiledProtocolAccess::Acquire(compiled);
-  if (!state || state->Artifacts().Plan() == nullptr) return result;
-  const auto& pipelines = state->Artifacts().Plan()->Pipelines();
-  if (pipeline_index >= pipelines.size()) {
+  const PipelineFramingQueryResult description =
+      QueryPipelineFramingDescription(compiled, pipeline_index);
+  if (description.status == PipelineFramingQueryStatus::PIPELINE_OUT_OF_RANGE) {
     result.status = StreamFramerStatus::PIPELINE_OUT_OF_RANGE;
     return result;
   }
-  const auto& pipeline = pipelines[pipeline_index];
-  const auto& profiles = state->Artifacts().Plan()->FramingProfiles();
-  if (pipeline.framing_profile_index >= profiles.size()) {
-    result.status = StreamFramerStatus::INVALID_COMPILED_PROTOCOL;
+  if (description.status != PipelineFramingQueryStatus::OK || !description.value) return result;
+  result.status = StreamFramerStatus::OK;
+  result.available = description.value->input_kind == PipelineInputKind::STREAM_CHUNK;
+  return result;
+}
+
+PipelineFramingQueryResult QueryPipelineFramingDescription(const CompiledProtocol& compiled,
+                                                           std::size_t pipeline_index) noexcept {
+  PipelineFramingQueryResult result;
+  internal::CompiledStateRef state = detail::CompiledProtocolAccess::Acquire(compiled);
+  if (!state || state->Artifacts().Plan() == nullptr) return result;
+  const auto& bundle = *state->Artifacts().Plan();
+  if (pipeline_index >= bundle.Pipelines().size()) {
+    result.status = PipelineFramingQueryStatus::PIPELINE_OUT_OF_RANGE;
     return result;
   }
-  result.status = StreamFramerStatus::OK;
-  result.available =
-      profiles[pipeline.framing_profile_index].input_kind == plan::InputKind::STREAM_CHUNK;
+  const auto& pipeline = bundle.Pipelines()[pipeline_index];
+  if (pipeline.framing_profile_index >= bundle.FramingProfiles().size()) {
+    result.status = PipelineFramingQueryStatus::INTERNAL_CONTRACT_VIOLATION;
+    return result;
+  }
+  const auto& profile = bundle.FramingProfiles()[pipeline.framing_profile_index];
+  PipelineFramingDescription value;
+  value.pipeline_index = pipeline_index;
+  switch (profile.input_kind) {
+    case plan::InputKind::COMPLETE_RECORD:
+      if (profile.strategy != plan::FramingStrategy::COMPLETE_RECORD) {
+        result.status = PipelineFramingQueryStatus::INTERNAL_CONTRACT_VIOLATION;
+        return result;
+      }
+      value.input_kind = PipelineInputKind::COMPLETE_RECORD;
+      value.strategy = PipelineFramingStrategy::COMPLETE_RECORD;
+      break;
+    case plan::InputKind::STREAM_CHUNK: {
+      value.input_kind = PipelineInputKind::STREAM_CHUNK;
+      std::uint64_t maximum = 0U;
+      switch (profile.strategy) {
+        case plan::FramingStrategy::FIXED_LENGTH:
+          value.strategy = PipelineFramingStrategy::FIXED_LENGTH;
+          maximum = profile.frame_length_bytes;
+          break;
+        case plan::FramingStrategy::SYNC_FIXED_LENGTH:
+          value.strategy = PipelineFramingStrategy::SYNC_FIXED_LENGTH;
+          maximum = profile.frame_length_bytes;
+          break;
+        case plan::FramingStrategy::SYNC_LENGTH_FIELD:
+          value.strategy = PipelineFramingStrategy::SYNC_LENGTH_FIELD;
+          maximum = profile.maximum_frame_length;
+          break;
+        case plan::FramingStrategy::ASCII_CRLF:
+          value.strategy = PipelineFramingStrategy::ASCII_CRLF;
+          maximum = profile.maximum_frame_length;
+          break;
+        case plan::FramingStrategy::COMPLETE_RECORD:
+          result.status = PipelineFramingQueryStatus::INTERNAL_CONTRACT_VIOLATION;
+          return result;
+      }
+      if (maximum == 0U || maximum > plan::kMaxStreamFrameBytesHardLimit ||
+          maximum > (std::numeric_limits<std::size_t>::max)()) {
+        result.status = PipelineFramingQueryStatus::INTERNAL_CONTRACT_VIOLATION;
+        return result;
+      }
+      value.maximum_candidate_frame_bytes = static_cast<std::size_t>(maximum);
+      break;
+    }
+    default:
+      result.status = PipelineFramingQueryStatus::INTERNAL_CONTRACT_VIOLATION;
+      return result;
+  }
+  result.status = PipelineFramingQueryStatus::OK;
+  result.value = value;
   return result;
 }
 

@@ -21,6 +21,8 @@ class AsciiHostAdapter final {
   static std::unique_ptr<AsciiHostAdapter> CreatePublic(
       CompiledProtocol compiled, std::vector<protocol_lab::ascii::HostBinding> bindings,
       std::size_t previous_instance_bytes, std::string& error);
+  static std::unique_ptr<AsciiHostAdapter> CreatePublicDirect(CompiledProtocol compiled,
+                                                              std::string& error);
   static std::unique_ptr<AsciiHostAdapter> CreatePrivate(
       config_compiler::CompiledUiArtifacts artifacts,
       std::vector<protocol_lab::ascii::HostBinding> bindings, std::string& error);
@@ -31,7 +33,10 @@ class AsciiHostAdapter final {
   }
   std::size_t FlowCount(std::size_t binding) const noexcept;
   std::size_t AccountedBytes() const noexcept;
-  bool IsPublicCompleteRecord() const noexcept { return public_ != nullptr; }
+  bool IsPublicCompleteRecord() const noexcept { return public_ && !public_stream_; }
+  bool IsPublicStream() const noexcept { return public_ && public_stream_; }
+  std::optional<std::size_t> FindBinding(std::size_t pipeline_index,
+                                         host_endpoint::Action action) const noexcept;
 
   protocol_lab::ascii::ExecutionResult Inspect(std::size_t binding, std::size_t stream,
                                                protocol_lab::ascii::ExecutionIdentity identity,
@@ -54,6 +59,7 @@ class AsciiHostAdapter final {
   std::vector<protocol_lab::ascii::HostBinding> bindings_;
   std::unique_ptr<protocol_lab_ascii::public_offline::HostAdapter> public_;
   std::unique_ptr<protocol_lab::ascii::HostObserverAdapter> private_;
+  bool public_stream_ = false;
 };
 
 }  // namespace pae::protocol_lab_ui

@@ -141,6 +141,13 @@ foreach(pae_ui_test_name IN LISTS pae_protocol_lab_ui_headless_test_names)
                 "PAE_ASCII_STREAM_CONFIG=L\"${PROJECT_SOURCE_DIR}/examples/config/synthetic_ascii_stream_slice.pae.json\""
         )
     endif()
+    if(PAE_BUILD_PROTOCOL_LAB_ASCII_PUBLIC_STREAM_UI AND pae_ui_test_name STREQUAL "compile_queue")
+        target_compile_definitions(
+            "${pae_ui_test_target}"
+            PRIVATE
+                "PAE_ASCII_STREAM_CONFIG=L\"${PROJECT_SOURCE_DIR}/examples/config/synthetic_ascii_stream_slice.pae.json\""
+        )
+    endif()
     if(pae_ui_test_name STREQUAL "binary_stage1")
         target_compile_definitions(
             "${pae_ui_test_target}"

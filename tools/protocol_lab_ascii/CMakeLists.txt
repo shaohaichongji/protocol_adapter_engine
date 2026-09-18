@@ -52,16 +52,24 @@ if(PAE_BUILD_PROTOCOL_LAB_ASCII_PUBLIC_A1)
             public_ascii_offline_adapter.cpp
             public_ascii_offline_adapter.h
     )
-    if(PAE_BUILD_PROTOCOL_LAB_ASCII_PUBLIC_A2)
+    if(PAE_BUILD_PROTOCOL_LAB_ASCII_PUBLIC_A2 OR PAE_BUILD_PROTOCOL_LAB_ASCII_PUBLIC_STREAM)
         target_sources(
             pae_protocol_lab_ascii_public_a1
             PRIVATE
                 public_ascii_host_adapter.cpp
                 public_ascii_host_adapter.h
         )
+    endif()
+    if(PAE_BUILD_PROTOCOL_LAB_ASCII_PUBLIC_A2)
         target_compile_definitions(
             pae_protocol_lab_ascii_public_a1
             PUBLIC PAE_BUILD_PROTOCOL_LAB_ASCII_PUBLIC_A2=1
+        )
+    endif()
+    if(PAE_BUILD_PROTOCOL_LAB_ASCII_PUBLIC_STREAM)
+        target_compile_definitions(
+            pae_protocol_lab_ascii_public_a1
+            PUBLIC PAE_BUILD_PROTOCOL_LAB_ASCII_PUBLIC_STREAM=1
         )
     endif()
     target_include_directories(

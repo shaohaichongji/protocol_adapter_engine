@@ -173,7 +173,9 @@ function(pae_configure_protocol_lab_ui_deployment target_name)
            NOT pae_deploy_config STREQUAL
                "${PROJECT_SOURCE_DIR}/examples/config/synthetic_ascii_text_slice.pae.json" AND
            NOT pae_deploy_config STREQUAL
-               "${PROJECT_SOURCE_DIR}/examples/config/synthetic_ascii_literal_only.pae.json")
+               "${PROJECT_SOURCE_DIR}/examples/config/synthetic_ascii_literal_only.pae.json" AND
+           NOT pae_deploy_config STREQUAL
+               "${PROJECT_SOURCE_DIR}/examples/config/synthetic_ascii_stream_slice.pae.json")
             message(
                 FATAL_ERROR
                 "Only public synthetic tests/protocol_lab_ui/fixtures/*.pae.json files or the "

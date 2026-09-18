@@ -2,6 +2,7 @@
 
 #include <cstddef>
 #include <memory>
+#include <optional>
 
 #include "pae/codec.h"
 #include "pae/export.h"
@@ -45,6 +46,35 @@ enum class StreamFramingPhase {
 struct StreamFramingCapability {
   StreamFramerStatus status = StreamFramerStatus::INVALID_COMPILED_PROTOCOL;
   bool available = false;
+};
+
+enum class PipelineInputKind { COMPLETE_RECORD, STREAM_CHUNK };
+
+enum class PipelineFramingStrategy {
+  COMPLETE_RECORD,
+  FIXED_LENGTH,
+  SYNC_FIXED_LENGTH,
+  SYNC_LENGTH_FIELD,
+  ASCII_CRLF,
+};
+
+enum class PipelineFramingQueryStatus {
+  OK,
+  INVALID_COMPILED_PROTOCOL,
+  PIPELINE_OUT_OF_RANGE,
+  INTERNAL_CONTRACT_VIOLATION,
+};
+
+struct PipelineFramingDescription {
+  std::size_t pipeline_index = 0U;
+  PipelineInputKind input_kind = PipelineInputKind::COMPLETE_RECORD;
+  PipelineFramingStrategy strategy = PipelineFramingStrategy::COMPLETE_RECORD;
+  std::optional<std::size_t> maximum_candidate_frame_bytes;
+};
+
+struct PipelineFramingQueryResult {
+  PipelineFramingQueryStatus status = PipelineFramingQueryStatus::INVALID_COMPILED_PROTOCOL;
+  std::optional<PipelineFramingDescription> value;
 };
 
 struct FrameCandidateView {
@@ -143,6 +173,12 @@ struct StreamFramerCreateResult {
 // overrides or runtime memory admission will permit CreateStreamFramer().
 [[nodiscard]] PAE_API StreamFramingCapability
 QueryStreamFramingCapability(const CompiledProtocol& compiled, std::size_t pipeline_index) noexcept;
+
+// Returns immutable Pipeline framing facts copied from the frozen Plan. For complete-record input,
+// maximum_candidate_frame_bytes is empty. For stream input it is the cross-chunk candidate limit
+// (ASCII CRLF includes the terminator), not a per-Push submit or work limit.
+[[nodiscard]] PAE_API PipelineFramingQueryResult QueryPipelineFramingDescription(
+    const CompiledProtocol& compiled, std::size_t pipeline_index) noexcept;
 
 [[nodiscard]] PAE_API StreamFramerCreateResult
 CreateStreamFramer(const CompiledProtocol& compiled, std::size_t pipeline_index,

@@ -106,6 +106,19 @@ int main(int argc, char** argv) {
   if (!binary_result.Succeeded() || !ascii_result.Succeeded()) return 3;
   pae::CompiledProtocol binary = std::move(binary_result).TakeCompiled();
   pae::CompiledProtocol ascii = std::move(ascii_result).TakeCompiled();
+
+  const auto framing = pae::QueryPipelineFramingDescription(ascii, 0U);
+  const auto complete_framing = pae::QueryPipelineFramingDescription(ascii, 1U);
+  if (framing.status != pae::PipelineFramingQueryStatus::OK || !framing.value ||
+      framing.value->input_kind != pae::PipelineInputKind::STREAM_CHUNK ||
+      framing.value->strategy != pae::PipelineFramingStrategy::ASCII_CRLF ||
+      framing.value->maximum_candidate_frame_bytes != 12U ||
+      complete_framing.status != pae::PipelineFramingQueryStatus::OK || !complete_framing.value ||
+      complete_framing.value->input_kind != pae::PipelineInputKind::COMPLETE_RECORD ||
+      complete_framing.value->strategy != pae::PipelineFramingStrategy::COMPLETE_RECORD ||
+      complete_framing.value->maximum_candidate_frame_bytes) {
+    return 15;
+  }
   if (!binary.Protocol() || binary.PipelineCount() != 3U || binary.MessageCount() != 3U ||
       !ascii.PipelineMessageExecution(0U, 0U)->encode_available ||
       !ascii.PipelineMessageExecution(0U, 2U)->encode_available) {

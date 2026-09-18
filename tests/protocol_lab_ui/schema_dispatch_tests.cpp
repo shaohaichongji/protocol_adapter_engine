@@ -32,7 +32,11 @@ int main() {
   Check(R"({"schema_version":"0.10"})", SchemaDispatchStatus::CLASSIFICATION_FAILED, "ascii_off");
 #endif
 #if defined(PAE_BUILD_PROTOCOL_LAB_ASCII_STREAM_OBSERVER)
+#if defined(PAE_BUILD_PROTOCOL_LAB_ASCII_PUBLIC_STREAM_UI)
+  Check(R"({"schema_version":"0.11"})", SchemaDispatchStatus::ASCII_PUBLIC, "ascii_stream");
+#else
   Check(R"({"schema_version":"0.11"})", SchemaDispatchStatus::PRIVATE_ASCII, "ascii_stream");
+#endif
 #else
   Check(R"({"schema_version":"0.11"})", SchemaDispatchStatus::CLASSIFICATION_FAILED,
         "ascii_stream_off");

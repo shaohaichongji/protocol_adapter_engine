@@ -49,3 +49,34 @@ if(PAE_BUILD_PROTOCOL_LAB_ASCII_PUBLIC_A1)
         PROPERTIES LABELS "tools;protocol_lab_ascii;public_a1;offline" TIMEOUT 60
     )
 endif()
+
+if(PAE_BUILD_PROTOCOL_LAB_ASCII_PUBLIC_STREAM)
+    add_executable(
+        pae_protocol_lab_ascii_public_stream_tests
+        public_ascii_stream_adapter_tests.cpp
+    )
+    target_link_libraries(
+        pae_protocol_lab_ascii_public_stream_tests
+        PRIVATE pae_protocol_lab_ascii_public_a1 pae::project_options
+    )
+    add_test(
+        NAME pae.tools.protocol_lab_ascii.public_stream
+        COMMAND pae_protocol_lab_ascii_public_stream_tests "${PROJECT_SOURCE_DIR}"
+    )
+    add_test(
+        NAME pae.tools.protocol_lab_ascii.public_stream_noexcept_reject
+        COMMAND pae_protocol_lab_ascii_public_stream_tests
+                --diagnostic-allocation-probe reject "${PROJECT_SOURCE_DIR}"
+    )
+    add_test(
+        NAME pae.tools.protocol_lab_ascii.public_stream_noexcept_candidate
+        COMMAND pae_protocol_lab_ascii_public_stream_tests
+                --diagnostic-allocation-probe candidate "${PROJECT_SOURCE_DIR}"
+    )
+    set_tests_properties(
+        pae.tools.protocol_lab_ascii.public_stream
+        pae.tools.protocol_lab_ascii.public_stream_noexcept_reject
+        pae.tools.protocol_lab_ascii.public_stream_noexcept_candidate
+        PROPERTIES LABELS "tools;protocol_lab_ascii;public;stream;headless" TIMEOUT 60
+    )
+endif()

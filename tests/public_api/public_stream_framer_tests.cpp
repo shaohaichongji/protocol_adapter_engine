@@ -247,6 +247,81 @@ void CheckCapabilities(Runner& runner, pae::CompiledProtocol& binary,
       "create_complete_record_rejected");
 }
 
+void CheckDescriptions(Runner& runner, pae::CompiledProtocol& binary, pae::CompiledProtocol& ascii,
+                       const char* binary_path) {
+  const auto invalid = pae::QueryPipelineFramingDescription({}, 0U);
+  runner.Check(invalid.status == pae::PipelineFramingQueryStatus::INVALID_COMPILED_PROTOCOL &&
+                   !invalid.value,
+               "description_empty_owner");
+
+  const std::array<pae::PipelineFramingStrategy, 3U> strategies{{
+      pae::PipelineFramingStrategy::FIXED_LENGTH,
+      pae::PipelineFramingStrategy::SYNC_FIXED_LENGTH,
+      pae::PipelineFramingStrategy::SYNC_LENGTH_FIELD,
+  }};
+  const std::array<std::size_t, 3U> maxima{{3U, 4U, 8U}};
+  for (std::size_t pipeline = 0U; pipeline < strategies.size(); ++pipeline) {
+    const auto description = pae::QueryPipelineFramingDescription(binary, pipeline);
+    runner.Check(description.status == pae::PipelineFramingQueryStatus::OK && description.value &&
+                     description.value->pipeline_index == pipeline &&
+                     description.value->input_kind == pae::PipelineInputKind::STREAM_CHUNK &&
+                     description.value->strategy == strategies[pipeline] &&
+                     description.value->maximum_candidate_frame_bytes == maxima[pipeline],
+                 "description_binary_strategy_and_m");
+  }
+
+  const auto ascii_stream = pae::QueryPipelineFramingDescription(ascii, 0U);
+  const auto complete = pae::QueryPipelineFramingDescription(ascii, 1U);
+  const auto out_of_range = pae::QueryPipelineFramingDescription(ascii, 99U);
+  runner.Check(ascii_stream.status == pae::PipelineFramingQueryStatus::OK && ascii_stream.value &&
+                   ascii_stream.value->input_kind == pae::PipelineInputKind::STREAM_CHUNK &&
+                   ascii_stream.value->strategy == pae::PipelineFramingStrategy::ASCII_CRLF &&
+                   ascii_stream.value->maximum_candidate_frame_bytes == 12U,
+               "description_ascii_crlf_m_includes_terminator");
+  runner.Check(complete.status == pae::PipelineFramingQueryStatus::OK && complete.value &&
+                   complete.value->input_kind == pae::PipelineInputKind::COMPLETE_RECORD &&
+                   complete.value->strategy == pae::PipelineFramingStrategy::COMPLETE_RECORD &&
+                   !complete.value->maximum_candidate_frame_bytes,
+               "description_complete_record_has_no_m");
+  runner.Check(out_of_range.status == pae::PipelineFramingQueryStatus::PIPELINE_OUT_OF_RANGE &&
+                   !out_of_range.value,
+               "description_out_of_range");
+
+  g_allocation_count.store(0U, std::memory_order_relaxed);
+  g_track_allocations.store(true, std::memory_order_relaxed);
+  for (std::size_t attempt = 0U; attempt < 128U; ++attempt) {
+    (void)pae::QueryPipelineFramingDescription(binary, attempt % 3U);
+  }
+  g_track_allocations.store(false, std::memory_order_relaxed);
+  runner.Check(g_allocation_count.load(std::memory_order_relaxed) == 0U,
+               "description_query_no_allocation");
+
+  pae::StreamFramerOptions options;
+  options.max_submit_bytes = 4U;
+  auto framer = pae::CreateStreamFramer(ascii, 0U, options);
+  const auto observed = framer.framer ? framer.framer->Observe() : pae::StreamFramerObservation{};
+  runner.Check(framer.status == pae::StreamFramerStatus::OK && framer.framer &&
+                   ascii_stream.value->maximum_candidate_frame_bytes == 12U &&
+                   observed.status == pae::StreamFramerStatus::OK &&
+                   observed.effective_max_submit_bytes == 4U,
+               "description_m_is_distinct_from_runtime_c");
+
+  auto move_source = Compile(binary_path, runner, "description_move_source_compile");
+  auto move_target = std::move(move_source);
+  const auto moved_from = pae::QueryPipelineFramingDescription(move_source, 0U);
+  const auto moved_to = pae::QueryPipelineFramingDescription(move_target, 0U);
+  runner.Check(moved_from.status == pae::PipelineFramingQueryStatus::INVALID_COMPILED_PROTOCOL &&
+                   !moved_from.value && moved_to.status == pae::PipelineFramingQueryStatus::OK &&
+                   moved_to.value,
+               "description_moved_owner");
+
+  const auto old_capability = pae::QueryStreamFramingCapability(ascii, 0U);
+  runner.Check(old_capability.status == pae::StreamFramerStatus::OK &&
+                   old_capability.available ==
+                       (ascii_stream.value->input_kind == pae::PipelineInputKind::STREAM_CHUNK),
+               "description_old_capability_consistent");
+}
+
 void CheckBinaryStrategies(Runner& runner, pae::CompiledProtocol& compiled) {
   auto fixed = pae::CreateStreamFramer(compiled, 0U);
   runner.Check(fixed.status == pae::StreamFramerStatus::OK && fixed.framer, "fixed_create");
@@ -547,6 +622,7 @@ int main(int argc, char** argv) {
   if (!binary.HasValue() || !ascii.HasValue()) return runner.Finish();
 
   CheckCapabilities(runner, binary, ascii);
+  CheckDescriptions(runner, binary, ascii, argv[1]);
   CheckBinaryStrategies(runner, binary);
   CheckStopContinueResetAndMove(runner, binary);
   CheckGuarding(runner, binary);

@@ -16,16 +16,27 @@ std::string Read(const wchar_t* path) {
 
 std::unique_ptr<pae::protocol_lab_ui::CompileCompletion> Compile(
     pae::protocol_lab_ui::DocumentSession& session) {
+#if defined(PAE_BUILD_PROTOCOL_LAB_ASCII_PUBLIC_STREAM_UI)
+  auto compiled = pae::CompileProtocolJson(Read(PAE_ASCII_STREAM_CONFIG));
+#else
   auto compiled = pae::config_compiler::CompileJsonToPlanWithUiDescription(
       Read(PAE_ASCII_STREAM_CONFIG), pae::config_compiler::DerivedUiDescriptionMemoryLimit(
                                          pae::protocol_plan::ResourceProfile::DESKTOP));
+#endif
   auto completion = std::make_unique<pae::protocol_lab_ui::CompileCompletion>();
   completion->document_id = session.id();
   completion->load_revision = session.load_revision();
   completion->config_sha256 = "ascii-stream-session-test";
   assert(compiled.Succeeded());
+#if defined(PAE_BUILD_PROTOCOL_LAB_ASCII_PUBLIC_STREAM_UI)
+  completion->route = pae::protocol_lab_ui::SchemaDispatchStatus::ASCII_PUBLIC;
+  completion->compiler_attempt_count = 1U;
+  completion->public_compiled =
+      std::make_unique<pae::CompiledProtocol>(std::move(compiled).TakeCompiled());
+#else
   completion->artifacts = std::make_unique<pae::config_compiler::CompiledUiArtifacts>(
       std::move(compiled).TakeArtifacts());
+#endif
   return completion;
 }
 
@@ -36,9 +47,30 @@ int main() {
   DocumentSession first{901U};
   first.BeginLoad();
   assert(first.ApplyCompileCompletion(Compile(first)));
+#if defined(PAE_BUILD_PROTOCOL_LAB_ASCII_PUBLIC_STREAM_UI)
+  assert(first.prepared()->ascii_adapter == nullptr &&
+         first.prepared()->public_ascii_stream_adapter != nullptr &&
+         first.prepared()->public_ascii_stream_adapter->IsPublicStream());
+#endif
   assert(first.IsAsciiDocument() && first.StreamInspectAvailable() && !first.InspectAvailable());
-  assert(first.SetMode(OperationMode::STREAM_INSPECT));
+
+  assert(first.SelectPipeline(2U) && first.SelectMessage(1U));
+  assert(!first.StreamInspectAvailable() && !first.StreamObservation().has_value() &&
+         !first.StreamContinueAvailable() && !first.ResetStream());
+  assert(first.InspectAvailable());
   assert(first.SetRepresentation(ByteRepresentation::ASCII_ESCAPED));
+  assert(first.SetInspectDraftUtf16(u"ONLY\\r\\n") && first.Inspect());
+  assert(first.inspect_result().has_value() && first.inspect_result()->message_id == "decode_only" &&
+         first.inspect_result()->zero_field_success);
+
+  assert(first.SelectPipeline(1U) && first.SelectMessage(2U));
+  assert(!first.StreamInspectAvailable() && !first.StreamObservation().has_value() &&
+         !first.StreamContinueAvailable() && !first.ResetStream());
+  assert(!first.InspectAvailable() && first.EncodeAvailable());
+
+  assert(first.SelectPipeline(0U) && first.SelectMessage(0U));
+  assert(first.SetMode(OperationMode::STREAM_INSPECT));
+  assert(first.representation() == ByteRepresentation::ASCII_ESCAPED);
   assert(first.StreamChunkBudget() > 12U);
 
   assert(first.SetInspectDraftUtf16(u"RX A!"));
