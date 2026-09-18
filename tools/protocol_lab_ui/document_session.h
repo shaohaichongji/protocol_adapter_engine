@@ -19,7 +19,11 @@
 #include "binary_host_adapter.h"
 #endif
 #if defined(PAE_BUILD_PROTOCOL_LAB_HOST_OBSERVER)
+#if defined(PAE_BUILD_PROTOCOL_LAB_ASCII_PUBLIC_A2)
+#include "ascii_host_adapter.h"
+#else
 #include "../protocol_lab_ascii/host_observer_adapter.h"
+#endif
 #endif
 #if defined(PAE_ENABLE_SCHEMA_V10_ASCII_TEXT_CODEC)
 #include "../protocol_lab_ascii/ascii_offline_adapter.h"
@@ -137,7 +141,11 @@ struct PreparedDocument {
   std::unique_ptr<BinaryHostAdapter> binary_host_adapter;
 #endif
 #if defined(PAE_BUILD_PROTOCOL_LAB_HOST_OBSERVER)
+#if defined(PAE_BUILD_PROTOCOL_LAB_ASCII_PUBLIC_A2)
+  std::unique_ptr<AsciiHostAdapter> host_adapter;
+#else
   std::unique_ptr<protocol_lab::ascii::HostObserverAdapter> host_adapter;
+#endif
 #endif
   // Declaration order is intentional: destruction is reverse, so the bridge (and its workspaces
   // and Plan) dies before the sidecar storage.
@@ -146,6 +154,9 @@ struct PreparedDocument {
   std::unique_ptr<protocol_lab::v06::ExecutionBridge> bridge;
 #if defined(PAE_ENABLE_SCHEMA_V10_ASCII_TEXT_CODEC)
   std::unique_ptr<protocol_lab::ascii::OfflineAdapter> ascii_adapter;
+#endif
+#if defined(PAE_BUILD_PROTOCOL_LAB_ASCII_PUBLIC_A2)
+  std::unique_ptr<protocol_lab_ascii::public_offline::Adapter> public_ascii_adapter;
 #endif
 };
 
@@ -201,11 +212,16 @@ class DocumentSession final {
   bool BinaryHasDiscardableState() const noexcept;
 #endif
 #if defined(PAE_BUILD_PROTOCOL_LAB_HOST_OBSERVER)
+#if defined(PAE_BUILD_PROTOCOL_LAB_ASCII_PUBLIC_A2)
+  bool ApplyHostAdapter(std::unique_ptr<AsciiHostAdapter> adapter);
+#else
   bool ApplyHostAdapter(std::unique_ptr<protocol_lab::ascii::HostObserverAdapter> adapter);
+#endif
   bool SelectHostFlow(std::size_t binding, std::size_t stream);
   bool HostActive() const noexcept { return prepared_ && prepared_->host_adapter; }
   std::size_t HostBindingIndex() const noexcept { return host_binding_; }
   std::size_t HostStreamIndex() const noexcept { return host_stream_; }
+  bool HostHasDiscardableState() const noexcept;
   void ResetAllHostStreams();
 #endif
   DocumentSession(const DocumentSession&) = delete;

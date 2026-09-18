@@ -9,6 +9,7 @@
 #include <fstream>
 #include <iostream>
 #include <iterator>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -49,15 +50,30 @@ struct HostCapture {
   std::size_t decode_count = 0U;
   std::size_t encode_count = 0U;
   std::size_t message_index = static_cast<std::size_t>(-1);
+  std::size_t decode_message_index = static_cast<std::size_t>(-1);
+  std::size_t candidate_count = 0U;
+  std::optional<std::size_t> candidate_message_index;
+  pae::CodecStatus candidate_status = pae::CodecStatus::INVALID_ARGUMENT;
+  bool candidate_record_valid = false;
   std::array<std::uint8_t, 16U> bytes{};
   std::size_t byte_count = 0U;
 };
+
+pae::HostCallbackAction CaptureCandidate(const pae::HostCandidateView& candidate, void* opaque) {
+  auto& capture = *static_cast<HostCapture*>(opaque);
+  ++capture.candidate_count;
+  capture.candidate_message_index = candidate.matched_message_index;
+  capture.candidate_status = candidate.decode_status;
+  capture.candidate_record_valid = candidate.record.HasValue();
+  return pae::HostCallbackAction::CONTINUE;
+}
 
 pae::HostCallbackAction CaptureHost(const pae::HostOutputView& output, void* opaque) {
   auto& capture = *static_cast<HostCapture*>(opaque);
   capture.message_index = output.message_index;
   if (output.action == pae::HostAction::DECODE) {
     ++capture.decode_count;
+    capture.decode_message_index = output.message_index;
   } else {
     ++capture.encode_count;
     capture.byte_count = output.bytes.size;
@@ -101,6 +117,7 @@ int main(int argc, char** argv) {
   const auto ascii_representation = ascii.MessageRepresentation(0U);
   const auto ascii_rx = ascii.AsciiAction(0U, pae::AsciiAction::DECODE);
   const auto ascii_tx = ascii.AsciiAction(0U, pae::AsciiAction::ENCODE);
+  const auto ascii_rx_field = ascii.AsciiSegment(0U, pae::AsciiAction::DECODE, 1U);
   const auto ascii_tx_first = ascii.AsciiSegment(0U, pae::AsciiAction::ENCODE, 0U);
   const auto ascii_name = ascii.AsciiField(0U);
   if (binary_representation.status != pae::PhysicalQueryStatus::OK ||
@@ -117,6 +134,9 @@ int main(int argc, char** argv) {
       ascii_rx.status != pae::AsciiQueryStatus::OK || !ascii_rx.value ||
       ascii_rx.value->segment_count != 5U || ascii_tx.status != pae::AsciiQueryStatus::OK ||
       !ascii_tx.value || ascii_tx.value->segment_count != 5U ||
+      ascii_rx_field.status != pae::AsciiQueryStatus::OK || !ascii_rx_field.value ||
+      ascii_rx_field.value->kind != pae::AsciiSegmentKind::FIELD ||
+      ascii_rx_field.value->field_index != 0U || ascii_rx_field.value->flat_field_index != 0U ||
       ascii_tx_first.status != pae::AsciiQueryStatus::OK || !ascii_tx_first.value ||
       ascii_tx_first.value->kind != pae::AsciiSegmentKind::LITERAL ||
       !ascii_tx_first.value->literal || ascii_tx_first.value->literal->size != 3U ||
@@ -142,6 +162,18 @@ int main(int argc, char** argv) {
     return 6;
   }
 
+  auto ascii_codec_result = pae::CreateCompleteRecordCodec(ascii);
+  if (ascii_codec_result.status != pae::CodecStatus::OK || !ascii_codec_result.codec) return 13;
+  const std::string ascii_frame = "RX A!OK\r\n";
+  const auto ascii_decoded = ascii_codec_result.codec->Decode(0U, Bytes(ascii_frame));
+  const auto ascii_decoded_name = ascii_decoded.record.Field(0U);
+  if (ascii_decoded.status != pae::CodecStatus::OK || ascii_decoded.matched_message_index != 0U ||
+      !ascii_decoded_name || !ascii_decoded_name->Bytes() ||
+      ascii_decoded_name->Bytes()->data != Bytes(ascii_frame).data + 3U ||
+      ascii_decoded_name->Bytes()->size != 1U) {
+    return 14;
+  }
+
   auto framer_result = pae::CreateStreamFramer(binary, 0U);
   if (framer_result.status != pae::StreamFramerStatus::OK || !framer_result.framer) return 7;
   FrameCapture frame_capture;
@@ -163,7 +195,8 @@ int main(int argc, char** argv) {
 
   HostCapture host_capture;
   const auto host_decoded =
-      host_result.host->Push(receive.handle, Bytes("RX A!OK\r\n"), {CaptureHost, &host_capture});
+      host_result.host->Push(receive.handle, Bytes("RX A!OK\r\n"), {CaptureHost, &host_capture},
+                             {CaptureCandidate, &host_capture});
   const std::array<std::uint8_t, 1U> name{{'A'}};
   const std::array<std::uint8_t, 1U> tag{{'Z'}};
   const std::array<pae::EncodeValue, 2U> ascii_values{
@@ -175,6 +208,9 @@ int main(int argc, char** argv) {
   const auto literal =
       host_result.host->Encode(transmit.handle, 2U, nullptr, 0U, {CaptureHost, &host_capture});
   if (host_decoded.status != pae::HostStatus::OK || host_capture.decode_count != 1U ||
+      host_capture.candidate_count != 1U || host_capture.candidate_message_index != 0U ||
+      host_capture.candidate_status != pae::CodecStatus::OK ||
+      !host_capture.candidate_record_valid || host_capture.decode_message_index != 0U ||
       greeting.status != pae::HostStatus::OK || !greeting_equal ||
       literal.status != pae::HostStatus::OK || host_capture.message_index != 2U ||
       !Equals(host_capture, "SEND\r\n") || host_capture.encode_count != 2U) {

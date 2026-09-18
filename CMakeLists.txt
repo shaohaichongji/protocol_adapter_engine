@@ -36,6 +36,8 @@ option(PAE_BUILD_PROTOCOL_LAB_HOST_OBSERVER "Build the internal Lab host endpoin
 option(PAE_BUILD_PROTOCOL_LAB_BINARY_MATERIALIZER "Build the internal non-Qt Binary candidate DTO slice" OFF)
 option(PAE_BUILD_PROTOCOL_LAB_BINARY_PUBLIC_H1 "Build public-only non-Qt Binary complete Decode H1 adapter" OFF)
 option(PAE_BUILD_PROTOCOL_LAB_BINARY_PUBLIC_H2 "Route the Qt Lab Binary complete Decode through public PAE" OFF)
+option(PAE_BUILD_PROTOCOL_LAB_ASCII_PUBLIC_A1 "Build public-only non-Qt ASCII complete-record A1 adapter" OFF)
+option(PAE_BUILD_PROTOCOL_LAB_ASCII_PUBLIC_A2 "Route Qt Lab ASCII 0.10 through public PAE and Host" OFF)
 option(PAE_BUILD_PROTOCOL_LAB_ASCII_SMOKE_DIAGNOSTIC "Instrument ASCII Qt UI smoke only in an isolated diagnostic build" OFF)
 option(PAE_BUILD_PROTOCOL_LAB_BINARY_UI "Connect the Schema 0.9 Binary Host observer to the Qt Lab" OFF)
 option(
@@ -179,6 +181,16 @@ endif()
 
 if(PAE_BUILD_PROTOCOL_LAB_BINARY_PUBLIC_H1 AND NOT PAE_BUILD_PUBLIC_API_STAGE1)
     message(FATAL_ERROR "PAE_BUILD_PROTOCOL_LAB_BINARY_PUBLIC_H1 requires PAE_BUILD_PUBLIC_API_STAGE1=ON.")
+endif()
+
+if(PAE_BUILD_PROTOCOL_LAB_ASCII_PUBLIC_A1 AND NOT PAE_BUILD_PUBLIC_API_STAGE1)
+    message(FATAL_ERROR "PAE_BUILD_PROTOCOL_LAB_ASCII_PUBLIC_A1 requires PAE_BUILD_PUBLIC_API_STAGE1=ON.")
+endif()
+
+if(PAE_BUILD_PROTOCOL_LAB_ASCII_PUBLIC_A2 AND
+   (NOT PAE_BUILD_PROTOCOL_LAB_UI OR NOT PAE_BUILD_PROTOCOL_LAB_ASCII_PUBLIC_A1 OR
+    NOT PAE_BUILD_PUBLIC_API_STAGE1 OR NOT PAE_BUILD_HOST_ENDPOINT_SLICE))
+    message(FATAL_ERROR "ASCII public A2 requires UI, public A1, public API Stage 1 and Host endpoint.")
 endif()
 
 if(PAE_BUILD_PROTOCOL_LAB_ASCII_SMOKE_DIAGNOSTIC AND
@@ -632,7 +644,7 @@ if(PAE_BUILD_PROTOCOL_LAB OR PAE_BUILD_PROTOCOL_LAB_UI)
     endif()
 endif()
 
-if(PAE_BUILD_PROTOCOL_LAB_ASCII_ADAPTER)
+if(PAE_BUILD_PROTOCOL_LAB_ASCII_ADAPTER OR PAE_BUILD_PROTOCOL_LAB_ASCII_PUBLIC_A1)
     add_subdirectory(tools/protocol_lab_ascii)
     if(PAE_BUILD_TESTING)
         add_subdirectory(tests/protocol_lab_ascii)

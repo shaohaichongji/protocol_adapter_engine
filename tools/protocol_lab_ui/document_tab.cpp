@@ -1414,8 +1414,9 @@ bool DocumentTab::VerifyHostForSmoke(QString& error) {
       if (host_pending_revision_) QThread::msleep(5);
     }
 #if defined(PAE_BUILD_PROTOCOL_LAB_ASCII_SMOKE_DIAGNOSTIC)
-    ascii_smoke_diagnostic::Trace(host_pending_revision_ ? "host_apply_pending_timeout"
-                                                      : "host_apply_after_completion", this);
+    ascii_smoke_diagnostic::Trace(
+        host_pending_revision_ ? "host_apply_pending_timeout" : "host_apply_after_completion",
+        this);
 #endif
     return !host_pending_revision_;
   };
@@ -1442,10 +1443,26 @@ bool DocumentTab::VerifyHostForSmoke(QString& error) {
       return check(false, "Host complete Encode inputs");
     encode_button_->click();
     const std::string expected = literal ? "PONG\r\n" : "TX ALICE!Z\r\n";
-    return check(
-        session_.preview() && session_.preview()->encoded_frame ==
-                                  std::vector<std::uint8_t>(expected.begin(), expected.end()),
-        "Host complete Encode bytes");
+    if (!check(
+            session_.preview() && session_.preview()->encoded_frame ==
+                                      std::vector<std::uint8_t>(expected.begin(), expected.end()),
+            "Host complete Encode bytes"))
+      return false;
+#if defined(PAE_BUILD_PROTOCOL_LAB_ASCII_PUBLIC_A2)
+    const auto generation = session_.plan_generation();
+    const auto retained = session_.preview()->encoded_frame;
+    QTimer cancel_timer;
+    connect(&cancel_timer, &QTimer::timeout, this, [] {
+      if (auto* box = qobject_cast<QMessageBox*>(QApplication::activeModalWidget()))
+        box->done(QMessageBox::No);
+    });
+    cancel_timer.start(10);
+    if (!check(apply() && session_.plan_generation() == generation && session_.preview() &&
+                   session_.preview()->encoded_frame == retained,
+               "Host complete Apply cancellation preserves state"))
+      return false;
+#endif
+    return true;
   }
   inspect_input_->setPlainText(QStringLiteral("RX A!"));
   inspect_button_->click();
@@ -1572,7 +1589,7 @@ bool DocumentTab::VerifyBinaryHostStage1ForSmoke(QString& error) {
       || !inspect_input_->toPlainText().isEmpty() ||
       !session_.prepared()->binary_host_adapter->Draft(0U, 1U).empty()
 #endif
-      ) {
+  ) {
     error = QStringLiteral("fresh flow inherited another flow view");
     return false;
   }
@@ -1618,7 +1635,7 @@ bool DocumentTab::VerifyBinaryHostStage1ForSmoke(QString& error) {
 #if defined(PAE_BUILD_PROTOCOL_LAB_BINARY_PUBLIC_H2)
       || !flow_matches(0, first_text, 1)
 #endif
-      ) {
+  ) {
     error = QStringLiteral("flow switch did not restore the owned result");
     return false;
   }
@@ -1668,14 +1685,13 @@ bool DocumentTab::VerifyBinaryHostStage1ForSmoke(QString& error) {
   host_flow_combo_->setCurrentIndex(1);
   QApplication::processEvents();
   active_adapter->SetPresentationRetainedBytes(original_presentation);
-  if (host_flow_combo_->currentIndex() != 0 ||
-      BinaryStateSignatureForSmoke() != before_flow_failure
+  if (host_flow_combo_->currentIndex() != 0 || BinaryStateSignatureForSmoke() != before_flow_failure
 #if defined(PAE_BUILD_PROTOCOL_LAB_BINARY_PUBLIC_H2)
       || inspect_input_->toPlainText() != first_text ||
       active_adapter->Draft(0U, 0U) != before_flow0_draft ||
       active_adapter->Draft(0U, 1U) != before_flow1_draft
 #endif
-      ) {
+  ) {
     error = QStringLiteral("combined-view rejection split Qt and Session state");
     return false;
   }
@@ -1960,8 +1976,15 @@ void DocumentTab::ApplyHostDraft() {
 #endif
   if (!binary) {
     const auto current_bytes =
-        session_.HostActive() ? session_.prepared()->host_adapter->AccountedBytes()
-                              : session_.prepared()->ascii_adapter->HostTransitionAdmissionBytes();
+        session_.HostActive()
+            ? session_.prepared()->host_adapter->AccountedBytes()
+#if defined(PAE_BUILD_PROTOCOL_LAB_ASCII_PUBLIC_A2)
+            : (session_.prepared()->public_ascii_adapter
+                   ? session_.prepared()->public_ascii_adapter->InstanceAdmissionBytes()
+                   : session_.prepared()->ascii_adapter->HostTransitionAdmissionBytes());
+#else
+            : session_.prepared()->ascii_adapter->HostTransitionAdmissionBytes();
+#endif
     if (current_bytes > protocol_lab::ascii::HostObserverAdapter::kMaximumAccountedBytes) {
       host_status_->setText(QStringLiteral(
           "Active document exceeds Host transition admission limit; no candidate created."));
@@ -2056,13 +2079,12 @@ void DocumentTab::AcceptHostCompletion(std::unique_ptr<CompileCompletion> comple
     if (completion->document_id == identity.document &&
         completion->load_revision == identity.request &&
 #if defined(PAE_BUILD_PROTOCOL_LAB_BINARY_PUBLIC_H2)
-        completion->route == SchemaDispatchStatus::BINARY_PUBLIC &&
-        completion->public_compiled && !completion->public_diagnostic &&
+        completion->route == SchemaDispatchStatus::BINARY_PUBLIC && completion->public_compiled &&
+        !completion->public_diagnostic &&
 #else
         completion->artifacts && !completion->diagnostic &&
 #endif
-        session_.prepared() &&
-        completion->config_sha256 == identity.config_sha256 &&
+        session_.prepared() && completion->config_sha256 == identity.config_sha256 &&
         session_.load_revision() == identity.load &&
         session_.BinarySessionRevision() + 1U == identity.session) {
       const auto* previous =
@@ -2272,11 +2294,31 @@ void DocumentTab::AcceptHostCompletion(std::unique_ptr<CompileCompletion> comple
     return;
   }
 #endif
+#if defined(PAE_BUILD_PROTOCOL_LAB_ASCII_PUBLIC_A2)
+  std::unique_ptr<AsciiHostAdapter> candidate;
+  if (session_.prepared() && completion->config_sha256 == session_.prepared()->config_sha256) {
+    if (completion->route == SchemaDispatchStatus::ASCII_PUBLIC && completion->public_compiled &&
+        !completion->public_diagnostic) {
+      const auto previous =
+          session_.HostActive()
+              ? session_.prepared()->host_adapter->AccountedBytes()
+              : session_.prepared()->public_ascii_adapter->InstanceAdmissionBytes();
+      candidate =
+          AsciiHostAdapter::CreatePublic(std::move(*completion->public_compiled),
+                                         std::move(host_pending_bindings_), previous, error);
+    } else if (completion->route == SchemaDispatchStatus::PRIVATE_ASCII && completion->artifacts &&
+               !completion->diagnostic) {
+      candidate = AsciiHostAdapter::CreatePrivate(std::move(*completion->artifacts),
+                                                  std::move(host_pending_bindings_), error);
+    }
+  }
+#else
   std::unique_ptr<protocol_lab::ascii::HostObserverAdapter> candidate;
   if (completion->artifacts && !completion->diagnostic && session_.prepared() &&
       completion->config_sha256 == session_.prepared()->config_sha256)
     candidate = protocol_lab::ascii::HostObserverAdapter::Create(
         std::move(*completion->artifacts), std::move(host_pending_bindings_), error);
+#endif
   host_pending_bindings_.clear();
   if (!candidate) {
     host_status_->setText(
@@ -2294,6 +2336,21 @@ void DocumentTab::AcceptHostCompletion(std::unique_ptr<CompileCompletion> comple
     RefreshState();
     return;
   }
+#if defined(PAE_BUILD_PROTOCOL_LAB_ASCII_PUBLIC_A2)
+  if (session_.HostActive() && session_.prepared()->host_adapter->IsPublicCompleteRecord() &&
+      session_.HostHasDiscardableState()) {
+    const auto answer = QMessageBox::question(
+        this, QStringLiteral("Replace ASCII Host Session"),
+        QStringLiteral("Publishing will discard active ASCII flow drafts/results. Continue?"),
+        QMessageBox::Yes | QMessageBox::No, QMessageBox::No);
+    if (answer != QMessageBox::Yes) {
+      host_status_->setText(
+          QStringLiteral("Publication cancelled; active Session and retry draft retained."));
+      RefreshState();
+      return;
+    }
+  }
+#endif
   if (!ConfirmStreamDiscardOnly(QStringLiteral("publish replacement binding table"))) {
     host_status_->setText(QStringLiteral("Publication cancelled; all active flows preserved."));
     RefreshState();
@@ -3209,7 +3266,7 @@ void DocumentTab::RefreshFieldDetails(int row, bool refresh_frame) {
                   .arg(static_cast<qulonglong>(actual_result_range->offset +
                                                actual_result_range->length))
                   .toStdString()
-            :
+        :
 #endif
         message == nullptr ? FormatPhysicalLocation(*field)
                            : FormatPhysicalLocation(*message, *field, ActualFrameSize());

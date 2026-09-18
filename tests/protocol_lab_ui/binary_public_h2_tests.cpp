@@ -5,8 +5,8 @@
 #include <fstream>
 #include <iostream>
 #include <iterator>
-#include <string>
 #include <stdexcept>
+#include <string>
 #include <thread>
 #include <vector>
 
@@ -24,17 +24,16 @@ std::string Read(const wchar_t* path) {
 
 void FailBinaryFlowCopy() { throw std::runtime_error("injected Binary Flow copy failure"); }
 
-std::unique_ptr<ui::CompileCompletion> Compile(ui::CompileWorker& worker,
-                                                ui::DocumentId document,
-                                                ui::Revision revision,
-                                                std::string_view text) {
+std::unique_ptr<ui::CompileCompletion> Compile(ui::CompileWorker& worker, ui::DocumentId document,
+                                               ui::Revision revision, std::string_view text) {
   assert(worker.Submit(document, revision, text) == ui::SubmitStatus::ACCEPTED);
   const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(10);
   while (std::chrono::steady_clock::now() < deadline) {
     for (auto ticket : worker.DrainReadyTickets()) {
       auto completion = worker.TakeResult(ticket);
       if (completion && completion->document_id == document &&
-          completion->load_revision == revision) return completion;
+          completion->load_revision == revision)
+        return completion;
     }
     std::this_thread::sleep_for(std::chrono::milliseconds(5));
   }
@@ -47,8 +46,8 @@ int main() {
   const auto legacy_json = Read(PAE_LEGACY_UI_CONFIG);
   const auto ascii_json = Read(PAE_ASCII_TEXT_CONFIG);
   ui::CompileWorker worker;
-  auto bad_dispatch = Compile(worker, 101U, 1U,
-      R"({"schema_version":"0.9","schema_\u0076ersion":"0.5"})");
+  auto bad_dispatch =
+      Compile(worker, 101U, 1U, R"({"schema_version":"0.9","schema_\u0076ersion":"0.5"})");
   assert(bad_dispatch->route == ui::SchemaDispatchStatus::CLASSIFICATION_FAILED);
   assert(!bad_dispatch->classification_error.empty() &&
          bad_dispatch->compiler_attempt_count == 0U && !bad_dispatch->artifacts &&
@@ -63,22 +62,24 @@ int main() {
          !bad_legacy->public_compiled && !bad_legacy->public_diagnostic);
   auto legacy = Compile(worker, 104U, 1U, legacy_json);
   assert(legacy->route == ui::SchemaDispatchStatus::PRIVATE_LEGACY &&
-         legacy->compiler_attempt_count == 1U && legacy->artifacts &&
-         !legacy->public_compiled);
+         legacy->compiler_attempt_count == 1U && legacy->artifacts && !legacy->public_compiled);
   auto ascii = Compile(worker, 105U, 1U, ascii_json);
+#if defined(PAE_BUILD_PROTOCOL_LAB_ASCII_PUBLIC_A2)
+  assert(ascii->route == ui::SchemaDispatchStatus::ASCII_PUBLIC &&
+         ascii->compiler_attempt_count == 1U && ascii->public_compiled && !ascii->artifacts);
+#else
   assert(ascii->route == ui::SchemaDispatchStatus::PRIVATE_ASCII &&
-         ascii->compiler_attempt_count == 1U && ascii->artifacts &&
-         !ascii->public_compiled);
+         ascii->compiler_attempt_count == 1U && ascii->artifacts && !ascii->public_compiled);
+#endif
   ui::DocumentSession session{106U};
   const auto load = session.BeginLoad();
   auto opening = Compile(worker, 106U, load, binary_json);
   const auto config_hash = opening->config_sha256;
   assert(opening->route == ui::SchemaDispatchStatus::BINARY_PUBLIC &&
-         opening->compiler_attempt_count == 1U && opening->public_compiled &&
-         !opening->artifacts && !opening->diagnostic);
-  assert(session.ApplyCompileCompletion(std::move(opening)) &&
-         session.IsBinaryHostDocument() && !session.BinaryHostActive() &&
-         session.state() == ui::DocumentState::READY &&
+         opening->compiler_attempt_count == 1U && opening->public_compiled && !opening->artifacts &&
+         !opening->diagnostic);
+  assert(session.ApplyCompileCompletion(std::move(opening)) && session.IsBinaryHostDocument() &&
+         !session.BinaryHostActive() && session.state() == ui::DocumentState::READY &&
          session.description()->messages[0].fields[7].decode_decimal64);
 
   auto compiled = pae::CompileProtocolJson(binary_json);
@@ -89,8 +90,7 @@ int main() {
       {{"device", pae::HostAction::DECODE, "ui_pipeline", 2U},
        {"other", pae::HostAction::DECODE, "alternate_pipeline", 2U}},
       {106U, load, 1U, 9U, config_hash}, nullptr, 0U, 0U, error);
-  assert(adapter && error.empty() && adapter->FlowCount(0U) == 2U &&
-         adapter->FlowCount(1U) == 2U);
+  assert(adapter && error.empty() && adapter->FlowCount(0U) == 2U && adapter->FlowCount(1U) == 2U);
   assert(adapter->Description().messages[0].fields[0].physical_bits.size() > 0U);
   assert(adapter->AccountedInstanceBytes() <= 128U * 1024U * 1024U);
   const auto description_upper = adapter->DescriptionCopyUpperBoundBytes();
@@ -98,28 +98,25 @@ int main() {
   int description_copy_calls = 0;
   ui::BinaryUiCopyControls copy_reject;
   copy_reject.description_copy_limit = description_upper - 1U;
-  copy_reject.before_description_copy =
-      +[](void* context) { ++*static_cast<int*>(context); };
+  copy_reject.before_description_copy = +[](void* context) { ++*static_cast<int*>(context); };
   copy_reject.context = &description_copy_calls;
   auto description_reject_compiled = pae::CompileProtocolJson(binary_json);
   assert(description_reject_compiled.Succeeded());
   std::string description_reject_error;
-  auto description_reject = ui::BinaryHostAdapter::CreatePublic(
-      std::move(description_reject_compiled).TakeCompiled(),
-      {{"device", pae::HostAction::DECODE, "ui_pipeline", 2U}},
-      {107U, 1U, 1U, 1U, "description-reject"}, nullptr, 0U, 0U,
-      description_reject_error, {}, &copy_reject);
+  auto description_reject =
+      ui::BinaryHostAdapter::CreatePublic(std::move(description_reject_compiled).TakeCompiled(),
+                                          {{"device", pae::HostAction::DECODE, "ui_pipeline", 2U}},
+                                          {107U, 1U, 1U, 1U, "description-reject"}, nullptr, 0U, 0U,
+                                          description_reject_error, {}, &copy_reject);
   assert(!description_reject && description_copy_calls == 0 &&
          description_reject_error == "public Binary description copy preflight exceeded");
-  const std::vector<std::uint8_t> frame{
-      0x80U, 0x0DU, 0x03U, 0x00U, 0x01U, 0x00U, 0xCAU, 0xFEU, 0x05U, 0x5AU};
+  const std::vector<std::uint8_t> frame{0x80U, 0x0DU, 0x03U, 0x00U, 0x01U,
+                                        0x00U, 0xCAU, 0xFEU, 0x05U, 0x5AU};
   auto first = adapter->DecodeComplete(0U, 0U, frame);
   assert(first.ok && first.public_host.codec_attempted && first.result &&
-         first.result->fields.size() == 9U &&
-         first.result->fields[0].raw_value == "未单独提供" &&
+         first.result->fields.size() == 9U && first.result->fields[0].raw_value == "未单独提供" &&
          first.result->fields[1].logical_value == "Active [active]" &&
-         first.result->fields[6].raw_value == "CAFE" &&
-         first.result->fields[7].raw_value == "5" &&
+         first.result->fields[6].raw_value == "CAFE" && first.result->fields[7].raw_value == "5" &&
          first.result->fields[7].logical_value == "5@0");
   assert(adapter->Current(0U, 0U) && !adapter->Current(0U, 1U));
   assert(adapter->MapCurrent(0U, 0U).result && !adapter->MapCurrent(0U, 1U).result);
@@ -136,8 +133,11 @@ int main() {
   assert(active_upper > 0U && active_upper <= mapped_budget);
   assert(adapter->SetPresentationRetainedBytes(mapped_budget - active_upper + 1U));
   bool rejected_mapping = false;
-  try { (void)adapter->MapCurrent(0U, 0U); }
-  catch (const std::exception&) { rejected_mapping = true; }
+  try {
+    (void)adapter->MapCurrent(0U, 0U);
+  } catch (const std::exception&) {
+    rejected_mapping = true;
+  }
   assert(rejected_mapping && adapter->Current(0U, 0U));
   assert(adapter->SetPresentationRetainedBytes(0U));
   assert(adapter->MapCurrent(0U, 0U).result);
@@ -154,11 +154,9 @@ int main() {
       std::move(replacement_compiled).TakeCompiled(),
       {{"device", pae::HostAction::DECODE, "ui_pipeline", 2U},
        {"other", pae::HostAction::DECODE, "alternate_pipeline", 2U}},
-      {106U, load, 2U, 10U, config_hash}, adapter.get(), 0U, 0U,
-      replacement_error);
-  assert(replacement && replacement_error.empty() &&
-         replacement->Instance() != old_instance && adapter->MapCurrent(1U, 0U).result &&
-         !replacement->MapCurrent(1U, 0U).result);
+      {106U, load, 2U, 10U, config_hash}, adapter.get(), 0U, 0U, replacement_error);
+  assert(replacement && replacement_error.empty() && replacement->Instance() != old_instance &&
+         adapter->MapCurrent(1U, 0U).result && !replacement->MapCurrent(1U, 0U).result);
   auto session_compiled = pae::CompileProtocolJson(binary_json);
   assert(session_compiled.Succeeded());
   std::string session_error;
@@ -180,8 +178,7 @@ int main() {
   }
   assert(session.PublishBinaryHostFlow(std::move(*fresh_flow)));
   if (session.BinaryHostFlowIndex() != 1U || !session.inspect_draft_utf16().empty() ||
-      session.prepared()->binary_host_adapter->Draft(0U, 0U) !=
-          u"80 0D 03 00 01 00 CA FE 05 5A" ||
+      session.prepared()->binary_host_adapter->Draft(0U, 0U) != u"80 0D 03 00 01 00 CA FE 05 5A" ||
       !session.prepared()->binary_host_adapter->Draft(0U, 1U).empty()) {
     std::cerr << "H2_FLOW_DRAFT_ISOLATION_FAIL first empty Flow inherited source draft\n";
     return 1;
@@ -190,10 +187,11 @@ int main() {
     auto prepared = session.PrepareBinaryHostFlow(binding, flow);
     return prepared && session.PublishBinaryHostFlow(std::move(*prepared));
   };
-  const auto matches = [&](std::size_t binding, std::size_t flow,
-                           std::u16string_view draft, int count, std::uint8_t frame_byte) {
+  const auto matches = [&](std::size_t binding, std::size_t flow, std::u16string_view draft,
+                           int count, std::uint8_t frame_byte) {
     if (session.BinaryHostBindingIndex() != binding || session.BinaryHostFlowIndex() != flow ||
-        session.inspect_draft_utf16() != draft) return false;
+        session.inspect_draft_utf16() != draft)
+      return false;
     if (count < 0) return !session.inspect_result();
     return session.inspect_result() && session.inspect_result()->fields.size() == 9U &&
            session.inspect_result()->fields[4].logical_value == std::to_string(count) &&
@@ -212,21 +210,18 @@ int main() {
     return 3;
   }
   constexpr auto uninspected = u"80 0D 03 00 03 00 CA FE 05 5A";
-  if (!session.SetInspectDraftUtf16(uninspected) || session.inspect_result() ||
-      !move_to(0U, 1U) || !matches(0U, 1U, flow1_frame, 2, 2U) ||
-      !move_to(0U, 0U) || !matches(0U, 0U, uninspected, 1, 1U) ||
-      !move_to(1U, 0U) || !matches(1U, 0U, u"", -1, 0U) ||
+  if (!session.SetInspectDraftUtf16(uninspected) || session.inspect_result() || !move_to(0U, 1U) ||
+      !matches(0U, 1U, flow1_frame, 2, 2U) || !move_to(0U, 0U) ||
+      !matches(0U, 0U, uninspected, 1, 1U) || !move_to(1U, 0U) || !matches(1U, 0U, u"", -1, 0U) ||
       session.prepared()->binary_host_adapter->Draft(0U, 0U) != uninspected) {
-    std::cerr << "H2_FLOW_UNINSPECTED_OR_BINDING_FAIL binding="
-              << session.BinaryHostBindingIndex() << " flow=" << session.BinaryHostFlowIndex()
-              << " draft=" << session.inspect_draft() << " result="
-              << session.inspect_result().has_value() << " saved0="
-              << (session.prepared()->binary_host_adapter->Draft(0U, 0U) == uninspected)
-              << "\n";
+    std::cerr << "H2_FLOW_UNINSPECTED_OR_BINDING_FAIL binding=" << session.BinaryHostBindingIndex()
+              << " flow=" << session.BinaryHostFlowIndex() << " draft=" << session.inspect_draft()
+              << " result=" << session.inspect_result().has_value() << " saved0="
+              << (session.prepared()->binary_host_adapter->Draft(0U, 0U) == uninspected) << "\n";
     return 4;
   }
-  if (!session.SetInspectDraftUtf16(u"C3 2A") || !session.Inspect() ||
-      !session.inspect_result() || session.inspect_result()->message_id != "alternate_record" ||
+  if (!session.SetInspectDraftUtf16(u"C3 2A") || !session.Inspect() || !session.inspect_result() ||
+      session.inspect_result()->message_id != "alternate_record" ||
       session.inspect_result()->input_frame != alternate || !move_to(0U, 1U) ||
       !matches(0U, 1U, flow1_frame, 2, 2U) || !move_to(1U, 0U) ||
       session.inspect_draft_utf16() != u"C3 2A" || !session.inspect_result() ||

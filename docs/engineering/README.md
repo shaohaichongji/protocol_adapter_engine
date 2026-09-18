@@ -4,7 +4,8 @@
 
 ## 当前总边界与路线
 
-- [ASCII 公开消费最小契约](pae-public-ascii-consumption-contract.md)：2026-09-15 公开事实首片已获实施与定向验证授权；Lab 0.10 和 0.11 stream 后续串行，尚未迁移。进度见综合计划。
+- [ASCII 公开消费最小契约](pae-public-ascii-consumption-contract.md)：公开事实、SDK 独立消费及 Lab 0.10 A1/A2 已限定收口，0.11 stream 尚未迁移。进度见综合计划。
+- 本轮证据：[ASCII SDK 消费](pae-public-ascii-sdk-validation.md)、[A1 非 Qt 适配](lab-public-ascii-offline-a1-validation.md)、[A2 UI/显式 Host](lab-public-ascii-ui-a2-validation.md)。A2 用户三组人工烟测通过不替代 Linux、真实协议或历史崩溃修复证据。
 - [公开执行、独立交付与仓库整理推进计划](pae-execution-delivery-organization-plan.md)
 - [Windows x64 SDK 阶段 3 契约](pae-sdk-stage3-contract.md)、[验证记录](pae-sdk-stage3-windows-validation.md)、[交付内容盘点](pae-sdk-stage3-content-review.md)、[消费复核](lab-sdk-stage3-consumer-review.md)：final6 本地交付已限定收口；使用见[SDK 快速入口](../guides/pae-sdk-windows-quickstart.md)，尚未正式发布或迁移 Lab。
 - [公开 Host 2B 契约](pae-public-host-stage2b-contract.md)、[Windows 验证](pae-public-host-stage2b-validation.md)、[Lab 消费复核](lab-public-host-stage2b-consumer-review.md)：调用期 Encode selector 修正后已完成限定总控收口。

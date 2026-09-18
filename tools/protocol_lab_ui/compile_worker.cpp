@@ -19,14 +19,19 @@ std::unique_ptr<CompileCompletion> CompileRequest(CompileWorker::Request request
   completion->document_id = request.document_id;
   completion->load_revision = request.load_revision;
   completion->config_sha256 = protocol_lab::HashBytes(request.config_text);
-#if defined(PAE_BUILD_PROTOCOL_LAB_BINARY_PUBLIC_H2)
+#if defined(PAE_BUILD_PROTOCOL_LAB_BINARY_PUBLIC_H2) || \
+    defined(PAE_BUILD_PROTOCOL_LAB_ASCII_PUBLIC_A2)
   const auto dispatch = ClassifySchemaVersion(request.config_text);
   completion->route = dispatch.status;
   if (dispatch.status == SchemaDispatchStatus::CLASSIFICATION_FAILED) {
     completion->classification_error = dispatch.detail;
     return completion;
   }
-  if (dispatch.status == SchemaDispatchStatus::BINARY_PUBLIC) {
+  if (dispatch.status == SchemaDispatchStatus::BINARY_PUBLIC
+#if defined(PAE_BUILD_PROTOCOL_LAB_ASCII_PUBLIC_A2)
+      || dispatch.status == SchemaDispatchStatus::ASCII_PUBLIC
+#endif
+  ) {
     ++completion->compiler_attempt_count;
     auto result = pae::CompileProtocolJson(request.config_text);
     if (!result.Succeeded()) {
@@ -38,26 +43,24 @@ std::unique_ptr<CompileCompletion> CompileRequest(CompileWorker::Request request
     return completion;
   }
 #endif
-  const std::size_t desktop_limit = config_compiler::DerivedUiDescriptionMemoryLimit(
-      protocol_plan::ResourceProfile::DESKTOP);
+  const std::size_t desktop_limit =
+      config_compiler::DerivedUiDescriptionMemoryLimit(protocol_plan::ResourceProfile::DESKTOP);
   ++completion->compiler_attempt_count;
-  auto result = config_compiler::CompileJsonToPlanWithUiDescription(request.config_text,
-                                                                     desktop_limit);
+  auto result =
+      config_compiler::CompileJsonToPlanWithUiDescription(request.config_text, desktop_limit);
   if (!result.Succeeded()) {
     if (result.Diagnostic() != nullptr) completion->diagnostic = *result.Diagnostic();
     return completion;
   }
-  auto artifacts = std::make_unique<config_compiler::CompiledUiArtifacts>(
-      std::move(result).TakeArtifacts());
+  auto artifacts =
+      std::make_unique<config_compiler::CompiledUiArtifacts>(std::move(result).TakeArtifacts());
   const auto* plan = artifacts->Plan();
-  if (plan == nullptr || artifacts->DescriptionMemory().accounted_total_bytes >
-                             config_compiler::DerivedUiDescriptionMemoryLimit(
-                                 plan->GetResourceProfile())) {
+  if (plan == nullptr ||
+      artifacts->DescriptionMemory().accounted_total_bytes >
+          config_compiler::DerivedUiDescriptionMemoryLimit(plan->GetResourceProfile())) {
     completion->diagnostic = config_compiler::CompileDiagnostic{
         config_compiler::CompileStage::INTERNAL,
-        config_compiler::CompileError::INTERNAL_CONTRACT_VIOLATION,
-        "",
-        std::nullopt,
+        config_compiler::CompileError::INTERNAL_CONTRACT_VIOLATION, "", std::nullopt,
         "UI description exceeds the derived limit for its Plan resource profile"};
     return completion;
   }
@@ -93,8 +96,7 @@ struct CompileWorker::Impl final {
         wake.wait(lock, [this] { return stopping || !pending.empty(); });
         if (stopping) return;
         auto selected = std::min_element(
-            pending.begin(), pending.end(),
-            [](const auto& left, const auto& right) {
+            pending.begin(), pending.end(), [](const auto& left, const auto& right) {
               return left.second.enqueue_sequence < right.second.enqueue_sequence;
             });
         request = std::move(selected->second);
@@ -113,9 +115,7 @@ struct CompileWorker::Impl final {
         completion->load_revision = request_revision;
         completion->diagnostic = config_compiler::CompileDiagnostic{
             config_compiler::CompileStage::INTERNAL,
-            config_compiler::CompileError::INTERNAL_CONTRACT_VIOLATION,
-            "",
-            std::nullopt,
+            config_compiler::CompileError::INTERNAL_CONTRACT_VIOLATION, "", std::nullopt,
             "compile worker function threw an exception"};
       }
 
@@ -187,8 +187,8 @@ void CompileWorker::CloseDocument(DocumentId document_id) {
     if (item->second != nullptr && item->second->document_id == document_id) {
       const ResultTicket ticket = item->first;
       implementation_->ready_tickets.erase(
-          std::remove(implementation_->ready_tickets.begin(),
-                      implementation_->ready_tickets.end(), ticket),
+          std::remove(implementation_->ready_tickets.begin(), implementation_->ready_tickets.end(),
+                      ticket),
           implementation_->ready_tickets.end());
       item = implementation_->stored_results.erase(item);
     } else {

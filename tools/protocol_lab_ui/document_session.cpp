@@ -126,6 +126,9 @@ DocumentSession::DocumentSession(DocumentId document_id) : document_id_(document
 bool DocumentSession::AsciiBackendReady() const noexcept {
 #if defined(PAE_ENABLE_SCHEMA_V10_ASCII_TEXT_CODEC)
   return prepared_ && (prepared_->ascii_adapter
+#if defined(PAE_BUILD_PROTOCOL_LAB_ASCII_PUBLIC_A2)
+                       || prepared_->public_ascii_adapter
+#endif
 #if defined(PAE_BUILD_PROTOCOL_LAB_HOST_OBSERVER)
                        || prepared_->host_adapter
 #endif
@@ -334,11 +337,19 @@ bool DocumentSession::BinaryHasDiscardableState() const noexcept {
 
 #if defined(PAE_BUILD_PROTOCOL_LAB_HOST_OBSERVER)
 bool DocumentSession::ApplyHostAdapter(
+#if defined(PAE_BUILD_PROTOCOL_LAB_ASCII_PUBLIC_A2)
+    std::unique_ptr<AsciiHostAdapter> adapter) {
+#else
     std::unique_ptr<protocol_lab::ascii::HostObserverAdapter> adapter) {
+#endif
   if (!IsAsciiDocument() || !adapter || adapter->Bindings().empty()) return false;
   DocumentDescription mapped;
   std::string error;
+#if defined(PAE_BUILD_PROTOCOL_LAB_ASCII_PUBLIC_A2)
+  mapped = adapter->Description();
+#else
   if (!BuildDocumentDescription(adapter->Description(), mapped, error)) return false;
+#endif
   std::vector<HostView> views(adapter->Bindings().size() * 2U);
   if (plan_generation_ == (std::numeric_limits<Revision>::max)()) return false;
   const auto& first_binding = adapter->Bindings().front();
@@ -352,6 +363,9 @@ bool DocumentSession::ApplyHostAdapter(
                                 : (first_pipeline.stream_ascii_crlf ? OperationMode::STREAM_INSPECT
                                                                     : OperationMode::INSPECT);
   prepared_->ascii_adapter.reset();
+#if defined(PAE_BUILD_PROTOCOL_LAB_ASCII_PUBLIC_A2)
+  prepared_->public_ascii_adapter.reset();
+#endif
   prepared_->host_adapter = std::move(adapter);
   description_ = std::move(mapped);
   ++plan_generation_;
@@ -441,6 +455,21 @@ void DocumentSession::ResetAllHostStreams() {
   submitted_stream_input_revision_.reset();
   ClearInspectOutcome();
 }
+bool DocumentSession::HostHasDiscardableState() const noexcept {
+  if (!HostActive()) return false;
+#if defined(PAE_BUILD_PROTOCOL_LAB_ASCII_PUBLIC_A2)
+  if (!prepared_->host_adapter->IsPublicCompleteRecord())
+    return prepared_->host_adapter->HasDiscardableState();
+#endif
+  if (!inspect_draft_.empty() || inspect_result_ || inspect_failure_ || !drafts_.empty() ||
+      !invalid_drafts_.empty() || preview_ || encode_failure_)
+    return true;
+  for (const auto& view : host_views_)
+    if (!view.draft.empty() || view.result || view.failure || !view.encode_drafts.empty() ||
+        !view.invalid_drafts.empty() || view.preview || view.encode_failure)
+      return true;
+  return false;
+}
 #endif
 
 InspectFailure MakeStructuralInspectFailure(std::string status,
@@ -484,17 +513,19 @@ bool DocumentSession::ApplyCompileCompletion(std::unique_ptr<CompileCompletion> 
       completion->document_id != document_id_ || completion->load_revision != load_revision_) {
     return false;
   }
-#if defined(PAE_BUILD_PROTOCOL_LAB_BINARY_PUBLIC_H2)
+#if defined(PAE_BUILD_PROTOCOL_LAB_BINARY_PUBLIC_H2) || \
+    defined(PAE_BUILD_PROTOCOL_LAB_ASCII_PUBLIC_A2)
   if (completion->route == SchemaDispatchStatus::CLASSIFICATION_FAILED) {
     SetDiagnostic("UI_SCHEMA_CLASSIFICATION_FAILED", completion->classification_error);
     state_ = DocumentState::CONFIG_ERROR;
     return false;
   }
+#if defined(PAE_BUILD_PROTOCOL_LAB_BINARY_PUBLIC_H2)
   if (completion->route == SchemaDispatchStatus::BINARY_PUBLIC) {
     if (!completion->public_compiled || completion->public_diagnostic) {
-      SetDiagnostic("UI_PUBLIC_BINARY_COMPILE_FAILED",
-                    completion->public_diagnostic ? completion->public_diagnostic->detail
-                                                  : "public compiler returned no owner");
+      SetDiagnostic("UI_PUBLIC_BINARY_COMPILE_FAILED", completion->public_diagnostic
+                                                           ? completion->public_diagnostic->detail
+                                                           : "public compiler returned no owner");
       state_ = DocumentState::CONFIG_ERROR;
       return false;
     }
@@ -522,6 +553,47 @@ bool DocumentSession::ApplyCompileCompletion(std::unique_ptr<CompileCompletion> 
     state_ = DocumentState::READY;
     return true;
   }
+#endif
+#if defined(PAE_BUILD_PROTOCOL_LAB_ASCII_PUBLIC_A2)
+  if (completion->route == SchemaDispatchStatus::ASCII_PUBLIC) {
+    if (!completion->public_compiled || completion->public_diagnostic) {
+      SetDiagnostic("UI_PUBLIC_ASCII_COMPILE_FAILED", completion->public_diagnostic
+                                                          ? completion->public_diagnostic->detail
+                                                          : "public compiler returned no owner");
+      state_ = DocumentState::CONFIG_ERROR;
+      return false;
+    }
+    auto adopted = protocol_lab_ascii::public_offline::Adapter::AdoptCompiled(
+        std::move(*completion->public_compiled));
+    DocumentDescription neutral;
+    std::string mapping_error;
+    if (!adopted.adapter ||
+        !BuildDocumentDescription(adopted.adapter->Description(), neutral, mapping_error)) {
+      SetDiagnostic("UI_PUBLIC_ASCII_PREPARATION_FAILED",
+                    mapping_error.empty() ? "public ASCII adapter rejected compiled owner"
+                                          : std::move(mapping_error));
+      state_ = DocumentState::CONFIG_ERROR;
+      return false;
+    }
+    auto prepared = std::make_unique<PreparedDocument>();
+    prepared->config_sha256 = std::move(completion->config_sha256);
+    prepared->public_ascii_adapter = std::move(adopted.adapter);
+    prepared_ = std::move(prepared);
+    description_ = std::move(neutral);
+    ++plan_generation_;
+    diagnostic_id_.clear();
+    diagnostic_detail_.clear();
+    if (!SetInitialSelection()) {
+      prepared_.reset();
+      description_.reset();
+      SetDiagnostic("UI_EMPTY_PLAN_SELECTION", "public ASCII description has no selection");
+      state_ = DocumentState::CONFIG_ERROR;
+      return false;
+    }
+    state_ = DocumentState::READY;
+    return true;
+  }
+#endif
 #endif
   if (completion->artifacts == nullptr || completion->diagnostic.has_value()) {
     if (completion->diagnostic.has_value()) {
@@ -987,11 +1059,24 @@ bool DocumentSession::Encode(protocol_lab::v06::ExecutionObserver* observer,
     identity.message_index = selection_->message_index;
     identity.message_id = selection_->message_id;
     const PreviewKey requested_key = MakePreviewKey();
-    auto outcome =
-#if defined(PAE_BUILD_PROTOCOL_LAB_HOST_OBSERVER)
-        HostActive() ? prepared_->host_adapter->Encode(host_binding_, identity, inputs) :
+    protocol_lab::ascii::ExecutionResult outcome;
+#if defined(PAE_BUILD_PROTOCOL_LAB_ASCII_PUBLIC_A2)
+    if (prepared_->public_ascii_adapter) {
+      std::vector<protocol_lab_ascii::public_offline::InputField> public_inputs;
+      public_inputs.reserve(inputs.size());
+      for (const auto& input : inputs) public_inputs.push_back({input.field_index, input.bytes});
+      outcome = ConvertPublicAsciiResult(
+          prepared_->public_ascii_adapter->Encode(identity.pipeline_index, *identity.message_index,
+                                                  public_inputs),
+          identity, protocol_lab::ascii::Operation::ENCODE);
+    } else
 #endif
-                     prepared_->ascii_adapter->Encode(std::move(identity), inputs);
+#if defined(PAE_BUILD_PROTOCOL_LAB_HOST_OBSERVER)
+        if (HostActive())
+      outcome = prepared_->host_adapter->Encode(host_binding_, identity, inputs);
+    else
+#endif
+      outcome = prepared_->ascii_adapter->Encode(std::move(identity), inputs);
     if (!PreviewKeyStillCurrent(requested_key) ||
         outcome.status != protocol_lab::ascii::AdapterStatus::OK) {
       const std::string status =
@@ -1331,13 +1416,20 @@ bool DocumentSession::Inspect(protocol_lab::v06::ExecutionObserver* observer) {
     identity.input_revision = inspect_input_revision_;
     identity.pipeline_index = pipeline.pipeline_index;
     identity.pipeline_id = pipeline.id;
-    auto outcome =
-#if defined(PAE_BUILD_PROTOCOL_LAB_HOST_OBSERVER)
-        HostActive()
-            ? prepared_->host_adapter->Inspect(host_binding_, host_stream_, identity, input)
-            :
+    protocol_lab::ascii::ExecutionResult outcome;
+#if defined(PAE_BUILD_PROTOCOL_LAB_ASCII_PUBLIC_A2)
+    if (prepared_->public_ascii_adapter) {
+      outcome = ConvertPublicAsciiResult(prepared_->public_ascii_adapter->Decode(
+                                             pipeline.pipeline_index, {input.data(), input.size()}),
+                                         identity, protocol_lab::ascii::Operation::INSPECT);
+    } else
 #endif
-            prepared_->ascii_adapter->Inspect(std::move(identity), input);
+#if defined(PAE_BUILD_PROTOCOL_LAB_HOST_OBSERVER)
+        if (HostActive())
+      outcome = prepared_->host_adapter->Inspect(host_binding_, host_stream_, identity, input);
+    else
+#endif
+      outcome = prepared_->ascii_adapter->Inspect(std::move(identity), input);
     if (!InspectKeyStillCurrent(requested_key)) return false;
     if (outcome.status != protocol_lab::ascii::AdapterStatus::OK) {
       InspectFailure failure;

@@ -6,12 +6,14 @@
 #include <string>
 #include <vector>
 
-#include "ui_physical_types.h"
-
 #include "../../src/config_compiler/ui_description.h"
 #include "../../src/protocol_plan/plan_bundle.h"
+#include "ui_physical_types.h"
 #if defined(PAE_ENABLE_SCHEMA_V10_ASCII_TEXT_CODEC)
 #include "../protocol_lab_ascii/ascii_offline_adapter.h"
+#endif
+#if defined(PAE_BUILD_PROTOCOL_LAB_ASCII_PUBLIC_A2)
+#include "../protocol_lab_ascii/public_ascii_offline_adapter.h"
 #endif
 
 namespace pae::protocol_lab_ui {
@@ -118,6 +120,10 @@ bool BuildDocumentDescription(const protocol_plan::PlanBundle& plan,
                               DocumentDescription& output, std::string& error);
 #if defined(PAE_ENABLE_SCHEMA_V10_ASCII_TEXT_CODEC)
 bool BuildDocumentDescription(const protocol_lab::ascii::DocumentDescription& source,
+                              DocumentDescription& output, std::string& error);
+#endif
+#if defined(PAE_BUILD_PROTOCOL_LAB_ASCII_PUBLIC_A2)
+bool BuildDocumentDescription(const protocol_lab_ascii::public_offline::OwnedDescription& source,
                               DocumentDescription& output, std::string& error);
 #endif
 

@@ -27,8 +27,8 @@ bool AuditBounds(yyjson_val* value, std::size_t depth, std::size_t& nodes) noexc
     yyjson_obj_iter iterator;
     yyjson_obj_iter_init(value, &iterator);
     while (yyjson_val* key = yyjson_obj_iter_next(&iterator)) {
-      if (++nodes > kMaximumNodes ||
-          !AuditBounds(yyjson_obj_iter_get_val(key), depth + 1U, nodes)) return false;
+      if (++nodes > kMaximumNodes || !AuditBounds(yyjson_obj_iter_get_val(key), depth + 1U, nodes))
+        return false;
     }
   } else if (yyjson_is_arr(value)) {
     if (yyjson_arr_size(value) > kMaximumArrayElements) return false;
@@ -57,9 +57,8 @@ SchemaDispatchResult ClassifySchemaVersion(std::string_view json_bytes) {
   if (!yyjson_alc_pool_init(&allocator, memory.get(), parser_bytes))
     return Fail("schema dispatch bounded parser pool initialization failed");
   yyjson_read_err error{};
-  auto document = std::unique_ptr<yyjson_doc, DocumentDeleter>{
-      yyjson_read_opts(const_cast<char*>(json_bytes.data()), json_bytes.size(), kReadFlags,
-                       &allocator, &error)};
+  auto document = std::unique_ptr<yyjson_doc, DocumentDeleter>{yyjson_read_opts(
+      const_cast<char*>(json_bytes.data()), json_bytes.size(), kReadFlags, &allocator, &error)};
   if (!document) return Fail("schema dispatch rejected JSON syntax or parser memory");
   yyjson_val* root = yyjson_doc_get_root(document.get());
   if (!yyjson_is_obj(root)) return Fail("schema dispatch requires a root JSON object");
@@ -82,7 +81,14 @@ SchemaDispatchResult ClassifySchemaVersion(std::string_view json_bytes) {
   if (value == "0.5" || value == "0.6" || value == "0.7" || value == "0.8")
     return {SchemaDispatchStatus::PRIVATE_LEGACY, {}};
 #if defined(PAE_ENABLE_SCHEMA_V10_ASCII_TEXT_CODEC)
-  if (value == "0.10") return {SchemaDispatchStatus::PRIVATE_ASCII, {}};
+  if (value == "0.10")
+    return {
+#if defined(PAE_BUILD_PROTOCOL_LAB_ASCII_PUBLIC_A2)
+        SchemaDispatchStatus::ASCII_PUBLIC,
+#else
+        SchemaDispatchStatus::PRIVATE_ASCII,
+#endif
+        {}};
 #endif
 #if defined(PAE_BUILD_PROTOCOL_LAB_ASCII_STREAM_OBSERVER)
   if (value == "0.11") return {SchemaDispatchStatus::PRIVATE_ASCII, {}};

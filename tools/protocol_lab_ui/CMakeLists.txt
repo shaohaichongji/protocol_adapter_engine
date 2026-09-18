@@ -96,6 +96,23 @@ if(PAE_BUILD_PROTOCOL_LAB_BINARY_PUBLIC_H2)
     target_link_libraries(pae_protocol_lab_ui_headless_internal PUBLIC pae_protocol_lab_ui_binary_public_h2)
     target_compile_definitions(pae_protocol_lab_ui_headless_internal PUBLIC PAE_BUILD_PROTOCOL_LAB_BINARY_PUBLIC_H2=1)
 endif()
+if(PAE_BUILD_PROTOCOL_LAB_ASCII_PUBLIC_A2)
+    if(NOT TARGET pae_protocol_lab_ascii_public_a1)
+        message(FATAL_ERROR "ASCII public A2 requires the public A1 adapter target.")
+    endif()
+    target_sources(
+        pae_protocol_lab_ui_headless_internal
+        PRIVATE ascii_host_adapter.cpp ascii_host_adapter.h
+    )
+    target_link_libraries(
+        pae_protocol_lab_ui_headless_internal
+        PUBLIC pae_protocol_lab_ascii_public_a1
+    )
+    target_compile_definitions(
+        pae_protocol_lab_ui_headless_internal
+        PUBLIC PAE_BUILD_PROTOCOL_LAB_ASCII_PUBLIC_A2=1
+    )
+endif()
 set_target_properties(
     pae_protocol_lab_ui_headless_internal
     PROPERTIES

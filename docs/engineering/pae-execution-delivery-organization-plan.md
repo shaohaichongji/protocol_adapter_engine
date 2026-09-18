@@ -5,6 +5,58 @@
 
 ## 顺序与出口
 
+### SDK/A1/A2 检查点与 0.11 后续顺序（2026-09-18）
+
+用户授权先整理 SDK/A1/A2 累积变更形成本地提交检查点，再推进 0.11 流式公开接口迁移；不包含 Push/发布/删除。检查点只纳入本轮 SDK consumer、A1/A2 adapter/UI/专项/CMake 和相关验证/索引，out 产物保持 ignored，外层 AGENTS 不属于 Git 仓库。既有 D/R 与人工证据沿用，不因只整理文档重复全矩阵。
+
+0.11 先闭合公开静态 framing 描述这一前置，再做非 Qt stream 适配，最后 Qt 接线。公开 input kind/strategy/M 从冻结状态读取；M 与实例有效 submit 容量 C、work limit 分开，不从 available 猜策略、不重新解析 Schema。当前先安排 PAE 与 Lab 并行只读复核并分别写报告：PAE 细化查询形状/错误语义/策略映射/测试范围，Lab 基于 A2 细化 owner/候选/成功结果/冻结后缀与 UI 切换边界。两份报告回收后由总控落盘精确契约并串行派发实现，避免公共 API 与消费侧各自猜测。
+
+PAE 仅写 `docs/engineering/pae-public-stream-framing-preflight.md`；Lab 仅写 `docs/engineering/lab-public-ascii-stream-preflight.md`。复用既有报告，只记录现场增量，不重做全项目盘点。工程整理停止；本批不改代码/CMake、构建、部署或 Git，完成主动反馈总控并停止。历史 Qt 访问违例独立保留，不扩到通信/TLV/业务路由。后续若需改变既有执行语义或新增实质产品决策，先报用户。
+
+### 当前授权：A2 ASCII 0.10 UI / 显式 Host 公开接线（2026-09-18）
+
+最新收口：资源返修已完成限定源码/最终日志与部署哈希复核，用户确认“A2 三组烟测通过，Lab 已关闭”。A2 0.10 完整记录直接执行及显式 Host/UI 本片限定收口；总控未重复构建测试。所有执行任务停止。下一步建议先审查 SDK/A1/A2 累积差异形成提交检查点，再核对 0.11 stream 公开消费缺口；尚无新 Git 或下一片实施授权。历史 Qt 访问违例、整个 Qt Lab 包外消费仍未关闭。下方返修/待人工状态为历史，证据见 A2 validation。
+
+总控复核返修：A2 成功输出 sink 接线修正及最终 D/R 12/12 日志、部署哈希已核对，未重跑；尚不收口。源码发现 public Host adapter 未完整执行 A1 等价的输入/诊断复制预算、最终 Host instance/replacement admission 与 Encode scratch 前检。已限定 Lab 在原范围先补独立边界负例，再修正有界预检、计费与同次 Codec 状态保留；新证据使用 budget-review 前缀，保留旧日志。其他任务停止，人工烟测延后；不扩公共 API、0.11 或历史崩溃排查，无 Git/发布/删除授权。
+
+用户同意推进。A1 已限定收口，《Lab应用推进》独占本片实现及串行构建，PAE/工程整理保持停止。现场基线为 `main@481d51a`，现有 SDK/A1/文档未提交内容全部保留。下方 A1“下一片尚未派发”是历史状态；本段为本次执行范围，无 Stage/Commit/Push、发布或删除授权。
+
+- 仅迁移 Schema 0.10 完整记录 Decode/Encode 和显式 Host Apply/UI 生命周期。沿用已确认公开 ASCII 契约，首次打开及 Apply 均不得回退私有编译/执行；dispatch 仅严格读取顶层版本，每请求只调用一个目标编译器。保留 worker 取消、文档/加载版本票据和过期结果拒绝。0.11 stream、Binary H2 和其他旧格式保持原行为。
+- 允许修改 `tools/protocol_lab_ui/` 中相关 worker、dispatch、document/session/tab 与结果呈现接线、必要 public ASCII helper，`tools/protocol_lab_ascii/public_ascii_*` 的最小所有权/结果物化复用，及对应 `tests/protocol_lab_ui/`、`tests/protocol_lab_ascii/public_ascii_*` 测试。A1 helper 仍无 Qt/私有 PAE 依赖。根及局部 CMake 只作默认 OFF 的 A2 门禁与依赖接线，不改现有默认、SDK 白名单或 CLI/Evidence 拒绝门。禁止修改 PAE 公共 API/Core/Plan/Schema、旧私有桥执行语义；若接口不足，保留证据停报。
+- 编译 owner、描述、Host 和结果须同源；允许为此最小提取 A1 公共结果物化 helper，不得额外编译或 Decode 获取展示。Host 回调借用在同步期限内有界复制后才能跨事件使用。Encode 保留调用期 Message selector；RX 实际切片、TX 逐段验证、零长/literal-only、not referenced 与本地物化失败语义保持契约。预算先检、失败不发布半成品，不保留旧成功字段/范围。
+- Apply 先准备再原子发布；失败或取消保留原 owner/绑定/结果，成功发布按契约更新身份。草稿和结果按真实源 Tab/binding/Flow 保存、再恢复目标，防止旧 Flow 串写重现。格式转换失败不吞掉草稿或暗换格式；不以缺失公共元数据压缩已有展示。
+- 新独立构建目录 `out/build/windows-msvc-stage4-ascii-public-a2`（若已存在则另取唯一后缀），证据 `out/stage4-ascii-public-a2/`。Windows x64 D/R 针对测试覆盖单次编译、Decode/Encode/失败恢复、Apply 失败/取消/替换、不同草稿 Flow/Tab 隔离，并做 Binary H2 与 0.11 受影响兼容回归。先有针对性断言再接线；不无限复跑历史 ASCII Qt 崩溃，若再现立即保存证据停报。A1 helper 若变化，补 A1 D/R 及既有 SDK static 包外 D/R；不重打五包或无关全矩阵。
+- 仅在新目录生成可运行 Qt Release 候选，使用随仓 Qt，不覆盖已验收 H2、本机 Qt 或旧 SDK。本片仓库 UI 集成验证不等于整个 Qt Lab 已做到包外 public-only 消费。报告独占 `docs/engineering/lab-public-ascii-ui-a2-validation.md`，写明精确 EXE/配置路径、命令/结果、未验证项和最多三组简短人工烟测建议；总控复核后再请用户操作，历史访问违例仍独立未解决。
+- 完成后向总控 `01a04601-757d-7bb1-8254-61dde4954d74` 主动反馈一次交接摘要，停止写入，等待总控复核。总控维护本计划、路线与外层 AGENTS，执行任务不得并行编辑这些文件。
+
+### 当前派发：Lab ASCII 0.10 非 Qt 公开适配（2026-09-18）
+
+限定收口：预算返修已回收，总控核对按方向实际可用消息数 reserve 的实现、独立单向/混合 capacity 断言、修复前失败日志与 `budget-fix-*` D/R 专项及 static 包外通过日志，完成 A1 限定源码/证据复核。总控未重跑构建测试；实际 capacity 断言是当前 MSVC 验证，不承诺任意 STL 实现的精确容量或 RSS 上限。执行任务停止，当前具备进入 0.10 UI/显式 Host 接线的前置条件，下一片尚未派发。旧 UI/stream/已验收部署未切换，历史 Qt 访问违例仍独立未解决；无 Git/发布/删除授权。下方返修描述保留为过程。
+
+总控复核返修：A1 已交付，D/R 专项及 static 包外运行日志通过；总控源码检查发现 `PreflightDescription` 按实际 D/E 可用消息数计费，而 `CopyDescription` 对两个方向均 reserve 全部 message_count，单向消息会出现计费与显式预留不一致。本片暂不收口，限定 Lab 补独立单向/混合关联计费断言并修正预检/预留一致性，再重跑 A1 D/R 和受影响包外验证。原 exact/minus-one 取自身返回值不足以独立证明费用正确。不得借机扩改公共 API、UI 或执行语义；完成反馈后停止。
+
+用户授权执行下一步。SDK 消费前置已限定复核，《Lab应用推进》独占本片代码与构建，PAE/工程整理保持停止。基线仍为 `481d51a`，此前 SDK consumer/报告及总控文档的未提交修改全部保留；不要求先提交，不自动取得 Git 授权。
+
+- 新增独立 public-only 完整记录 adapter 和 Lab 自有描述/结果 DTO，推荐 `tools/protocol_lab_ascii/public_ascii_offline_adapter.*` 及必要同前缀 helper；仅消费 `pae/*`/`PAE::pae`，不引用旧私有 adapter、Compiler/Plan/Core/Host 或 Qt。保持已编译 owner 与只读描述身份一致，可接收并持有一次公开编译所得 owner；不重解析 Schema、不以额外编译/Decode 获取展示事实。旧实现和 UI 不切换。
+- 依照 `pae-public-ascii-consumption-contract.md` 第 2–5 节，实现完整记录一次 Decode/Encode、RX 同次借用切片核界复制、成功 TX 逐段校核后投影实际范围；保留 RX/TX 独立、动作不引用、单向/literal-only、调用期 Pipeline/Message selector、失败诊断身份。DTO 自有且有界，预算检查先于分配/发布；复制失败不得交付半成品。控制字符列表缺省表示未知，Core 是最终字符校验者。不新增 Host/Flow/UI/stream 生命周期。
+- 允许新增上述 adapter/helpers、`tests/protocol_lab_ascii/public_ascii_*` 测试/包外 consumer 子目录与局部 CMake；根 CMake 仅允许默认 OFF 的独立非 Qt 门禁、依赖校验和 target 接线，不能要求启用旧私有 ASCII adapter/Qt，也不改变现有默认项、CLI/Evidence 拒绝门或 SDK 安装白名单。旧 adapter 和公共 PAE 源码禁止修改。需扩大范围时停报。
+- 先写专项断言并保留初始缺口，再实施；新 `out/build/windows-msvc-stage4-ascii-public-a1*` 串行 D/R，证据 `out/stage4-ascii-public-a1/`，已有目录另取唯一后缀。测试双向/单向/literal-only、not referenced、变长/零长 RX 实际范围、嵌入 NUL、TX 重复内容不误定位、非法 selector、未知/唯一匹配后失败/成功恢复、无旧结果泄漏、输入/owner 寿命及资源边界。测试映射不一致时区分 Codec OK 和本地物化失败，不篡改 Codec 状态。
+- 使用 `out/sdk-stage4-ascii/candidate1-20260918/pae-sdk-static-debug` 和 `pae-sdk-static-release` 做包外 adapter 消费 D/R；只链接对应安装包，不由仓库 public target 冒充包。无需重复生成五包/完整 PAE 矩阵/Qt 压测；根接线若有变化，补默认 OFF/Testing-off 配置隔离检查。不覆盖现有 H2、旧包或本机 Qt，不新增人工点击。
+- 独占报告 `docs/engineering/lab-public-ascii-offline-a1-validation.md`；总控计划/路线/外层 AGENTS 由总控维护。完成向总控 `01a04601-757d-7bb1-8254-61dde4954d74` 主动反馈一次源码范围、构建/测试命令和证据、未验证项、Git 状态，停止写入待复核。无 Stage/Commit/Push/发布/删除授权。下一片 UI/显式 Host 在本片复核后另派，0.11 stream 后置；历史 Qt 访问违例不因本片关闭。
+
+### 当前派发：ASCII 新 SDK 独立消费验证（2026-09-18）
+
+回收更新：执行任务已停止；总控核对 consumer 增量、六组运行日志、包外 source/prefix 路径及五包完整性记录，并独立复算候选与 consumer 同目录 D/R DLL 哈希一致，完成本片限定复核。总控未重新构建或运行六组测试，也未独立重算全部 manifest；运行目录 DLL 一致不额外宣称有进程模块加载跟踪证据。源码/静态/动态包外 D/R 均有通过记录，详见 [SDK 验证报告](pae-public-ascii-sdk-validation.md)。当前具备进入 Lab 0.10 非 Qt 适配的前置条件；该实现尚未派发，需下一轮明确范围。历史 Qt 访问违例仍独立未解决，无 Git/发布授权。
+
+用户授权规划并派发下一步。现场 `main@481d51ae2d62e2e28754fd84e5df4bb64309a1e2`、工作树干净；该集成检查点已本地提交，未 Push。下方旧的“未提交/无实施授权”只代表当时状态，不覆盖本段。
+
+- 《子任务推进》独占打包与构建：基于当前 ASCII facts 实现，在 `out/sdk-stage4-ascii/candidate1-20260918/` 新建 source、static-debug/release、shared-debug/release 五包。新构建目录使用 `out/build/windows-msvc-stage4-ascii-sdk-*`，证据目录 `out/stage4-ascii-sdk/`；若存在则另选唯一后缀，不覆盖既有产物。沿用已验证 Windows x64 v142 与 D/R CRT 配对。
+- 包外 consumer 仅消费该 source 包的 `add_subdirectory` 或二进制包的 `find_package(PAE CONFIG REQUIRED)` / `PAE::pae`。验证三形态各 D/R 六组，包含新增 ASCII Action/Segment/Field 查询、RX 切片与匹配身份、Host 同源观察及现有 Binary 回归。不得用仓库 `PAE_SOURCE_DIR` 或 private 头代替包消费；记录实际头文件/库/DLL来源、三项新查询 DLL 导出、包清单/哈希、构建输入版本。源码包在脱离仓库依赖路径的独立消费根验证，二进制包不暗连源码。
+- 复用既有打包入口和 consumer。允许必要的最小打包修正仅限 `scripts/package_sdk_stage3.ps1`、`cmake/PaeSdkInstall.cmake`、`cmake/PAEConfig.cmake.in`、`examples/public_api_sdk_consumer/`；不得改变 SDK 既定契约或放宽断言。新报告独占 `docs/engineering/pae-public-ascii-sdk-validation.md`。若有功能缺陷、公共接口/Core/Schema/根 CMake 变更需求，保留失败证据并停报总控，不扩修。若打包代码有改动，仅补对应检查与受影响重新生成/验证，不盲目循环重打。
+- Lab、工程整理暂不启动：先由总控复核候选内容和证据，再派 Lab 0.10 非 Qt adapter；随后 UI/Host，最后 0.11 stream。不存在本批并发修改公共入口或同构建目录的任务。
+- 不修改 Qt、本机环境、旧 final6/candidate2 或已验收 H2 部署；不重开历史崩溃排查、不新增人工点击、不做无关全量矩阵。无 Stage/Commit/Push、正式发布或删除授权；候选验证不等于稳定 ABI/Linux/真实协议验收。
+- 完成后向总控 `01a04601-757d-7bb1-8254-61dde4954d74` 主动反馈一次交接摘要，含文件范围、六组命令/结果、包绝对路径和哈希证据、未验证项、Git 状态；停止写入，等待总控复核。发现阻断提前报告。
+
 | 阶段 | 功能工作 | 同步整理 | 完成标准 |
 | --- | --- | --- | --- |
 | 0，已交付 | 公开完整记录接口设计与消费者需求核对 | 仓库目录职责/去留盘点 | 三份报告已回收，作为阶段 1 输入；不表示代码实现完成 |

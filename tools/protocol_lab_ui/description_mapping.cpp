@@ -193,6 +193,7 @@ bool BuildDocumentDescription(const protocol_plan::PlanBundle& plan,
       }
     }
 #endif
+
     if (source.integrity.has_value()) {
       std::size_t offset = 0U;
       if (!ToSize(source.integrity->storage_offset, offset)) {
@@ -382,6 +383,101 @@ bool BuildDocumentDescription(const protocol_lab::ascii::DocumentDescription& so
         return false;
       }
     }
+  }
+  output = std::move(built);
+  error.clear();
+  return true;
+}
+#endif
+
+#if defined(PAE_BUILD_PROTOCOL_LAB_ASCII_PUBLIC_A2)
+bool BuildDocumentDescription(const protocol_lab_ascii::public_offline::OwnedDescription& source,
+                              DocumentDescription& output, std::string& error) {
+  DocumentDescription built;
+  built.layout = DocumentLayout::ASCII_TEXT;
+  built.schema_version = source.schema_version;
+  built.protocol_id = source.protocol_id;
+  built.protocol_version = source.protocol_version;
+  built.display_name = source.display_name;
+  built.description = source.description;
+  built.source_ref = source.source_ref;
+  built.pipelines.reserve(source.pipelines.size());
+  for (const auto& value : source.pipelines) {
+    if (value.index != built.pipelines.size()) {
+      error = "public ASCII Pipeline indices are not contiguous";
+      return false;
+    }
+    PipelineDescriptor pipeline;
+    pipeline.pipeline_index = value.index;
+    pipeline.id = value.id;
+    pipeline.direction_id = value.direction_id;
+    pipeline.display_name = value.display_name;
+    pipeline.description = value.description;
+    pipeline.source_ref = value.source_ref;
+    pipeline.message_indices = value.message_indices;
+    pipeline.decode_message_indices = value.decode_message_indices;
+    built.pipelines.push_back(std::move(pipeline));
+  }
+  built.messages.reserve(source.messages.size());
+  for (const auto& value : source.messages) {
+    if (value.index != built.messages.size()) {
+      error = "public ASCII Message indices are not contiguous";
+      return false;
+    }
+    MessageDescriptor message;
+    message.message_index = value.index;
+    message.id = value.id;
+    message.direction_id = value.direction_id;
+    message.display_name = value.display_name;
+    message.description = value.description;
+    message.source_ref = value.source_ref;
+    message.encode_available = value.encode.has_value();
+    message.decode_available = value.decode.has_value();
+    if (value.encode) message.frame_size = value.encode->record_length.maximum;
+    if (value.decode)
+      message.frame_size = (std::max)(message.frame_size, value.decode->record_length.maximum);
+    built.max_frame_bytes = (std::max)(built.max_frame_bytes, message.frame_size);
+    message.fields.reserve(value.fields.size());
+    for (const auto& field_value : value.fields) {
+      if (field_value.field_index != message.fields.size()) {
+        error = "public ASCII Field indices are not contiguous";
+        return false;
+      }
+      FieldDescriptor field;
+      field.field_index = field_value.field_index;
+      field.id = field_value.id;
+      field.display_name = field_value.display_name;
+      field.description = field_value.description;
+      field.source_ref = field_value.source_ref;
+      field.value_type = protocol_plan::ValueType::BYTES;
+      field.wire_codec = protocol_plan::WireCodec::ASCII_TEXT;
+      field.byte_order = protocol_plan::ByteOrder::NOT_APPLICABLE;
+      field.encode_source = field_value.encode_referenced ? protocol_plan::EncodeSource::INPUT
+                                                          : protocol_plan::EncodeSource::CONSTANT;
+      field.byte_width = field_value.byte_length.maximum;
+      field.byte_length_bounds =
+          ByteLengthBounds{field_value.byte_length.minimum, field_value.byte_length.maximum};
+      field.ascii_text = true;
+      field.decode_referenced = field_value.decode_referenced;
+      field.encode_referenced = field_value.encode_referenced;
+      if (field_value.allowed_control_bytes)
+        field.allowed_control_bytes = *field_value.allowed_control_bytes;
+      if (!field.encode_referenced) field.read_only_annotation = "not referenced by Encode action";
+      message.fields.push_back(std::move(field));
+    }
+    built.messages.push_back(std::move(message));
+  }
+  for (const auto& pipeline : built.pipelines) {
+    for (const auto index : pipeline.message_indices)
+      if (index >= built.messages.size()) {
+        error = "public ASCII Pipeline Message index is outside the description";
+        return false;
+      }
+    for (const auto index : pipeline.decode_message_indices)
+      if (index >= built.messages.size() || !built.messages[index].decode_available) {
+        error = "public ASCII Pipeline Decode candidate is outside the description";
+        return false;
+      }
   }
   output = std::move(built);
   error.clear();

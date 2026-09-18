@@ -95,6 +95,9 @@ endif()
 if(PAE_BUILD_PROTOCOL_LAB_BINARY_PUBLIC_H2)
     list(APPEND pae_protocol_lab_ui_headless_test_names binary_public_h2 binary_public_header)
 endif()
+if(PAE_BUILD_PROTOCOL_LAB_ASCII_PUBLIC_A2)
+    list(APPEND pae_protocol_lab_ui_headless_test_names ascii_public_a2)
+endif()
 
 foreach(pae_ui_test_name IN LISTS pae_protocol_lab_ui_headless_test_names)
     set(pae_ui_test_target "pae_protocol_lab_ui_${pae_ui_test_name}_tests")
@@ -122,6 +125,13 @@ foreach(pae_ui_test_name IN LISTS pae_protocol_lab_ui_headless_test_names)
             PRIVATE
                 "PAE_ASCII_TEXT_CONFIG=L\"${PROJECT_SOURCE_DIR}/examples/config/synthetic_ascii_text_slice.pae.json\""
                 "PAE_ASCII_LITERAL_CONFIG=L\"${PROJECT_SOURCE_DIR}/examples/config/synthetic_ascii_literal_only.pae.json\""
+        )
+    endif()
+    if(pae_ui_test_name STREQUAL "ascii_public_a2")
+        target_compile_definitions(
+            "${pae_ui_test_target}"
+            PRIVATE
+                "PAE_ASCII_TEXT_CONFIG=L\"${PROJECT_SOURCE_DIR}/examples/config/synthetic_ascii_text_slice.pae.json\""
         )
     endif()
     if(pae_ui_test_name STREQUAL "ascii_stream_session" OR pae_ui_test_name STREQUAL "host_session")

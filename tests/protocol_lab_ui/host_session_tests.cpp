@@ -1,7 +1,7 @@
-#include <filesystem>
 #include <cstdlib>
-#include <iostream>
+#include <filesystem>
 #include <fstream>
+#include <iostream>
 #include <iterator>
 
 #include "../../tools/protocol_lab_ui/document_session.h"
@@ -34,6 +34,16 @@ void Load(ui::DocumentSession& session) {
   completion->artifacts = std::make_unique<pae::config_compiler::CompiledUiArtifacts>(Artifacts());
   Check(session.ApplyCompileCompletion(std::move(completion)));
 }
+#if defined(PAE_BUILD_PROTOCOL_LAB_ASCII_PUBLIC_A2)
+std::unique_ptr<ui::AsciiHostAdapter> Adapter() {
+  std::string error;
+  auto result = ui::AsciiHostAdapter::CreatePrivate(
+      Artifacts(), {{"device", host::Action::DECODE, 0}, {"device", host::Action::ENCODE, 0}},
+      error);
+  Check(result && error.empty());
+  return result;
+}
+#else
 std::unique_ptr<ascii::HostObserverAdapter> Adapter() {
   std::string error;
   auto result = ascii::HostObserverAdapter::Create(
@@ -42,6 +52,7 @@ std::unique_ptr<ascii::HostObserverAdapter> Adapter() {
   Check(result && error.empty());
   return result;
 }
+#endif
 int main() {
   ui::DocumentSession first{1}, second{2};
   Load(first);

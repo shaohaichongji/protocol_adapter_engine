@@ -16,6 +16,21 @@ std::string Read(const wchar_t* path) {
 
 std::unique_ptr<pae::protocol_lab_ui::CompileCompletion> Compile(
     pae::protocol_lab_ui::DocumentSession& session, std::string text) {
+#if defined(PAE_BUILD_PROTOCOL_LAB_ASCII_PUBLIC_A2)
+  auto compiled = pae::CompileProtocolJson(text);
+  auto completion = std::make_unique<pae::protocol_lab_ui::CompileCompletion>();
+  completion->document_id = session.id();
+  completion->load_revision = session.load_revision();
+  completion->config_sha256 = "ascii-session-test";
+  completion->route = pae::protocol_lab_ui::SchemaDispatchStatus::ASCII_PUBLIC;
+  completion->compiler_attempt_count = 1U;
+  if (compiled.Succeeded())
+    completion->public_compiled =
+        std::make_unique<pae::CompiledProtocol>(std::move(compiled).TakeCompiled());
+  else if (compiled.Diagnostic())
+    completion->public_diagnostic = *compiled.Diagnostic();
+  return completion;
+#else
   auto compiled = pae::config_compiler::CompileJsonToPlanWithUiDescription(
       text, pae::config_compiler::DerivedUiDescriptionMemoryLimit(
                 pae::protocol_plan::ResourceProfile::DESKTOP));
@@ -30,6 +45,7 @@ std::unique_ptr<pae::protocol_lab_ui::CompileCompletion> Compile(
     completion->diagnostic = *compiled.Diagnostic();
   }
   return completion;
+#endif
 }
 
 std::string OneWayConfig(const char* action) {

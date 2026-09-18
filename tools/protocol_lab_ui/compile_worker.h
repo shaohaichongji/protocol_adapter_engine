@@ -11,7 +11,8 @@
 
 #include "../../src/config_compiler/config_compiler.h"
 #include "schema_dispatch.h"
-#if defined(PAE_BUILD_PROTOCOL_LAB_BINARY_PUBLIC_H2)
+#if defined(PAE_BUILD_PROTOCOL_LAB_BINARY_PUBLIC_H2) || \
+    defined(PAE_BUILD_PROTOCOL_LAB_ASCII_PUBLIC_A2)
 #include "pae/compiler.h"
 #endif
 
@@ -32,7 +33,8 @@ struct CompileCompletion {
   SchemaDispatchStatus route = SchemaDispatchStatus::PRIVATE_LEGACY;
   std::string classification_error;
   std::size_t compiler_attempt_count = 0U;
-#if defined(PAE_BUILD_PROTOCOL_LAB_BINARY_PUBLIC_H2)
+#if defined(PAE_BUILD_PROTOCOL_LAB_BINARY_PUBLIC_H2) || \
+    defined(PAE_BUILD_PROTOCOL_LAB_ASCII_PUBLIC_A2)
   std::unique_ptr<pae::CompiledProtocol> public_compiled;
   std::optional<pae::CompileDiagnostic> public_diagnostic;
 #endif
@@ -62,8 +64,7 @@ class CompileWorker final {
   CompileWorker& operator=(const CompileWorker&) = delete;
   ~CompileWorker();
 
-  SubmitStatus Submit(DocumentId document_id, Revision load_revision,
-                      std::string_view config_text);
+  SubmitStatus Submit(DocumentId document_id, Revision load_revision, std::string_view config_text);
   void CloseDocument(DocumentId document_id);
   std::vector<ResultTicket> DrainReadyTickets();
   std::unique_ptr<CompileCompletion> TakeResult(ResultTicket ticket);

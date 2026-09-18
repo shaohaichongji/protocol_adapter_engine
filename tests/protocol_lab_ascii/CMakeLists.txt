@@ -1,3 +1,4 @@
+if(PAE_BUILD_PROTOCOL_LAB_ASCII_ADAPTER)
 add_executable(
     pae_protocol_lab_ascii_adapter_tests
     ascii_offline_adapter_tests.cpp
@@ -30,4 +31,21 @@ if(PAE_BUILD_PROTOCOL_LAB_HOST_OBSERVER)
         "${PROJECT_SOURCE_DIR}/examples/config/synthetic_ascii_stream_slice.pae.json"
         "${PROJECT_SOURCE_DIR}/examples/config/synthetic_ascii_text_slice.pae.json")
     set_tests_properties(pae.tools.lab_host.adapter PROPERTIES TIMEOUT 60 LABELS "host_endpoint;headless;offline")
+endif()
+endif()
+
+if(PAE_BUILD_PROTOCOL_LAB_ASCII_PUBLIC_A1)
+    add_executable(pae_protocol_lab_ascii_public_a1_tests public_ascii_offline_adapter_tests.cpp)
+    target_link_libraries(
+        pae_protocol_lab_ascii_public_a1_tests
+        PRIVATE pae_protocol_lab_ascii_public_a1 pae::project_options
+    )
+    add_test(
+        NAME pae.tools.protocol_lab_ascii.public_a1
+        COMMAND pae_protocol_lab_ascii_public_a1_tests "${PROJECT_SOURCE_DIR}"
+    )
+    set_tests_properties(
+        pae.tools.protocol_lab_ascii.public_a1
+        PROPERTIES LABELS "tools;protocol_lab_ascii;public_a1;offline" TIMEOUT 60
+    )
 endif()
