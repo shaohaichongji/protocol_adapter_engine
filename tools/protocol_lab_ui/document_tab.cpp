@@ -1,5 +1,11 @@
 #include "document_tab.h"
 
+#if !defined(PAE_PROTOCOL_LAB_STANDALONE_PUBLIC_ONLY) && \
+    defined(PAE_BUILD_PROTOCOL_LAB_ASCII_PUBLIC_A2) && \
+    defined(PAE_BUILD_PROTOCOL_LAB_HOST_OBSERVER)
+#include "ascii_host_adapter_compat.h"
+#endif
+
 #include <QApplication>
 #include <QClipboard>
 #include <QComboBox>
@@ -46,6 +52,22 @@
 namespace pae::protocol_lab_ui {
 namespace {
 
+#if defined(PAE_BUILD_PROTOCOL_LAB_HOST_OBSERVER)
+bool IsDecodeHostAction(
+#if defined(PAE_BUILD_PROTOCOL_LAB_ASCII_PUBLIC_A2)
+    AsciiHostAction action
+#else
+    host_endpoint::Action action
+#endif
+) noexcept {
+#if defined(PAE_BUILD_PROTOCOL_LAB_ASCII_PUBLIC_A2)
+  return action == AsciiHostAction::DECODE;
+#else
+  return action == host_endpoint::Action::DECODE;
+#endif
+}
+#endif
+
 QString FromUtf8(const std::string& value) {
   return QString::fromUtf8(value.data(), static_cast<int>(value.size()));
 }
@@ -66,61 +88,65 @@ QString FromUtf16(const std::u16string& value) {
 }
 
 #if defined(PAE_BUILD_PROTOCOL_LAB_ASCII_STREAM_OBSERVER)
-QString StreamPhaseName(protocol_framing::StreamFramingPhase value) {
+QString StreamPhaseName(StreamFramingPhase value) {
   switch (value) {
-    case protocol_framing::StreamFramingPhase::COLLECTING:
+    case StreamFramingPhase::COLLECTING:
       return QStringLiteral("COLLECTING");
-    case protocol_framing::StreamFramingPhase::DELIVERY_PENDING:
+    case StreamFramingPhase::DELIVERY_PENDING:
       return QStringLiteral("DELIVERY_PENDING");
-    case protocol_framing::StreamFramingPhase::DISCARDING_UNTIL_CRLF:
+    case StreamFramingPhase::DISCARDING_UNTIL_CRLF:
       return QStringLiteral("DISCARDING_UNTIL_CRLF");
   }
   return QStringLiteral("UNKNOWN");
 }
 
-QString StopReasonName(protocol_framing::SubmitStopReason value) {
+QString StopReasonName(StreamFramerStopReason value) {
   switch (value) {
-    case protocol_framing::SubmitStopReason::INPUT_EXHAUSTED:
+    case StreamFramerStopReason::INPUT_EXHAUSTED:
       return QStringLiteral("INPUT_EXHAUSTED");
-    case protocol_framing::SubmitStopReason::NEED_MORE:
+    case StreamFramerStopReason::NEED_MORE:
       return QStringLiteral("NEED_MORE");
-    case protocol_framing::SubmitStopReason::WORK_BUDGET_REACHED:
+    case StreamFramerStopReason::WORK_BUDGET_REACHED:
       return QStringLiteral("WORK_BUDGET_REACHED");
-    case protocol_framing::SubmitStopReason::SINK_STOP:
+    case StreamFramerStopReason::SINK_STOP:
       return QStringLiteral("SINK_STOP");
   }
   return QStringLiteral("UNKNOWN");
 }
 
-QString SubmitApiStatusName(protocol_framing::SubmitApiStatus value) {
+QString SubmitApiStatusName(StreamFramerStatus value) {
   switch (value) {
-    case protocol_framing::SubmitApiStatus::OK:
+    case StreamFramerStatus::OK:
       return QStringLiteral("OK");
-    case protocol_framing::SubmitApiStatus::INVALID_ARGUMENT:
+    case StreamFramerStatus::INVALID_ARGUMENT:
       return QStringLiteral("INVALID_ARGUMENT");
-    case protocol_framing::SubmitApiStatus::INVALID_PLAN:
-      return QStringLiteral("INVALID_PLAN");
-    case protocol_framing::SubmitApiStatus::WORKSPACE_PLAN_MISMATCH:
-      return QStringLiteral("WORKSPACE_PLAN_MISMATCH");
-    case protocol_framing::SubmitApiStatus::WORKSPACE_BUSY:
+    case StreamFramerStatus::INVALID_COMPILED_PROTOCOL:
+      return QStringLiteral("INVALID_COMPILED_PROTOCOL");
+    case StreamFramerStatus::PIPELINE_OUT_OF_RANGE:
+      return QStringLiteral("PIPELINE_OUT_OF_RANGE");
+    case StreamFramerStatus::INPUT_KIND_NOT_STREAM:
+      return QStringLiteral("INPUT_KIND_NOT_STREAM");
+    case StreamFramerStatus::RESOURCE_LIMIT_EXCEEDED:
+      return QStringLiteral("RESOURCE_LIMIT_EXCEEDED");
+    case StreamFramerStatus::ALLOCATION_FAILED:
+      return QStringLiteral("ALLOCATION_FAILED");
+    case StreamFramerStatus::WORKSPACE_BUSY:
       return QStringLiteral("WORKSPACE_BUSY");
-    case protocol_framing::SubmitApiStatus::REENTRANT_CALL:
+    case StreamFramerStatus::REENTRANT_CALL:
       return QStringLiteral("REENTRANT_CALL");
-    case protocol_framing::SubmitApiStatus::LIMIT_EXCEEDED:
-      return QStringLiteral("LIMIT_EXCEEDED");
-    case protocol_framing::SubmitApiStatus::INTERNAL_ERROR:
+    case StreamFramerStatus::INTERNAL_ERROR:
       return QStringLiteral("INTERNAL_ERROR");
   }
   return QStringLiteral("UNKNOWN");
 }
 
-QString FramingIssueName(protocol_framing::FramingIssue value) {
+QString FramingIssueName(StreamFramingIssue value) {
   switch (value) {
-    case protocol_framing::FramingIssue::NONE:
+    case StreamFramingIssue::NONE:
       return QStringLiteral("NONE");
-    case protocol_framing::FramingIssue::MALFORMED_LENGTH:
+    case StreamFramingIssue::MALFORMED_LENGTH:
       return QStringLiteral("MALFORMED_LENGTH");
-    case protocol_framing::FramingIssue::RECORD_TOO_LONG:
+    case StreamFramingIssue::RECORD_TOO_LONG:
       return QStringLiteral("RECORD_TOO_LONG");
   }
   return QStringLiteral("UNKNOWN");
@@ -205,28 +231,28 @@ QString TimingText(const EncodeTimingSnapshot& timing) {
       .arg(milliseconds(timing.first_repaint_total_ns), 0, 'f', 3);
 }
 
-class TimingObserver final : public protocol_lab::v06::ExecutionObserver {
+class TimingObserver final : public LabExecutionObserver {
  public:
   explicit TimingObserver(EncodeTimingSnapshot& output) : output_(output) {}
 
-  void PhaseStarted(protocol_lab::v06::ExecutionPhase phase) override {
+  void PhaseStarted(LabExecutionPhase phase) override {
     active_phase_ = phase;
     timer_.restart();
   }
 
-  void PhaseFinished(protocol_lab::v06::ExecutionPhase phase, std::string_view) override {
+  void PhaseFinished(LabExecutionPhase phase, std::string_view) override {
     if (!active_phase_.has_value() || *active_phase_ != phase) {
       return;
     }
     const auto elapsed = timer_.nsecsElapsed();
     switch (phase) {
-      case protocol_lab::v06::ExecutionPhase::MAIN_CODEC:
+      case LabExecutionPhase::MAIN_CODEC:
         output_.main_codec_ns += elapsed;
         break;
-      case protocol_lab::v06::ExecutionPhase::REVIEW_DECODE:
+      case LabExecutionPhase::REVIEW_DECODE:
         output_.review_decode_ns += elapsed;
         break;
-      case protocol_lab::v06::ExecutionPhase::RESULT_MAPPING:
+      case LabExecutionPhase::RESULT_MAPPING:
         output_.result_mapping_ns += elapsed;
         break;
       default:
@@ -238,7 +264,7 @@ class TimingObserver final : public protocol_lab::v06::ExecutionObserver {
  private:
   EncodeTimingSnapshot& output_;
   QElapsedTimer timer_;
-  std::optional<protocol_lab::v06::ExecutionPhase> active_phase_;
+  std::optional<LabExecutionPhase> active_phase_;
 };
 
 class QtInputMaterializationTimer final : public InputMaterializationTimer {
@@ -488,32 +514,32 @@ bool DocumentTab::PopulateCanonicalDraftsForSmoke(QString& error) {
   }
   for (int row = 0; row < field_model_->rowCount(); ++row) {
     const auto* field = field_model_->FieldAt(row);
-    if (field == nullptr || field->encode_source != protocol_plan::EncodeSource::INPUT) {
+    if (field == nullptr || field->encode_source != FieldEncodeSource::INPUT) {
       continue;
     }
     const auto index = field_model_->index(row, FieldTableModel::VALUE);
     QVariant value;
 #if defined(PAE_ENABLE_SCHEMA_V05_COMPILER)
-    if (field->conversion.has_value()) {
+    if (field->decimal_conversion) {
       value = QStringLiteral("0@0");
     } else
 #endif
-        if (field->value_type == protocol_plan::ValueType::UINT64 ||
-            field->value_type == protocol_plan::ValueType::INT64) {
+        if (field->value_type == FieldValueType::UINT64 ||
+            field->value_type == FieldValueType::INT64) {
       value = QStringLiteral("0");
-    } else if (field->value_type == protocol_plan::ValueType::BYTES) {
+    } else if (field->value_type == FieldValueType::BYTES) {
       const std::size_t byte_count = field->ascii_text && field->byte_length_bounds.has_value()
                                          ? field->byte_length_bounds->minimum
                                          : field->byte_width;
       value = field->ascii_text ? QStringLiteral("41").repeated(static_cast<int>(byte_count))
                                 : QString(static_cast<int>(byte_count * 2U), QLatin1Char('0'));
-    } else if (field->value_type == protocol_plan::ValueType::ENUM) {
+    } else if (field->value_type == FieldValueType::ENUM) {
       if (field->enum_entries.empty()) {
         error = QStringLiteral("enum field has no configured entries");
         return false;
       }
       value = 0;
-    } else if (field->value_type == protocol_plan::ValueType::BOOL) {
+    } else if (field->value_type == FieldValueType::BOOL) {
       if (!field_model_->setData(index, Qt::Unchecked, Qt::CheckStateRole)) {
         error = field_model_->ValidationError(row);
         return false;
@@ -623,10 +649,10 @@ bool DocumentTab::VerifyInvalidDraftRetentionForSmoke(QString& error) {
   for (int row = 0; row < field_model_->rowCount(); ++row) {
     const auto* field = field_model_->FieldAt(row);
     if (field == nullptr || field->id != "count" ||
-        field->encode_source != protocol_plan::EncodeSource::INPUT ||
-        field->value_type != protocol_plan::ValueType::UINT64
+        field->encode_source != FieldEncodeSource::INPUT ||
+        field->value_type != FieldValueType::UINT64
 #if defined(PAE_ENABLE_SCHEMA_V05_COMPILER)
-        || field->conversion.has_value()
+        || field->decimal_conversion
 #endif
     ) {
       continue;
@@ -975,7 +1001,7 @@ bool DocumentTab::VerifyAsciiStreamForSmoke(QString& error) {
   InspectCurrent();
   if (!session_.StreamHasDiscardableState() ||
       session_.StreamObservation()->phase !=
-          protocol_framing::StreamFramingPhase::DISCARDING_UNTIL_CRLF) {
+          StreamFramingPhase::DISCARDING_UNTIL_CRLF) {
     error = QStringLiteral("overlong candidate did not expose discard state");
     return false;
   }
@@ -1975,6 +2001,7 @@ void DocumentTab::ApplyHostDraft() {
   const bool binary = false;
 #endif
   if (!binary) {
+#if !defined(PAE_PROTOCOL_LAB_STANDALONE_PUBLIC_ONLY)
     const auto current_bytes =
         session_.HostActive()
             ? session_.prepared()->host_adapter->AccountedBytes()
@@ -1996,13 +2023,14 @@ void DocumentTab::ApplyHostDraft() {
           "Active document exceeds Host transition admission limit; no candidate created."));
       return;
     }
+#endif
   }
   const auto high_bit = Revision{1} << 63U;
   if (host_request_sequence_ == high_bit - 1U) {
     host_status_->setText(QStringLiteral("Binding request sequence exhausted; reopen document."));
     return;
   }
-  std::vector<protocol_lab::ascii::HostBinding> bindings;
+  std::vector<AsciiHostBinding> bindings;
 #if defined(PAE_BUILD_PROTOCOL_LAB_BINARY_UI)
   std::vector<BinaryHostBinding> binary_bindings;
 #endif
@@ -2034,8 +2062,8 @@ void DocumentTab::ApplyHostDraft() {
     } else
 #endif
       bindings.push_back({Utf8(endpoint->text()),
-                          action->currentIndex() == 0 ? host_endpoint::Action::DECODE
-                                                      : host_endpoint::Action::ENCODE,
+                          action->currentIndex() == 0 ? AsciiHostAction::DECODE
+                                                      : AsciiHostAction::ENCODE,
                           pipeline_index});
   }
   if (bindings.empty()
@@ -2319,18 +2347,30 @@ void DocumentTab::AcceptHostCompletion(std::unique_ptr<CompileCompletion> comple
       candidate =
           AsciiHostAdapter::CreatePublic(std::move(*completion->public_compiled),
                                          std::move(host_pending_bindings_), previous, error);
-    } else if (completion->route == SchemaDispatchStatus::PRIVATE_ASCII && completion->artifacts &&
-               !completion->diagnostic) {
-      candidate = AsciiHostAdapter::CreatePrivate(std::move(*completion->artifacts),
-                                                  std::move(host_pending_bindings_), error);
     }
+#if !defined(PAE_PROTOCOL_LAB_STANDALONE_PUBLIC_ONLY)
+    else if (completion->route == SchemaDispatchStatus::PRIVATE_ASCII && completion->artifacts &&
+               !completion->diagnostic) {
+      candidate = CreatePrivateAsciiHostAdapter(std::move(*completion->artifacts),
+                                                std::move(host_pending_bindings_), error);
+    }
+#endif
   }
 #else
   std::unique_ptr<protocol_lab::ascii::HostObserverAdapter> candidate;
   if (completion->artifacts && !completion->diagnostic && session_.prepared() &&
-      completion->config_sha256 == session_.prepared()->config_sha256)
+      completion->config_sha256 == session_.prepared()->config_sha256) {
+    std::vector<protocol_lab::ascii::HostBinding> private_bindings;
+    private_bindings.reserve(host_pending_bindings_.size());
+    for (const auto& binding : host_pending_bindings_)
+      private_bindings.push_back(
+          {binding.endpoint,
+           binding.action == AsciiHostAction::DECODE ? host_endpoint::Action::DECODE
+                                                     : host_endpoint::Action::ENCODE,
+           binding.pipeline_index});
     candidate = protocol_lab::ascii::HostObserverAdapter::Create(
-        std::move(*completion->artifacts), std::move(host_pending_bindings_), error);
+        std::move(*completion->artifacts), std::move(private_bindings), error);
+  }
 #endif
   host_pending_bindings_.clear();
   if (!candidate) {
@@ -2340,6 +2380,7 @@ void DocumentTab::AcceptHostCompletion(std::unique_ptr<CompileCompletion> comple
     return;
   }
   // Each active/candidate adapter has an admission cap; both may coexist only during preparation.
+#if !defined(PAE_PROTOCOL_LAB_STANDALONE_PUBLIC_ONLY)
   if (session_.HostActive() &&
       candidate->AccountedBytes() >
           2U * protocol_lab::ascii::HostObserverAdapter::kMaximumAccountedBytes -
@@ -2349,6 +2390,7 @@ void DocumentTab::AcceptHostCompletion(std::unique_ptr<CompileCompletion> comple
     RefreshState();
     return;
   }
+#endif
 #if defined(PAE_BUILD_PROTOCOL_LAB_ASCII_PUBLIC_A2)
   if (session_.HostActive() && session_.prepared()->host_adapter->IsPublicCompleteRecord() &&
       session_.HostHasDiscardableState()) {
@@ -2386,8 +2428,8 @@ void DocumentTab::AcceptHostCompletion(std::unique_ptr<CompileCompletion> comple
   for (const auto& binding : session_.prepared()->host_adapter->Bindings())
     host_binding_combo_->addItem(
         FromUtf8(binding.endpoint) +
-        (binding.action == host_endpoint::Action::DECODE ? QStringLiteral(" / Decode / ")
-                                                         : QStringLiteral(" / Encode / ")) +
+        (IsDecodeHostAction(binding.action) ? QStringLiteral(" / Decode / ")
+                                            : QStringLiteral(" / Encode / ")) +
         FromUtf8(session_.description()->pipelines[binding.pipeline_index].id));
   host_binding_combo_->setCurrentIndex(0);
   host_flow_combo_->setCurrentIndex(0);
@@ -2693,9 +2735,8 @@ void DocumentTab::BeginLoadFromPath(bool discard_confirmed) {
     auto completion = std::make_unique<CompileCompletion>();
     completion->document_id = session_.id();
     completion->load_revision = revision;
-    completion->diagnostic = config_compiler::CompileDiagnostic{
-        config_compiler::CompileStage::INPUT_PROFILE, config_compiler::CompileError::EMPTY_INPUT,
-        "", std::nullopt, std::string("cannot read config: ") + Utf8(file.errorString())};
+    completion->diagnostic = CompileCompletion::Diagnostic{
+        std::string("cannot read config: ") + Utf8(file.errorString())};
     AcceptCompletion(std::move(completion));
     return;
   }
@@ -2705,9 +2746,7 @@ void DocumentTab::BeginLoadFromPath(bool discard_confirmed) {
     completion->document_id = session_.id();
     completion->load_revision = revision;
     completion->diagnostic =
-        config_compiler::CompileDiagnostic{config_compiler::CompileStage::INPUT_PROFILE,
-                                           config_compiler::CompileError::INPUT_LIMIT_EXCEEDED, "",
-                                           std::nullopt, "UI config file exceeds 4 MiB precheck"};
+        CompileCompletion::Diagnostic{"UI config file exceeds 4 MiB precheck"};
     AcceptCompletion(std::move(completion));
     return;
   }
@@ -2721,10 +2760,8 @@ void DocumentTab::BeginLoadFromPath(bool discard_confirmed) {
     auto completion = std::make_unique<CompileCompletion>();
     completion->document_id = session_.id();
     completion->load_revision = revision;
-    completion->diagnostic = config_compiler::CompileDiagnostic{
-        config_compiler::CompileStage::INPUT_PROFILE,
-        config_compiler::CompileError::INPUT_LIMIT_EXCEEDED, "", std::nullopt,
-        "compile request was rejected by bounded scheduler"};
+    completion->diagnostic =
+        CompileCompletion::Diagnostic{"compile request was rejected by bounded scheduler"};
     AcceptCompletion(std::move(completion));
   }
 }
@@ -2870,8 +2907,9 @@ void DocumentTab::RefreshState() {
       (session_.BinaryHostActive() ||
 #endif
        (session_.HostActive() &&
-        session_.prepared()->host_adapter->Bindings()[session_.HostBindingIndex()].action ==
-            host_endpoint::Action::DECODE)
+        IsDecodeHostAction(session_.prepared()
+                               ->host_adapter->Bindings()[session_.HostBindingIndex()]
+                               .action))
 #if defined(PAE_BUILD_PROTOCOL_LAB_BINARY_UI)
            )
 #endif
@@ -2958,13 +2996,13 @@ void DocumentTab::RefreshState() {
         text += QStringLiteral(
                     "\nlast step: api=%1 | stop=%2 | consumed=%3 | frames=%4 | "
                     "discarded=%5 | malformed=%6 | issue=%7 | work=%8")
-                    .arg(SubmitApiStatusName(step.framing.api_status))
+                    .arg(SubmitApiStatusName(step.framing.status))
                     .arg(StopReasonName(step.framing.stop_reason))
                     .arg(static_cast<qulonglong>(step.framing.bytes_consumed))
-                    .arg(static_cast<qulonglong>(step.framing.frames_delivered))
+                    .arg(static_cast<qulonglong>(step.framing.candidates_delivered))
                     .arg(static_cast<qulonglong>(step.framing.bytes_discarded))
                     .arg(static_cast<qulonglong>(step.framing.malformed_candidates))
-                    .arg(FramingIssueName(step.framing.last_framing_issue))
+                    .arg(FramingIssueName(step.framing.last_issue))
                     .arg(static_cast<qulonglong>(step.framing.work_units_used));
       }
 #if defined(PAE_BUILD_PROTOCOL_LAB_HOST_OBSERVER)
@@ -3210,7 +3248,7 @@ void DocumentTab::RefreshFieldDetails(int row, bool refresh_frame) {
                           .arg(FromUtf8(field->read_only_annotation).toHtmlEscaped()));
   }
 #if defined(PAE_ENABLE_SCHEMA_V05_COMPILER)
-  if (field->conversion.has_value() || field->decode_decimal64) {
+  if (field->decimal_conversion || field->decode_decimal64) {
     details.push_back(
         field->decode_decimal64
             ? QStringLiteral("<b>Conversion</b>: logical Decimal64 result; Core performs "

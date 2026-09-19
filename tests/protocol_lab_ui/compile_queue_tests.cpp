@@ -28,8 +28,10 @@ int main() {
     assert(tickets.size() == 1U);
     const auto completion = public_worker.TakeResult(tickets.front());
     assert(completion && completion->route == SchemaDispatchStatus::ASCII_PUBLIC &&
-           completion->compiler_attempt_count == 1U && completion->public_compiled &&
-           !completion->artifacts);
+           completion->compiler_attempt_count == 1U && completion->public_compiled);
+#if !defined(PAE_PROTOCOL_LAB_STANDALONE_PUBLIC_ONLY)
+    assert(!completion->artifacts);
+#endif
   }
 #endif
   std::atomic<std::size_t> idle_compile_calls{0U};

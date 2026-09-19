@@ -1,64 +1,87 @@
 #pragma once
 
 #include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 
-#include "../protocol_lab_ascii/host_observer_adapter.h"
-#include "../protocol_lab_ascii/public_ascii_host_adapter.h"
-#include "description_mapping.h"
+#include "ascii_host_types.h"
+#include "owned_presentation_types.h"
+#include "pae/compiler.h"
+#include "../protocol_lab_ascii/public_ascii_offline_adapter.h"
 
 namespace pae::protocol_lab_ui {
 
-protocol_lab::ascii::ExecutionResult ConvertPublicAsciiResult(
-    protocol_lab_ascii::public_offline::OperationResult source,
-    protocol_lab::ascii::ExecutionIdentity identity, protocol_lab::ascii::Operation operation);
+class AsciiHostBackend {
+ public:
+  virtual ~AsciiHostBackend() = default;
+  virtual std::size_t AccountedBytes() const noexcept = 0;
+  virtual AsciiExecutionResult Inspect(std::size_t binding, std::size_t stream,
+                                       AsciiExecutionIdentity identity,
+                                       const std::vector<std::uint8_t>& frame) = 0;
+  virtual AsciiExecutionResult Encode(std::size_t binding, AsciiExecutionIdentity identity,
+                                      const std::vector<AsciiInputField>& fields) = 0;
+  virtual AsciiStreamStepResult Submit(std::size_t binding, std::size_t stream,
+                                       AsciiExecutionIdentity identity,
+                                       const std::vector<std::uint8_t>& chunk) = 0;
+  virtual AsciiStreamStepResult Continue(std::size_t binding, std::size_t stream,
+                                         AsciiExecutionIdentity identity) = 0;
+  virtual bool Reset(std::size_t binding, std::size_t stream) = 0;
+  virtual std::optional<AsciiStreamObservation> Observe(std::size_t binding,
+                                                        std::size_t stream) const noexcept = 0;
+  virtual bool HasDiscardableState(const std::vector<AsciiHostBinding>& bindings) const noexcept = 0;
+};
 
-// Runtime facade that keeps Schema 0.11 on the established private stream observer while routing
-// Schema 0.10 A2 through public PAE. The UI/session code sees one stable complete/stream surface.
+AsciiExecutionResult ConvertPublicAsciiResult(
+    protocol_lab_ascii::public_offline::OperationResult source,
+    AsciiExecutionIdentity identity, AsciiOperation operation);
+
+// Lab-owned facade. Its public implementation has no dependency on the old private ASCII adapter;
+// a compatibility backend is supplied by a separate target when that path is enabled.
 class AsciiHostAdapter final {
  public:
   static std::unique_ptr<AsciiHostAdapter> CreatePublic(
-      CompiledProtocol compiled, std::vector<protocol_lab::ascii::HostBinding> bindings,
+      CompiledProtocol compiled, std::vector<AsciiHostBinding> bindings,
       std::size_t previous_instance_bytes, std::string& error);
   static std::unique_ptr<AsciiHostAdapter> CreatePublicDirect(CompiledProtocol compiled,
                                                               std::string& error);
-  static std::unique_ptr<AsciiHostAdapter> CreatePrivate(
-      config_compiler::CompiledUiArtifacts artifacts,
-      std::vector<protocol_lab::ascii::HostBinding> bindings, std::string& error);
+  static std::unique_ptr<AsciiHostAdapter> AdoptBackend(
+      std::unique_ptr<AsciiHostBackend> backend, DocumentDescription description,
+      std::vector<AsciiHostBinding> bindings, bool public_complete, bool public_stream);
 
   const DocumentDescription& Description() const noexcept { return description_; }
-  const std::vector<protocol_lab::ascii::HostBinding>& Bindings() const noexcept {
-    return bindings_;
-  }
+  const std::vector<AsciiHostBinding>& Bindings() const noexcept { return bindings_; }
   std::size_t FlowCount(std::size_t binding) const noexcept;
   std::size_t AccountedBytes() const noexcept;
-  bool IsPublicCompleteRecord() const noexcept { return public_ && !public_stream_; }
-  bool IsPublicStream() const noexcept { return public_ && public_stream_; }
+  bool IsPublicCompleteRecord() const noexcept { return public_complete_; }
+  bool IsPublicStream() const noexcept { return public_stream_; }
   std::optional<std::size_t> FindBinding(std::size_t pipeline_index,
-                                         host_endpoint::Action action) const noexcept;
+                                         AsciiHostAction action) const noexcept;
 
-  protocol_lab::ascii::ExecutionResult Inspect(std::size_t binding, std::size_t stream,
-                                               protocol_lab::ascii::ExecutionIdentity identity,
-                                               const std::vector<std::uint8_t>& frame);
-  protocol_lab::ascii::ExecutionResult Encode(
-      std::size_t binding, protocol_lab::ascii::ExecutionIdentity identity,
-      const std::vector<protocol_lab::ascii::InputField>& fields);
-  protocol_lab::ascii::StreamStepResult Submit(std::size_t binding, std::size_t stream,
-                                               protocol_lab::ascii::ExecutionIdentity identity,
-                                               const std::vector<std::uint8_t>& chunk);
-  protocol_lab::ascii::StreamStepResult Continue(std::size_t binding, std::size_t stream,
-                                                 protocol_lab::ascii::ExecutionIdentity identity);
+  AsciiExecutionResult Inspect(std::size_t binding, std::size_t stream,
+                               AsciiExecutionIdentity identity,
+                               const std::vector<std::uint8_t>& frame);
+  AsciiExecutionResult Encode(std::size_t binding, AsciiExecutionIdentity identity,
+                              const std::vector<AsciiInputField>& fields);
+  AsciiStreamStepResult Submit(std::size_t binding, std::size_t stream,
+                               AsciiExecutionIdentity identity,
+                               const std::vector<std::uint8_t>& chunk);
+  AsciiStreamStepResult Continue(std::size_t binding, std::size_t stream,
+                                 AsciiExecutionIdentity identity);
   bool Reset(std::size_t binding, std::size_t stream);
-  std::optional<protocol_lab::ascii::StreamObservation> Observe(std::size_t binding,
-                                                                std::size_t stream) const noexcept;
+  std::optional<AsciiStreamObservation> Observe(std::size_t binding,
+                                                std::size_t stream) const noexcept;
   bool HasDiscardableState() const noexcept;
 
  private:
+  AsciiHostAdapter(std::unique_ptr<AsciiHostBackend> backend, DocumentDescription description,
+                   std::vector<AsciiHostBinding> bindings, bool public_complete,
+                   bool public_stream) noexcept;
+
+  std::unique_ptr<AsciiHostBackend> backend_;
   DocumentDescription description_;
-  std::vector<protocol_lab::ascii::HostBinding> bindings_;
-  std::unique_ptr<protocol_lab_ascii::public_offline::HostAdapter> public_;
-  std::unique_ptr<protocol_lab::ascii::HostObserverAdapter> private_;
+  std::vector<AsciiHostBinding> bindings_;
+  bool public_complete_ = false;
   bool public_stream_ = false;
 };
 

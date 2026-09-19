@@ -1,3 +1,10 @@
+set(pae_lab_ascii_test_source_root "${PROJECT_SOURCE_DIR}")
+set(pae_lab_ascii_public_a1_test_target pae_protocol_lab_ascii_public_a1)
+if(DEFINED PAE_LAB_STANDALONE_TEST_SOURCE_ROOT)
+    set(pae_lab_ascii_test_source_root "${PAE_LAB_STANDALONE_TEST_SOURCE_ROOT}")
+    set(pae_lab_ascii_public_a1_test_target "${PAE_PROTOCOL_LAB_ASCII_PUBLIC_A1_TEST_TARGET}")
+endif()
+
 if(PAE_BUILD_PROTOCOL_LAB_ASCII_ADAPTER)
 add_executable(
     pae_protocol_lab_ascii_adapter_tests
@@ -38,11 +45,11 @@ if(PAE_BUILD_PROTOCOL_LAB_ASCII_PUBLIC_A1)
     add_executable(pae_protocol_lab_ascii_public_a1_tests public_ascii_offline_adapter_tests.cpp)
     target_link_libraries(
         pae_protocol_lab_ascii_public_a1_tests
-        PRIVATE pae_protocol_lab_ascii_public_a1 pae::project_options
+        PRIVATE ${pae_lab_ascii_public_a1_test_target} pae::project_options
     )
     add_test(
         NAME pae.tools.protocol_lab_ascii.public_a1
-        COMMAND pae_protocol_lab_ascii_public_a1_tests "${PROJECT_SOURCE_DIR}"
+        COMMAND pae_protocol_lab_ascii_public_a1_tests "${pae_lab_ascii_test_source_root}"
     )
     set_tests_properties(
         pae.tools.protocol_lab_ascii.public_a1
@@ -57,25 +64,28 @@ if(PAE_BUILD_PROTOCOL_LAB_ASCII_PUBLIC_STREAM)
     )
     target_link_libraries(
         pae_protocol_lab_ascii_public_stream_tests
-        PRIVATE pae_protocol_lab_ascii_public_a1 pae::project_options
+        PRIVATE ${pae_lab_ascii_public_a1_test_target} pae::project_options
     )
     add_test(
         NAME pae.tools.protocol_lab_ascii.public_stream
-        COMMAND pae_protocol_lab_ascii_public_stream_tests "${PROJECT_SOURCE_DIR}"
+        COMMAND pae_protocol_lab_ascii_public_stream_tests "${pae_lab_ascii_test_source_root}"
     )
     add_test(
         NAME pae.tools.protocol_lab_ascii.public_stream_noexcept_reject
         COMMAND pae_protocol_lab_ascii_public_stream_tests
-                --diagnostic-allocation-probe reject "${PROJECT_SOURCE_DIR}"
+                --diagnostic-allocation-probe reject "${pae_lab_ascii_test_source_root}"
     )
     add_test(
         NAME pae.tools.protocol_lab_ascii.public_stream_noexcept_candidate
         COMMAND pae_protocol_lab_ascii_public_stream_tests
-                --diagnostic-allocation-probe candidate "${PROJECT_SOURCE_DIR}"
+                --diagnostic-allocation-probe candidate "${pae_lab_ascii_test_source_root}"
     )
     set_tests_properties(
         pae.tools.protocol_lab_ascii.public_stream
         pae.tools.protocol_lab_ascii.public_stream_noexcept_reject
+        PROPERTIES LABELS "tools;protocol_lab_ascii;public;stream;headless" TIMEOUT 60
+    )
+    set_tests_properties(
         pae.tools.protocol_lab_ascii.public_stream_noexcept_candidate
         PROPERTIES LABELS "tools;protocol_lab_ascii;public;stream;headless" TIMEOUT 60
     )

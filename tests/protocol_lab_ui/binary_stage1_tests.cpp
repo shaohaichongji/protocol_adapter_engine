@@ -29,7 +29,7 @@ int main() {
       ui::BinaryPreparationIdentity{71U, 3U, 1U, 9U, "stage1-hash"}, nullptr, 0U, 0U, error);
   assert(adapter && error.empty());
   assert(adapter->Description().schema_version == "0.9");
-  assert(adapter->Description().messages[0].fields[7].conversion.has_value());
+  assert(adapter->Description().messages[0].fields[7].decimal_conversion);
   assert(adapter->UiDescriptionBytes() > 0U);
 
   const auto description_copy_upper = adapter->DescriptionCopyUpperBoundBytes();

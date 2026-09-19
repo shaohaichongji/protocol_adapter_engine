@@ -15,6 +15,49 @@ namespace {
 
 using protocol_lab_binary::MaterializationError;
 
+FieldValueType UiValueType(protocol_plan::ValueType value) noexcept {
+  switch (value) {
+    case protocol_plan::ValueType::UINT64: return FieldValueType::UINT64;
+    case protocol_plan::ValueType::INT64: return FieldValueType::INT64;
+    case protocol_plan::ValueType::BYTES: return FieldValueType::BYTES;
+    case protocol_plan::ValueType::ENUM: return FieldValueType::ENUM;
+    case protocol_plan::ValueType::BOOL: return FieldValueType::BOOL;
+  }
+  return FieldValueType::UINT64;
+}
+
+FieldWireCodec UiWireCodec(protocol_plan::WireCodec value) noexcept {
+  switch (value) {
+    case protocol_plan::WireCodec::UNSIGNED_INTEGER: return FieldWireCodec::UNSIGNED_INTEGER;
+    case protocol_plan::WireCodec::BYTES: return FieldWireCodec::BYTES;
+    case protocol_plan::WireCodec::BITFIELD: return FieldWireCodec::BITFIELD;
+#if defined(PAE_ENABLE_SCHEMA_V10_ASCII_TEXT_CODEC)
+    case protocol_plan::WireCodec::ASCII_TEXT: return FieldWireCodec::ASCII_TEXT;
+#endif
+  }
+  return FieldWireCodec::UNSIGNED_INTEGER;
+}
+
+FieldByteOrder UiByteOrder(protocol_plan::ByteOrder value) noexcept {
+  switch (value) {
+    case protocol_plan::ByteOrder::NOT_APPLICABLE: return FieldByteOrder::NOT_APPLICABLE;
+    case protocol_plan::ByteOrder::BIG: return FieldByteOrder::BIG;
+    case protocol_plan::ByteOrder::LITTLE: return FieldByteOrder::LITTLE;
+  }
+  return FieldByteOrder::NOT_APPLICABLE;
+}
+
+FieldEncodeSource UiEncodeSource(protocol_plan::EncodeSource value) noexcept {
+  switch (value) {
+    case protocol_plan::EncodeSource::INPUT: return FieldEncodeSource::INPUT;
+    case protocol_plan::EncodeSource::CONSTANT: return FieldEncodeSource::CONSTANT;
+#if defined(PAE_ENABLE_SCHEMA_V07_LENGTH_COMPILER)
+    case protocol_plan::EncodeSource::COMPUTED: return FieldEncodeSource::COMPUTED;
+#endif
+  }
+  return FieldEncodeSource::INPUT;
+}
+
 void Require(bool condition, const char* detail) {
   if (!condition) throw MaterializationError(detail);
 }
@@ -208,11 +251,11 @@ DocumentDescription MapDescription(const protocol_lab_binary::OwnedDescription& 
       field.display_name = value.display_name;
       field.description = value.description;
       field.source_ref = value.source_ref;
-      field.value_type = value.value_type;
-      field.wire_codec = value.wire_codec;
-      field.byte_order = value.byte_order;
-      field.encode_source = value.encode_source;
-      field.conversion = value.conversion;
+      field.value_type = UiValueType(value.value_type);
+      field.wire_codec = UiWireCodec(value.wire_codec);
+      field.byte_order = UiByteOrder(value.byte_order);
+      field.encode_source = UiEncodeSource(value.encode_source);
+      field.decimal_conversion = value.conversion.has_value();
       if (value.byte_range) {
         field.byte_range = ByteRange{value.byte_range->offset, value.byte_range->length};
         field.byte_offset = value.byte_range->offset;
@@ -230,7 +273,7 @@ DocumentDescription MapDescription(const protocol_lab_binary::OwnedDescription& 
         field.byte_length_bounds = ByteLengthBounds{message.bounded_payload->min_payload_length,
                                                     message.bounded_payload->max_payload_length};
       }
-      if (field.encode_source != protocol_plan::EncodeSource::INPUT)
+      if (field.encode_source != FieldEncodeSource::INPUT)
         field.read_only_annotation = "constant/computed; read-only";
       message.fields.push_back(std::move(field));
     }

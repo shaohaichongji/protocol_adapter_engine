@@ -1,15 +1,15 @@
 #pragma once
 
 #include <cstddef>
-#include <cstdint>
-#include <optional>
 #include <string>
-#include <vector>
 
+#if !defined(PAE_PROTOCOL_LAB_STANDALONE_PUBLIC_ONLY)
 #include "../../src/config_compiler/ui_description.h"
 #include "../../src/protocol_plan/plan_bundle.h"
-#include "ui_physical_types.h"
-#if defined(PAE_ENABLE_SCHEMA_V10_ASCII_TEXT_CODEC)
+#endif
+#include "owned_presentation_types.h"
+#if !defined(PAE_PROTOCOL_LAB_STANDALONE_PUBLIC_ONLY) && \
+    defined(PAE_ENABLE_SCHEMA_V10_ASCII_TEXT_CODEC)
 #include "../protocol_lab_ascii/ascii_offline_adapter.h"
 #endif
 #if defined(PAE_BUILD_PROTOCOL_LAB_ASCII_PUBLIC_A2)
@@ -18,109 +18,14 @@
 
 namespace pae::protocol_lab_ui {
 
-enum class DocumentLayout {
-  BINARY,
-  ASCII_TEXT,
-};
-
-struct BoundedPayloadDescriptor {
-  std::size_t payload_field_index = 0U;
-  std::size_t header_length = 0U;
-  std::size_t min_payload_length = 0U;
-  std::size_t max_payload_length = 0U;
-  std::size_t trailer_length = 0U;
-  std::size_t min_frame_length = 0U;
-  std::size_t max_frame_length = 0U;
-};
-
-struct EnumDescriptor {
-  std::size_t entry_index = 0U;
-  std::string id;
-  std::string display_name;
-  std::uint64_t raw_value = 0U;
-};
-
-struct FieldDescriptor {
-  std::size_t field_index = 0U;
-  std::string id;
-  std::string display_name;
-  std::string description;
-  std::string source_ref;
-  protocol_plan::ValueType value_type = protocol_plan::ValueType::UINT64;
-  protocol_plan::WireCodec wire_codec = protocol_plan::WireCodec::UNSIGNED_INTEGER;
-  protocol_plan::ByteOrder byte_order = protocol_plan::ByteOrder::NOT_APPLICABLE;
-  protocol_plan::EncodeSource encode_source = protocol_plan::EncodeSource::INPUT;
-  std::size_t byte_offset = 0U;
-  std::size_t byte_width = 0U;
-  std::vector<EnumDescriptor> enum_entries;
-  std::vector<PhysicalBitMask> physical_bits;
-  std::optional<ByteRange> byte_range;
-  std::optional<ByteLengthBounds> byte_length_bounds;
-  std::string read_only_annotation;
-  bool ascii_text = false;
-  bool decode_referenced = false;
-  bool encode_referenced = false;
-  bool decode_decimal64 = false;  // Public Binary logical kind; no private conversion payload.
-  std::vector<std::uint8_t> allowed_control_bytes;
-#if defined(PAE_ENABLE_SCHEMA_V05_COMPILER)
-  std::optional<protocol_plan::LinearConversionDescriptor> conversion;
-#endif
-};
-
-struct MessageDescriptor {
-  std::size_t message_index = 0U;
-  std::string id;
-  std::string direction_id;
-  std::string display_name;
-  std::string description;
-  std::string source_ref;
-  std::size_t frame_size = 0U;
-  std::vector<FieldDescriptor> fields;
-  std::optional<BoundedPayloadDescriptor> bounded_payload;
-  std::optional<ByteRange> integrity_storage;
-  bool integrity_range_ends_at_payload = false;
-  bool integrity_storage_at_payload_end = false;
-  bool encode_available = true;
-  bool decode_available = true;
-#if defined(PAE_ENABLE_SCHEMA_V07_LENGTH_COMPILER)
-  std::optional<ByteRange> computed_length_storage;
-#endif
-};
-
-struct PipelineDescriptor {
-  std::size_t pipeline_index = 0U;
-  std::string id;
-  std::string direction_id;
-  std::string display_name;
-  std::string description;
-  std::string source_ref;
-  std::vector<std::size_t> message_indices;
-  std::vector<std::size_t> decode_message_indices;
-#if defined(PAE_BUILD_PROTOCOL_LAB_ASCII_STREAM_OBSERVER)
-  bool stream_ascii_crlf = false;
-  std::size_t maximum_frame_length = 0U;
-#endif
-};
-
-struct DocumentDescription {
-  DocumentLayout layout = DocumentLayout::BINARY;
-  std::string schema_version;
-  std::string protocol_id;
-  std::string protocol_version;
-  std::string display_name;
-  std::string description;
-  std::string source_ref;
-  std::size_t max_frame_bytes = 0U;
-  std::vector<PipelineDescriptor> pipelines;
-  std::vector<MessageDescriptor> messages;
-};
-
+#if !defined(PAE_PROTOCOL_LAB_STANDALONE_PUBLIC_ONLY)
 bool BuildDocumentDescription(const protocol_plan::PlanBundle& plan,
                               const config_compiler::UiDescriptionSidecar& sidecar,
                               DocumentDescription& output, std::string& error);
 #if defined(PAE_ENABLE_SCHEMA_V10_ASCII_TEXT_CODEC)
 bool BuildDocumentDescription(const protocol_lab::ascii::DocumentDescription& source,
                               DocumentDescription& output, std::string& error);
+#endif
 #endif
 #if defined(PAE_BUILD_PROTOCOL_LAB_ASCII_PUBLIC_A2)
 bool BuildDocumentDescription(const protocol_lab_ascii::public_offline::OwnedDescription& source,

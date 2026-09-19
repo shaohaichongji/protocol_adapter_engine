@@ -21,7 +21,8 @@ std::unique_ptr<CompileCompletion> CompileRequest(CompileWorker::Request request
   completion->config_sha256 = protocol_lab::HashBytes(request.config_text);
 #if defined(PAE_BUILD_PROTOCOL_LAB_BINARY_PUBLIC_H2) || \
     defined(PAE_BUILD_PROTOCOL_LAB_ASCII_PUBLIC_A2) || \
-    defined(PAE_BUILD_PROTOCOL_LAB_ASCII_PUBLIC_STREAM_UI)
+    defined(PAE_BUILD_PROTOCOL_LAB_ASCII_PUBLIC_STREAM_UI) || \
+    defined(PAE_BUILD_PROTOCOL_LAB_PUBLIC_LEGACY_COMPLETE)
   const auto dispatch = ClassifySchemaVersion(request.config_text);
   completion->route = dispatch.status;
   if (dispatch.status == SchemaDispatchStatus::CLASSIFICATION_FAILED) {
@@ -29,6 +30,9 @@ std::unique_ptr<CompileCompletion> CompileRequest(CompileWorker::Request request
     return completion;
   }
   if (dispatch.status == SchemaDispatchStatus::BINARY_PUBLIC
+#if defined(PAE_BUILD_PROTOCOL_LAB_PUBLIC_LEGACY_COMPLETE)
+      || dispatch.status == SchemaDispatchStatus::LEGACY_PUBLIC
+#endif
 #if defined(PAE_BUILD_PROTOCOL_LAB_ASCII_PUBLIC_A2) || \
     defined(PAE_BUILD_PROTOCOL_LAB_ASCII_PUBLIC_STREAM_UI)
       || dispatch.status == SchemaDispatchStatus::ASCII_PUBLIC
@@ -45,6 +49,7 @@ std::unique_ptr<CompileCompletion> CompileRequest(CompileWorker::Request request
     return completion;
   }
 #endif
+#if !defined(PAE_PROTOCOL_LAB_STANDALONE_PUBLIC_ONLY)
   const std::size_t desktop_limit =
       config_compiler::DerivedUiDescriptionMemoryLimit(protocol_plan::ResourceProfile::DESKTOP);
   ++completion->compiler_attempt_count;
@@ -67,6 +72,10 @@ std::unique_ptr<CompileCompletion> CompileRequest(CompileWorker::Request request
     return completion;
   }
   completion->artifacts = std::move(artifacts);
+#else
+  completion->diagnostic = CompileCompletion::Diagnostic{
+      "schema is not routed to an installed-SDK public compiler"};
+#endif
   return completion;
 }
 
@@ -115,10 +124,8 @@ struct CompileWorker::Impl final {
         completion = std::make_unique<CompileCompletion>();
         completion->document_id = request_document;
         completion->load_revision = request_revision;
-        completion->diagnostic = config_compiler::CompileDiagnostic{
-            config_compiler::CompileStage::INTERNAL,
-            config_compiler::CompileError::INTERNAL_CONTRACT_VIOLATION, "", std::nullopt,
-            "compile worker function threw an exception"};
+        completion->diagnostic =
+            CompileCompletion::Diagnostic{"compile worker function threw an exception"};
       }
 
       {

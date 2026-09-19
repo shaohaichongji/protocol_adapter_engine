@@ -9,10 +9,9 @@
 #include <thread>
 
 #include "../../tools/protocol_lab_ui/document_session.h"
+#include "../../tools/protocol_lab_ascii/public_ascii_host_adapter.h"
 
 namespace ui = pae::protocol_lab_ui;
-namespace ascii = pae::protocol_lab::ascii;
-namespace host = pae::host_endpoint;
 namespace public_ascii = pae::protocol_lab_ascii::public_offline;
 
 namespace {
@@ -53,7 +52,9 @@ std::unique_ptr<ui::AsciiHostAdapter> PublicHost(const std::string& text,
   std::string error;
   auto adapter = ui::AsciiHostAdapter::CreatePublic(
       std::move(compiled).TakeCompiled(),
-      {{"device", host::Action::DECODE, 0U}, {"device", host::Action::ENCODE, 0U}}, previous_bytes,
+      {{"device", ui::AsciiHostAction::DECODE, 0U},
+       {"device", ui::AsciiHostAction::ENCODE, 0U}},
+      previous_bytes,
       error);
   if (!adapter) std::cerr << error << '\n';
   assert(adapter && error.empty() && adapter->IsPublicCompleteRecord());
@@ -193,11 +194,11 @@ void VerifyPublicHostDecodeLayers(const std::string& text) {
          copied.frame == frame && copied.fields.size() == 2U);
 
   auto facade = PublicHost(text, 0U);
-  ascii::ExecutionIdentity identity;
+  ui::AsciiExecutionIdentity identity;
   identity.pipeline_index = 0U;
   identity.pipeline_id = "ascii_pipeline";
   const auto converted = facade->Inspect(0U, 0U, identity, frame);
-  assert(converted.status == ascii::AdapterStatus::OK && converted.core_called &&
+  assert(converted.status == ui::AsciiAdapterStatus::OK && converted.codec_called &&
          converted.message_id == "greeting" && converted.frame == frame &&
          converted.fields.size() == 2U);
 }
@@ -260,7 +261,7 @@ int main() {
   assert(invalid_compiled.Succeeded());
   std::string error;
   auto invalid = ui::AsciiHostAdapter::CreatePublic(
-      std::move(invalid_compiled).TakeCompiled(), {{"bad", host::Action::DECODE, 99U}},
+      std::move(invalid_compiled).TakeCompiled(), {{"bad", ui::AsciiHostAction::DECODE, 99U}},
       first.prepared()->host_adapter->AccountedBytes(), error);
   assert(!invalid && first.HostActive() && first.preview()->encoded_frame == retained);
 

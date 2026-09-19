@@ -4,6 +4,7 @@
 #include <vector>
 
 #include "../../tools/protocol_lab_ui/description_mapping.h"
+#include "../../tools/protocol_lab_ui/document_session.h"
 #include "test_support.h"
 
 namespace {
@@ -32,6 +33,14 @@ void ExpectMasks(const pae::protocol_lab_ui::FieldDescriptor& field,
 
 pae::protocol_lab_ui::DocumentDescription Build(const char* fixture) {
   auto completion = pae::protocol_lab_ui::test::CompileFixture(1U, 1U, fixture);
+#if defined(PAE_BUILD_PROTOCOL_LAB_PUBLIC_LEGACY_COMPLETE)
+  pae::protocol_lab_ui::DocumentSession session{1U};
+  const auto revision = session.BeginLoad();
+  completion->load_revision = revision;
+  assert(session.ApplyCompileCompletion(std::move(completion)));
+  assert(session.description() != nullptr);
+  return *session.description();
+#else
   assert(completion->artifacts != nullptr);
   pae::protocol_lab_ui::DocumentDescription description;
   std::string error;
@@ -39,6 +48,7 @@ pae::protocol_lab_ui::DocumentDescription Build(const char* fixture) {
       *completion->artifacts->Plan(), completion->artifacts->Description(), description, error));
   assert(error.empty());
   return description;
+#endif
 }
 
 }  // namespace
@@ -58,11 +68,16 @@ int main() {
   ExpectMasks(FindField(v05, "msb_bits"), {{2U, 0xC0U}, {3U, 0x7FU}});
   const std::optional<pae::protocol_lab_ui::ByteRange> expected_count_range{
       pae::protocol_lab_ui::ByteRange{4U, 1U}};
-  assert(FindField(v05, "count").byte_range == expected_count_range);
-  assert(pae::protocol_lab_ui::FormatPhysicalLocation(FindField(v05, "count")) ==
+  const auto& count = FindField(v05, "count");
+  assert(count.value_type == pae::protocol_lab_ui::FieldValueType::UINT64);
+  assert(count.encode_source == pae::protocol_lab_ui::FieldEncodeSource::INPUT);
+  assert(count.byte_range == expected_count_range);
+  assert(pae::protocol_lab_ui::FormatPhysicalLocation(count) ==
          "byte[4] mask=0xFF bits={0,1,2,3,4,5,6,7} "
          "global_bits={32,33,34,35,36,37,38,39}");
-  assert(FindField(v05, "marker").read_only_annotation == "constant; read-only");
+  const auto& marker = FindField(v05, "marker");
+  assert(marker.encode_source == pae::protocol_lab_ui::FieldEncodeSource::CONSTANT);
+  assert(marker.read_only_annotation == "constant; read-only");
 
   const auto v06 = Build("synthetic_ui_v06.pae.json");
   assert(v06.messages.front().integrity_storage.has_value());
@@ -75,7 +90,9 @@ int main() {
   assert(v07.messages.front().computed_length_storage->offset == 1U);
   assert(v07.messages.front().computed_length_storage->length == 2U);
 #endif
-  assert(FindField(v07, "record_length").read_only_annotation == "computed length; read-only");
+  const auto& record_length = FindField(v07, "record_length");
+  assert(record_length.encode_source == pae::protocol_lab_ui::FieldEncodeSource::COMPUTED);
+  assert(record_length.read_only_annotation == "computed length; read-only");
 
   const auto v08 = Build("synthetic_ui_v08.pae.json");
   assert(v08.schema_version == "0.8");

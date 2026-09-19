@@ -5,6 +5,10 @@
 #include <iterator>
 
 #include "../../tools/protocol_lab_ui/document_session.h"
+#if defined(PAE_BUILD_PROTOCOL_LAB_ASCII_PUBLIC_A2) && \
+    !defined(PAE_PROTOCOL_LAB_STANDALONE_PUBLIC_ONLY)
+#include "../../tools/protocol_lab_ui/ascii_host_adapter_compat.h"
+#endif
 
 void CheckAt(bool condition, int line) {
   if (!condition) {
@@ -15,12 +19,15 @@ void CheckAt(bool condition, int line) {
 #define Check(condition) CheckAt((condition), __LINE__)
 
 namespace ui = pae::protocol_lab_ui;
+#if !defined(PAE_PROTOCOL_LAB_STANDALONE_PUBLIC_ONLY)
 namespace ascii = pae::protocol_lab::ascii;
 namespace host = pae::host_endpoint;
+#endif
 std::string Text() {
   std::ifstream input(std::filesystem::path{PAE_ASCII_STREAM_CONFIG}, std::ios::binary);
   return {std::istreambuf_iterator<char>{input}, {}};
 }
+#if !defined(PAE_PROTOCOL_LAB_STANDALONE_PUBLIC_ONLY)
 pae::config_compiler::CompiledUiArtifacts Artifacts() {
   auto result = pae::config_compiler::CompileJsonToPlanWithUiDescription(
       Text(), pae::config_compiler::DerivedUiDescriptionMemoryLimit(
@@ -28,6 +35,7 @@ pae::config_compiler::CompiledUiArtifacts Artifacts() {
   Check(result.Succeeded());
   return std::move(result).TakeArtifacts();
 }
+#endif
 void Load(ui::DocumentSession& session) {
   auto completion = std::make_unique<ui::CompileCompletion>();
   completion->document_id = session.id();
@@ -52,14 +60,16 @@ std::unique_ptr<ui::AsciiHostAdapter> Adapter() {
   Check(compiled.Succeeded());
   auto result = ui::AsciiHostAdapter::CreatePublic(
       std::move(compiled).TakeCompiled(),
-      {{"device", host::Action::DECODE, 0},
-       {"device", host::Action::ENCODE, 0},
-       {"record", host::Action::DECODE, 2},
-       {"record", host::Action::ENCODE, 1}},
+      {{"device", ui::AsciiHostAction::DECODE, 0},
+       {"device", ui::AsciiHostAction::ENCODE, 0},
+       {"record", ui::AsciiHostAction::DECODE, 2},
+       {"record", ui::AsciiHostAction::ENCODE, 1}},
       0U, error);
 #else
-  auto result = ui::AsciiHostAdapter::CreatePrivate(
-      Artifacts(), {{"device", host::Action::DECODE, 0}, {"device", host::Action::ENCODE, 0}},
+  auto result = ui::CreatePrivateAsciiHostAdapter(
+      Artifacts(),
+      {{"device", ui::AsciiHostAction::DECODE, 0},
+       {"device", ui::AsciiHostAction::ENCODE, 0}},
       error);
 #endif
   Check(result && error.empty());

@@ -6,31 +6,26 @@
 
 namespace pae::protocol_lab_ui {
 namespace {
-protocol_plan::ValueType UiType(pae::ValueKind kind) {
+FieldValueType UiType(pae::ValueKind kind) {
   switch (kind) {
-    case pae::ValueKind::UINT64: return protocol_plan::ValueType::UINT64;
-    case pae::ValueKind::INT64: return protocol_plan::ValueType::INT64;
-    case pae::ValueKind::BOOL: return protocol_plan::ValueType::BOOL;
-    case pae::ValueKind::BYTES: return protocol_plan::ValueType::BYTES;
-    case pae::ValueKind::ENUM: return protocol_plan::ValueType::ENUM;
-    case pae::ValueKind::DECIMAL64: return protocol_plan::ValueType::INT64;
+    case pae::ValueKind::UINT64: return FieldValueType::UINT64;
+    case pae::ValueKind::INT64: return FieldValueType::INT64;
+    case pae::ValueKind::BOOL: return FieldValueType::BOOL;
+    case pae::ValueKind::BYTES: return FieldValueType::BYTES;
+    case pae::ValueKind::ENUM: return FieldValueType::ENUM;
+    case pae::ValueKind::DECIMAL64: return FieldValueType::INT64;
   }
-  return protocol_plan::ValueType::UINT64;
+  return FieldValueType::UINT64;
 }
 
-protocol_plan::EncodeSource UiSource(pae::EncodeValueSource source) {
+FieldEncodeSource UiSource(pae::EncodeValueSource source) {
   switch (source) {
-    case pae::EncodeValueSource::CALLER_INPUT: return protocol_plan::EncodeSource::INPUT;
-    case pae::EncodeValueSource::CONSTANT: return protocol_plan::EncodeSource::CONSTANT;
-    case pae::EncodeValueSource::COMPUTED:
-#if defined(PAE_ENABLE_SCHEMA_V07_LENGTH_COMPILER)
-      return protocol_plan::EncodeSource::COMPUTED;
-#else
-      return protocol_plan::EncodeSource::CONSTANT;
-#endif
-    case pae::EncodeValueSource::NOT_REFERENCED: return protocol_plan::EncodeSource::INPUT;
+    case pae::EncodeValueSource::CALLER_INPUT: return FieldEncodeSource::INPUT;
+    case pae::EncodeValueSource::CONSTANT: return FieldEncodeSource::CONSTANT;
+    case pae::EncodeValueSource::COMPUTED: return FieldEncodeSource::COMPUTED;
+    case pae::EncodeValueSource::NOT_REFERENCED: return FieldEncodeSource::INPUT;
   }
-  return protocol_plan::EncodeSource::INPUT;
+  return FieldEncodeSource::INPUT;
 }
 
 template <typename Value>

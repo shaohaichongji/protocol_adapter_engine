@@ -7,6 +7,9 @@ namespace pae::protocol_lab_ui {
 
 enum class SchemaDispatchStatus {
   BINARY_PUBLIC,
+#if defined(PAE_BUILD_PROTOCOL_LAB_PUBLIC_LEGACY_COMPLETE)
+  LEGACY_PUBLIC,
+#endif
 #if defined(PAE_BUILD_PROTOCOL_LAB_ASCII_PUBLIC_A2)
   ASCII_PUBLIC,
 #endif

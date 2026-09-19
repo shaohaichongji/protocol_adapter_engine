@@ -9,37 +9,35 @@
 #include <type_traits>
 #include <utility>
 
-#include "../protocol_lab/exact_value_text_internal.h"
+#include "canonical_input.h"
 
 namespace pae::protocol_lab_ui {
 namespace {
 
-QString ValueTypeName(protocol_plan::ValueType value_type) {
+QString ValueTypeName(FieldValueType value_type) {
   switch (value_type) {
-    case protocol_plan::ValueType::UINT64:
+    case FieldValueType::UINT64:
       return QStringLiteral("UINT64");
-    case protocol_plan::ValueType::INT64:
+    case FieldValueType::INT64:
       return QStringLiteral("INT64");
-    case protocol_plan::ValueType::BYTES:
+    case FieldValueType::BYTES:
       return QStringLiteral("BYTES");
-    case protocol_plan::ValueType::ENUM:
+    case FieldValueType::ENUM:
       return QStringLiteral("ENUM");
-    case protocol_plan::ValueType::BOOL:
+    case FieldValueType::BOOL:
       return QStringLiteral("BOOL");
   }
   return QStringLiteral("UNKNOWN");
 }
 
-QString SourceName(protocol_plan::EncodeSource source) {
+QString SourceName(FieldEncodeSource source) {
   switch (source) {
-    case protocol_plan::EncodeSource::INPUT:
+    case FieldEncodeSource::INPUT:
       return QStringLiteral("input");
-    case protocol_plan::EncodeSource::CONSTANT:
+    case FieldEncodeSource::CONSTANT:
       return QStringLiteral("constant");
-#if defined(PAE_ENABLE_SCHEMA_V07_LENGTH_COMPILER)
-    case protocol_plan::EncodeSource::COMPUTED:
+    case FieldEncodeSource::COMPUTED:
       return QStringLiteral("computed");
-#endif
   }
   return QStringLiteral("unknown");
 }
@@ -134,7 +132,7 @@ QVariant FieldTableModel::data(const QModelIndex& index, int role) const {
   }
   if (role == HasConversionRole) {
 #if defined(PAE_ENABLE_SCHEMA_V05_COMPILER)
-    return field->decode_decimal64 || field->conversion.has_value();
+    return field->decode_decimal64 || field->decimal_conversion;
 #else
     return field->decode_decimal64;
 #endif
@@ -174,8 +172,8 @@ QVariant FieldTableModel::data(const QModelIndex& index, int role) const {
     return lines.join(QLatin1Char('\n'));
   }
   if (role == Qt::CheckStateRole && index.column() == VALUE &&
-      field->value_type == protocol_plan::ValueType::BOOL &&
-      field->encode_source == protocol_plan::EncodeSource::INPUT) {
+      field->value_type == FieldValueType::BOOL &&
+      field->encode_source == FieldEncodeSource::INPUT) {
     return row.has_bool_value ? (row.bool_value ? Qt::Checked : Qt::Unchecked)
                               : Qt::PartiallyChecked;
   }
@@ -204,11 +202,11 @@ QVariant FieldTableModel::data(const QModelIndex& index, int role) const {
         return QStringLiteral("not referenced by %1 action").arg(PresentedActionName(action_));
       }
       if (field->ascii_text && action_ == FieldPresentationAction::INSPECT) return {};
-      if (field->encode_source != protocol_plan::EncodeSource::INPUT) {
+      if (field->encode_source != FieldEncodeSource::INPUT) {
         return QString::fromUtf8(field->read_only_annotation.data(),
                                  static_cast<int>(field->read_only_annotation.size()));
       }
-      if (field->value_type == protocol_plan::ValueType::ENUM && row.enum_entry_index.has_value() &&
+      if (field->value_type == FieldValueType::ENUM && row.enum_entry_index.has_value() &&
           *row.enum_entry_index < field->enum_entries.size()) {
         const auto& entry = field->enum_entries[*row.enum_entry_index];
         const auto& name = entry.display_name.empty() ? entry.id : entry.display_name;
@@ -262,11 +260,11 @@ Qt::ItemFlags FieldTableModel::flags(const QModelIndex& index) const {
   auto result = QAbstractTableModel::flags(index);
   const auto* field = FieldAt(index.row());
   if (!editable_ || field == nullptr || index.column() != VALUE ||
-      field->encode_source != protocol_plan::EncodeSource::INPUT) {
+      field->encode_source != FieldEncodeSource::INPUT) {
     return result;
   }
   result |= Qt::ItemIsEditable;
-  if (field->value_type == protocol_plan::ValueType::BOOL) {
+  if (field->value_type == FieldValueType::BOOL) {
     result |= Qt::ItemIsUserCheckable;
   }
   return result;
@@ -292,8 +290,8 @@ bool FieldTableModel::setData(const QModelIndex& index, const QVariant& value, i
   if (!ParseDraft(index.row(), value, role, draft, canonical, error)) {
     auto& row = rows_[static_cast<std::size_t>(index.row())];
     const auto* field = FieldAt(index.row());
-    if (field != nullptr && field->value_type != protocol_plan::ValueType::BOOL &&
-        field->value_type != protocol_plan::ValueType::ENUM) {
+    if (field != nullptr && field->value_type != FieldValueType::BOOL &&
+        field->value_type != FieldValueType::ENUM) {
       row.draft_text = value.toString();
     }
     row.validation_error = error;
@@ -307,8 +305,8 @@ bool FieldTableModel::setData(const QModelIndex& index, const QVariant& value, i
       !draft_changed_(FieldAt(index.row())->field_index, std::move(draft), error)) {
     auto& row = rows_[static_cast<std::size_t>(index.row())];
     const auto* field = FieldAt(index.row());
-    if (field != nullptr && field->value_type != protocol_plan::ValueType::BOOL &&
-        field->value_type != protocol_plan::ValueType::ENUM) {
+    if (field != nullptr && field->value_type != FieldValueType::BOOL &&
+        field->value_type != FieldValueType::ENUM) {
       row.draft_text = value.toString();
     }
     row.validation_error = error;
@@ -321,11 +319,11 @@ bool FieldTableModel::setData(const QModelIndex& index, const QVariant& value, i
   auto& row = rows_[static_cast<std::size_t>(index.row())];
   row.validation_error.clear();
   const auto* field = FieldAt(index.row());
-  if (field->value_type == protocol_plan::ValueType::BOOL) {
+  if (field->value_type == FieldValueType::BOOL) {
     row.bool_value = role == Qt::CheckStateRole ? value.toInt() == Qt::Checked : value.toBool();
     row.has_bool_value = true;
     row.draft_text = row.bool_value ? QStringLiteral("true") : QStringLiteral("false");
-  } else if (field->value_type == protocol_plan::ValueType::ENUM) {
+  } else if (field->value_type == FieldValueType::ENUM) {
     row.enum_entry_index = static_cast<std::size_t>(value.toInt());
     row.draft_text = canonical;
   } else {
@@ -378,7 +376,7 @@ void FieldTableModel::ApplyDrafts(const std::unordered_map<std::size_t, TypedDra
             row.bool_value = item;
             row.has_bool_value = true;
             row.draft_text = item ? QStringLiteral("true") : QStringLiteral("false");
-          } else if constexpr (std::is_same_v<T, protocol_lab::v06::Decimal64>) {
+          } else if constexpr (std::is_same_v<T, Decimal64>) {
             row.draft_text = QString::fromStdString(std::to_string(item.coefficient) + "@" +
                                                     std::to_string(item.scale));
           }
@@ -448,17 +446,17 @@ QString FieldTableModel::ValidationError(int row) const {
 bool FieldTableModel::ParseDraft(int row, const QVariant& value, int role, TypedDraft& output,
                                  QString& canonical, QString& error) const {
   const auto* field = FieldAt(row);
-  if (field == nullptr || field->encode_source != protocol_plan::EncodeSource::INPUT) {
+  if (field == nullptr || field->encode_source != FieldEncodeSource::INPUT) {
     error = QStringLiteral("Field is read-only");
     return false;
   }
-  if (field->value_type == protocol_plan::ValueType::BOOL) {
+  if (field->value_type == FieldValueType::BOOL) {
     const bool checked = role == Qt::CheckStateRole ? value.toInt() == Qt::Checked : value.toBool();
     output = checked;
     canonical = checked ? QStringLiteral("true") : QStringLiteral("false");
     return true;
   }
-  if (field->value_type == protocol_plan::ValueType::ENUM) {
+  if (field->value_type == FieldValueType::ENUM) {
     bool ok = false;
     const int entry_index = value.toInt(&ok);
     if (!ok || entry_index < 0 ||
@@ -475,43 +473,40 @@ bool FieldTableModel::ParseDraft(int row, const QVariant& value, int role, Typed
   canonical = value.toString();
   const auto text = Utf8(canonical);
 #if defined(PAE_ENABLE_SCHEMA_V05_COMPILER)
-  if (field->conversion.has_value()) {
+  if (field->decimal_conversion) {
     const auto separator = text.find('@');
     std::int64_t coefficient = 0;
     std::uint64_t scale = 0U;
     if (separator == std::string::npos ||
-        !protocol_lab::v06::internal::ParseCanonicalInt64Text(
-            std::string_view(text).substr(0U, separator), coefficient) ||
-        !protocol_lab::v06::internal::ParseCanonicalUint64Text(
-            std::string_view(text).substr(separator + 1U), scale) ||
+        !ParseCanonicalInt64(std::string_view(text).substr(0U, separator), coefficient) ||
+        !ParseCanonicalUint64(std::string_view(text).substr(separator + 1U), scale) ||
         scale > 18U) {
       error = QStringLiteral("Expected Decimal64 coefficient@scale with scale 0..18");
       return false;
     }
-    output = protocol_lab::v06::NormalizeDecimal64(
-        protocol_lab::v06::Decimal64{coefficient, static_cast<std::int32_t>(scale)});
+    output = NormalizeDecimal64(Decimal64{coefficient, static_cast<std::int32_t>(scale)});
     return true;
   }
 #endif
-  if (field->value_type == protocol_plan::ValueType::UINT64) {
+  if (field->value_type == FieldValueType::UINT64) {
     std::uint64_t parsed = 0U;
-    if (!protocol_lab::v06::internal::ParseCanonicalUint64Text(text, parsed)) {
+    if (!ParseCanonicalUint64(text, parsed)) {
       error = QStringLiteral("Expected canonical UINT64 decimal");
       return false;
     }
     output = parsed;
     return true;
   }
-  if (field->value_type == protocol_plan::ValueType::INT64) {
+  if (field->value_type == FieldValueType::INT64) {
     std::int64_t parsed = 0;
-    if (!protocol_lab::v06::internal::ParseCanonicalInt64Text(text, parsed)) {
+    if (!ParseCanonicalInt64(text, parsed)) {
       error = QStringLiteral("Expected canonical INT64 decimal");
       return false;
     }
     output = parsed;
     return true;
   }
-  if (field->value_type == protocol_plan::ValueType::BYTES) {
+  if (field->value_type == FieldValueType::BYTES) {
     std::vector<std::uint8_t> bytes;
     if (field->ascii_text && representation_ == ByteRepresentation::ASCII_ESCAPED) {
       const auto parsed = ParseAsciiEscaped(Utf16(canonical));

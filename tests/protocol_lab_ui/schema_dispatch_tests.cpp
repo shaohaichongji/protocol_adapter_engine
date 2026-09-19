@@ -21,7 +21,13 @@ void Check(std::string_view json, pae::protocol_lab_ui::SchemaDispatchStatus exp
 int main() {
   using pae::protocol_lab_ui::SchemaDispatchStatus;
   Check(R"({"schema_version":"0.9"})", SchemaDispatchStatus::BINARY_PUBLIC, "binary");
-  Check(R"({"schema_version":"0.5"})", SchemaDispatchStatus::PRIVATE_LEGACY, "legacy");
+  Check(R"({"schema_version":"0.5"})",
+#if defined(PAE_BUILD_PROTOCOL_LAB_PUBLIC_LEGACY_COMPLETE)
+        SchemaDispatchStatus::LEGACY_PUBLIC,
+#else
+        SchemaDispatchStatus::PRIVATE_LEGACY,
+#endif
+        "legacy");
 #if defined(PAE_ENABLE_SCHEMA_V10_ASCII_TEXT_CODEC)
 #if defined(PAE_BUILD_PROTOCOL_LAB_ASCII_PUBLIC_A2)
   Check(R"({"schema_version":"0.10"})", SchemaDispatchStatus::ASCII_PUBLIC, "ascii");
@@ -45,9 +51,19 @@ int main() {
         "escaped_root_key");
   Check(R"({"schema_version":"0.\u0039"})", SchemaDispatchStatus::BINARY_PUBLIC, "escaped_value");
   Check(R"({"nested":{"schema_version":"0.9"},"schema_version":"0.5"})",
-        SchemaDispatchStatus::PRIVATE_LEGACY, "nested_decoy");
+#if defined(PAE_BUILD_PROTOCOL_LAB_PUBLIC_LEGACY_COMPLETE)
+        SchemaDispatchStatus::LEGACY_PUBLIC,
+#else
+        SchemaDispatchStatus::PRIVATE_LEGACY,
+#endif
+        "nested_decoy");
   Check(R"({"text":"schema_version\\\":\\\"0.9","schema_version":"0.5"})",
-        SchemaDispatchStatus::PRIVATE_LEGACY, "string_decoy");
+#if defined(PAE_BUILD_PROTOCOL_LAB_PUBLIC_LEGACY_COMPLETE)
+        SchemaDispatchStatus::LEGACY_PUBLIC,
+#else
+        SchemaDispatchStatus::PRIVATE_LEGACY,
+#endif
+        "string_decoy");
   Check(R"({"schema_version":"0.9","schema_version":"0.5"})",
         SchemaDispatchStatus::CLASSIFICATION_FAILED, "duplicate_plain");
   Check(R"({"schema_version":"0.9","schema_\u0076ersion":"0.5"})",

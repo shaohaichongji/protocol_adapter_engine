@@ -36,6 +36,7 @@ option(PAE_BUILD_PROTOCOL_LAB_HOST_OBSERVER "Build the internal Lab host endpoin
 option(PAE_BUILD_PROTOCOL_LAB_BINARY_MATERIALIZER "Build the internal non-Qt Binary candidate DTO slice" OFF)
 option(PAE_BUILD_PROTOCOL_LAB_BINARY_PUBLIC_H1 "Build public-only non-Qt Binary complete Decode H1 adapter" OFF)
 option(PAE_BUILD_PROTOCOL_LAB_BINARY_PUBLIC_H2 "Route the Qt Lab Binary complete Decode through public PAE" OFF)
+option(PAE_BUILD_PROTOCOL_LAB_PUBLIC_LEGACY_COMPLETE "Route Qt Lab Schema 0.5-0.8 complete records through public PAE" OFF)
 option(PAE_BUILD_PROTOCOL_LAB_ASCII_PUBLIC_A1 "Build public-only non-Qt ASCII complete-record A1 adapter" OFF)
 option(PAE_BUILD_PROTOCOL_LAB_ASCII_PUBLIC_A2 "Route Qt Lab ASCII 0.10 through public PAE and Host" OFF)
 option(PAE_BUILD_PROTOCOL_LAB_ASCII_PUBLIC_STREAM "Build public-only non-Qt ASCII 0.11 Host stream adapter" OFF)
@@ -217,6 +218,11 @@ if(PAE_BUILD_PROTOCOL_LAB_BINARY_PUBLIC_H2 AND
    (NOT PAE_BUILD_PROTOCOL_LAB_UI OR NOT PAE_BUILD_PROTOCOL_LAB_BINARY_UI OR
     NOT PAE_BUILD_PROTOCOL_LAB_BINARY_PUBLIC_H1 OR NOT PAE_BUILD_PUBLIC_API_STAGE1))
     message(FATAL_ERROR "Binary public H2 requires UI, Binary UI, public H1 and public API Stage 1.")
+endif()
+
+if(PAE_BUILD_PROTOCOL_LAB_PUBLIC_LEGACY_COMPLETE AND
+   (NOT PAE_BUILD_PROTOCOL_LAB_UI OR NOT PAE_BUILD_PUBLIC_API_STAGE1))
+    message(FATAL_ERROR "Public legacy complete migration requires UI and public API Stage 1.")
 endif()
 
 if(PAE_BUILD_PROTOCOL_LAB_BINARY_MATERIALIZER AND

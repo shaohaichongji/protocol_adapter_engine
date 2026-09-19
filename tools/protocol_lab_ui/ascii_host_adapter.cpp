@@ -1,76 +1,23 @@
 #include "ascii_host_adapter.h"
 
+#include <algorithm>
 #include <utility>
+
+#include "../protocol_lab_ascii/public_ascii_host_adapter.h"
 
 namespace pae::protocol_lab_ui {
 namespace {
 
-protocol_framing::StreamFramingPhase ToPrivatePhase(StreamFramingPhase value) noexcept {
-  switch (value) {
-    case StreamFramingPhase::DELIVERY_PENDING:
-      return protocol_framing::StreamFramingPhase::DELIVERY_PENDING;
-    case StreamFramingPhase::DISCARDING_UNTIL_CRLF:
-      return protocol_framing::StreamFramingPhase::DISCARDING_UNTIL_CRLF;
-    default:
-      return protocol_framing::StreamFramingPhase::COLLECTING;
-  }
-}
-
-protocol_lab::ascii::AdapterStatus ToPrivateAdapterStatus(
+AsciiAdapterStatus ToAdapterStatus(
     protocol_lab_ascii::public_offline::LocalStatus value) noexcept {
   using L = protocol_lab_ascii::public_offline::LocalStatus;
   switch (value) {
-    case L::OK: return protocol_lab::ascii::AdapterStatus::OK;
-    case L::CODEC_FAILED: return protocol_lab::ascii::AdapterStatus::CORE_FAILED;
+    case L::OK: return AsciiAdapterStatus::OK;
+    case L::CODEC_FAILED: return AsciiAdapterStatus::CORE_FAILED;
     case L::MATERIALIZATION_FAILED:
-    case L::ALLOCATION_FAILED: return protocol_lab::ascii::AdapterStatus::MATERIALIZATION_FAILED;
-    default: return protocol_lab::ascii::AdapterStatus::INVALID_REQUEST;
+    case L::ALLOCATION_FAILED: return AsciiAdapterStatus::MATERIALIZATION_FAILED;
+    default: return AsciiAdapterStatus::INVALID_REQUEST;
   }
-}
-
-protocol_framing::SubmitApiStatus ToPrivateStatus(StreamFramerStatus value) noexcept {
-  using P = protocol_framing::SubmitApiStatus;
-  switch (value) {
-    case StreamFramerStatus::OK: return P::OK;
-    case StreamFramerStatus::INVALID_ARGUMENT: return P::INVALID_ARGUMENT;
-    case StreamFramerStatus::INVALID_COMPILED_PROTOCOL: return P::INVALID_PLAN;
-    case StreamFramerStatus::WORKSPACE_BUSY: return P::WORKSPACE_BUSY;
-    case StreamFramerStatus::REENTRANT_CALL: return P::REENTRANT_CALL;
-    case StreamFramerStatus::RESOURCE_LIMIT_EXCEEDED: return P::LIMIT_EXCEEDED;
-    default: return P::INTERNAL_ERROR;
-  }
-}
-
-protocol_framing::SubmitStopReason ToPrivateStop(StreamFramerStopReason value) noexcept {
-  using P = protocol_framing::SubmitStopReason;
-  switch (value) {
-    case StreamFramerStopReason::NEED_MORE: return P::NEED_MORE;
-    case StreamFramerStopReason::WORK_BUDGET_REACHED: return P::WORK_BUDGET_REACHED;
-    case StreamFramerStopReason::SINK_STOP: return P::SINK_STOP;
-    default: return P::INPUT_EXHAUSTED;
-  }
-}
-
-protocol_framing::FramingIssue ToPrivateIssue(StreamFramingIssue value) noexcept {
-  using P = protocol_framing::FramingIssue;
-  switch (value) {
-    case StreamFramingIssue::MALFORMED_LENGTH: return P::MALFORMED_LENGTH;
-    case StreamFramingIssue::RECORD_TOO_LONG: return P::RECORD_TOO_LONG;
-    default: return P::NONE;
-  }
-}
-
-protocol_framing::SubmitResult ConvertFraming(const StreamSubmitResult& source) noexcept {
-  protocol_framing::SubmitResult result;
-  result.api_status = ToPrivateStatus(source.status);
-  result.stop_reason = ToPrivateStop(source.stop_reason);
-  result.bytes_consumed = source.bytes_consumed;
-  result.frames_delivered = source.candidates_delivered;
-  result.bytes_discarded = source.bytes_discarded;
-  result.malformed_candidates = source.malformed_candidates;
-  result.last_framing_issue = ToPrivateIssue(source.last_issue);
-  result.work_units_used = source.work_units_used;
-  return result;
 }
 
 std::string StreamDiagnosticText(protocol_lab_ascii::public_offline::StreamDiagnostic value) {
@@ -79,10 +26,12 @@ std::string StreamDiagnosticText(protocol_lab_ascii::public_offline::StreamDiagn
     case D::NONE: return {};
     case D::CHANNEL_NOT_ASCII_STREAM: return "selected Host channel is not an ASCII stream";
     case D::RESET_REQUIRED: return "stream Reset is required";
-    case D::INVALID_CHUNK_OR_CONTINUE_REQUIRED: return "invalid chunk or Continue is required";
+    case D::INVALID_CHUNK_OR_CONTINUE_REQUIRED:
+      return "invalid chunk or Continue is required";
     case D::CHUNK_ALLOCATION_FAILED: return "stream chunk allocation failed";
     case D::CHUNK_MATERIALIZATION_FAILED: return "stream chunk materialization failed";
-    case D::NO_FROZEN_SUFFIX_OR_INTERNAL_WORK: return "no frozen suffix or internal work remains";
+    case D::NO_FROZEN_SUFFIX_OR_INTERNAL_WORK:
+      return "no frozen suffix or internal work remains";
     case D::CANDIDATE_COPY_FAILED_RESET_REQUIRED:
       return "candidate copy failed; stream Reset is required";
     case D::STREAM_CONTRACT_VIOLATION_RESET_REQUIRED:
@@ -91,10 +40,10 @@ std::string StreamDiagnosticText(protocol_lab_ascii::public_offline::StreamDiagn
   return "unknown public stream diagnostic";
 }
 
-protocol_lab::ascii::StreamObservation ConvertObservation(
+AsciiStreamObservation ConvertObservation(
     const protocol_lab_ascii::public_offline::StreamObservation& source) noexcept {
-  protocol_lab::ascii::StreamObservation result;
-  result.phase = ToPrivatePhase(source.phase);
+  AsciiStreamObservation result;
+  result.phase = source.phase;
   result.buffered_bytes = source.buffered_bytes;
   result.has_internal_work = source.has_internal_work;
   result.effective_max_submit_bytes = source.effective_max_submit_bytes;
@@ -113,125 +62,240 @@ protocol_lab::ascii::StreamObservation ConvertObservation(
   return result;
 }
 
-protocol_core::CodecStatus ToPrivateStatus(CodecStatus value) noexcept {
-  using P = protocol_core::CodecStatus;
-  switch (value) {
-    case CodecStatus::OK:
-      return P::OK;
-    case CodecStatus::UNKNOWN_MESSAGE:
-      return P::UNKNOWN_MESSAGE;
-    case CodecStatus::AMBIGUOUS_MESSAGE:
-      return P::AMBIGUOUS_MESSAGE;
-    case CodecStatus::OUTPUT_SLOTS_TOO_SMALL:
-      return P::OUTPUT_SLOTS_TOO_SMALL;
-    case CodecStatus::INTEGRITY_FAILED:
-      return P::INTEGRITY_FAILED;
-    case CodecStatus::MESSAGE_NOT_ALLOWED:
-      return P::MESSAGE_NOT_ALLOWED;
-    case CodecStatus::FIELD_REFERENCE_MISMATCH:
-      return P::FIELD_REFERENCE_MISMATCH;
-    case CodecStatus::DUPLICATE_FIELD:
-      return P::DUPLICATE_FIELD;
-    case CodecStatus::MISSING_FIELD:
-      return P::MISSING_FIELD;
-    case CodecStatus::TYPE_MISMATCH:
-      return P::TYPE_MISMATCH;
-    case CodecStatus::VALUE_NOT_REPRESENTABLE:
-      return P::VALUE_NOT_REPRESENTABLE;
-    case CodecStatus::BYTES_LENGTH_MISMATCH:
-      return P::BYTES_LENGTH_MISMATCH;
-    case CodecStatus::UNKNOWN_ENUM_VALUE:
-      return P::UNKNOWN_ENUM_VALUE;
-    case CodecStatus::ENUM_REFERENCE_MISMATCH:
-      return P::ENUM_REFERENCE_MISMATCH;
-    case CodecStatus::CONSTANT_FIELD_OVERRIDE:
-      return P::CONSTANT_FIELD_OVERRIDE;
-    case CodecStatus::INPUT_OUTPUT_OVERLAP:
-      return P::INPUT_OUTPUT_OVERLAP;
-    case CodecStatus::BUFFER_TOO_SMALL:
-      return P::BUFFER_TOO_SMALL;
-    case CodecStatus::FINAL_REVIEW_FAILED:
-      return P::FINAL_REVIEW_FAILED;
-    case CodecStatus::ASCII_CHARACTER_NOT_ALLOWED:
-      return P::ASCII_CHARACTER_NOT_ALLOWED;
-    case CodecStatus::ASCII_TERMINATOR_CONFLICT:
-      return P::ASCII_TERMINATOR_CONFLICT;
-    case CodecStatus::OPERATION_NOT_SUPPORTED:
-      return P::OPERATION_NOT_SUPPORTED;
-    case CodecStatus::COMPUTED_FIELD_OVERRIDE:
-      return P::COMPUTED_FIELD_OVERRIDE;
-    case CodecStatus::LENGTH_MISMATCH:
-      return P::LENGTH_MISMATCH;
-    case CodecStatus::WORKSPACE_BUSY:
-      return P::WORKSPACE_BUSY;
-    default:
-      return P::INVALID_ARGUMENT;
+bool BuildPublicDescription(const protocol_lab_ascii::public_offline::OwnedDescription& source,
+                            DocumentDescription& output, std::string& error) {
+  DocumentDescription built;
+  built.layout = DocumentLayout::ASCII_TEXT;
+  built.schema_version = source.schema_version;
+  built.protocol_id = source.protocol_id;
+  built.protocol_version = source.protocol_version;
+  built.display_name = source.display_name;
+  built.description = source.description;
+  built.source_ref = source.source_ref;
+  built.pipelines.reserve(source.pipelines.size());
+  for (const auto& value : source.pipelines) {
+    if (value.index != built.pipelines.size()) {
+      error = "public ASCII Pipeline indices are not contiguous";
+      return false;
+    }
+    PipelineDescriptor pipeline;
+    pipeline.pipeline_index = value.index;
+    pipeline.id = value.id;
+    pipeline.direction_id = value.direction_id;
+    pipeline.display_name = value.display_name;
+    pipeline.description = value.description;
+    pipeline.source_ref = value.source_ref;
+    pipeline.message_indices = value.message_indices;
+    pipeline.decode_message_indices = value.decode_message_indices;
+    built.pipelines.push_back(std::move(pipeline));
   }
+  built.messages.reserve(source.messages.size());
+  for (const auto& value : source.messages) {
+    if (value.index != built.messages.size()) {
+      error = "public ASCII Message indices are not contiguous";
+      return false;
+    }
+    MessageDescriptor message;
+    message.message_index = value.index;
+    message.id = value.id;
+    message.direction_id = value.direction_id;
+    message.display_name = value.display_name;
+    message.description = value.description;
+    message.source_ref = value.source_ref;
+    message.encode_available = value.encode.has_value();
+    message.decode_available = value.decode.has_value();
+    if (value.encode) message.frame_size = value.encode->record_length.maximum;
+    if (value.decode)
+      message.frame_size = (std::max)(message.frame_size, value.decode->record_length.maximum);
+    built.max_frame_bytes = (std::max)(built.max_frame_bytes, message.frame_size);
+    message.fields.reserve(value.fields.size());
+    for (const auto& field_value : value.fields) {
+      if (field_value.field_index != message.fields.size()) {
+        error = "public ASCII Field indices are not contiguous";
+        return false;
+      }
+      FieldDescriptor field;
+      field.field_index = field_value.field_index;
+      field.id = field_value.id;
+      field.display_name = field_value.display_name;
+      field.description = field_value.description;
+      field.source_ref = field_value.source_ref;
+      field.value_type = FieldValueType::BYTES;
+      field.wire_codec = FieldWireCodec::ASCII_TEXT;
+      field.byte_order = FieldByteOrder::NOT_APPLICABLE;
+      field.encode_source = field_value.encode_referenced ? FieldEncodeSource::INPUT
+                                                          : FieldEncodeSource::CONSTANT;
+      field.byte_width = field_value.byte_length.maximum;
+      field.byte_length_bounds =
+          ByteLengthBounds{field_value.byte_length.minimum, field_value.byte_length.maximum};
+      field.ascii_text = true;
+      field.decode_referenced = field_value.decode_referenced;
+      field.encode_referenced = field_value.encode_referenced;
+      if (field_value.allowed_control_bytes)
+        field.allowed_control_bytes = *field_value.allowed_control_bytes;
+      if (!field.encode_referenced) field.read_only_annotation = "not referenced by Encode action";
+      message.fields.push_back(std::move(field));
+    }
+    built.messages.push_back(std::move(message));
+  }
+  for (const auto& pipeline : built.pipelines) {
+    for (const auto index : pipeline.message_indices)
+      if (index >= built.messages.size()) {
+        error = "public ASCII Pipeline Message index is outside the description";
+        return false;
+      }
+    for (const auto index : pipeline.decode_message_indices)
+      if (index >= built.messages.size() || !built.messages[index].decode_available) {
+        error = "public ASCII Pipeline Decode candidate is outside the description";
+        return false;
+      }
+  }
+  output = std::move(built);
+  error.clear();
+  return true;
 }
 
-protocol_lab::ascii::ExecutionResult Convert(
+class PublicBackend final : public AsciiHostBackend {
+ public:
+  explicit PublicBackend(std::unique_ptr<protocol_lab_ascii::public_offline::HostAdapter> adapter)
+      : adapter_(std::move(adapter)) {}
+
+  std::size_t AccountedBytes() const noexcept override { return adapter_->AccountedBytes(); }
+
+  AsciiExecutionResult Inspect(std::size_t binding, std::size_t stream,
+                               AsciiExecutionIdentity identity,
+                               const std::vector<std::uint8_t>& frame) override {
+    return ConvertPublicAsciiResult(adapter_->Decode(binding, stream, {frame.data(), frame.size()}),
+                                    std::move(identity), AsciiOperation::INSPECT);
+  }
+
+  AsciiExecutionResult Encode(std::size_t binding, AsciiExecutionIdentity identity,
+                              const std::vector<AsciiInputField>& fields) override {
+    std::vector<protocol_lab_ascii::public_offline::InputField> inputs;
+    inputs.reserve(fields.size());
+    for (const auto& field : fields) inputs.push_back({field.field_index, field.bytes});
+    const auto message_index = identity.message_index.value_or(static_cast<std::size_t>(-1));
+    return ConvertPublicAsciiResult(adapter_->Encode(binding, message_index, inputs),
+                                    std::move(identity), AsciiOperation::ENCODE);
+  }
+
+  AsciiStreamStepResult Submit(std::size_t binding, std::size_t stream,
+                               AsciiExecutionIdentity identity,
+                               const std::vector<std::uint8_t>& chunk) override {
+    return ConvertStream(adapter_->SubmitStreamChunk(binding, stream, chunk), std::move(identity));
+  }
+
+  AsciiStreamStepResult Continue(std::size_t binding, std::size_t stream,
+                                 AsciiExecutionIdentity identity) override {
+    return ConvertStream(adapter_->ContinueStream(binding, stream), std::move(identity));
+  }
+
+  bool Reset(std::size_t binding, std::size_t stream) override {
+    return adapter_->Reset(binding, stream);
+  }
+
+  std::optional<AsciiStreamObservation> Observe(std::size_t binding,
+                                                std::size_t stream) const noexcept override {
+    const auto observed = adapter_->ObserveStream(binding, stream);
+    return observed ? std::optional<AsciiStreamObservation>{ConvertObservation(*observed)}
+                    : std::nullopt;
+  }
+
+  bool HasDiscardableState(const std::vector<AsciiHostBinding>& bindings) const noexcept override {
+    for (std::size_t binding = 0U; binding < bindings.size(); ++binding)
+      for (std::size_t flow = 0U;
+           flow < (bindings[binding].action == AsciiHostAction::DECODE ? 2U : 1U); ++flow) {
+        const auto observed = adapter_->ObserveStream(binding, flow);
+        if (observed &&
+            (observed->buffered_bytes != 0U || observed->frozen_input_bytes != 0U ||
+             observed->has_internal_work || observed->reset_required ||
+             observed->phase != StreamFramingPhase::COLLECTING))
+          return true;
+      }
+    return false;
+  }
+
+ private:
+  static AsciiStreamStepResult ConvertStream(
+      protocol_lab_ascii::public_offline::StreamStepResult source,
+      AsciiExecutionIdentity identity) {
+    AsciiStreamStepResult result;
+    result.identity = std::move(identity);
+    result.status = ToAdapterStatus(source.status);
+    result.push_called = source.host_called;
+    result.framing = source.host.framing;
+    result.before = ConvertObservation(source.before);
+    result.after = ConvertObservation(source.after);
+    if (source.candidate)
+      result.candidate = ConvertPublicAsciiResult(std::move(*source.candidate), result.identity,
+                                                  AsciiOperation::INSPECT);
+    result.detail = StreamDiagnosticText(source.diagnostic);
+    return result;
+  }
+
+  std::unique_ptr<protocol_lab_ascii::public_offline::HostAdapter> adapter_;
+};
+
+}  // namespace
+
+AsciiExecutionResult ConvertPublicAsciiResult(
     protocol_lab_ascii::public_offline::OperationResult source,
-    protocol_lab::ascii::ExecutionIdentity identity, protocol_lab::ascii::Operation operation) {
-  protocol_lab::ascii::ExecutionResult result;
+    AsciiExecutionIdentity identity, AsciiOperation operation) {
+  AsciiExecutionResult result;
   result.identity = std::move(identity);
   result.operation = operation;
-  result.core_called = source.codec_called;
-  result.core_status = ToPrivateStatus(source.codec_status);
+  result.codec_called = source.codec_called;
+  result.codec_status = source.codec_status;
   result.message_index = source.message_index;
   result.message_id = std::move(source.message_id);
   result.failed_input_index = source.failed_value_index;
   result.failed_field_index = source.failed_field_flat_index;
   result.frame = std::move(source.frame);
   result.diagnostic_input_frame = std::move(source.diagnostic_input_frame);
-  result.review_kind = operation == protocol_lab::ascii::Operation::ENCODE
-                           ? protocol_lab::ascii::ReviewKind::TX_TEMPLATE
-                           : protocol_lab::ascii::ReviewKind::NOT_APPLICABLE;
-  switch (source.local_status) {
-    case protocol_lab_ascii::public_offline::LocalStatus::OK:
-      result.status = protocol_lab::ascii::AdapterStatus::OK;
-      break;
-    case protocol_lab_ascii::public_offline::LocalStatus::CODEC_FAILED:
-      result.status = protocol_lab::ascii::AdapterStatus::CORE_FAILED;
-      break;
-    case protocol_lab_ascii::public_offline::LocalStatus::MATERIALIZATION_FAILED:
-    case protocol_lab_ascii::public_offline::LocalStatus::ALLOCATION_FAILED:
-      result.status = protocol_lab::ascii::AdapterStatus::MATERIALIZATION_FAILED;
-      break;
-    default:
-      result.status = protocol_lab::ascii::AdapterStatus::INVALID_REQUEST;
-      break;
-  }
+  result.review_kind = operation == AsciiOperation::ENCODE ? AsciiReviewKind::TX_TEMPLATE
+                                                            : AsciiReviewKind::NOT_APPLICABLE;
+  result.status = ToAdapterStatus(source.local_status);
   result.fields.reserve(source.fields.size());
   for (auto& value : source.fields) {
-    protocol_lab::ascii::FieldResult field;
+    AsciiFieldResult field;
     field.field_index = value.field_index;
     field.field_id = std::move(value.id);
     field.bytes = std::move(value.bytes);
-    field.range = {value.range.offset, value.range.length};
+    field.range = value.range;
     result.fields.push_back(std::move(field));
   }
   return result;
 }
 
-}  // namespace
+AsciiHostAdapter::AsciiHostAdapter(std::unique_ptr<AsciiHostBackend> backend,
+                                   DocumentDescription description,
+                                   std::vector<AsciiHostBinding> bindings, bool public_complete,
+                                   bool public_stream) noexcept
+    : backend_(std::move(backend)),
+      description_(std::move(description)),
+      bindings_(std::move(bindings)),
+      public_complete_(public_complete),
+      public_stream_(public_stream) {}
 
-protocol_lab::ascii::ExecutionResult ConvertPublicAsciiResult(
-    protocol_lab_ascii::public_offline::OperationResult source,
-    protocol_lab::ascii::ExecutionIdentity identity, protocol_lab::ascii::Operation operation) {
-  return Convert(std::move(source), std::move(identity), operation);
+std::unique_ptr<AsciiHostAdapter> AsciiHostAdapter::AdoptBackend(
+    std::unique_ptr<AsciiHostBackend> backend, DocumentDescription description,
+    std::vector<AsciiHostBinding> bindings, bool public_complete, bool public_stream) {
+  if (!backend) return nullptr;
+  return std::unique_ptr<AsciiHostAdapter>(new AsciiHostAdapter(
+      std::move(backend), std::move(description), std::move(bindings), public_complete,
+      public_stream));
 }
 
 std::unique_ptr<AsciiHostAdapter> AsciiHostAdapter::CreatePublic(
-    CompiledProtocol compiled, std::vector<protocol_lab::ascii::HostBinding> bindings,
+    CompiledProtocol compiled, std::vector<AsciiHostBinding> bindings,
     std::size_t previous_instance_bytes, std::string& error) {
   try {
     std::vector<protocol_lab_ascii::public_offline::HostBinding> public_bindings;
     public_bindings.reserve(bindings.size());
     for (const auto& binding : bindings)
       public_bindings.push_back({binding.endpoint,
-                                 binding.action == host_endpoint::Action::DECODE
-                                     ? HostAction::DECODE
-                                     : HostAction::ENCODE,
+                                 binding.action == AsciiHostAction::DECODE ? HostAction::DECODE
+                                                                           : HostAction::ENCODE,
                                  binding.pipeline_index});
     auto prepared = protocol_lab_ascii::public_offline::HostAdapter::Create(
         std::move(compiled), std::move(public_bindings), {}, previous_instance_bytes);
@@ -241,20 +305,19 @@ std::unique_ptr<AsciiHostAdapter> AsciiHostAdapter::CreatePublic(
               "; host=" + std::to_string(static_cast<int>(prepared.host_status));
       return nullptr;
     }
-    auto result = std::unique_ptr<AsciiHostAdapter>(new AsciiHostAdapter);
-    if (!BuildDocumentDescription(prepared.adapter->Description(), result->description_, error))
-      return nullptr;
-    result->bindings_ = std::move(bindings);
-    result->public_ = std::move(prepared.adapter);
-    for (std::size_t index = 0U; index < result->bindings_.size(); ++index) {
-      const auto observed = result->public_->ObserveStream(index, 0U);
+    DocumentDescription description;
+    if (!BuildPublicDescription(prepared.adapter->Description(), description, error)) return nullptr;
+    bool public_stream = false;
+    for (std::size_t index = 0U; index < bindings.size(); ++index) {
+      const auto observed = prepared.adapter->ObserveStream(index, 0U);
       if (!observed) continue;
-      result->public_stream_ = true;
-      auto& pipeline = result->description_.pipelines[result->bindings_[index].pipeline_index];
+      public_stream = true;
+      auto& pipeline = description.pipelines[bindings[index].pipeline_index];
       pipeline.stream_ascii_crlf = true;
       pipeline.maximum_frame_length = observed->maximum_candidate_frame_bytes;
     }
-    return result;
+    return AdoptBackend(std::make_unique<PublicBackend>(std::move(prepared.adapter)),
+                        std::move(description), std::move(bindings), !public_stream, public_stream);
   } catch (const std::exception& exception) {
     error = exception.what();
     return nullptr;
@@ -263,7 +326,7 @@ std::unique_ptr<AsciiHostAdapter> AsciiHostAdapter::CreatePublic(
 
 std::unique_ptr<AsciiHostAdapter> AsciiHostAdapter::CreatePublicDirect(CompiledProtocol compiled,
                                                                        std::string& error) {
-  std::vector<protocol_lab::ascii::HostBinding> bindings;
+  std::vector<AsciiHostBinding> bindings;
   try {
     for (std::size_t pipeline = 0U; pipeline < compiled.PipelineCount(); ++pipeline) {
       const auto description = compiled.Pipeline(pipeline);
@@ -285,8 +348,8 @@ std::unique_ptr<AsciiHostAdapter> AsciiHostAdapter::CreatePublicDirect(CompiledP
         encode = encode || execution->encode_available;
       }
       const auto endpoint = "direct." + std::to_string(pipeline);
-      if (decode) bindings.push_back({endpoint, host_endpoint::Action::DECODE, pipeline});
-      if (encode) bindings.push_back({endpoint, host_endpoint::Action::ENCODE, pipeline});
+      if (decode) bindings.push_back({endpoint, AsciiHostAction::DECODE, pipeline});
+      if (encode) bindings.push_back({endpoint, AsciiHostAction::ENCODE, pipeline});
     }
   } catch (const std::exception& exception) {
     error = exception.what();
@@ -299,117 +362,57 @@ std::unique_ptr<AsciiHostAdapter> AsciiHostAdapter::CreatePublicDirect(CompiledP
   return CreatePublic(std::move(compiled), std::move(bindings), 0U, error);
 }
 
-std::unique_ptr<AsciiHostAdapter> AsciiHostAdapter::CreatePrivate(
-    config_compiler::CompiledUiArtifacts artifacts,
-    std::vector<protocol_lab::ascii::HostBinding> bindings, std::string& error) {
-  auto adapter =
-      protocol_lab::ascii::HostObserverAdapter::Create(std::move(artifacts), bindings, error);
-  if (!adapter) return nullptr;
-  auto result = std::unique_ptr<AsciiHostAdapter>(new AsciiHostAdapter);
-  if (!BuildDocumentDescription(adapter->Description(), result->description_, error))
-    return nullptr;
-  result->bindings_ = std::move(bindings);
-  result->private_ = std::move(adapter);
-  return result;
-}
-
 std::size_t AsciiHostAdapter::FlowCount(std::size_t binding) const noexcept {
   if (binding >= bindings_.size()) return 0U;
-  return bindings_[binding].action == host_endpoint::Action::DECODE ? 2U : 1U;
+  return bindings_[binding].action == AsciiHostAction::DECODE ? 2U : 1U;
 }
 
 std::size_t AsciiHostAdapter::AccountedBytes() const noexcept {
-  return public_ ? public_->AccountedBytes() : private_->AccountedBytes();
+  return backend_->AccountedBytes();
 }
 
 std::optional<std::size_t> AsciiHostAdapter::FindBinding(
-    std::size_t pipeline_index, host_endpoint::Action action) const noexcept {
+    std::size_t pipeline_index, AsciiHostAction action) const noexcept {
   for (std::size_t index = 0U; index < bindings_.size(); ++index)
     if (bindings_[index].pipeline_index == pipeline_index && bindings_[index].action == action)
       return index;
   return std::nullopt;
 }
 
-protocol_lab::ascii::ExecutionResult AsciiHostAdapter::Inspect(
-    std::size_t binding, std::size_t stream, protocol_lab::ascii::ExecutionIdentity identity,
-    const std::vector<std::uint8_t>& frame) {
-  if (private_) return private_->Inspect(binding, stream, std::move(identity), frame);
-  auto result = public_->Decode(binding, stream, {frame.data(), frame.size()});
-  return Convert(std::move(result), std::move(identity), protocol_lab::ascii::Operation::INSPECT);
+AsciiExecutionResult AsciiHostAdapter::Inspect(std::size_t binding, std::size_t stream,
+                                               AsciiExecutionIdentity identity,
+                                               const std::vector<std::uint8_t>& frame) {
+  return backend_->Inspect(binding, stream, std::move(identity), frame);
 }
 
-protocol_lab::ascii::ExecutionResult AsciiHostAdapter::Encode(
-    std::size_t binding, protocol_lab::ascii::ExecutionIdentity identity,
-    const std::vector<protocol_lab::ascii::InputField>& fields) {
-  if (private_) return private_->Encode(binding, std::move(identity), fields);
-  std::vector<protocol_lab_ascii::public_offline::InputField> inputs;
-  inputs.reserve(fields.size());
-  for (const auto& field : fields) inputs.push_back({field.field_index, field.bytes});
-  const auto message_index = identity.message_index.value_or(static_cast<std::size_t>(-1));
-  auto result = public_->Encode(binding, message_index, inputs);
-  return Convert(std::move(result), std::move(identity), protocol_lab::ascii::Operation::ENCODE);
+AsciiExecutionResult AsciiHostAdapter::Encode(std::size_t binding,
+                                              AsciiExecutionIdentity identity,
+                                              const std::vector<AsciiInputField>& fields) {
+  return backend_->Encode(binding, std::move(identity), fields);
 }
 
-protocol_lab::ascii::StreamStepResult AsciiHostAdapter::Submit(
-    std::size_t binding, std::size_t stream, protocol_lab::ascii::ExecutionIdentity identity,
-    const std::vector<std::uint8_t>& chunk) {
-  if (private_) return private_->Submit(binding, stream, std::move(identity), chunk);
-  auto source = public_->SubmitStreamChunk(binding, stream, chunk);
-  protocol_lab::ascii::StreamStepResult result;
-  result.identity = std::move(identity);
-  result.status = ToPrivateAdapterStatus(source.status);
-  result.push_called = source.host_called;
-  result.framing = ConvertFraming(source.host.framing);
-  result.before = ConvertObservation(source.before);
-  result.after = ConvertObservation(source.after);
-  if (source.candidate)
-    result.candidate = Convert(std::move(*source.candidate), result.identity,
-                               protocol_lab::ascii::Operation::INSPECT);
-  result.detail = StreamDiagnosticText(source.diagnostic);
-  return result;
+AsciiStreamStepResult AsciiHostAdapter::Submit(std::size_t binding, std::size_t stream,
+                                               AsciiExecutionIdentity identity,
+                                               const std::vector<std::uint8_t>& chunk) {
+  return backend_->Submit(binding, stream, std::move(identity), chunk);
 }
 
-protocol_lab::ascii::StreamStepResult AsciiHostAdapter::Continue(
-    std::size_t binding, std::size_t stream, protocol_lab::ascii::ExecutionIdentity identity) {
-  if (private_) return private_->Continue(binding, stream, std::move(identity));
-  auto source = public_->ContinueStream(binding, stream);
-  protocol_lab::ascii::StreamStepResult result;
-  result.identity = std::move(identity);
-  result.status = ToPrivateAdapterStatus(source.status);
-  result.push_called = source.host_called;
-  result.framing = ConvertFraming(source.host.framing);
-  result.before = ConvertObservation(source.before);
-  result.after = ConvertObservation(source.after);
-  if (source.candidate)
-    result.candidate = Convert(std::move(*source.candidate), result.identity,
-                               protocol_lab::ascii::Operation::INSPECT);
-  result.detail = StreamDiagnosticText(source.diagnostic);
-  return result;
+AsciiStreamStepResult AsciiHostAdapter::Continue(std::size_t binding, std::size_t stream,
+                                                 AsciiExecutionIdentity identity) {
+  return backend_->Continue(binding, stream, std::move(identity));
 }
 
 bool AsciiHostAdapter::Reset(std::size_t binding, std::size_t stream) {
-  return public_ ? public_->Reset(binding, stream) : private_->Reset(binding, stream);
+  return backend_->Reset(binding, stream);
 }
 
-std::optional<protocol_lab::ascii::StreamObservation> AsciiHostAdapter::Observe(
-    std::size_t binding, std::size_t stream) const noexcept {
-  if (private_) return private_->Observe(binding, stream);
-  const auto observed = public_->ObserveStream(binding, stream);
-  return observed ? std::optional<protocol_lab::ascii::StreamObservation>{ConvertObservation(*observed)}
-                  : std::nullopt;
+std::optional<AsciiStreamObservation> AsciiHostAdapter::Observe(std::size_t binding,
+                                                                std::size_t stream) const noexcept {
+  return backend_->Observe(binding, stream);
 }
 
 bool AsciiHostAdapter::HasDiscardableState() const noexcept {
-  if (private_) return private_->HasDiscardableState();
-  for (std::size_t binding = 0U; binding < bindings_.size(); ++binding)
-    for (std::size_t flow = 0U; flow < FlowCount(binding); ++flow) {
-      const auto observed = public_->ObserveStream(binding, flow);
-      if (observed && (observed->buffered_bytes != 0U || observed->frozen_input_bytes != 0U ||
-                       observed->has_internal_work || observed->reset_required ||
-                       observed->phase != StreamFramingPhase::COLLECTING))
-        return true;
-    }
-  return false;
+  return backend_->HasDiscardableState(bindings_);
 }
 
 }  // namespace pae::protocol_lab_ui

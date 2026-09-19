@@ -76,11 +76,11 @@ QWidget* ExactValueDelegate::createEditor(QWidget* parent, const QStyleOptionVie
     return editor;
   }
   const auto value_type =
-      static_cast<protocol_plan::ValueType>(index.data(FieldTableModel::ValueTypeRole).toInt());
-  if (value_type == protocol_plan::ValueType::BOOL) {
+      static_cast<FieldValueType>(index.data(FieldTableModel::ValueTypeRole).toInt());
+  if (value_type == FieldValueType::BOOL) {
     return nullptr;
   }
-  if (value_type == protocol_plan::ValueType::ENUM) {
+  if (value_type == FieldValueType::ENUM) {
     auto* combo = new QComboBox(parent);
     const auto field_index = index.data(FieldTableModel::FieldIndexRole).toULongLong();
     const auto names = index.data(FieldTableModel::EnumNamesRole).toStringList();
@@ -100,7 +100,7 @@ QWidget* ExactValueDelegate::createEditor(QWidget* parent, const QStyleOptionVie
   auto* line_edit = new QLineEdit(parent);
   smoke_editor_target::Stamp(*line_edit, index);
   const auto field_index = index.data(FieldTableModel::FieldIndexRole).toULongLong();
-  if (value_type == protocol_plan::ValueType::BYTES) {
+  if (value_type == FieldValueType::BYTES) {
     const auto width = index.data(FieldTableModel::ByteWidthRole).toULongLong();
     const auto representation = static_cast<ByteRepresentation>(
         index.data(FieldTableModel::ByteRepresentationRole).toInt());
@@ -146,7 +146,7 @@ QWidget* ExactValueDelegate::createEditor(QWidget* parent, const QStyleOptionVie
       line_edit->setStyleSheet(QString{});
     });
   } else {
-    line_edit->setPlaceholderText(value_type == protocol_plan::ValueType::UINT64
+    line_edit->setPlaceholderText(value_type == FieldValueType::UINT64
                                       ? QStringLiteral("canonical unsigned decimal")
                                       : QStringLiteral("canonical signed decimal"));
   }

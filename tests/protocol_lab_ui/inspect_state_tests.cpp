@@ -8,10 +8,10 @@
 
 namespace {
 
-class CountingObserver final : public pae::protocol_lab::v06::ExecutionObserver {
+class CountingObserver final : public pae::protocol_lab_ui::LabExecutionObserver {
  public:
-  void PhaseStarted(pae::protocol_lab::v06::ExecutionPhase) override { ++started; }
-  void PhaseFinished(pae::protocol_lab::v06::ExecutionPhase, std::string_view) override {
+  void PhaseStarted(pae::protocol_lab_ui::LabExecutionPhase) override { ++started; }
+  void PhaseFinished(pae::protocol_lab_ui::LabExecutionPhase, std::string_view) override {
     ++finished;
   }
 
@@ -19,18 +19,18 @@ class CountingObserver final : public pae::protocol_lab::v06::ExecutionObserver 
   std::size_t finished = 0U;
 };
 
-class StaleInspectObserver final : public pae::protocol_lab::v06::ExecutionObserver {
+class StaleInspectObserver final : public pae::protocol_lab_ui::LabExecutionObserver {
  public:
   explicit StaleInspectObserver(pae::protocol_lab_ui::DocumentSession& session)
       : session_(session) {}
 
-  void PhaseStarted(pae::protocol_lab::v06::ExecutionPhase phase) override {
-    if (!mutated_ && phase == pae::protocol_lab::v06::ExecutionPhase::STRUCTURAL_QUERY) {
+  void PhaseStarted(pae::protocol_lab_ui::LabExecutionPhase phase) override {
+    if (!mutated_ && phase == pae::protocol_lab_ui::LabExecutionPhase::STRUCTURAL_QUERY) {
       mutated_ = true;
       assert(session_.SetInspectDraft("AA:00"));
     }
   }
-  void PhaseFinished(pae::protocol_lab::v06::ExecutionPhase, std::string_view) override {}
+  void PhaseFinished(pae::protocol_lab_ui::LabExecutionPhase, std::string_view) override {}
 
  private:
   pae::protocol_lab_ui::DocumentSession& session_;

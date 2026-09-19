@@ -42,13 +42,29 @@ inline std::unique_ptr<CompileCompletion> CompileFixture(DocumentId document_id,
                                                          Revision revision,
                                                          const char* name) {
   const std::string text = ReadFixture(name);
+#if defined(PAE_BUILD_PROTOCOL_LAB_PUBLIC_LEGACY_COMPLETE)
+  auto result = pae::CompileProtocolJson(text);
+#else
   auto result = config_compiler::CompileJsonToPlanWithUiDescription(
       text, config_compiler::DerivedUiDescriptionMemoryLimit(
                 protocol_plan::ResourceProfile::DESKTOP));
+#endif
   auto completion = std::make_unique<CompileCompletion>();
   completion->document_id = document_id;
   completion->load_revision = revision;
   completion->config_sha256 = "synthetic-test-hash";
+#if defined(PAE_BUILD_PROTOCOL_LAB_PUBLIC_LEGACY_COMPLETE)
+  completion->route = SchemaDispatchStatus::LEGACY_PUBLIC;
+  completion->compiler_attempt_count = 1U;
+  if (result.Succeeded()) {
+    completion->public_compiled =
+        std::make_unique<pae::CompiledProtocol>(std::move(result).TakeCompiled());
+  } else if (result.Diagnostic() != nullptr) {
+    completion->public_diagnostic = *result.Diagnostic();
+    std::fprintf(stderr, "public fixture compile failed: %s\n",
+                 result.Diagnostic()->detail.c_str());
+  }
+#else
   if (result.Succeeded()) {
     completion->artifacts = std::make_unique<config_compiler::CompiledUiArtifacts>(
         std::move(result).TakeArtifacts());
@@ -56,6 +72,7 @@ inline std::unique_ptr<CompileCompletion> CompileFixture(DocumentId document_id,
     completion->diagnostic = *result.Diagnostic();
     std::fprintf(stderr, "fixture compile failed: %s\n", result.Diagnostic()->detail.c_str());
   }
+#endif
   return completion;
 }
 

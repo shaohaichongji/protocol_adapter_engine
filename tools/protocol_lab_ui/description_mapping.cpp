@@ -8,6 +8,7 @@
 namespace pae::protocol_lab_ui {
 namespace {
 
+#if !defined(PAE_PROTOCOL_LAB_STANDALONE_PUBLIC_ONLY)
 constexpr std::size_t kInvalidIndex = static_cast<std::size_t>(-1);
 
 bool ToSize(std::uint64_t value, std::size_t& output) noexcept {
@@ -20,6 +21,50 @@ template <typename Span>
 std::string CopyResolved(const config_compiler::UiDescriptionSidecar& sidecar, Span span) {
   return std::string{sidecar.Resolve(span)};
 }
+
+FieldValueType MapValueType(protocol_plan::ValueType value) noexcept {
+  switch (value) {
+    case protocol_plan::ValueType::UINT64: return FieldValueType::UINT64;
+    case protocol_plan::ValueType::INT64: return FieldValueType::INT64;
+    case protocol_plan::ValueType::BYTES: return FieldValueType::BYTES;
+    case protocol_plan::ValueType::ENUM: return FieldValueType::ENUM;
+    case protocol_plan::ValueType::BOOL: return FieldValueType::BOOL;
+  }
+  return FieldValueType::UINT64;
+}
+
+FieldWireCodec MapWireCodec(protocol_plan::WireCodec value) noexcept {
+  switch (value) {
+    case protocol_plan::WireCodec::UNSIGNED_INTEGER: return FieldWireCodec::UNSIGNED_INTEGER;
+    case protocol_plan::WireCodec::BYTES: return FieldWireCodec::BYTES;
+    case protocol_plan::WireCodec::BITFIELD: return FieldWireCodec::BITFIELD;
+#if defined(PAE_ENABLE_SCHEMA_V10_ASCII_TEXT_CODEC)
+    case protocol_plan::WireCodec::ASCII_TEXT: return FieldWireCodec::ASCII_TEXT;
+#endif
+  }
+  return FieldWireCodec::UNSIGNED_INTEGER;
+}
+
+FieldByteOrder MapByteOrder(protocol_plan::ByteOrder value) noexcept {
+  switch (value) {
+    case protocol_plan::ByteOrder::NOT_APPLICABLE: return FieldByteOrder::NOT_APPLICABLE;
+    case protocol_plan::ByteOrder::BIG: return FieldByteOrder::BIG;
+    case protocol_plan::ByteOrder::LITTLE: return FieldByteOrder::LITTLE;
+  }
+  return FieldByteOrder::NOT_APPLICABLE;
+}
+
+FieldEncodeSource MapEncodeSource(protocol_plan::EncodeSource value) noexcept {
+  switch (value) {
+    case protocol_plan::EncodeSource::INPUT: return FieldEncodeSource::INPUT;
+    case protocol_plan::EncodeSource::CONSTANT: return FieldEncodeSource::CONSTANT;
+#if defined(PAE_ENABLE_SCHEMA_V07_LENGTH_COMPILER)
+    case protocol_plan::EncodeSource::COMPUTED: return FieldEncodeSource::COMPUTED;
+#endif
+  }
+  return FieldEncodeSource::INPUT;
+}
+#endif
 
 std::string BitSet(std::size_t byte_index, std::uint8_t mask, bool global) {
   std::ostringstream output;
@@ -35,6 +80,7 @@ std::string BitSet(std::size_t byte_index, std::uint8_t mask, bool global) {
   return output.str();
 }
 
+#if !defined(PAE_PROTOCOL_LAB_STANDALONE_PUBLIC_ONLY)
 void MergeBit(std::vector<PhysicalBitMask>& output, std::size_t byte_index, std::uint8_t mask) {
   const auto found = std::lower_bound(
       output.begin(), output.end(), byte_index,
@@ -95,9 +141,11 @@ bool BuildPhysicalMapping(const protocol_plan::FrozenFieldPlan& field,
   }
   return true;
 }
+#endif
 
 }  // namespace
 
+#if !defined(PAE_PROTOCOL_LAB_STANDALONE_PUBLIC_ONLY)
 bool BuildDocumentDescription(const protocol_plan::PlanBundle& plan,
                               const config_compiler::UiDescriptionSidecar& sidecar,
                               DocumentDescription& output, std::string& error) {
@@ -243,10 +291,10 @@ bool BuildDocumentDescription(const protocol_plan::PlanBundle& plan,
       field_item.display_name = CopyResolved(sidecar, field_meta.display_name);
       field_item.description = CopyResolved(sidecar, field_meta.description);
       field_item.source_ref = CopyResolved(sidecar, field_meta.source_ref);
-      field_item.value_type = field.value_type;
-      field_item.wire_codec = field.wire_codec;
-      field_item.byte_order = field.byte_order;
-      field_item.encode_source = field.encode_source;
+      field_item.value_type = MapValueType(field.value_type);
+      field_item.wire_codec = MapWireCodec(field.wire_codec);
+      field_item.byte_order = MapByteOrder(field.byte_order);
+      field_item.encode_source = MapEncodeSource(field.encode_source);
       field_item.enum_entries.reserve(field.enum_entries.size());
       for (std::size_t entry_index = 0U; entry_index < field.enum_entries.size(); ++entry_index) {
         const auto& entry = field.enum_entries[entry_index];
@@ -261,7 +309,8 @@ bool BuildDocumentDescription(const protocol_plan::PlanBundle& plan,
           error = "field conversion index is outside the Plan";
           return false;
         }
-        field_item.conversion = plan.Conversions()[field.conversion_index];
+        (void)plan.Conversions()[field.conversion_index];
+        field_item.decimal_conversion = true;
       }
 #endif
       if (!BuildPhysicalMapping(field, field_execution, execution, field_item, error)) return false;
@@ -353,11 +402,11 @@ bool BuildDocumentDescription(const protocol_lab::ascii::DocumentDescription& so
       field.display_name = source_field.display_name;
       field.description = source_field.description;
       field.source_ref = source_field.source_ref;
-      field.value_type = protocol_plan::ValueType::BYTES;
-      field.wire_codec = protocol_plan::WireCodec::ASCII_TEXT;
-      field.byte_order = protocol_plan::ByteOrder::NOT_APPLICABLE;
-      field.encode_source = source_field.encode_referenced ? protocol_plan::EncodeSource::INPUT
-                                                           : protocol_plan::EncodeSource::CONSTANT;
+      field.value_type = FieldValueType::BYTES;
+      field.wire_codec = FieldWireCodec::ASCII_TEXT;
+      field.byte_order = FieldByteOrder::NOT_APPLICABLE;
+      field.encode_source = source_field.encode_referenced ? FieldEncodeSource::INPUT
+                                                           : FieldEncodeSource::CONSTANT;
       field.byte_width = source_field.max_byte_length;
       field.byte_length_bounds =
           ByteLengthBounds{source_field.min_byte_length, source_field.max_byte_length};
@@ -388,6 +437,7 @@ bool BuildDocumentDescription(const protocol_lab::ascii::DocumentDescription& so
   error.clear();
   return true;
 }
+#endif
 #endif
 
 #if defined(PAE_BUILD_PROTOCOL_LAB_ASCII_PUBLIC_A2)
@@ -449,11 +499,11 @@ bool BuildDocumentDescription(const protocol_lab_ascii::public_offline::OwnedDes
       field.display_name = field_value.display_name;
       field.description = field_value.description;
       field.source_ref = field_value.source_ref;
-      field.value_type = protocol_plan::ValueType::BYTES;
-      field.wire_codec = protocol_plan::WireCodec::ASCII_TEXT;
-      field.byte_order = protocol_plan::ByteOrder::NOT_APPLICABLE;
-      field.encode_source = field_value.encode_referenced ? protocol_plan::EncodeSource::INPUT
-                                                          : protocol_plan::EncodeSource::CONSTANT;
+      field.value_type = FieldValueType::BYTES;
+      field.wire_codec = FieldWireCodec::ASCII_TEXT;
+      field.byte_order = FieldByteOrder::NOT_APPLICABLE;
+      field.encode_source = field_value.encode_referenced ? FieldEncodeSource::INPUT
+                                                          : FieldEncodeSource::CONSTANT;
       field.byte_width = field_value.byte_length.maximum;
       field.byte_length_bounds =
           ByteLengthBounds{field_value.byte_length.minimum, field_value.byte_length.maximum};

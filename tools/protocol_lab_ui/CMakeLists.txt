@@ -21,6 +21,107 @@ if(NOT pae_protocol_lab_ui_max_fixture_result EQUAL 0)
 endif()
 
 add_library(
+    pae_protocol_lab_ui_owned_presentation
+    STATIC
+        canonical_input.cpp
+        canonical_input.h
+        ascii_host_types.cpp
+        ascii_host_types.h
+        owned_presentation_types.h
+        ui_physical_types.h
+)
+
+if(PAE_ENABLE_SCHEMA_V10_ASCII_TEXT_CODEC)
+    add_library(
+        pae_protocol_lab_ui_ascii_types_compat
+        STATIC
+            ascii_host_types_compat.cpp
+            ascii_host_types_compat.h
+    )
+    target_include_directories(
+        pae_protocol_lab_ui_ascii_types_compat
+        PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}"
+    )
+    target_link_libraries(
+        pae_protocol_lab_ui_ascii_types_compat
+        PUBLIC pae_protocol_lab_ui_owned_presentation PAE::pae
+        PRIVATE pae_protocol_lab_ascii_adapter_internal pae::project_options
+    )
+    set_target_properties(
+        pae_protocol_lab_ui_ascii_types_compat
+        PROPERTIES CXX_VISIBILITY_PRESET hidden VISIBILITY_INLINES_HIDDEN YES
+    )
+endif()
+target_include_directories(
+    pae_protocol_lab_ui_owned_presentation
+    PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}"
+)
+target_link_libraries(
+    pae_protocol_lab_ui_owned_presentation
+    PUBLIC PAE::pae
+    PRIVATE pae::project_options
+)
+set_target_properties(
+    pae_protocol_lab_ui_owned_presentation
+    PROPERTIES
+        CXX_VISIBILITY_PRESET hidden
+        VISIBILITY_INLINES_HIDDEN YES
+)
+
+if(PAE_BUILD_PROTOCOL_LAB_ASCII_PUBLIC_A2)
+    if(NOT TARGET pae_protocol_lab_ascii_public_a1)
+        message(FATAL_ERROR "ASCII public UI facade requires the public A1 adapter target.")
+    endif()
+    add_library(
+        pae_protocol_lab_ui_ascii_public_facade
+        STATIC
+            ascii_host_adapter.cpp
+            ascii_host_adapter.h
+            ascii_host_types.h
+    )
+    target_include_directories(
+        pae_protocol_lab_ui_ascii_public_facade
+        PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}"
+    )
+    target_link_libraries(
+        pae_protocol_lab_ui_ascii_public_facade
+        PUBLIC
+            pae_protocol_lab_ui_owned_presentation
+            pae_protocol_lab_ascii_public_a1
+            PAE::pae
+        PRIVATE pae::project_options
+    )
+    set_target_properties(
+        pae_protocol_lab_ui_ascii_public_facade
+        PROPERTIES CXX_VISIBILITY_PRESET hidden VISIBILITY_INLINES_HIDDEN YES
+    )
+    if(PAE_BUILD_PROTOCOL_LAB_HOST_OBSERVER)
+        add_library(
+            pae_protocol_lab_ui_ascii_private_compat
+            STATIC
+                ascii_host_adapter_compat.cpp
+                ascii_host_adapter_compat.h
+        )
+        target_include_directories(
+            pae_protocol_lab_ui_ascii_private_compat
+            PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}"
+        )
+        target_link_libraries(
+            pae_protocol_lab_ui_ascii_private_compat
+            PUBLIC pae_protocol_lab_ui_ascii_public_facade
+            PRIVATE
+                pae_protocol_lab_ui_ascii_types_compat
+                pae_protocol_lab_ascii_adapter_internal
+                pae::project_options
+        )
+        set_target_properties(
+            pae_protocol_lab_ui_ascii_private_compat
+            PROPERTIES CXX_VISIBILITY_PRESET hidden VISIBILITY_INLINES_HIDDEN YES
+        )
+    endif()
+endif()
+
+add_library(
     pae_protocol_lab_ui_headless_internal
     STATIC
         compile_worker.cpp
@@ -37,6 +138,29 @@ add_library(
         inspect_hex_input.cpp
         inspect_hex_input.h
 )
+if(PAE_BUILD_PROTOCOL_LAB_PUBLIC_LEGACY_COMPLETE)
+    target_sources(
+        pae_protocol_lab_ui_headless_internal
+        PRIVATE
+            public_legacy_complete_adapter.cpp
+            public_legacy_complete_adapter.h
+    )
+    target_link_libraries(
+        pae_protocol_lab_ui_headless_internal
+        PUBLIC PAE::pae
+    )
+    target_compile_definitions(
+        pae_protocol_lab_ui_headless_internal
+        PUBLIC PAE_BUILD_PROTOCOL_LAB_PUBLIC_LEGACY_COMPLETE=1
+    )
+    if(PAE_BUILD_TESTING)
+        # Public because the adapter class layout is visible to linked test consumers.
+        target_compile_definitions(
+            pae_protocol_lab_ui_headless_internal
+            PUBLIC PAE_PROTOCOL_LAB_UI_TEST_INSTRUMENTATION=1
+        )
+    endif()
+endif()
 target_include_directories(
     pae_protocol_lab_ui_headless_internal
     PUBLIC
@@ -45,6 +169,7 @@ target_include_directories(
 target_link_libraries(
     pae_protocol_lab_ui_headless_internal
     PUBLIC
+        pae_protocol_lab_ui_owned_presentation
         pae_protocol_lab_c1_execution_internal
     PRIVATE
         pae_config_compiler
@@ -60,6 +185,7 @@ if(PAE_ENABLE_SCHEMA_V10_ASCII_TEXT_CODEC)
     target_link_libraries(
         pae_protocol_lab_ui_headless_internal
         PUBLIC pae_protocol_lab_ascii_adapter_internal
+        PRIVATE pae_protocol_lab_ui_ascii_types_compat
     )
 endif()
 if(PAE_BUILD_PROTOCOL_LAB_BINARY_UI)
@@ -97,17 +223,16 @@ if(PAE_BUILD_PROTOCOL_LAB_BINARY_PUBLIC_H2)
     target_compile_definitions(pae_protocol_lab_ui_headless_internal PUBLIC PAE_BUILD_PROTOCOL_LAB_BINARY_PUBLIC_H2=1)
 endif()
 if(PAE_BUILD_PROTOCOL_LAB_ASCII_PUBLIC_A2)
-    if(NOT TARGET pae_protocol_lab_ascii_public_a1)
-        message(FATAL_ERROR "ASCII public A2 requires the public A1 adapter target.")
-    endif()
-    target_sources(
-        pae_protocol_lab_ui_headless_internal
-        PRIVATE ascii_host_adapter.cpp ascii_host_adapter.h
-    )
     target_link_libraries(
         pae_protocol_lab_ui_headless_internal
-        PUBLIC pae_protocol_lab_ascii_public_a1
+        PUBLIC pae_protocol_lab_ui_ascii_public_facade
     )
+    if(PAE_BUILD_PROTOCOL_LAB_HOST_OBSERVER)
+        target_link_libraries(
+            pae_protocol_lab_ui_headless_internal
+            PRIVATE pae_protocol_lab_ui_ascii_private_compat
+        )
+    endif()
     target_compile_definitions(
         pae_protocol_lab_ui_headless_internal
         PUBLIC PAE_BUILD_PROTOCOL_LAB_ASCII_PUBLIC_A2=1

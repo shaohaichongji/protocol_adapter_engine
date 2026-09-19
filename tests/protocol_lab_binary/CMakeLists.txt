@@ -1,7 +1,12 @@
+set(pae_lab_binary_test_source_root "${PROJECT_SOURCE_DIR}")
+if(DEFINED PAE_LAB_STANDALONE_TEST_SOURCE_ROOT)
+    set(pae_lab_binary_test_source_root "${PAE_LAB_STANDALONE_TEST_SOURCE_ROOT}")
+endif()
+
 if(PAE_BUILD_PROTOCOL_LAB_BINARY_PUBLIC_H1)
     add_executable(pae_binary_public_h1_tests public_binary_decode_tests.cpp)
     target_link_libraries(pae_binary_public_h1_tests PRIVATE pae_protocol_lab_binary_public_h1 pae::project_options)
-    add_test(NAME pae.protocol_lab_binary.public_h1 COMMAND pae_binary_public_h1_tests ${PROJECT_SOURCE_DIR})
+    add_test(NAME pae.protocol_lab_binary.public_h1 COMMAND pae_binary_public_h1_tests ${pae_lab_binary_test_source_root})
     set_tests_properties(pae.protocol_lab_binary.public_h1 PROPERTIES TIMEOUT 60 LABELS "lab_binary;public_h1;offline")
 endif()
 

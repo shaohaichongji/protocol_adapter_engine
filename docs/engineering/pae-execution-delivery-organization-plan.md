@@ -5,6 +5,113 @@
 
 ## 顺序与出口
 
+### 当前实施：Qt Lab installed-SDK shared D/R（2026-09-19）
+
+最终限定收口：总控已核对standalone包类型/同源runtime/manifest哈希门禁与部署及启动前校验源码，读取D/R各32项结果、Testing-off隔离/运行哈希记录、实际PAE/Qt模块来源、错DLL拒绝日志和static Debug dumpbin回归；当前99文件与r2快照零差异证据已读，未重复构建测试。本地static/shared Qt Lab安装SDK消费链路限定闭合，执行任务停止，无新人工验收。C4251/稳定ABI、dirty SDK、Qt正式分发许可、Linux、历史AV和focus-out观察边界不变。下一步建议整理累积变更与提交候选清单，另行取得Git授权，不自动重打包/发布/删除。
+
+用户授权下一步，《Lab应用推进》独占；PAE/工程整理停止。main@c5b3692加全部既有未提交实现保留。以已限定收口的static功能源为基线，仅补shared安装SDK消费与运行闭包，不改协议执行/展示行为。允许tools/protocol_lab_ui/standalone内CMake、输入准备/部署/模块取证脚本、README及必要专用门禁测试；报告独占docs/engineering/lab-sdk-standalone-shared-validation.md，总控计划/AGENTS由总控维护。其他源码或测试需改先停报，不改PAE公共API/Core、根构建、third_party及旧部署，无Git/发布/删除授权。
+
+使用既有candidate1-20260918的shared Debug/Release包，保持dbf4798 dirty provenance；不重打SDK。新仓库外短根建议F:/PersonalWorkspace/pae-lab-sdk-shared-20260919，先检查不存在，冲突唯一后缀；白名单复制Lab/配置/固定Qt/yyjson及SDK，不复制PAE开发src、不覆盖static证据根。准备入口新增显式包类型选择，原static行为保留，禁止shared失败后static fallback。
+
+通过PAE::pae imported target解析匹配配置的import library和runtime DLL，规范化并验证均属于当次SDK根；部署匹配pae.dll到新有界目录。测试可执行文件也须获得明确同源运行DLL，不依赖开发目录或系统PATH。串行shared D/R Testing-on/off：复用现有32项功能矩阵、有效Release断言、产品无注入/私有桥；核对dumpbin依赖、实际加载PAE与Qt DLL/plugin路径及输入/部署/加载文件哈希。记录进程局部环境与源码快照一致性，不改全局环境，仅结束本轮启动进程。
+
+负例包括缺/错SDK根、D/R包错配、runtime缺失及用另一配置DLL替换的来源/哈希拒绝；用全新替代输入/部署，不删除或覆盖原件。D/R DLL不保证由Windows loader自动拒绝，必须由配置/来源/哈希门禁拒绝，不把能加载等同兼容。既有Qt/yyjson门禁未改可引用static证据；构建/部署共享逻辑发生变化时做最小static回归，不重跑完整static矩阵。历史AV或Debug0.8焦点偶发留证停报，不反复刷绿或顺带修复。
+
+完成向总控01a04601-757d-7bb1-8254-61dde4954d74反馈一次完整交接摘要，停止写入待复核。不新增人工验收，不正式分发，不宣称clean release、稳定ABI、Linux或长期稳定性；无Stage/Commit/Push/发布/删除授权。
+
+### 当前实施：Qt Lab installed-SDK static D/R 首片（2026-09-19）
+
+最终限定收口：总控已读取D/R Testing-off模块来源JSON及采集脚本，确认Core/Gui/Widgets/qwindows实际路径均在各自新部署根，加载文件/部署/Qt输入三方哈希一致；环境仅部署PATH前置和进程局部Qt插件路径，不宣称完全清空系统环境。当前仓库97个可映射白名单文件与r8 manifest零差异证据已读，两份新增核对脚本不进入产品。结合前次r8 D/R各32项与r7不变产品证据，本地static包外构建首片限定收口，未重复构建测试、无人工验收。Debug0.8 focus-out及历史AV保持未解决观察边界。执行任务停止；下一片shared D/R及PAE DLL部署/加载来源尚未派发，无Stage/Commit/Push/发布/删除授权。
+
+总控回收：已读取standalone目标/来源门禁/部署脚本及验证报告，核对r7/r8输入清单仅description_mapping_tests.cpp不同，读取r8 D/R 32项结果；未重复测试。暂不收口：报告称受控Qt smoke，但现有smoke日志仅功能输出，需补Testing-off D/R实际加载Core/Gui/Widgets及qwindows模块路径和与输入哈希一致性证据，同时记录进程局部环境。仅来源核对，不重跑32项、不改产品代码、不修Debug 0.8偶发focus-out；该观察项保持未解决。补齐后再限定总控复核，shared未派发。
+
+用户确认上述边界，授权《Lab应用推进》独占实施。精确源码/功能/输入清单沿用 lab-sdk-standalone-implementation-scope.md 第2–8节，仅执行 static 首片；PAE/工程整理停止。基线 main@c5b3692 加既有未提交切片，全部保留。yyjson 方案A批准：Lab显式消费现有锁定0.12.0源文件、LICENSE和lock，由独立Lab vendor target编译；不得借用PAE私有target、下载升级或新增PAE API。“不重复编译”指不重复编译协议配置及不重复建立Lab vendor target，不要求修改已打包PAE内部yyjson实现。
+
+允许报告第4节范围的兼容声明/类型隔离、standalone CMake与局部目标接线、必要公共展示helper及测试；不得复制整套session状态机。保留开发树兼容和全部第2节功能，standalone显式选择已迁移public路径，不改旧入口默认开关。root CMake、include/pae、src、SDK打包脚本及既有Qt/yyjson源不改，越界停报。允许在standalone下提供白名单输入准备/验证脚本及README，所有脚本文件编辑用apply_patch；不在脚本中删除或清空既有目录。
+
+批准仅为本地closure验证复制现有dirty-provenance SDK、固定Qt及获批yyjson/许可证到新的仓库外验证根。建议短根 F:/PersonalWorkspace/pae-lab-sdk-static-20260919，先验证不存在，冲突时唯一后缀，禁止覆盖旧根；输入只复制白名单，不带PAE开发src，不裁改源Qt，不正式分发。记录各类输入清单/哈希、SDK原provenance和Lab未提交源码身份，不伪称clean release。配置/测试fixture缺白名单项可按现有用例补齐并列明，禁止为通过而减少功能。
+
+串行static Debug/Release，每配置分Testing-on/off目录；执行报告第8.1节适用功能测试/自动Qt smoke、有效Release断言、Testing-off无注入/测试宏检查。检查真实编译与链接输入来源，只通过PAE::pae消费SDK；PAE静态包内部依赖由导出target提供不等于Lab引用开发私有桥。缺/错SDK、D/R错配、Qt输入缺失/错版、yyjson锁定输入不符须fail-closed；用替代测试输入模拟缺失，不删除原输入。部署仅新有界目录，受控环境验证Qt模块/plugin来源，保留失败日志；历史AV再现停报，不无限复跑。
+
+报告独占 docs/engineering/lab-sdk-standalone-validation.md；不改总控计划/AGENTS。完成static验证后向总控01a04601-757d-7bb1-8254-61dde4954d74主动反馈一次文件/命令/结果/来源/风险/Git状态，停止写入待复核。shared另派，不重打SDK、不新增人工验收、不覆盖旧部署、不改本机环境，无Stage/Commit/Push/发布/删除授权。Qt正式外发许可与Linux/稳定ABI不在本片。
+
+### 当前准备：整个 Qt Lab installed-SDK 独立构建（2026-09-19）
+
+用户同意开始下一步。先由《Lab应用推进》独占完成实施前的精确源码白名单/功能保留/剩余兼容声明处置核对，仅写 docs/engineering/lab-sdk-standalone-implementation-scope.md，不修改代码/CMake、不构建测试、不复制依赖。基线 main@c5b3692 加已复核未提交切片，全部保留；PAE/工程整理停止。此准备避免把旧预检中的已解决依赖当作当前事实。
+
+最终目标仍为仅 Lab 源码、安装 PAE SDK 和固定 Qt 的真实仓库外构建，先 static D/R，复核后 shared D/R；不移除 0.5–0.8 complete、0.9 Decode、0.10 complete、0.11 stream/Host 或原有交互以取得通过。当前 schema_dispatch.cpp 直接依赖 yyjson，依赖归属尚待用户确认：建议 Lab 显式消费仓库已有版本及许可证，独立于 PAE 私有 target，不新增 PAE API/重复编译/新版本下载。确认前不实施该选择。
+
+核对报告应列出精确允许编辑文件、public-only 编译时需排除的旧声明/源与仍保留的开发兼容路径、最小功能验证矩阵、包外输入清单、既有 SDK 候选及 dirty provenance、Qt/helper/fixture 来源、安全新目录、禁止私有源码 fallback 与配置错配负例。不能宣称尚未运行的构建已通过。完成后向总控 01a04601-757d-7bb1-8254-61dde4954d74 主动反馈一次，停止写入等待实施派发。无 Stage/Commit/Push/发布/删除授权；不覆盖旧部署、不修改系统 Qt。
+
+### 当前实施：ASCII 私有兼容闭包隔离（2026-09-19）
+
+最终限定收口：总控已读取增强后的公开编译→CreatePublicDirect→Inspect 测试、D/R各1/1日志及实际链接输入，确认调用了 façade 非内联实现，且不链接 headless/旧 ASCII adapter/private compatibility；Release /UNDEBUG 证据已核对。结合前次实现与4项回归复核，本片限定收口，未重复测试，不追加人工验收。执行任务停止；整个 Qt Lab SDK 包外构建仍未完成，下一片为独立构建入口与 static/shared D/R 消费验证，尚未派发。既有兼容代码、默认开关、旧部署保留，无 Stage/Commit/Push/发布/删除授权。
+
+总控回收：已读取公开 façade/backend、私有转换边界、CMake 与 D/R 各4/4、兼容 Debug 各2/2 日志，未重复运行。暂不收口：独立 façade 测试当前仅使用 DTO/状态名，不能保证静态链接器拉入 ascii_host_adapter.cpp；限定补真实公开编译、CreatePublicDirect 与 Decode 调用，检查实际 executable 链接输入不含旧 adapter/private compatibility。仅该专项 D/R，不重复全矩阵或人工验收，报告补充证据后停止待复核。
+
+用户同意下一步，《Lab应用推进》独占实施；PAE/工程整理保持停止。基线 main@c5b3692 加现有未提交 DTO 与 legacy complete 迁移，全部保留。本片为整个 Qt Lab 包外构建的前置，不提前宣称整体 public-only，不执行 Stage/Commit/Push/发布/删除。
+
+目标：解除 Qt ASCII 公开 façade 对旧 host_observer_adapter DTO、私有 Action 与兼容实现的传递依赖。为 binding/identity/operation/result/stream observation 建立最小 Lab-owned 类型，或复用已存在的公开适配自有类型；禁止仅 alias 私有类型。公开路径只消费 public ASCII adapter 与公开 PAE，私有路径在独立兼容源文件/目标边界转换。保留现有兼容功能及门禁组合，不删除旧 targets，不靠禁用既有功能取得通过。0.10/0.11 的单编译、同源 owner、调用次数、预算、Flow 草稿/结果隔离、STOP/Continue/Reset/冻结后缀及失败清旧语义不变，不建立第二套流状态。
+
+允许 tools/protocol_lab_ui 的 ascii_host_adapter、自有 ASCII DTO/兼容源文件、必要 document_session/document_tab/compile_worker/description_mapping 类型边界转换及局部 CMake；tests/protocol_lab_ui 相应测试和局部注册。根 CMake 仅确有必要的兼容隔离接线，不改现有默认开关或重构构建。非 Qt public ASCII adapter 执行算法、include/pae、src、CLI/Evidence/Replay/UDP、Binary 能力、旧部署不改。若存在公开事实缺口、需改变执行语义或超范围修改，保留证据停报。报告独占 docs/engineering/lab-ascii-compat-isolation-validation.md，总控维护计划/索引。
+
+先列实际依赖闭包与等价性断言，再实施。新目录 out/build/windows-msvc-lab-ascii-compat-isolation（占用则唯一后缀），证据 out/lab-ascii-compat-isolation。串行 Debug/Release 定向验证 A2/0.11、mixed Pipeline、Flow、失败清旧及所有权/预算；复用原测试，仅补本片改变的类型/调用路径断言。提供公开 façade 头与源 target 不依赖 private PAE/旧 ASCII adapter 的独立编译/链接证据，不能以整个 headless target 仍链接私有库冒充隔离完成。保留兼容门禁关闭/混合组合的针对性构建证据；Release 断言有效，新增测试注入不得进入 Testing-off 产品。旧 legacy/其他 headless 私有闭包仍可后置并明确报告。
+
+不重打 SDK、不覆盖已验收部署、不要求新人工验收、不全仓重复刷绿；历史 Qt 访问违例再现则留证停报。完成后向总控 01a04601-757d-7bb1-8254-61dde4954d74 主动反馈一次完整交接摘要，停止写入等待复核。复核后再另派整个 Qt Lab 独立构建与 static/shared D/R 消费验证。
+
+### 当前实施：0.5–0.8 complete-record 公开消费迁移（2026-09-19）
+
+最终限定收口：总控已核对故障注入声明/定义/全局与实例状态/触发分支的测试门禁，PUBLIC 宏保证目标与消费者布局一致；最终4份源码哈希吻合，D/R专项各1/1、Testing-off Release UI构建及测试宏/注入符号零匹配证据已读取，未重复运行。结合前次预算返修D/R各13/13回归，本片限定收口，不追加人工验收。执行任务停止；门禁仍默认OFF，旧部署不变，不等于默认产品已切换或整个Qt Lab包外构建完成。下一片建议隔离ASCII私有兼容类型/源依赖，再独立构建；尚未派发。无Stage/Commit/Push/发布/删除授权。下方为返修过程。
+
+预算返修复核：三项主体修正已核对源码、D/R专项1/1及回归13/13日志和源码哈希；Codec零额度探测当前在工作区分配前返回计费，属于当前实现依据，不升级为稳定ABI承诺。收口前再限定隔离新增故障注入：ForTesting方法/全局状态/实例状态/触发分支仅允许Testing构建，检查宏与类布局一致。仅D/R专项及Testing-off Release产品验证，不重复全矩阵；尚未收口。
+
+总控回收：已读新 adapter 完整实现及报告，暂不收口。定向返修三项：描述先复制后预算拒绝；结果 BYTES 预检少计两份 hex 文本、失败结果未统一总额限制；noexcept 准备函数 catch 中动态诊断再次分配风险。原任务限定 adapter/测试/报告修正，必要 session 错误映射；先补行为失败断言，D/R受影响回归，新 budget-fix 证据保留旧日志。实例/Codec 预检能力按公开API事实报告，不扩大为RSS保证。无新Git/发布授权，不进入下一片或人工验收。
+
+用户同意下一步，授权《Lab应用推进》独占迁移；基线 main@c5b3692 加已复核未提交的 owned DTO 首片，全部保留。PAE/工程整理停止。先核对公开 metadata/Codec 与旧 UI 行为等价清单，再实施；若存在公开事实缺口，保留证据停报，不猜值、不扩 PAE API、不双编译或失败后回退私有路径。
+
+目标：Qt Lab 0.5–0.8 首次加载/重载单次公开编译，同源 compiled owner 生成 Lab-owned 描述并创建 complete Codec。保持 Pipeline 限定 Decode、消息身份、精确 raw/logical/物理范围、typed Encode、constant/computed、变长/长度/CRC/Decimal64、成功 Encode 后既有独立 Decode review（明确与 Codec 内部 final review 区分）；不为展示增加其他执行。借用结果在失效前有界复制，失败清旧成功，owner/工作区/结果内存按现有预算检查，逻辑预算不代表 RSS。保持异步 load/reload/close 身份与发布事务，不给 legacy 增加 Host/stream，不改变 0.9/0.10/0.11 路径或 CLI。
+
+允许 tools/protocol_lab_ui 内新增 public complete adapter/描述映射，以及 schema_dispatch、compile_worker、document_session 和必要展示错误映射；复用 owned DTO，测试在 tests/protocol_lab_ui，局部 CMake 必要接线。根 CMake 仅必要默认 OFF 的迁移门禁与公开目标依赖，禁止重构根构建或移除旧 target。不开该门禁仍保留旧兼容；开启时 0.5–0.8 不调用 private compiler/Core。不得修改 include/pae、src、tools/protocol_lab CLI/旧桥、其他 adapter 执行实现或已验收部署。独占报告 docs/engineering/lab-public-legacy-complete-validation.md；总控维护计划/索引。
+
+新独立 out/build/windows-msvc-lab-public-legacy-complete（占用则唯一后缀），证据 out/lab-public-legacy-complete。先添加有意义的行为/调用路径断言，再迁移；串行 D/R 定向覆盖0.5–0.8正常编解码、失败/清旧、转换边界、长度/完整性、消息/Pipeline限制、review与所有权/预算；受影响load/close及H2/A2/0.11定向回归。Release断言有效，检查默认OFF及Testing-off；不重复全仓、SDK五包或六组包消费。可用自动Qt smoke，不覆盖部署、不先要求人工操作；交付后总控决定是否需要最多一组人工抽查。若历史访问违例再现留证停报，不无限复跑。
+
+完成向总控01a04601-757d-7bb1-8254-61dde4954d74主动反馈一次交接，停止写入待复核。无Stage/Commit/Push/发布/删除授权。本片不代表整个Qt Lab已包外解耦；ASCII兼容闭包与独立构建仍后置。
+
+### 当前实施：Lab 自有展示类型与输入工具首片（2026-09-19）
+
+最新回收：执行任务已停止，总控完成限定源码差异与日志复核，未重复构建测试。已核对 owned DTO/Decimal64/整数解析实现、私有/public 映射、旧执行边界显式转换、局部 target 与 Release 断言设置；D/R 各 9 项 headless、8 项 Qt smoke 及旧 Binary compatibility 各 1 项通过日志存在。本片限定收口，不追加人工验收。测试先行的 C1083 仅证明新接口尚不存在，不作为行为缺陷复现证据。整个 Qt Lab 仍有私有执行/类型依赖，不能称整体 public-only；下一片候选为 0.5–0.8 complete 执行迁移的精确范围，尚未派发。无提交/推送/发布/删除。详细证据见 [首片验证](lab-owned-presentation-types-validation.md)。下方保留派发边界。
+
+用户确认本轮边界并授权执行。基线 `main@c5b3692`，保护两份未提交盘点报告及总控计划。由《Lab应用推进》独占实施；PAE/工程整理停止，不并发修改共享文件。
+
+本片仅建立不依赖 private PAE/旧执行桥的 Lab-owned 字段/消息/文档展示 DTO、字段 enum、typed draft/Decimal64 和 canonical 整数输入解析工具。先补行为断言，再替换共享类型；公开与旧路径各自在 mapping 边界转换，执行 owner、调用次数、Schema dispatch、预算/事务语义保持不变。conversion 只保留现有展示/编辑所需事实，不新增公式展示；若完整参数确有执行用途则保留边界转换并报告，不擅自丢弃。首片不迁移流状态、诊断全体系或 0.5–0.8 执行。
+
+允许 `tools/protocol_lab_ui/` 中 description mapping、自有 DTO/utility 新文件、document_session 的 typed draft/转换、field table/delegate、public binary description 及必要展示调用点；仅为类型迁移做机械转换，不重构 owner。允许 `tests/protocol_lab_ui/` 定向测试和局部 CMake 注册；根 CMake/PAE public/src/旧执行桥与 ASCII/Binary adapter 执行实现不改。需要越界时停报。报告独占 `docs/engineering/lab-owned-presentation-types-validation.md`，其余计划/索引由总控维护。
+
+新独立构建 `out/build/windows-msvc-lab-owned-presentation-types`（已存在则唯一后缀），证据 `out/lab-owned-presentation-types/`。串行 D/R 验证整数边界/非法 canonical 输入、Decimal64 无损复制、字段类型/source/编辑器/只读与物理展示、受影响 legacy 与 H2/A2/0.11 回归；Release 断言有效。增加独立自有头/工具编译检查，不能包含 private PAE 或 v06 执行桥。不声称整个 UI 头/目标已解耦，不重打 SDK，不覆盖部署或启动人工验收。若 DTO 大小变化，核对受影响 sizeof/预算准入，不扩大预算契约。
+
+本轮范围仅 Qt Lab，保留仓内兼容代码，Binary 0.9 保持 Decode-only，CLI/Evidence/Replay/UDP 不动。历史 Qt 访问违例再现则留证停报，不重复刷绿。完成向总控 `01a04601-757d-7bb1-8254-61dde4954d74` 主动反馈一次交接摘要，停止写入，等待复核。无 Stage/Commit/Push/发布/删除授权；后续旧执行迁移和独立构建仍串行另派。
+
+### 最新回收：Lab 剩余依赖盘点（2026-09-19）
+
+两份报告已交付，执行任务均停止写入。总控已阅读并交叉核对 Qt target 的私有链接、schema dispatch 的 yyjson 依赖、0.9 Encode availability 和共享 DTO/数字解析引用；本批仅静态复核，未构建或运行测试。
+
+- 功能报告：[剩余公开消费边界](lab-public-consumption-residual-audit.md)；构建报告：[包外构建预检](lab-sdk-external-build-preflight.md)。
+- 0.9 complete Decode、0.10 complete Decode/Encode、0.11 complete/stream 的已迁移配置走公开执行，但共享 DTO 和兼容分支仍引入私有类型；0.5–0.8 仍有实际私有编译/Core 执行。整个 Qt Lab 尚非包外 public-only。
+- 建议顺序：先限定 Lab-owned 展示 DTO/utility（执行 owner 不变），再迁移 0.5–0.8 complete 执行，再隔离 ASCII 私有兼容闭包，最后独立构建入口及 static/shared D/R 包外验证。首片仍需按精确文件/行为清单收敛，不能把所有状态类型一次性重构。
+- 建议本轮范围仅 Qt Lab；CLI/Evidence/Replay/UDP 保持原状，仓内私有兼容 targets 保留，包外目标不包含它们。0.9 保持当前 Qt Decode-only，不顺带新增 Binary Encode/stream；当前展示保持，不新增 conversion 公式展示或 PAE 接口。上述范围待用户确认后再派实现。
+- yyjson 是独立构建的后续依赖决策，DTO 首片无需改变它；不得用新 UI 专用 PAE 接口绕过依赖，也不重新打开已确定的随仓 Qt 选择。
+
+本批报告收口不代表实现或包外验证完成；无新 Stage/Commit/Push/发布/删除授权。历史 Qt 访问违例仍独立保留。
+
+### 当前派发：Lab 剩余依赖与包外构建定向盘点（2026-09-19）
+
+用户授权下一步，基线 `main@c5b3692`（本地提交、未 Push）。本批只读代码/构建配置，各执行任务仅写各自报告，不 Configure/Build/Test、不改实现或 CMake、不删除、不提交/推送/发布。总控维护计划及协作索引，PAE 执行任务停止。
+
+- 《Lab应用推进》独占 `docs/engineering/lab-public-consumption-residual-audit.md`：按用户入口/Schema/Decode/Encode/stream/Host 列出运行路径；将 private 依赖区分为真实执行依赖、类型/DTO/展示耦合、仅旧分支和测试耦合。给出文件/符号证据、可复用公开 API、真实缺口与最小迁移顺序，不能用 grep 命中数量替代调用链判断。特别说明 Binary Encode/其他 legacy 的实际状态，不能默认为已迁移或未支持。不得以删除/禁用旧功能伪造 public-only。
+- 《PAE工程整理》独占 `docs/engineering/lab-sdk-external-build-preflight.md`：静态盘点 Lab target/link/include/source/build/deploy 闭包，区分现有非 Qt 包消费与整个 Qt Lab 独立构建，给出仅 Lab 源码+已安装 PAE SDK+随仓 Qt 的候选输入白名单、禁止开发仓库 fallback 的检查及建议验证入口。只提出构建改动清单，不创建包/脚本、不复制/下载/删除产物。功能覆盖以 Lab 报告回收后由总控合并，不自行判断删减功能。
+
+两份报告并行、写入范围互斥，无需互相等待或发送唤醒消息。各自附最小下一片、依赖先后、必须用户拍板项和未验证边界；完成向总控主动反馈一次并停止。总控回收后串行确定 DTO/运行依赖迁移与独立构建切片，不自动授权后续实施或新 PAE 接口。历史 Qt 访问违例独立保留，不开展新崩溃排查或人工验收。
+
 ### 0.11 本地提交检查点（2026-09-19）
 
 用户在本片人工收口后同意推进下一步，本轮整理静态 framing 公开查询、新 SDK 消费验证、Lab 非 Qt stream 与 Qt 接线的累积变更形成本地提交；不 Push、不发布、不删除、不启动新功能。保留既有验证来源和 dirty SDK provenance，提交并不把旧候选改写为干净发布物。已核对文件范围和差异，沿用此前限定源码复核、D/R 专项、包外消费及三组用户烟测，不重复成功测试；提交前检查暂存差异及空白，提交后检查工作树。外层 AGENTS 不在仓库内，out 产物不纳入提交。下一步候选为剩余 Lab private 依赖及包外消费边界的定向盘点，尚未派发。

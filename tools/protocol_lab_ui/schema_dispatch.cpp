@@ -79,7 +79,13 @@ SchemaDispatchResult ClassifySchemaVersion(std::string_view json_bytes) {
   const std::string_view value{yyjson_get_str(version), yyjson_get_len(version)};
   if (value == "0.9") return {SchemaDispatchStatus::BINARY_PUBLIC, {}};
   if (value == "0.5" || value == "0.6" || value == "0.7" || value == "0.8")
-    return {SchemaDispatchStatus::PRIVATE_LEGACY, {}};
+    return {
+#if defined(PAE_BUILD_PROTOCOL_LAB_PUBLIC_LEGACY_COMPLETE)
+        SchemaDispatchStatus::LEGACY_PUBLIC,
+#else
+        SchemaDispatchStatus::PRIVATE_LEGACY,
+#endif
+        {}};
 #if defined(PAE_ENABLE_SCHEMA_V10_ASCII_TEXT_CODEC)
   if (value == "0.10")
     return {

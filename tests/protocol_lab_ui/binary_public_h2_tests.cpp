@@ -57,12 +57,23 @@ int main() {
          bad_binary->compiler_attempt_count == 1U && bad_binary->public_diagnostic &&
          !bad_binary->artifacts && !bad_binary->diagnostic);
   auto bad_legacy = Compile(worker, 103U, 1U, R"({"schema_version":"0.5"})");
+#if defined(PAE_BUILD_PROTOCOL_LAB_PUBLIC_LEGACY_COMPLETE)
+  assert(bad_legacy->route == ui::SchemaDispatchStatus::LEGACY_PUBLIC &&
+         bad_legacy->compiler_attempt_count == 1U && bad_legacy->public_diagnostic &&
+         !bad_legacy->artifacts && !bad_legacy->diagnostic);
+#else
   assert(bad_legacy->route == ui::SchemaDispatchStatus::PRIVATE_LEGACY &&
          bad_legacy->compiler_attempt_count == 1U && bad_legacy->diagnostic &&
          !bad_legacy->public_compiled && !bad_legacy->public_diagnostic);
+#endif
   auto legacy = Compile(worker, 104U, 1U, legacy_json);
+#if defined(PAE_BUILD_PROTOCOL_LAB_PUBLIC_LEGACY_COMPLETE)
+  assert(legacy->route == ui::SchemaDispatchStatus::LEGACY_PUBLIC &&
+         legacy->compiler_attempt_count == 1U && legacy->public_compiled && !legacy->artifacts);
+#else
   assert(legacy->route == ui::SchemaDispatchStatus::PRIVATE_LEGACY &&
          legacy->compiler_attempt_count == 1U && legacy->artifacts && !legacy->public_compiled);
+#endif
   auto ascii = Compile(worker, 105U, 1U, ascii_json);
 #if defined(PAE_BUILD_PROTOCOL_LAB_ASCII_PUBLIC_A2)
   assert(ascii->route == ui::SchemaDispatchStatus::ASCII_PUBLIC &&

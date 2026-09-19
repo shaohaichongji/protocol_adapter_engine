@@ -9,11 +9,14 @@
 #include <string_view>
 #include <vector>
 
+#if !defined(PAE_PROTOCOL_LAB_STANDALONE_PUBLIC_ONLY)
 #include "../../src/config_compiler/config_compiler.h"
+#endif
 #include "schema_dispatch.h"
 #if defined(PAE_BUILD_PROTOCOL_LAB_BINARY_PUBLIC_H2) || \
     defined(PAE_BUILD_PROTOCOL_LAB_ASCII_PUBLIC_A2) || \
-    defined(PAE_BUILD_PROTOCOL_LAB_ASCII_PUBLIC_STREAM_UI)
+    defined(PAE_BUILD_PROTOCOL_LAB_ASCII_PUBLIC_STREAM_UI) || \
+    defined(PAE_BUILD_PROTOCOL_LAB_PUBLIC_LEGACY_COMPLETE)
 #include "pae/compiler.h"
 #endif
 
@@ -29,14 +32,30 @@ struct CompileCompletion {
   DocumentId document_id = 0U;
   Revision load_revision = 0U;
   std::string config_sha256;
+  struct Diagnostic {
+    std::string detail;
+
+    Diagnostic() = default;
+    Diagnostic(const char* value) : detail(value) {}
+    explicit Diagnostic(std::string value) : detail(std::move(value)) {}
+    template <typename Source>
+    Diagnostic(const Source& source) : detail(source.detail) {}
+  };
+#if !defined(PAE_PROTOCOL_LAB_STANDALONE_PUBLIC_ONLY)
   std::unique_ptr<config_compiler::CompiledUiArtifacts> artifacts;
-  std::optional<config_compiler::CompileDiagnostic> diagnostic;
+#else
+  // Keeps existing negative ownership assertions source-compatible without importing the
+  // private compiler DTO into the installed-SDK build.
+  std::nullptr_t artifacts = nullptr;
+#endif
+  std::optional<Diagnostic> diagnostic;
   SchemaDispatchStatus route = SchemaDispatchStatus::PRIVATE_LEGACY;
   std::string classification_error;
   std::size_t compiler_attempt_count = 0U;
 #if defined(PAE_BUILD_PROTOCOL_LAB_BINARY_PUBLIC_H2) || \
     defined(PAE_BUILD_PROTOCOL_LAB_ASCII_PUBLIC_A2) || \
-    defined(PAE_BUILD_PROTOCOL_LAB_ASCII_PUBLIC_STREAM_UI)
+    defined(PAE_BUILD_PROTOCOL_LAB_ASCII_PUBLIC_STREAM_UI) || \
+    defined(PAE_BUILD_PROTOCOL_LAB_PUBLIC_LEGACY_COMPLETE)
   std::unique_ptr<pae::CompiledProtocol> public_compiled;
   std::optional<pae::CompileDiagnostic> public_diagnostic;
 #endif

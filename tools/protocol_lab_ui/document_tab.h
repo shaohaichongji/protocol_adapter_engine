@@ -105,7 +105,7 @@ class DocumentTab final : public QWidget {
   std::string host_config_text_;
   std::optional<Revision> host_pending_revision_;
   Revision host_request_sequence_ = 0U;
-  std::vector<protocol_lab::ascii::HostBinding> host_pending_bindings_;
+  std::vector<AsciiHostBinding> host_pending_bindings_;
 #if defined(PAE_BUILD_PROTOCOL_LAB_BINARY_UI)
   std::vector<BinaryHostBinding> binary_host_pending_bindings_;
   std::optional<BinaryPreparationIdentity> binary_host_pending_identity_;

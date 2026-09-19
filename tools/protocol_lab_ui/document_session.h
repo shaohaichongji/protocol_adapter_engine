@@ -6,26 +6,34 @@
 #include <optional>
 #include <string>
 #include <unordered_map>
-#include <variant>
 #include <vector>
 
+#if !defined(PAE_PROTOCOL_LAB_STANDALONE_PUBLIC_ONLY)
 #include "../protocol_lab/v06_execution.h"
+#endif
 #include "ascii_escaped_input.h"
+#include "ascii_host_types.h"
 #include "compile_worker.h"
 #include "description_mapping.h"
 #include "inspect_hex_input.h"
+#include "lab_execution_observer.h"
 #include "ui_field_result.h"
+#if defined(PAE_BUILD_PROTOCOL_LAB_PUBLIC_LEGACY_COMPLETE)
+#include "public_legacy_complete_adapter.h"
+#endif
 #if defined(PAE_BUILD_PROTOCOL_LAB_BINARY_UI)
 #include "binary_host_adapter.h"
 #endif
-#if defined(PAE_BUILD_PROTOCOL_LAB_HOST_OBSERVER)
 #if defined(PAE_BUILD_PROTOCOL_LAB_ASCII_PUBLIC_A2)
 #include "ascii_host_adapter.h"
-#else
+#endif
+#if !defined(PAE_PROTOCOL_LAB_STANDALONE_PUBLIC_ONLY) && \
+    defined(PAE_BUILD_PROTOCOL_LAB_HOST_OBSERVER) && \
+    !defined(PAE_BUILD_PROTOCOL_LAB_ASCII_PUBLIC_A2)
 #include "../protocol_lab_ascii/host_observer_adapter.h"
 #endif
-#endif
-#if defined(PAE_ENABLE_SCHEMA_V10_ASCII_TEXT_CODEC)
+#if !defined(PAE_PROTOCOL_LAB_STANDALONE_PUBLIC_ONLY) && \
+    defined(PAE_ENABLE_SCHEMA_V10_ASCII_TEXT_CODEC)
 #include "../protocol_lab_ascii/ascii_offline_adapter.h"
 #endif
 
@@ -73,11 +81,6 @@ struct PreviewKey {
   SelectionKey selection;
 };
 
-struct EnumSelection {
-  std::size_t entry_index = 0U;
-  std::string entry_id;
-};
-
 struct InvalidDraftState {
   std::u16string text;
   std::string validation_error;
@@ -87,9 +90,6 @@ struct OperationDiagnostic {
   std::string id;
   std::string detail;
 };
-
-using TypedDraft = std::variant<std::uint64_t, std::int64_t, std::vector<std::uint8_t>,
-                                EnumSelection, bool, protocol_lab::v06::Decimal64>;
 
 struct PreviewResult {
   PreviewKey key;
@@ -137,6 +137,9 @@ InspectFailure MakeStructuralInspectFailure(std::string status,
                                             std::vector<std::uint8_t> input_frame);
 
 struct PreparedDocument {
+#if defined(PAE_BUILD_PROTOCOL_LAB_PUBLIC_LEGACY_COMPLETE)
+  std::unique_ptr<PublicLegacyCompleteAdapter> public_legacy_adapter;
+#endif
 #if defined(PAE_BUILD_PROTOCOL_LAB_BINARY_UI)
   std::unique_ptr<BinaryHostAdapter> binary_host_adapter;
 #endif
@@ -149,11 +152,17 @@ struct PreparedDocument {
 #endif
   // Declaration order is intentional: destruction is reverse, so the bridge (and its workspaces
   // and Plan) dies before the sidecar storage.
+#if !defined(PAE_PROTOCOL_LAB_STANDALONE_PUBLIC_ONLY)
   config_compiler::UiDescriptionSidecar description;
-  std::string config_sha256;
   std::unique_ptr<protocol_lab::v06::ExecutionBridge> bridge;
-#if defined(PAE_ENABLE_SCHEMA_V10_ASCII_TEXT_CODEC)
+#endif
+  std::string config_sha256;
+#if !defined(PAE_PROTOCOL_LAB_STANDALONE_PUBLIC_ONLY) && \
+    defined(PAE_ENABLE_SCHEMA_V10_ASCII_TEXT_CODEC)
   std::unique_ptr<protocol_lab::ascii::OfflineAdapter> ascii_adapter;
+#elif defined(PAE_PROTOCOL_LAB_STANDALONE_PUBLIC_ONLY)
+  // Source-compatible negative assertion only; no private adapter type enters this build.
+  std::nullptr_t ascii_adapter = nullptr;
 #endif
 #if defined(PAE_BUILD_PROTOCOL_LAB_ASCII_PUBLIC_A2)
   std::unique_ptr<protocol_lab_ascii::public_offline::Adapter> public_ascii_adapter;
@@ -243,13 +252,13 @@ class DocumentSession final {
   bool SetInvalidDraftUtf16(std::size_t field_index, std::u16string text,
                             std::string validation_error);
   bool SetDraft(std::size_t field_index, TypedDraft value);
-  bool Encode(protocol_lab::v06::ExecutionObserver* observer = nullptr,
+  bool Encode(LabExecutionObserver* observer = nullptr,
               InputMaterializationTimer* input_materialization_timer = nullptr,
               std::int64_t* input_materialization_ns = nullptr);
   bool SetInspectDraft(std::string text);
   bool SetInspectDraftUtf16(std::u16string text);
   void RejectInspectCapacity(std::size_t capacity);
-  bool Inspect(protocol_lab::v06::ExecutionObserver* observer = nullptr);
+  bool Inspect(LabExecutionObserver* observer = nullptr);
 #if defined(PAE_BUILD_PROTOCOL_LAB_ASCII_STREAM_OBSERVER)
   bool SubmitStream();
   bool ContinueStream();
@@ -258,10 +267,10 @@ class DocumentSession final {
   bool StreamContinueAvailable() const noexcept;
   bool StreamHasDiscardableState() const noexcept;
   std::size_t StreamChunkBudget() const noexcept;
-  const std::optional<protocol_lab::ascii::StreamStepResult>& stream_step() const noexcept {
+  const std::optional<AsciiStreamStepResult>& stream_step() const noexcept {
     return stream_step_;
   }
-  std::optional<protocol_lab::ascii::StreamObservation> StreamObservation() const noexcept;
+  std::optional<AsciiStreamObservation> StreamObservation() const noexcept;
 #endif
   void Close();
 
@@ -317,7 +326,7 @@ class DocumentSession final {
     ByteRepresentation representation = ByteRepresentation::HEX;
     std::optional<InspectResult> result;
     std::optional<InspectFailure> failure;
-    std::optional<protocol_lab::ascii::StreamStepResult> step;
+    std::optional<AsciiStreamStepResult> step;
     std::optional<Revision> submitted;
     Revision input_revision = 0U;
     std::unordered_map<std::size_t, TypedDraft> encode_drafts;
@@ -341,8 +350,10 @@ class DocumentSession final {
   InspectResultKey MakeInspectResultKey() const;
   bool PreviewKeyStillCurrent(const PreviewKey& key) const noexcept;
   bool InspectKeyStillCurrent(const InspectResultKey& key) const noexcept;
+#if !defined(PAE_PROTOCOL_LAB_STANDALONE_PUBLIC_ONLY)
   bool ResolveInspectMessage(const protocol_lab::v06::Result& result, std::size_t& message_index,
                              std::string& message_id) const noexcept;
+#endif
   void RefreshDocumentState();
   void ClearEncodeFailure();
   void SetEncodeFailure(std::string id, std::string detail);
@@ -372,7 +383,7 @@ class DocumentSession final {
   std::optional<InspectResult> inspect_result_;
   std::optional<InspectFailure> inspect_failure_;
 #if defined(PAE_BUILD_PROTOCOL_LAB_ASCII_STREAM_OBSERVER)
-  std::optional<protocol_lab::ascii::StreamStepResult> stream_step_;
+  std::optional<AsciiStreamStepResult> stream_step_;
   std::optional<Revision> submitted_stream_input_revision_;
 #endif
   std::string diagnostic_id_;
