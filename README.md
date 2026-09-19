@@ -4,14 +4,15 @@ ProtocolAdapterEngine（PAE，协议适配引擎）当前工程版本为 `0.1.0`
 
 PAE 的目标是通过严格配置完成工业二进制协议的有方向 Decode（解析）、Encode（组包）、Framing（切帧）、Integrity（完整性校验）和 Receive Gate（接收门禁）。它不拥有串口、Socket、CAN、IPC、线程、设备生命周期、重试恢复、UI 或业务状态机。
 
-## 当前入口（2026-09-14）
+## 当前入口（2026-09-19）
 
 - 权威 JSON Schema 当前枚举 `0.1`～`0.11`；各版本增量及工具支持边界见 [Schema 导航](schema/README.md)。
 - PAE 非 Qt 层已有配置编译/冻结 Plan、完整记录 Decode/Encode、Binary/ASCII 有界 Framing、Integrity 以及 Host 绑定等内部切片；具体契约和验证入口见 [仓库文档索引](docs/README.md)。
 - Qt Lab 可观察 ASCII `0.10/0.11` 路径；Binary Host UI 当前只开放 Schema `0.9` 完整记录 Decode。Binary Encode、Submit/Continue 和流式能力已存在于非 Qt 底层，但尚未接入 Binary UI。
 - 当前成果定位为限定内部试用。Windows 自动化、人工 Lab、Loopback、Golden、硬件、现场和生产验收是不同证据层级，不能相互替代。
-- 推荐的 Windows 开发入口是 [`windows-msvc-pae-lab`](#推荐构建和启动)；它显式选择已验证的 MSVC v142 14.29.30133 与随仓 Qt 5.13，不改变项目默认关闭的能力开关。
-- 当前未提交实现与最新检查点边界见 [DEC-040 后续路线当前段](docs/engineering/post-dec040-roadmap.md) 和 [Binary UI Stage 1 验证记录](docs/engineering/lab-binary-ui-stage1-validation.md)。
+- 仓库内开发构建仍以 [`windows-msvc-pae-lab`](#1-开发树构建)为入口；现有 SDK 候选消费和完整 Qt Lab standalone 构建分别见下方第 2、3 条路径。
+- 完整 Qt Lab 已完成基于同一 `98df5e0` clean-checkpoint SDK 的 static/shared Debug/Release 本地仓库外闭包验证；这不是稳定 ABI、Linux、正式分发或人工 UI 验收证据。
+- 当前本地检查点与后续授权边界见 [公开执行、独立交付与仓库整理推进计划](docs/engineering/pae-execution-delivery-organization-plan.md)。
 
 ## 历史状态快照（保留）
 
@@ -133,6 +134,8 @@ docs/                    仓库内通用技术文档
 
 ## 推荐构建和启动
 
+### 1. 开发树构建
+
 在仓库根目录执行。推荐入口是显式的完整 PAE + Qt Lab 开发组合；它不会构建旧 Protocol Lab CLI，因为 Schema 0.11 与该 CLI/Evidence 链按当前契约不能共存。
 
 ```powershell
@@ -153,6 +156,34 @@ ctest --preset windows-msvc-pae-lab-release
 完整部署目录包含 EXE、Qt DLL、`platforms/qwindows.dll` 和公开合成配置；`bin/Release/pae_protocol_lab_ui.exe` 只是链接产物，不能视为可独立分发或启动入口。Debug 对应目录为 `out/protocol_lab_ui/Debug`。
 
 早期 Spike、Loader、Codec 与 CLI 预设继续保留，服务历史切片复现，不作为当前 Qt Lab 的推荐入口。构建目录和本地证据均位于忽略的 `out/`；2026-09-14 当时的盘点及清理边界见 [历史生成产物盘点](docs/archive/generated-artifact-inventory-20260914.md)，其中外层归档路径现已失效。
+
+### 2. 现有 SDK 候选消费
+
+当前可定位的五包候选根为 `out/sdk-clean-checkpoint/candidate1-20260919/`；请先读
+[Windows x64 SDK 快速入口](docs/guides/pae-sdk-windows-quickstart.md)，再读所选包的 `PAE-SDK-README.md`。
+Source 包通过 `PAE_SOURCE_DIR` 引入，Static/Shared 包通过 `CMAKE_PREFIX_PATH` 和
+`find_package(PAE CONFIG REQUIRED)` 消费 `PAE::pae`。该候选五包均记录
+`source_head=98df5e0d844413fb6ad16a75dfceedcf17f2f1d6` 和 `source_worktree_dirty=false`；这仅说明打包输入来自干净检查点，不表示当前共享工作树无文档变更，也不是正式发布包。
+
+### 3. 完整 Qt Lab standalone 构建
+
+需验证“Lab 白名单源码 + 单个 installed PAE SDK + 固定 Qt/yyjson”时，从
+[`tools/protocol_lab_ui/standalone/README.md`](tools/protocol_lab_ui/standalone/README.md) 进入。输入准备脚本
+`tools/protocol_lab_ui/standalone/PrepareStandaloneInputs.ps1` 要求显式传入 `-RepositoryRoot`、
+`-DestinationRoot`、`-SdkCandidateRoot` 和 `-PackageKind static|shared`，且拒绝覆盖已有目标。
+Configure 时至少指定 `PAE_SDK_ROOT`、`PAE_QT_ROOT`、`PAE_LAB_DEPENDENCY_ROOT` 与
+`PAE_LAB_EXPECTED_LIBRARY_KIND=STATIC|SHARED`；产品闭包检查再设 `PAE_LAB_BUILD_TESTING=OFF`。
+该入口只是本地 closure validation，不是打包器，也没有生成统一部署物。
+
+当前普通本地使用优先启动 static Release 闭包：
+
+```powershell
+& 'F:\PersonalWorkspace\pae-lab-clean-sdk-static-20260919\deploy\release-testing-off\Release\pae_protocol_lab_ui.exe'
+```
+
+配置文件位于同一目录的 `configs\`。shared Release 作为 DLL 消费对照入口，位于
+`F:\PersonalWorkspace\pae-lab-clean-sdk-shared-20260919\deploy\release-testing-off\Release\pae_protocol_lab_ui.exe`，
+其同目录必须保留本批验证过的 `pae.dll`、Qt DLL、`platforms\` 和 `configs\`。这两个目录是本地验证产物，不替换旧部署也不构成正式分发。
 
 ## 构建 JSON Parser Spike
 

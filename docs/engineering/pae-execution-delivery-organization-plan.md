@@ -5,6 +5,44 @@
 
 ## 顺序与出口
 
+### 当前派发：同批 SDK/Lab 使用入口最终同步（2026-09-19）
+
+最终回收：六入口文档已完成，总控核对实际差异、新候选/产品路径与standalone依赖参数，EXE/configs/plugin路径存在，git diff --check通过。未改功能或重跑测试；standalone README变化已明确与旧验证快照区分。执行任务停止，本批候选为7份修改及3份新增Markdown，共10文件，等待用户确认提交信息后再Stage/Commit，Push另行授权；外层AGENTS不纳入仓库提交。
+
+用户同意收尾。《PAE工程整理》独占 README.md、docs/README.md、docs/guides/README.md、docs/guides/pae-sdk-windows-quickstart.md、docs/engineering/README.md、tools/protocol_lab_ui/standalone/README.md，在已有入口修改上增量同步98df5e0干净五包及新static/shared Lab实际部署路径。旧dirty候选仅保留历史身份；明确本地使用非正式发布，不能改历史报告或宣称共享树clean。只检查路径/链接/参数与文档差异，不运行构建/启动/测试命令，不改脚本/代码/依赖或复制删除产物。
+
+Lab/PAE停止，总控维护本计划及外层AGENTS。完成向总控01a04601-757d-7bb1-8254-61dde4954d74反馈一次并停止；总控复核后整理本轮文档提交候选，未获新Stage/Commit/Push授权。入口README变化不影响既有功能证据，但不能再宣称修改后的完整白名单与旧快照逐字相同；记录文档差异，不因此重跑功能验证。
+
+### 当前实施：Lab 消费同批干净 SDK（2026-09-19）
+
+限定收口：总控已读取本片报告、四组CTEST各32项全通过记录、产品隔离审计及模块来源JSON，并现场重算四套部署18个模块的输入/部署/已加载路径文件哈希一致；读取99文件快照一致性证据，未重跑构建测试。98df5e0同批干净SDK与static/shared Qt Lab本地消费链路已限定闭合，执行任务停止，无新人工验收。保留初次路径参数错误记录、历史AV/focus-out、C4251/稳定ABI、Linux和许可/正式发布边界。下一步为使用入口最终同步与文档检查点整理，尚未派发，无新Stage/Commit/Push/发布/删除授权。证据见lab-clean-sdk-consumption-validation.md。
+
+用户授权下一步派发。《Lab应用推进》独占验证，PAE/工程整理停止。输入为out/sdk-clean-checkpoint/candidate1-20260919的static/shared D/R四包，均98df5e0/dirty=false；Lab功能源码和standalone脚本须核对与98df5e0一致，保留共享树文档修改，不将共享树整体标为clean。固定随仓Qt/yyjson，只复制现有获批依赖，不修改本机环境或依赖。
+
+新包外根建议F:/PersonalWorkspace/pae-lab-clean-sdk-static-20260919和pae-lab-clean-sdk-shared-20260919，先检查不存在，冲突唯一后缀，禁止覆盖旧r7/r8/r2及本轮SDK。使用现有准备/部署/模块来源脚本，static→shared，各D/R Testing-on既有32项、Testing-off产品构建及隔离核对严格串行；Release断言须生效。新部署的Qt DLL/plugin及shared PAE DLL实际加载路径和SDK/依赖输入→部署→加载哈希需取得证据，static依赖无pae.dll。未改Qt/yyjson校验逻辑可引用原负例；针对新SDK验证包类型/D-R错配、缺/错PAE DLL拒绝，用新派生输入，不删除或替换原件。普通SDK与Lab的门禁分开叙述。
+
+唯一共享仓库可写报告docs/engineering/lab-clean-sdk-consumption-validation.md；其余仅新包外构建/部署/日志，禁止改代码、CMake、脚本、SDK或其他文档，缺口停报。standalone README的旧dirty说明不作为新SDK事实，以manifest/provenance及报告为准，后续入口统一更新。历史AV/focus-out若再现保留日志停报，不反复刷绿或顺带修复。无复杂人工验收、Stage/Commit/Push/正式发布/删除授权。完成后向总控01a04601-757d-7bb1-8254-61dde4954d74主动反馈一次完整摘要，停止写入待复核；不得自行扩大能力或发布声明。
+
+### 当前实施：干净检查点 SDK 五包与包外消费（2026-09-19）
+
+限定回收：总控已读取验证报告、六组消费结果及来源汇总、D/R错配和缺DLL拒绝日志，现场确认detached源码HEAD与空status，独立复算五包184条SHA256全部匹配且provenance同为98df5e0/dirty=false。未重复构建运行。本片本地SDK候选限定收口；短生命周期consumer没有运行中模块路径快照，普通SDK也没有DLL内容哈希拒绝门禁，不能借用Lab机制扩大结论。执行任务停止，下一片为Lab消费同批SDK，尚未派发；无新Git/发布/删除授权。报告见pae-sdk-clean-checkpoint-validation.md。
+
+用户同意 detached 本地 clone 方案并授权推进。《子任务推进》独占执行：精确提交 98df5e0d844413fb6ad16a75dfceedcf17f2f1d6，创建全新本地 detached clone，核验 HEAD 和空 status；构建、打包输出均在其外，不复制共享树未提交文档。沿用打包脚本，保留固定 snapshot_note 并在验证报告解释其通用文案与 dirty=false 机器事实，不修改脚本或元数据冒充新实现。
+
+建议源根 F:/PersonalWorkspace/pae-clean-checkpoint-98df5e0-source；候选、构建、证据及外部消费根沿用 pae-sdk-clean-checkpoint-preflight.md 第4节建议，均先检查不存在，冲突使用唯一后缀，严禁覆盖旧根。允许本地 clone/checkout、五包生成及源码/static/shared 六组 D/R 串行验证、哈希/来源/符号/运行 DLL/错配负例；不改公共API/Core/Qt/功能代码。负例须核对实际门禁，普通 SDK 无对应拒绝机制时据实记录缺口，不把 Lab 专有校验当 SDK 能力，不自行扩代码。
+
+唯一仓库报告 docs/engineering/pae-sdk-clean-checkpoint-validation.md；忽略的 out 中允许本片新产物和日志。总控维护计划及外层 AGENTS，工程整理/Lab 停止。完成向总控 01a04601-757d-7bb1-8254-61dde4954d74 主动反馈一次，停止写入待复核。新 SDK 通过后再派 Lab 消费同批 SDK，本次不含该后片；无 Stage/Commit/Push/正式发布/删除授权，不新增人工验收，不改变系统环境，不宣称稳定 ABI/Linux/生产可用。
+
+### 当前派发：提交后入口同步与新 SDK 范围核对（2026-09-19）
+
+用户授权规划并派发。基线 main@98df5e0，62 文件检查点已本地提交、未 Push；派发前工作树干净。以下旧实施段为历史证据。本批仅文档入口更新及打包前静态核对，不生成 SDK、不构建测试、不改功能、不发布或删除，无新 Stage/Commit/Push 授权。
+
+- 《PAE工程整理》独占 README.md、docs/README.md、docs/guides/README.md、docs/guides/pae-sdk-windows-quickstart.md、docs/engineering/README.md：区分开发树、现有候选 SDK 和 standalone Lab 入口，纠正落后的迁移状态，不改历史验证结论，不虚构新包或统一部署已生成。
+- 《子任务推进》仅写 docs/engineering/pae-sdk-clean-checkpoint-preflight.md：只读核对五包打包入口、源码白名单、当前提交与旧候选功能输入差异、工具链及最小验证矩阵，提出从干净提交导出构建输入的方案。共享树将有本批文档改动，禁止把 dirty 工作树改标 clean，也不得为打包擅自提交或创建 worktree。本批不复制、构建、打包或修改脚本。
+- 两项并行，文件写入互斥；《Lab应用推进》保持停止。总控独占本计划和外层 AGENTS.md。两项完成均主动向总控 01a04601-757d-7bb1-8254-61dde4954d74 反馈一次交接摘要并停止写入，待复核。
+
+回收后再确定干净源码身份及新目录，串行执行新 SDK 五包/包外消费 → Lab 使用同批 SDK → 入口最终定稿。此次派发不授权后续实施；不新增复杂人工验收，不扩 Binary/TLV/Linux 或稳定 ABI 承诺，既有 AV、focus-out 和 Qt 外发许可边界保留。
+
 ### 当前实施：Qt Lab installed-SDK shared D/R（2026-09-19）
 
 最终限定收口：总控已核对standalone包类型/同源runtime/manifest哈希门禁与部署及启动前校验源码，读取D/R各32项结果、Testing-off隔离/运行哈希记录、实际PAE/Qt模块来源、错DLL拒绝日志和static Debug dumpbin回归；当前99文件与r2快照零差异证据已读，未重复构建测试。本地static/shared Qt Lab安装SDK消费链路限定闭合，执行任务停止，无新人工验收。C4251/稳定ABI、dirty SDK、Qt正式分发许可、Linux、历史AV和focus-out观察边界不变。下一步建议整理累积变更与提交候选清单，另行取得Git授权，不自动重打包/发布/删除。

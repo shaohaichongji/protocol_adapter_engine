@@ -4,10 +4,14 @@
 
 ## 当前总边界与路线
 
-- [ASCII 公开消费最小契约](pae-public-ascii-consumption-contract.md)：公开事实、SDK 独立消费及 Lab 0.10 A1/A2 已限定收口，0.11 stream 尚未迁移。进度见综合计划。
+- [ASCII 公开消费最小契约](pae-public-ascii-consumption-contract.md)：公开事实、SDK 独立消费及 Lab 0.10/0.11 公开路径已按后续切片推进；当前证据边界见综合计划和下方 standalone 记录。
 - 本轮证据：[ASCII SDK 消费](pae-public-ascii-sdk-validation.md)、[A1 非 Qt 适配](lab-public-ascii-offline-a1-validation.md)、[A2 UI/显式 Host](lab-public-ascii-ui-a2-validation.md)。A2 用户三组人工烟测通过不替代 Linux、真实协议或历史崩溃修复证据。
 - [公开执行、独立交付与仓库整理推进计划](pae-execution-delivery-organization-plan.md)
-- [Windows x64 SDK 阶段 3 契约](pae-sdk-stage3-contract.md)、[验证记录](pae-sdk-stage3-windows-validation.md)、[交付内容盘点](pae-sdk-stage3-content-review.md)、[消费复核](lab-sdk-stage3-consumer-review.md)：final6 本地交付已限定收口；使用见[SDK 快速入口](../guides/pae-sdk-windows-quickstart.md)，尚未正式发布或迁移 Lab。
+- [Windows x64 SDK 阶段 3 契约](pae-sdk-stage3-contract.md)、[验证记录](pae-sdk-stage3-windows-validation.md)、[交付内容盘点](pae-sdk-stage3-content-review.md)、[消费复核](lab-sdk-stage3-consumer-review.md)：`final6` 是已限定收口的历史交付身份；当前候选路径见 [SDK 快速入口](../guides/pae-sdk-windows-quickstart.md)。
+- [clean-checkpoint SDK 五包与包外消费验证](pae-sdk-clean-checkpoint-validation.md)：当前 `candidate1-20260919` 的独立打包源树为 `98df5e0`、`source_worktree_dirty=false`，六组 consumer 已完成限定验证。
+- [Lab 同批 clean-checkpoint SDK 消费验证](lab-clean-sdk-consumption-validation.md)：完整 Qt Lab 已完成同批 static/shared Debug/Release 本地 standalone 闭包；使用入口见 [`tools/protocol_lab_ui/standalone/README.md`](../../tools/protocol_lab_ui/standalone/README.md)。
+- [0.11 静态 Framing 查询 SDK 消费验证](pae-public-stream-sdk-validation.md)、[Qt Lab installed-SDK static 验证](lab-sdk-standalone-validation.md)和 [shared 验证](lab-sdk-standalone-shared-validation.md)：保留 `candidate1-20260918` dirty-provenance 候选的历史证据。
+- 当前 clean-checkpoint 结论不表示带文档变更的共享工作树整体 clean，也不是稳定 ABI、正式分发、Qt 许可复核、Linux 或新人工 UI 验收证据。
 - [公开 Host 2B 契约](pae-public-host-stage2b-contract.md)、[Windows 验证](pae-public-host-stage2b-validation.md)、[Lab 消费复核](lab-public-host-stage2b-consumer-review.md)：调用期 Encode selector 修正后已完成限定总控收口。
 - [公开 Framer/Host 分片设计](pae-public-framer-host-slice-design.md)、[Lab 消费需求复核](lab-public-framer-host-consumer-review.md)；当前 2A 实施边界以综合推进计划为准。
 - [公开 StreamFramer 2A Windows 验证](pae-public-framer-stage2a-validation.md)、[消费侧复核](lab-public-framer-stage2a-consumer-review.md)；报告指出的间接重入分类问题已修正并完成限定总控复核，详见综合计划最终状态。

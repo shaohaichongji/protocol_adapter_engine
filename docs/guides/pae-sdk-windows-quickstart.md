@@ -1,23 +1,25 @@
 # PAE Windows x64 SDK 快速入口
 
-本指南面向当前 Stage 3 本地候选的开发者消费。它不是正式发布说明；每个包内的
+本指南面向当前可定位的 Windows x64 本地 SDK 候选。它不是正式发布说明；每个包内的
 `PAE-SDK-README.md` 和 `examples/sdk_consumer` 是对应包的首要、可复现入口，本页只负责选包和
 说明共同边界。
 
 ## 1. 选择包目录
 
-从仓库根目录进入当前 `final6` 候选：
+从仓库根目录进入当前 `candidate1-20260919` 候选：
 
 | 形态 | 目录 | 配置 |
 | --- | --- | --- |
-| Source | `out/sdk-stage3/final6-20260915/pae-sdk-source` | 同一源码包构建 Debug、Release |
-| Static Debug | `out/sdk-stage3/final6-20260915/pae-sdk-static-debug` | 仅 Debug |
-| Static Release | `out/sdk-stage3/final6-20260915/pae-sdk-static-release` | 仅 Release |
-| Shared Debug | `out/sdk-stage3/final6-20260915/pae-sdk-shared-debug` | 仅 Debug |
-| Shared Release | `out/sdk-stage3/final6-20260915/pae-sdk-shared-release` | 仅 Release |
+| Source | `out/sdk-clean-checkpoint/candidate1-20260919/pae-sdk-source` | 同一源码包构建 Debug、Release |
+| Static Debug | `out/sdk-clean-checkpoint/candidate1-20260919/pae-sdk-static-debug` | 仅 Debug |
+| Static Release | `out/sdk-clean-checkpoint/candidate1-20260919/pae-sdk-static-release` | 仅 Release |
+| Shared Debug | `out/sdk-clean-checkpoint/candidate1-20260919/pae-sdk-shared-debug` | 仅 Debug |
+| Shared Release | `out/sdk-clean-checkpoint/candidate1-20260919/pae-sdk-shared-release` | 仅 Release |
 
 进入所选目录后，先读包根 `PAE-SDK-README.md`，再从包根执行其中针对该形态和配置给出的
 PowerShell 命令。构建目录应位于包外的新目录；不要回读开发仓库。
+五包 `PROVENANCE.json` 均记录 `source_head=98df5e0d844413fb6ad16a75dfceedcf17f2f1d6` 和
+`source_worktree_dirty=false`。这些字段说明独立打包源树的身份，不能用来宣称当前共享工作树无文档变更。
 
 ## 2. 工具链与配置配对
 
@@ -84,7 +86,30 @@ endif()
 
 不要从包中寻找或复制 Windows 系统 CRT DLL；使用与包匹配的已安装 MSVC Runtime。
 
-## 4. 能力与证据边界
+## 4. 完整 Qt Lab 的 standalone 入口
+
+本页上述 CMake 片段用于普通 PAE consumer，不代表完整 Qt Lab 构建。需要用所选 static 或 shared SDK
+构建完整 Qt Lab 时，读 [`tools/protocol_lab_ui/standalone/README.md`](../../tools/protocol_lab_ui/standalone/README.md)。
+`PrepareStandaloneInputs.ps1` 需要 `-RepositoryRoot`、`-DestinationRoot`、`-SdkCandidateRoot` 和
+`-PackageKind static|shared`；Configure 需将 `PAE_SDK_ROOT` 指向单个安装包根，并显式配对
+`PAE_LAB_EXPECTED_LIBRARY_KIND=STATIC|SHARED`。它还需要固定的 `PAE_QT_ROOT` 和
+`PAE_LAB_DEPENDENCY_ROOT`；用 `PAE_LAB_BUILD_TESTING=OFF` 做产品闭包检查。准备后的 CMake 源目录为
+`<DestinationRoot>/inputs/lab/tools/protocol_lab_ui/standalone`，Debug 和 Release 应使用分开的构建目录。
+
+已验证的本地 Release 产物可直接从下列精确路径启动；普通本地使用优先选 static：
+
+```powershell
+& 'F:\PersonalWorkspace\pae-lab-clean-sdk-static-20260919\deploy\release-testing-off\Release\pae_protocol_lab_ui.exe'
+```
+
+static 配置根为
+`F:\PersonalWorkspace\pae-lab-clean-sdk-static-20260919\deploy\release-testing-off\Release\configs`。
+shared 对照 EXE 为
+`F:\PersonalWorkspace\pae-lab-clean-sdk-shared-20260919\deploy\release-testing-off\Release\pae_protocol_lab_ui.exe`，
+其配置根为同目录下的 `configs`，并必须连同已验证的 `pae.dll`、Qt DLL 和 `platforms\` 保持原目录结构。
+两者均是本地验证产物，不是正式发布包也不替换旧部署。
+
+## 5. 能力与证据边界
 
 包内综合 consumer 覆盖当前公开 Compiler/metadata、Codec、StreamFramer、Host Decode，以及同一
 Encode Handle 在调用期选择两个 Message。具体 Binary/ASCII 编解码支持域应以公开 API、当前契约
@@ -93,13 +118,23 @@ Encode Handle 在调用期选择两个 Message。具体 Binary/ASCII 编解码�
 
 当前证据关系如下：
 
-- `final5` 完成 Source/Static/Shared 的 Debug/Release 六组正向构建与运行，并完成四组二进制包
+- `candidate1-20260919` 的 Source/Static/Shared Debug/Release 六组仓库外 consumer 均完成构建与运行，见
+  [clean-checkpoint SDK 验证](../engineering/pae-sdk-clean-checkpoint-validation.md)；
+- 完整 Qt Lab 对同批 SDK 的 static/shared Debug/Release 已有本地仓库外闭包证据，见
+  [Lab 同批 clean-checkpoint SDK 消费验证](../engineering/lab-clean-sdk-consumption-validation.md)；
+- `candidate1-20260918` 是已验证的旧 dirty-provenance 候选，只作为
+  [0.11 静态 Framing 查询 SDK 验证](../engineering/pae-public-stream-sdk-validation.md)、
+  [Qt Lab static 验证](../engineering/lab-sdk-standalone-validation.md) 和
+  [Qt Lab shared 验证](../engineering/lab-sdk-standalone-shared-validation.md) 的历史身份；
+- Stage 3 `final5`/`final6` 是更早的历史候选身份，不是本页第 1 节的当前路径。
+- 历史 `final5` 完成 Source/Static/Shared 的 Debug/Release 六组正向构建与运行，并完成四组二进制包
   Debug/Release 错配负向验证；
-- `final6` 只规范化三份源码示例 README 的路径表达及相应包元数据；总控复核的 166 个功能输入与
+- 历史 `final6` 只规范化三份源码示例 README 的路径表达及相应包元数据；总控复核的 166 个功能输入与
   `final5` 一致，没有在 `final6` 重新运行上述功能验证；
 - Debug/Release 公开 API 定向回归各 7/7 是此前既有证据，不是 `final6` 重跑结果。
 
-这些结论只覆盖指定 Windows x64 工具链和本地候选。尚无正式发布、稳定 ABI、任意自定义配置/
-toolset/CRT、Linux、Lab 迁移、真实协议、硬件、现场或生产证据。仓库尚无 PAE 项目级对外分发
+这些结论只覆盖指定 Windows x64 工具链、`98df5e0` clean-checkpoint 本地候选与同批 Lab 消费。尚无
+统一正式分发、稳定 ABI、任意自定义配置/toolset/CRT、Linux、真实协议、硬件、现场或生产证据。完整 Qt Lab standalone
+闭包也不等于新人工 UI 验收。仓库尚无 PAE 项目级对外分发
 许可证；这不阻断本地技术复核，但阻断正式对外发布。yyjson 的 MIT License 只适用于 yyjson，
 不能替代 PAE 自身授权。
