@@ -34,7 +34,7 @@
 - Host 的 candidate、Decode 字段和 Encode bytes 只在当前同步 callback 内借用。callback 异常被 Host
   捕获，已消费字节和已发生回调事实不会回滚，目标通道进入 `RESET_REQUIRED`；Encode 输出交付不等于
   Socket、串口或其他 Transport 已发送；
-- 本阶段不公开完整物理布局、C ABI、安装包或稳定跨版本/跨编译器 ABI。
+- 物理描述以 `protocol_description.h` 和 `compiler.h` 当前查询接口及支持域为准，不等于暴露整个私有 Plan；不提供 C ABI 或稳定跨版本/跨编译器 ABI 承诺。
 
 当前 Stage 1 构建支持 Schema 0.1～0.11；公开头布局不受仓库内部
 `PAE_ENABLE_SCHEMA_*` 功能宏影响。
@@ -56,5 +56,4 @@
 D/R 专项各 56/56、定向 CTest 各 10/10，新版 public-only consumer 两配置均验证同一 Handle 选择
 两个 Message 并通过；修正前 52/52 仅是创建期固定 Message 模型的历史证据。
 
-这些是列明工具链和范围内的限定 Windows 证据，不代表独立 SDK/安装包、Lab 迁移、Linux、网络、
-真实协议、硬件、现场或生产验证完成。2B Lab 针对复核和总控限定收口已完成。
+上述计数是各历史切片的限定 Windows 证据，不代表全量最新测试。后续 Windows x64 独立 SDK 五包与同批完整 Qt Lab 消费已另有验证，见[统一交付入口](../deliverables/README.md)。Linux、网络、真实协议、硬件、现场、稳定 ABI 与正式发布不由这些结果证明。

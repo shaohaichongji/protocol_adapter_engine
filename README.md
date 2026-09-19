@@ -6,6 +6,7 @@ PAE 的目标是通过严格配置完成工业二进制协议的有方向 Decode
 
 ## 当前入口（2026-09-19）
 
+- 直接使用现有 SDK 或 Lab：先打开 [统一本地交付入口](deliverables/README.md)；人类阅读从 [01 项目定位与能力边界](docs/guides/01-项目定位与能力边界.md) 开始，首次体验见 [02 首次运行与 Lab 体验](docs/guides/02-首次运行与Lab体验.md)，源码阅读见 [05 架构与代码阅读](docs/guides/05-架构与代码阅读.md)。交付二进制被 Git 忽略，不随 clone 自动获取。
 - 权威 JSON Schema 当前枚举 `0.1`～`0.11`；各版本增量及工具支持边界见 [Schema 导航](schema/README.md)。
 - PAE 非 Qt 层已有配置编译/冻结 Plan、完整记录 Decode/Encode、Binary/ASCII 有界 Framing、Integrity 以及 Host 绑定等内部切片；具体契约和验证入口见 [仓库文档索引](docs/README.md)。
 - Qt Lab 可观察 ASCII `0.10/0.11` 路径；Binary Host UI 当前只开放 Schema `0.9` 完整记录 Decode。Binary Encode、Submit/Continue 和流式能力已存在于非 Qt 底层，但尚未接入 Binary UI。
@@ -159,8 +160,8 @@ ctest --preset windows-msvc-pae-lab-release
 
 ### 2. 现有 SDK 候选消费
 
-当前可定位的五包候选根为 `out/sdk-clean-checkpoint/candidate1-20260919/`；请先读
-[Windows x64 SDK 快速入口](docs/guides/pae-sdk-windows-quickstart.md)，再读所选包的 `PAE-SDK-README.md`。
+当前可定位的五包候选根为 `deliverables/sdk/98df5e0/`；请先读
+[03 Windows SDK 集成](docs/guides/03-Windows-SDK集成.md)，再读所选包的 `PAE-SDK-README.md`。
 Source 包通过 `PAE_SOURCE_DIR` 引入，Static/Shared 包通过 `CMAKE_PREFIX_PATH` 和
 `find_package(PAE CONFIG REQUIRED)` 消费 `PAE::pae`。该候选五包均记录
 `source_head=98df5e0d844413fb6ad16a75dfceedcf17f2f1d6` 和 `source_worktree_dirty=false`；这仅说明打包输入来自干净检查点，不表示当前共享工作树无文档变更，也不是正式发布包。
@@ -178,11 +179,11 @@ Configure 时至少指定 `PAE_SDK_ROOT`、`PAE_QT_ROOT`、`PAE_LAB_DEPENDENCY_R
 当前普通本地使用优先启动 static Release 闭包：
 
 ```powershell
-& 'F:\PersonalWorkspace\pae-lab-clean-sdk-static-20260919\deploy\release-testing-off\Release\pae_protocol_lab_ui.exe'
+& 'F:\PersonalWorkspace\协议解析拼接工具\protocol_adapter_engine\deliverables\lab\98df5e0\static-release\pae_protocol_lab_ui.exe'
 ```
 
 配置文件位于同一目录的 `configs\`。shared Release 作为 DLL 消费对照入口，位于
-`F:\PersonalWorkspace\pae-lab-clean-sdk-shared-20260919\deploy\release-testing-off\Release\pae_protocol_lab_ui.exe`，
+`F:\PersonalWorkspace\协议解析拼接工具\protocol_adapter_engine\deliverables\lab\98df5e0\shared-release\pae_protocol_lab_ui.exe`，
 其同目录必须保留本批验证过的 `pae.dll`、Qt DLL、`platforms\` 和 `configs\`。这两个目录是本地验证产物，不替换旧部署也不构成正式分发。
 
 ## 构建 JSON Parser Spike

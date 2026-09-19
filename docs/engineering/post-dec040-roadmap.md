@@ -1,5 +1,9 @@
 # DEC-040 后续推进路线与当前状态
 
+## 当前入口（2026-09-19）
+
+下方为历史派发过程，不作为当前状态。当前 SDK/Lab 已完成同批 98df5e0 本地消费验证与 deliverables 归集；获批 99 个产物根已清理，六篇中文指南和阅读导航已整理。清理范围见 [执行记录](generated-artifact-cleanup-execution-20260919.md)，使用见 [统一交付入口](../../deliverables/README.md)。后续推进 Lab 公开能力图形入口覆盖；具体实施与授权以 [综合计划](pae-execution-delivery-organization-plan.md) 最上方为准。
+
 ## 2026-09-18 当前派发
 
 2026-09-19 检查点：用户同意人工收口后的下一步，整理 0.11 查询/SDK/非 Qt/UI 累积变更形成本地提交，不 Push/发布，不重复构建或开启新实现。提交依据与范围见综合计划“0.11 本地提交检查点”；旧 SDK dirty provenance 保留。
@@ -74,7 +78,7 @@ H2 路由决定：用户同意方案 A，允许 worker 严格读取顶层 schema
 
 最新：用户授权按原规划推进阶段 4。本批并行派 Lab 核对 Binary 迁移行为/私有依赖和 PAE 核对公开观察接口的最小缺口，分别只写专属报告；总控合并后再明确第一片代码实施。先 Binary 后 ASCII/流式，不实现 TLV，不删减已有功能，不重开全面人工验收，不构建或修改代码。范围见[综合计划阶段 4](pae-execution-delivery-organization-plan.md)。工程整理保持停止，无 Git/发布授权。下文为阶段 3 收口历史。
 
-阶段 3 最终状态：Windows x64 final6 本地独立交付与开发者入口已限定收口，各执行任务停止。使用见[SDK 快速入口](../guides/pae-sdk-windows-quickstart.md)，证据以[阶段 3 验证记录](pae-sdk-stage3-windows-validation.md)及综合计划最终段为准。下一步候选是阶段 4 Lab 公开 API 消费迁移，尚未派发。无 Stage/Commit/Push 或正式发布；下文为历史回收过程。
+阶段 3 最终状态：Windows x64 final6 本地独立交付与开发者入口已限定收口，各执行任务停止。使用见[Windows SDK 集成](../guides/03-Windows-SDK集成.md)，证据以[阶段 3 验证记录](pae-sdk-stage3-windows-validation.md)及综合计划最终段为准。下一步候选是阶段 4 Lab 公开 API 消费迁移，尚未派发。无 Stage/Commit/Push 或正式发布；下文为历史回收过程。
 
 阶段 3 最新状态：final6 Windows x64 三形态独立包已完成总控限定技术复核，工程整理正在同步开发者入口；PAE/Lab 执行均停止。final5 实测六组正确消费与四组 D/R 错配拒绝；final6 仅 README/元数据变化，166 个功能输入一致。总控本轮读取实现与日志、复算包哈希/清单，没有重新构建。阶段 4 尚未派发，不新增人工验收、不正式发布、不 Stage/Commit/Push。下段为启动记录。
 

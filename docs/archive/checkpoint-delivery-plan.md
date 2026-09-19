@@ -40,7 +40,7 @@ Replay、历史快照及只读Compare，并完成Windows Debug/Release离线复�
 1. C2两段及入口文档提交检查点已收口。
 2. [DEC-042B契约第21节](../engineering/pae-dec-042b-decimal-conversion-contract-draft.md#21-c2第二段集中实施契约confirmed已授权实施)四组方案已确认，并已一次授权C2第二段实施、范围内修复和Windows离线验证。
 3. 当前检查点交付Plan关联、指定Pipeline重执行、Replay/Compare；不提前开放CLI。
-4. [C3契约第22节](../engineering/pae-dec-042b-decimal-conversion-contract-draft.md#22-c3命令行与人工离线验收confirmed已实现待人工验收)八项已确认并完成限定实现；Windows Debug/Release离线自动化已通过。下一步按[人工验收单](../guides/manual-dec042b-c3-offline-acceptance.md)执行一次人工离线验收，作为DEC-042B专用离线闭环结束点。
+4. [C3契约第22节](../engineering/pae-dec-042b-decimal-conversion-contract-draft.md#22-c3命令行与人工离线验收confirmed已实现待人工验收)八项已确认并完成限定实现；Windows Debug/Release离线自动化已通过。下一步按[人工验收单](../guides/专项验收/DEC-042B-C3-人工离线验收.md)执行一次人工离线验收，作为DEC-042B专用离线闭环结束点。
 5. 随后优先讨论最小业务嵌入样例，验证双配置、方向差异、动态数值、结果交付和状态隔离；不默认建设全局调度器。
 6. 依据样例缺口决定CRC、长度/变长及Qt薄界面的顺序。Qt版本核验先于依赖引入。
 

@@ -1,4 +1,8 @@
 /out/
+# Local verified SDK/Lab copies; navigation remains versioned.
+/deliverables/sdk/
+/deliverables/lab/
+/deliverables/evidence/
 /build/
 /.cache/
 /.vs/

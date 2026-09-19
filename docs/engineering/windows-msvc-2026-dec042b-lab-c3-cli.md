@@ -106,7 +106,7 @@ ctest --test-dir out/dec042b-c3-<config> -L protocol_lab -LE udp --output-on-fai
 
 - 代理已在修复后使用中文及空格绝对路径重跑七项离线验收，35项精确检查PASS，证据位于
   `out/agent-c3-acceptance-20260908-212535`。它不替代第22.8节用户人工验收；人工状态仍为
-  `NOT_EVALUATED`，执行命令见[人工验收单](../guides/manual-dec042b-c3-offline-acceptance.md)。
+  `NOT_EVALUATED`，执行命令见[人工验收单](../guides/专项验收/DEC-042B-C3-人工离线验收.md)。
 - 输入桥采用“严格UTF-8优先、否则Windows本地代码页”的有限兼容策略；已验证当前中文Windows
   环境和ASCII路径，不宣称覆盖所有系统代码页组合或CMake对任意Unicode命令参数的行为。
 - 退出10只有纯策略和既有内部组件测试证据；非Testing工具没有故障注入入口。

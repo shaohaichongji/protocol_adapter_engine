@@ -1336,7 +1336,7 @@ Windows Debug/Release C3专项各`2/2 PASS`，排除UDP的完整离线矩阵各`
 Testing-off与Product-only Debug/Release均构建成功且各注册0测试，默认旧Lab仍可构建，两项
 非法开关组合按预期在配置阶段拒绝。详细命令、日志和证据限制见
 [C3验证报告](windows-msvc-2026-dec042b-lab-c3-cli.md)。七项人工离线验收仍为`NOT_EVALUATED`，
-可执行步骤见[人工验收单](../guides/manual-dec042b-c3-offline-acceptance.md)。本轮未执行UDP或其他网络、
+可执行步骤见[人工验收单](../guides/专项验收/DEC-042B-C3-人工离线验收.md)。本轮未执行UDP或其他网络、
 Linux、Golden、真实协议、硬件、现场、独立Oracle、性能或Qt验证，未Stage、Commit或Push。
 
 ### 22.10 C3期望状态绑定P2纠错（2026-09-08）

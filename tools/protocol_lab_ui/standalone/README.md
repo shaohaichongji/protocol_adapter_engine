@@ -19,7 +19,7 @@ the matching runtime, and place the same validated DLL beside shared test execut
 the development tree or global PATH.
 
 The current verified SDK root is
-`F:\PersonalWorkspace\协议解析拼接工具\protocol_adapter_engine\out\sdk-clean-checkpoint\candidate1-20260919`.
+`F:\PersonalWorkspace\协议解析拼接工具\protocol_adapter_engine\deliverables\sdk\98df5e0`.
 All five packages identify `98df5e0d844413fb6ad16a75dfceedcf17f2f1d6` with
 `source_worktree_dirty=false`. That identity applies to the detached packaging source, not to the
 shared working tree that may contain documentation changes. This entry is still a local validation
@@ -30,13 +30,13 @@ route, not a release packager or distribution statement.
 For ordinary local use, prefer the static Release product:
 
 ```powershell
-& 'F:\PersonalWorkspace\pae-lab-clean-sdk-static-20260919\deploy\release-testing-off\Release\pae_protocol_lab_ui.exe'
+& 'F:\PersonalWorkspace\协议解析拼接工具\protocol_adapter_engine\deliverables\lab\98df5e0\static-release\pae_protocol_lab_ui.exe'
 ```
 
 Its configuration directory is
-`F:\PersonalWorkspace\pae-lab-clean-sdk-static-20260919\deploy\release-testing-off\Release\configs`.
+`F:\PersonalWorkspace\协议解析拼接工具\protocol_adapter_engine\deliverables\lab\98df5e0\static-release\configs`.
 The shared comparison product is
-`F:\PersonalWorkspace\pae-lab-clean-sdk-shared-20260919\deploy\release-testing-off\Release\pae_protocol_lab_ui.exe`;
+`F:\PersonalWorkspace\协议解析拼接工具\protocol_adapter_engine\deliverables\lab\98df5e0\shared-release\pae_protocol_lab_ui.exe`;
 keep its sibling `pae.dll`, Qt DLLs, `platforms` and `configs` in place. These are bounded local
 validation deployments and do not replace any earlier deployment.
 
@@ -45,3 +45,7 @@ and [same-batch Lab consumption validation](../../../docs/engineering/lab-clean-
 This README was synchronized after those runs. Product sources, CMake and scripts were not changed,
 but the current 99-file whitelist is no longer byte-for-byte identical to the recorded validation
 snapshot because this documentation file changed; no rebuild or retest was performed for this edit.
+
+Human-oriented reading order: start with [project scope](../../../docs/guides/01-项目定位与能力边界.md),
+then use [Windows SDK integration](../../../docs/guides/03-Windows-SDK集成.md) for ordinary consumers or
+[build, test, and troubleshooting](../../../docs/guides/06-构建测试与问题定位.md) for this standalone route.

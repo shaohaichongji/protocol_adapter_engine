@@ -120,7 +120,7 @@ Schema 0.5专用链中，inspect/encode/replay必须显式提供`--record-root`�
 Record 0.7 Bundle内的原配置、输入与指定Pipeline，不接受配置替换。Compare只读两个合格的
 C执行Bundle，不调用Codec也不发布新Bundle。CLI 0.1进程退出和`--expect-status`只控制终端判定，
 不改写Result 0.6的执行状态、退出码或确定性指纹；完整命令与人工记录方式见
-[C3人工离线验收单](../../docs/guides/manual-dec042b-c3-offline-acceptance.md)。
+[C3人工离线验收单](../../docs/guides/专项验收/DEC-042B-C3-人工离线验收.md)。
 
 Schema 0.6统一使用Result 0.7、指纹0.7和Record 0.8，包括无`integrity`及继续使用SUM8的消息。
 成功Run、完整性失败Run及其链式Replay均按新代完整读取；失败Replay即使比较`EQUAL`仍保留

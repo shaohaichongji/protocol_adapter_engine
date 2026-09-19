@@ -5,11 +5,38 @@
 
 ## 顺序与出口
 
+### 当前授权：整理检查点与 Lab 图形能力覆盖（2026-09-19）
+
+用户授权修正残留状态文字并提交本轮整理检查点，不推送；下一步推进 PAE 现有公开能力的图形入口，用户自行开展真实使用验证。先由 Lab 盘点 UI 覆盖与分片方案、PAE 并行核对公开能力/观察接口支持域，再由总控收敛实施顺序。只读盘点先行，不把“全能力入口”解释为新增协议、通信框架、私有API回读或稳定ABI承诺。新实现与用户正在使用的98df5e0交付目录隔离，不覆盖其测试输入和部署；验证以定向自动化为主，新增人工操作仅在必要时简短说明。此前无Git授权表述均为各历史切片边界。
+
+### 当前实施：人读指南中文编号与阅读主线（2026-09-19）
+
+最新回收：六篇01～06中文指南、专项验收分区、五张Mermaid及旧新映射已完成；工程索引按主题组织，相关Markdown链接已同步。总控已通读六篇，修正05依赖箭头、补齐02完整Binary报文/操作/预期结果及06工作目录；源码include方向与现行路径已抽查，diff --check通过。Mermaid仅静态检查，未渲染；未重跑构建或UI。执行任务停止，未Stage/Commit/Push。以下为派发过程。
+
+用户授权整理 docs 内容、中文顺序命名及 Mermaid 图。《PAE工程整理》独占 guides 主线重组，计划为项目定位、首次运行/Lab、Windows SDK、配置入门、架构代码阅读、构建排错六篇；保留专项验收状态，工程契约/历史证据不批量改名。同步 docs/根/交付/standalone 导航与 Markdown 引用，登记迁移映射；总控维护本计划和外层 AGENTS。Lab/PAE任务停止。本片仅文档，源码事实静态核对及链接/差异检查，不构建、安装、启动Lab或修改包内产物，无Stage/Commit/Push授权。上一轮全部未提交变更保留，完成后总控复核；派发不代表内容已完成。
+
+### 当前实施：产物盘点、仓库规整与真实使用入口（2026-09-19）
+
+最新收口：工程整理已完成获批99根清理，逻辑长度35,999,609,815 bytes（33.527 GiB），无跳过或未解决删除失败。总控独立核对99根均不存在、7,912归集证据哈希零差异、6,963保护文件长度/哈希零差异；Git无跟踪文件删除、暂存为空，diff --check通过。后置只读检查曾因空比较结果.Count异常，已修复并恢复复核通过，详见[执行记录](generated-artifact-cleanup-execution-20260919.md)。SDK/Lab统一交付与上手入口保持；未构建/测试/提交/推送。执行任务停止。以下为本轮历史派发过程，不代表尚待删除。
+
+清理实施授权：用户确认补强后的第5/7节清单，工程整理独占先归集哈希校验再精确删除；其他任务停止。允许原盘点、generated-artifact-cleanup-execution-20260919.md及必要的固定白名单清理脚本；证据保存deliverables/evidence新目录。保护deliverables、当前原SDK/证据、当前clean Lab部署/日志/INPUT清单、源码/依赖/本机环境；链接只在获批根内非递归移除本体。未知内容跳过，不追加src/core或spike候选。未执行完前33.522GiB仅上限，无Git写/构建/发布授权，完成总控复核实际删除与保留项。
+
+阶段回收：SDK189文件及Lab static/shared Release的17/18文件已归集至仓库内deliverables，总控独立重算源/目标SHA256零差异，并读取Lab新位置4/5模块来源证据；未重跑功能测试。首次使用与代码阅读指南已复核小修，现行根README/SDK指南/standalone入口已统一路径。仓库审查未确认可直接删的跟踪源码/测试；本片不移动src/tools。产物盘点33.895GiB，清理估计上限33.522GiB尚非批准量；已要求工程整理补核构建内独有日志及27重解析点，删除需先归集证据再获精确清单授权。所有原产物保留，无Stage/Commit/Push。
+
+前一批10文档已本地提交 `0b89bed`，未Push。用户要求减少工作区/out产物占用、全面审查仓库冗余、补充维护者和使用者上手文档，并集中可用交付物。本轮不扩协议功能，不增加复杂人工验收。
+
+- 《PAE工程整理》独占 `generated-artifact-cleanup-inventory-20260919.md`：盘点外部PAE生成根和out的大小、来源、保留/删除候选；不触碰无关项目、不删除。
+- 《子任务推进》独占 `repository-organization-audit-20260919.md`：核对目录职能、构建引用和冗余；只提出归档/删除候选，不移动实现。
+- 《Lab应用推进》独占 `docs/guides/01-项目定位与能力边界.md`、`docs/guides/02-首次运行与Lab体验.md`、`docs/guides/04-协议配置入门.md`、`docs/guides/05-架构与代码阅读.md` 和 docs/guides、docs 两README：写短流程上手及代码阅读路线，只静态核对，不构建启动。
+- 总控负责本计划、外层AGENTS及后续统一 `deliverables/` 本地归集方案。SDK保持98df5e0原五包身份，Lab保留static/shared Release必要运行闭包；不把复制升级为重新验证或正式发布。先回收复制要求和磁盘盘点，再执行精确归集与内容核验，最后提出无重叠精确删除清单请用户确认。
+
+三个任务共享工作树但写入范围互斥；无Stage/Commit/Push/发布授权，不改本机Qt或全局PATH、不重打SDK、不删除原产物。完成均向总控 `01a04601-757d-7bb1-8254-61dde4954d74` 反馈一次并停止。当前为启动，不代表规整或清理已完成。
+
 ### 当前派发：同批 SDK/Lab 使用入口最终同步（2026-09-19）
 
 最终回收：六入口文档已完成，总控核对实际差异、新候选/产品路径与standalone依赖参数，EXE/configs/plugin路径存在，git diff --check通过。未改功能或重跑测试；standalone README变化已明确与旧验证快照区分。执行任务停止，本批候选为7份修改及3份新增Markdown，共10文件，等待用户确认提交信息后再Stage/Commit，Push另行授权；外层AGENTS不纳入仓库提交。
 
-用户同意收尾。《PAE工程整理》独占 README.md、docs/README.md、docs/guides/README.md、docs/guides/pae-sdk-windows-quickstart.md、docs/engineering/README.md、tools/protocol_lab_ui/standalone/README.md，在已有入口修改上增量同步98df5e0干净五包及新static/shared Lab实际部署路径。旧dirty候选仅保留历史身份；明确本地使用非正式发布，不能改历史报告或宣称共享树clean。只检查路径/链接/参数与文档差异，不运行构建/启动/测试命令，不改脚本/代码/依赖或复制删除产物。
+用户同意收尾。《PAE工程整理》独占 README.md、docs/README.md、docs/guides/README.md、docs/guides/03-Windows-SDK集成.md、docs/engineering/README.md、tools/protocol_lab_ui/standalone/README.md，在已有入口修改上增量同步98df5e0干净五包及新static/shared Lab实际部署路径。旧dirty候选仅保留历史身份；明确本地使用非正式发布，不能改历史报告或宣称共享树clean。只检查路径/链接/参数与文档差异，不运行构建/启动/测试命令，不改脚本/代码/依赖或复制删除产物。
 
 Lab/PAE停止，总控维护本计划及外层AGENTS。完成向总控01a04601-757d-7bb1-8254-61dde4954d74反馈一次并停止；总控复核后整理本轮文档提交候选，未获新Stage/Commit/Push授权。入口README变化不影响既有功能证据，但不能再宣称修改后的完整白名单与旧快照逐字相同；记录文档差异，不因此重跑功能验证。
 
@@ -37,7 +64,7 @@ Lab/PAE停止，总控维护本计划及外层AGENTS。完成向总控01a04601-7
 
 用户授权规划并派发。基线 main@98df5e0，62 文件检查点已本地提交、未 Push；派发前工作树干净。以下旧实施段为历史证据。本批仅文档入口更新及打包前静态核对，不生成 SDK、不构建测试、不改功能、不发布或删除，无新 Stage/Commit/Push 授权。
 
-- 《PAE工程整理》独占 README.md、docs/README.md、docs/guides/README.md、docs/guides/pae-sdk-windows-quickstart.md、docs/engineering/README.md：区分开发树、现有候选 SDK 和 standalone Lab 入口，纠正落后的迁移状态，不改历史验证结论，不虚构新包或统一部署已生成。
+- 《PAE工程整理》独占 README.md、docs/README.md、docs/guides/README.md、docs/guides/03-Windows-SDK集成.md、docs/engineering/README.md：区分开发树、现有候选 SDK 和 standalone Lab 入口，纠正落后的迁移状态，不改历史验证结论，不虚构新包或统一部署已生成。
 - 《子任务推进》仅写 docs/engineering/pae-sdk-clean-checkpoint-preflight.md：只读核对五包打包入口、源码白名单、当前提交与旧候选功能输入差异、工具链及最小验证矩阵，提出从干净提交导出构建输入的方案。共享树将有本批文档改动，禁止把 dirty 工作树改标 clean，也不得为打包擅自提交或创建 worktree。本批不复制、构建、打包或修改脚本。
 - 两项并行，文件写入互斥；《Lab应用推进》保持停止。总控独占本计划和外层 AGENTS.md。两项完成均主动向总控 01a04601-757d-7bb1-8254-61dde4954d74 反馈一次交接摘要并停止写入，待复核。
 
@@ -378,7 +405,7 @@ Encode 暂缓：两报告对后续 Encode 观察的必需程度表述不同。�
 
 ## 阶段 3 历史：本地独立交付已限定收口（2026-09-15）
 
-最终结论：源码、静态 D/R、动态 D/R 五个 final6 目录及包内消费入口已交付；工程快速指南和两层 docs 索引已同步，总控核对正文与已有证据，并纠正指南将工程最低 CMake 版本混作 VS 2026 已验证版本的表述（现场 Cache 为 4.3.1）。各执行任务停止写入，阶段 3 完成本地交付限定收口，无新人工验收。最终路径 `out/sdk-stage3/final6-20260915/`，开发入口 `docs/guides/pae-sdk-windows-quickstart.md`。源码/二进制消费及错误配置验证的精确证据继承关系见下文和验证报告，不代表正式发布、稳定 ABI、Linux、Lab 迁移或生产验证。下一步候选为阶段 4 Lab 公开 API 消费迁移，尚未派发；无 Stage/Commit/Push。以下保留回收过程。
+最终结论：源码、静态 D/R、动态 D/R 五个 final6 目录及包内消费入口已交付；工程快速指南和两层 docs 索引已同步，总控核对正文与已有证据，并纠正指南将工程最低 CMake 版本混作 VS 2026 已验证版本的表述（现场 Cache 为 4.3.1）。各执行任务停止写入，阶段 3 完成本地交付限定收口，无新人工验收。最终路径 `out/sdk-stage3/final6-20260915/`，开发入口 `docs/guides/03-Windows-SDK集成.md`。源码/二进制消费及错误配置验证的精确证据继承关系见下文和验证报告，不代表正式发布、稳定 ABI、Linux、Lab 迁移或生产验证。下一步候选为阶段 4 Lab 公开 API 消费迁移，尚未派发；无 Stage/Commit/Push。以下保留回收过程。
 
 最新结论：final6 为当前候选，PAE 已停止；总控阅读最终 Config、final5 六组匹配消费 PASS 与四组错配稳定标识拒绝日志，并独立复算 final6 的 184 条哈希、179 项清单大小、166 个功能输入与 final5 相同，完成限定技术复核。final6 只规范化三份示例 README 及包元数据，功能运行沿用 final5；此前公开回归 D/R 7/7 和 DLL 检查保留各自来源，不冒称 final6 重跑。错配在链接期通过明确命名的缺失输入拒绝，不是 configure 自动校验任意 CRT/toolset，也未验证任意自定义配置。final2～final5 保留。Lab 已完成 final3 消费复核，其 API/二进制边界结论限定继承，最后配置门禁由总控核对。
 
