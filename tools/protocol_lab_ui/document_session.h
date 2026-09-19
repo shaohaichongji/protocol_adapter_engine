@@ -3,6 +3,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <memory>
+#include <map>
 #include <optional>
 #include <string>
 #include <unordered_map>
@@ -204,6 +205,13 @@ class DocumentSession final {
     std::optional<InspectResult> inspect_result;
     std::optional<InspectFailure> inspect_failure;
     std::size_t mapped_view_bytes = 0U;
+    OperationMode mode = OperationMode::INSPECT;
+    std::unordered_map<std::size_t, TypedDraft> drafts;
+    std::unordered_map<std::size_t, InvalidDraftState> invalid_drafts;
+    std::optional<PreviewResult> preview;
+    std::optional<OperationDiagnostic> encode_failure;
+    std::string diagnostic_id;
+    std::string diagnostic_detail;
   };
   using BinaryPreparationHook = void (*)();
   std::optional<BinaryPublication> PrepareBinaryHostPublication(
@@ -212,7 +220,8 @@ class DocumentSession final {
   void PublishBinaryHostPublication(BinaryPublication publication) noexcept;
   std::optional<BinaryFlowPublication> PrepareBinaryHostFlow(
       std::size_t binding, std::size_t flow, BinaryPreparationHook before_copy = nullptr) const;
-  bool PublishBinaryHostFlow(BinaryFlowPublication publication);
+  bool PublishBinaryHostFlow(BinaryFlowPublication publication,
+                             BinaryPreparationHook before_local_cache_copy = nullptr);
   bool BinaryHostActive() const noexcept { return prepared_ && prepared_->binary_host_adapter; }
   bool IsBinaryHostDocument() const noexcept {
     return description_.has_value() && description_->schema_version == "0.9";
@@ -318,6 +327,14 @@ class DocumentSession final {
   std::size_t binary_host_flow_ = 0U;
   Revision binary_session_revision_ = 0U;
   std::size_t binary_active_view_bytes_ = 0U;
+  struct BinaryEncodeLocalState {
+    std::unordered_map<std::size_t, InvalidDraftState> invalid_drafts;
+    std::optional<OperationDiagnostic> encode_failure;
+    std::size_t accounted_bytes = 0U;
+  };
+  std::map<std::pair<std::size_t, std::size_t>, BinaryEncodeLocalState>
+      binary_encode_local_states_;
+  std::size_t binary_encode_local_state_bytes_ = 0U;
 #endif
 #if defined(PAE_BUILD_PROTOCOL_LAB_HOST_OBSERVER)
   struct HostView {

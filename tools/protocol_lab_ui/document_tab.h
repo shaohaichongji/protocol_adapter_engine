@@ -16,6 +16,8 @@ class QPlainTextEdit;
 class QPushButton;
 class QTableView;
 class QTableWidget;
+class QTabWidget;
+class QSplitter;
 class QVBoxLayout;
 class QTextBrowser;
 
@@ -63,6 +65,7 @@ class DocumentTab final : public QWidget {
   bool VerifyInvalidDraftRetentionForSmoke(QString& error);
   bool VerifyBoundedV08ForSmoke(QString& error);
   bool VerifyAsciiForSmoke(QString& error);
+  bool VerifyLocalizationAnchorsForSmoke(QString& error);
 #if defined(PAE_BUILD_PROTOCOL_LAB_HOST_OBSERVER)
   bool VerifyHostForSmoke(QString& error);
 #endif
@@ -90,13 +93,16 @@ class DocumentTab final : public QWidget {
 
  private:
 #if defined(PAE_BUILD_PROTOCOL_LAB_HOST_OBSERVER)
-  void BuildHostUi(QVBoxLayout* root);
+  void BuildHostUi(QVBoxLayout* operation_root, QVBoxLayout* binding_root);
   void InitializeHostDraft();
   void AddHostDraftRow();
   void ApplyHostDraft();
   void AcceptHostCompletion(std::unique_ptr<CompileCompletion> completion);
   void SelectHostView();
   QWidget* host_panel_ = nullptr;
+  QWidget* host_active_panel_ = nullptr;
+  QWidget* host_content_ = nullptr;
+  QPushButton* host_toggle_ = nullptr;
   QTableWidget* host_draft_ = nullptr;
   QPushButton* host_apply_ = nullptr;
   QComboBox* host_binding_combo_ = nullptr;
@@ -104,6 +110,7 @@ class DocumentTab final : public QWidget {
   QLabel* host_status_ = nullptr;
   std::string host_config_text_;
   std::optional<Revision> host_pending_revision_;
+  bool host_draft_dirty_ = true;
   Revision host_request_sequence_ = 0U;
   std::vector<AsciiHostBinding> host_pending_bindings_;
 #if defined(PAE_BUILD_PROTOCOL_LAB_BINARY_UI)
@@ -149,6 +156,9 @@ class DocumentTab final : public QWidget {
   QLineEdit* path_edit_ = nullptr;
   QPushButton* browse_button_ = nullptr;
   QPushButton* load_button_ = nullptr;
+  QPushButton* config_path_toggle_ = nullptr;
+  QWidget* config_path_details_ = nullptr;
+  QLabel* config_name_label_ = nullptr;
   QLabel* identity_label_ = nullptr;
   QComboBox* pipeline_combo_ = nullptr;
   QComboBox* mode_combo_ = nullptr;
@@ -164,11 +174,19 @@ class DocumentTab final : public QWidget {
   QLabel* inspect_input_label_ = nullptr;
   QPlainTextEdit* inspect_input_ = nullptr;
   QLabel* result_kind_label_ = nullptr;
+  QSplitter* workbench_splitter_ = nullptr;
+  QSplitter* result_splitter_ = nullptr;
+  QTabWidget* control_tabs_ = nullptr;
   QTableView* field_table_ = nullptr;
   FieldTableModel* field_model_ = nullptr;
   ExactValueDelegate* value_delegate_ = nullptr;
   HexView* hex_view_ = nullptr;
   QTextBrowser* details_view_ = nullptr;
+  QTabWidget* right_tabs_ = nullptr;
+  int diagnostic_tab_index_ = -1;
+#if defined(PAE_BUILD_PROTOCOL_LAB_ASCII_STREAM_OBSERVER)
+  int stream_tab_index_ = -1;
+#endif
   QLabel* diagnostic_label_ = nullptr;
   QLabel* timing_label_ = nullptr;
   EncodeTimingSnapshot timing_;

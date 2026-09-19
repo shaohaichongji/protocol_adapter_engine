@@ -35,6 +35,7 @@ class ApplicationWindow final : public QMainWindow {
   void PollCompileResults();
   DocumentTab* FindDocument(DocumentId document_id) const noexcept;
   void AdvanceSmoke();
+  bool CaptureSmokeSnapshot(QString& error);
   void FinishSmoke(bool success, const QString& detail);
 
   CompileWorker worker_;
@@ -50,6 +51,7 @@ class ApplicationWindow final : public QMainWindow {
   bool smoke_running_ = false;
   bool performance_mode_ = false;
   bool smoke_drafts_populated_ = false;
+  bool smoke_snapshot_written_ = false;
   int smoke_wait_ticks_ = 0;
   int performance_warmup_count_ = 0;
   int performance_sample_count_ = 0;

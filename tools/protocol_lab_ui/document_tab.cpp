@@ -7,13 +7,16 @@
 #endif
 
 #include <QApplication>
+#include <QAbstractButton>
 #include <QClipboard>
 #include <QComboBox>
+#include <QCoreApplication>
 #include <QElapsedTimer>
 #include <QFile>
 #include <QFileDialog>
 #include <QFileInfo>
 #include <QFormLayout>
+#include <QGroupBox>
 #include <QHeaderView>
 #include <QKeyEvent>
 #include <QLabel>
@@ -23,9 +26,12 @@
 #include <QPlainTextEdit>
 #include <QPointer>
 #include <QPushButton>
+#include <QScrollArea>
+#include <QSizePolicy>
 #include <QSplitter>
 #include <QStandardItemModel>
 #include <QTableView>
+#include <QTabWidget>
 #include <QTemporaryFile>
 #if defined(PAE_BUILD_PROTOCOL_LAB_HOST_OBSERVER)
 #include <QTableWidget>
@@ -52,6 +58,17 @@
 namespace pae::protocol_lab_ui {
 namespace {
 
+QString UiText(const char* text) { return QCoreApplication::translate("PaeLabUi", text); }
+
+QMessageBox::StandardButton AskChineseQuestion(QWidget* parent, const QString& title,
+                                               const QString& text) {
+  QMessageBox box(QMessageBox::Question, title, text, QMessageBox::Yes | QMessageBox::No, parent);
+  box.setDefaultButton(QMessageBox::No);
+  if (auto* yes = box.button(QMessageBox::Yes)) yes->setText(UiText("是"));
+  if (auto* no = box.button(QMessageBox::No)) no->setText(UiText("否"));
+  return static_cast<QMessageBox::StandardButton>(box.exec());
+}
+
 #if defined(PAE_BUILD_PROTOCOL_LAB_HOST_OBSERVER)
 bool IsDecodeHostAction(
 #if defined(PAE_BUILD_PROTOCOL_LAB_ASCII_PUBLIC_A2)
@@ -70,6 +87,14 @@ bool IsDecodeHostAction(
 
 QString FromUtf8(const std::string& value) {
   return QString::fromUtf8(value.data(), static_cast<int>(value.size()));
+}
+
+QString HtmlPreservingLines(const std::string& value) {
+  QString escaped = FromUtf8(value).toHtmlEscaped();
+  escaped.replace(QStringLiteral("\r\n"), QStringLiteral("<br/>"));
+  escaped.replace(QLatin1Char('\r'), QStringLiteral("<br/>"));
+  escaped.replace(QLatin1Char('\n'), QStringLiteral("<br/>"));
+  return escaped;
 }
 
 std::string Utf8(const QString& value) {
@@ -462,18 +487,16 @@ bool DocumentTab::CloseDocument(bool require_confirmation) {
     return true;
   }
 #if defined(PAE_BUILD_PROTOCOL_LAB_ASCII_STREAM_OBSERVER)
-  if (require_confirmation && !ConfirmStreamDiscardOnly(QStringLiteral("close this document"))) {
+  if (require_confirmation && !ConfirmStreamDiscardOnly(UiText("关闭此文档"))) {
     return false;
   }
 #endif
 #if defined(PAE_BUILD_PROTOCOL_LAB_BINARY_UI) && defined(PAE_BUILD_PROTOCOL_LAB_HOST_OBSERVER)
   if (require_confirmation && (session_.BinaryHasDiscardableState() ||
                                (session_.IsBinaryHostDocument() && host_pending_revision_))) {
-    const auto answer = QMessageBox::question(
-        this, QStringLiteral("Close Binary Host document"),
-        QStringLiteral(
-            "Closing will discard Binary flow drafts/results or pending preparation. Continue?"),
-        QMessageBox::Yes | QMessageBox::No, QMessageBox::No);
+    const auto answer = AskChineseQuestion(
+        this, UiText("关闭 Binary Host 文档"),
+        UiText("关闭将丢弃 Binary 流草稿、结果或等待中的准备任务。是否继续？"));
     if (answer != QMessageBox::Yes) return false;
   }
 #endif
@@ -490,16 +513,14 @@ bool DocumentTab::CloseDocument(bool require_confirmation) {
 
 bool DocumentTab::ConfirmClose() {
 #if defined(PAE_BUILD_PROTOCOL_LAB_ASCII_STREAM_OBSERVER)
-  if (!ConfirmStreamDiscardOnly(QStringLiteral("close the application"))) return false;
+  if (!ConfirmStreamDiscardOnly(UiText("关闭应用程序"))) return false;
 #endif
 #if defined(PAE_BUILD_PROTOCOL_LAB_BINARY_UI) && defined(PAE_BUILD_PROTOCOL_LAB_HOST_OBSERVER)
   if (session_.BinaryHasDiscardableState() ||
       (session_.IsBinaryHostDocument() && host_pending_revision_)) {
-    const auto answer = QMessageBox::question(
-        this, QStringLiteral("Close Binary Host document"),
-        QStringLiteral(
-            "Closing will discard Binary flow drafts/results or pending preparation. Continue?"),
-        QMessageBox::Yes | QMessageBox::No, QMessageBox::No);
+    const auto answer = AskChineseQuestion(
+        this, UiText("关闭 Binary Host 文档"),
+        UiText("关闭将丢弃 Binary 流草稿、结果或等待中的准备任务。是否继续？"));
     if (answer != QMessageBox::Yes) return false;
   }
 #endif
@@ -597,6 +618,19 @@ bool DocumentTab::VerifyInspectFailureForSmoke(const QString& text, InspectFailu
     error = QStringLiteral("Inspect failure stage/status/offset/field identity differs");
     return false;
   }
+  if (result_kind_label_->property("paeResultState").toString() !=
+      QStringLiteral("failure")) {
+    error = QStringLiteral("Inspect failure lost stable result state");
+    return false;
+  }
+  if (!diagnostic_label_->text().contains(UiText("操作失败")) ||
+      (!session_.diagnostic_id().empty() &&
+       !diagnostic_label_->text().contains(FromUtf8(session_.diagnostic_id()))) ||
+      (!session_.diagnostic_detail().empty() &&
+       !diagnostic_label_->text().contains(FromUtf8(session_.diagnostic_detail())))) {
+    error = QStringLiteral("localized diagnostic summary, stable code, or technical detail missing");
+    return false;
+  }
   if (failed_field_id.isEmpty() && (field_table_->currentIndex().isValid() ||
                                     !field_table_->selectionModel()->selectedRows().isEmpty() ||
                                     !details_view_->toPlainText().trimmed().isEmpty())) {
@@ -635,8 +669,16 @@ bool DocumentTab::SelectFirstMappableFieldForSmoke(QString& error) {
     const auto* field = field_model_->FieldAt(row);
     if (field != nullptr && (!field->physical_bits.empty() ||
                              (field->byte_range.has_value() && field->byte_range->length != 0U))) {
+      const int tab_before = right_tabs_->currentIndex();
+      right_tabs_->setCurrentIndex(1);
       field_table_->selectRow(row);
       RefreshFieldDetails(row);
+      if (right_tabs_->currentIndex() != 1) {
+        error = QStringLiteral("field selection forced a result detail tab change");
+        right_tabs_->setCurrentIndex(tab_before);
+        return false;
+      }
+      right_tabs_->setCurrentIndex(tab_before);
       return true;
     }
   }
@@ -818,8 +860,7 @@ bool DocumentTab::VerifyBoundedV08ForSmoke(QString& error) {
   if (editor->text() != QStringLiteral("010203") ||
       !editor->property("paeCapacityRejected").toBool() || editor->toolTip().isEmpty() ||
       session_.preview().has_value() ||
-      !field_model_->ValidationError(payload_row)
-           .contains(QStringLiteral("editor capacity (8 Hex characters)"))) {
+      field_model_->ValidationError(payload_row) != editor->toolTip()) {
     error = QStringLiteral("over-capacity paste was not wholly rejected with visible feedback");
     return false;
   }
@@ -856,8 +897,8 @@ bool DocumentTab::VerifyBoundedV08ForSmoke(QString& error) {
   const std::vector<std::uint8_t> empty_expected{0xA5U, 0x03U, 0xA8U};
   if (PreviewFrameForSmoke() != empty_expected || HighlightedCellCountForSmoke() != 0U ||
       !field_model_->data(physical_index).toString().contains(QStringLiteral("length=0")) ||
-      !details_view_->toPlainText().contains(QStringLiteral("Actual byte range: 2 + 0")) ||
-      !details_view_->toPlainText().contains(QStringLiteral("Integrity storage: 2 + 1"))) {
+      !details_view_->toPlainText().contains(QStringLiteral("实际字节范围：2 + 0")) ||
+      !details_view_->toPlainText().contains(QStringLiteral("完整性校验存储位置：2 + 1"))) {
     error = QStringLiteral("empty payload frame, zero-length range, or dynamic trailer differs");
     return false;
   }
@@ -870,8 +911,8 @@ bool DocumentTab::VerifyBoundedV08ForSmoke(QString& error) {
   const std::vector<std::uint8_t> two_expected{0xA5U, 0x05U, 0x10U, 0x20U, 0xDAU};
   if (PreviewFrameForSmoke() != two_expected || HighlightedCellCountForSmoke() != 2U ||
       HighlightMaskForSmoke(2U) != 0xFFU || HighlightMaskForSmoke(3U) != 0xFFU ||
-      !details_view_->toPlainText().contains(QStringLiteral("Actual byte range: 2 + 2")) ||
-      !details_view_->toPlainText().contains(QStringLiteral("Integrity storage: 4 + 1"))) {
+      !details_view_->toPlainText().contains(QStringLiteral("实际字节范围：2 + 2")) ||
+      !details_view_->toPlainText().contains(QStringLiteral("完整性校验存储位置：4 + 1"))) {
     error = QStringLiteral("two-byte actual payload range or dynamic trailer differs");
     return false;
   }
@@ -885,8 +926,8 @@ bool DocumentTab::VerifyBoundedV08ForSmoke(QString& error) {
   if (PreviewFrameForSmoke() != three_expected || HighlightedCellCountForSmoke() != 3U ||
       HighlightMaskForSmoke(2U) != 0xFFU || HighlightMaskForSmoke(3U) != 0xFFU ||
       HighlightMaskForSmoke(4U) != 0xFFU ||
-      !details_view_->toPlainText().contains(QStringLiteral("Actual byte range: 2 + 3")) ||
-      !details_view_->toPlainText().contains(QStringLiteral("Integrity storage: 5 + 1"))) {
+      !details_view_->toPlainText().contains(QStringLiteral("实际字节范围：2 + 3")) ||
+      !details_view_->toPlainText().contains(QStringLiteral("完整性校验存储位置：5 + 1"))) {
     error = QStringLiteral("three-byte actual payload range or dynamic trailer differs");
     return false;
   }
@@ -898,7 +939,7 @@ bool DocumentTab::VerifyBoundedV08ForSmoke(QString& error) {
            .toString()
            .contains(QStringLiteral("current range unavailable")) ||
       !details_view_->toPlainText().contains(QStringLiteral("current range unavailable")) ||
-      details_view_->toPlainText().contains(QStringLiteral("Actual byte range:"))) {
+      details_view_->toPlainText().contains(QStringLiteral("实际字节范围："))) {
     error = QStringLiteral("lexical BYTES error was not distinct or cleared stale output");
     return false;
   }
@@ -918,7 +959,7 @@ bool DocumentTab::VerifyBoundedV08ForSmoke(QString& error) {
   EncodeCurrent();
   if (PreviewFrameForSmoke() != two_expected || HighlightedCellCountForSmoke() != 2U ||
       HighlightMaskForSmoke(2U) != 0xFFU || HighlightMaskForSmoke(3U) != 0xFFU ||
-      !details_view_->toPlainText().contains(QStringLiteral("Integrity storage: 4 + 1"))) {
+      !details_view_->toPlainText().contains(QStringLiteral("完整性校验存储位置：4 + 1"))) {
     error = QStringLiteral("two-byte actual payload range or dynamic trailer differs");
     return false;
   }
@@ -953,7 +994,8 @@ bool DocumentTab::VerifyAsciiStreamForSmoke(QString& error) {
       mode_combo_->findData(static_cast<int>(OperationMode::STREAM_INSPECT)));
   representation_combo_->setCurrentIndex(
       representation_combo_->findData(static_cast<int>(ByteRepresentation::ASCII_ESCAPED)));
-  if (!inspect_button_->isEnabled() || inspect_button_->text() != QStringLiteral("Submit chunk") ||
+  if (!inspect_button_->isEnabled() || inspect_button_->objectName() != QStringLiteral("primaryAction") ||
+      mode_combo_->currentData().toInt() != static_cast<int>(OperationMode::STREAM_INSPECT) ||
       session_.StreamChunkBudget() !=
           (std::min)(std::size_t{65536U},
                      session_.StreamObservation()->effective_max_submit_bytes)) {
@@ -1108,6 +1150,8 @@ bool DocumentTab::VerifyAsciiForSmoke(QString& error) {
     if (!EncodeForSmoke(error) || !session_.preview().has_value() ||
         !session_.preview()->zero_field_success ||
         !result_kind_label_->text().contains(QStringLiteral("成功，0 个字段")) ||
+        timing_label_->property("paeReviewKind").toString() != QStringLiteral("TX_TEMPLATE") ||
+        !timing_label_->text().contains(QStringLiteral("TX_TEMPLATE")) ||
         HighlightedCellCountForSmoke() != 0U) {
       if (error.isEmpty())
         error = QStringLiteral("literal-only Encode did not show 0-field success");
@@ -1175,16 +1219,21 @@ bool DocumentTab::VerifyAsciiForSmoke(QString& error) {
     error = QStringLiteral("ASCII Enter commit did not produce independent TX template bytes");
     return false;
   }
-  if (!timing_label_->text().contains(QStringLiteral("review kind TX_TEMPLATE"))) {
-    error = QStringLiteral("successful ASCII Encode did not publish TX_TEMPLATE timing context");
+  if (timing_label_->property("paeReviewKind").toString() != QStringLiteral("TX_TEMPLATE") ||
+      !timing_label_->text().contains(QStringLiteral("TX_TEMPLATE")) ||
+      result_kind_label_->property("paeResultState").toString() != QStringLiteral("success")) {
+    error = QStringLiteral("successful ASCII Encode lost TX_TEMPLATE timing semantics");
     return false;
   }
-  if (field_model_->data(field_model_->index(1, FieldTableModel::SOURCE)).toString() !=
-          QStringLiteral("not referenced") ||
-      field_model_->data(field_model_->index(1, FieldTableModel::VALUE)).toString() !=
-          QStringLiteral("not referenced by Encode action") ||
-      field_model_->data(field_model_->index(2, FieldTableModel::SOURCE)).toString() !=
-          QStringLiteral("input")) {
+  if (field_model_->data(field_model_->index(1, FieldTableModel::SOURCE),
+                         FieldTableModel::ActionReferencedRole)
+          .toBool() ||
+      !field_model_->data(field_model_->index(2, FieldTableModel::SOURCE),
+                          FieldTableModel::ActionReferencedRole)
+           .toBool() ||
+      field_model_->data(field_model_->index(2, FieldTableModel::SOURCE),
+                         FieldTableModel::EncodeSourceRole)
+              .toInt() != static_cast<int>(FieldEncodeSource::INPUT)) {
     error = QStringLiteral("ASCII Encode action/source annotations are inconsistent");
     return false;
   }
@@ -1329,9 +1378,9 @@ bool DocumentTab::VerifyAsciiForSmoke(QString& error) {
   field_table_->selectRow(1);
   RefreshFieldDetails(1);
   const QString rx_details = details_view_->toPlainText();
-  if (!rx_details.contains(QStringLiteral("Actual byte range: 9 + 2")) ||
+  if (!rx_details.contains(QStringLiteral("实际字节范围：9 + 2")) ||
       !rx_details.contains(
-          QStringLiteral("Actual physical bytes (zero-based): [9, 11), full-byte range")) ||
+          QStringLiteral("实际物理字节（从 0 起）：[9, 11)，整字节范围")) ||
       rx_details.contains(QStringLiteral("current range unavailable"))) {
     error = QStringLiteral("ASCII Inspect details contradict the adapter actual byte range");
     return false;
@@ -1569,6 +1618,22 @@ bool DocumentTab::VerifyBinaryHostStage1ForSmoke(QString& error) {
     error = QStringLiteral("Schema 0.9 did not start unbound");
     return false;
   }
+#if defined(PAE_BUILD_PROTOCOL_LAB_BINARY_PUBLIC_H2)
+  AddHostDraftRow();
+  auto* encode_endpoint = qobject_cast<QLineEdit*>(host_draft_->cellWidget(1, 0));
+  auto* encode_action = qobject_cast<QComboBox*>(host_draft_->cellWidget(1, 1));
+  const int encode_action_index = encode_action == nullptr ? -1 : encode_action->findData(1);
+  if (encode_endpoint == nullptr || encode_action_index < 0) {
+    error = QStringLiteral("Binary Host Encode action is not exposed by hostBindingDraft");
+    return false;
+  }
+  encode_endpoint->setText(QStringLiteral("device-encode"));
+  encode_action->setCurrentIndex(encode_action_index);
+  if (encode_action->currentData().toInt() != 1) {
+    error = QStringLiteral("Binary Host Encode action itemData differs");
+    return false;
+  }
+#endif
   host_apply_->click();
   QElapsedTimer timer;
   timer.start();
@@ -1581,6 +1646,51 @@ bool DocumentTab::VerifyBinaryHostStage1ForSmoke(QString& error) {
     error = QStringLiteral("explicit Apply did not publish complete-record Decode");
     return false;
   }
+#if defined(PAE_BUILD_PROTOCOL_LAB_BINARY_PUBLIC_H2)
+  if (host_binding_combo_->count() != 2) {
+    error = QStringLiteral("Binary Host draft did not publish Decode and Encode bindings");
+    return false;
+  }
+  host_binding_combo_->setCurrentIndex(1);
+  QApplication::processEvents();
+  if (host_binding_combo_->currentIndex() != 1 || session_.mode() != OperationMode::ENCODE ||
+      !session_.EncodeAvailable() || message_combo_->currentIndex() < 0 ||
+      !message_combo_->currentData().isValid()) {
+    error = QStringLiteral("Binary Host Encode binding did not select an Encode Message");
+    return false;
+  }
+  if (!PopulateCanonicalDraftsForSmoke(error) || !EncodeForSmoke(error) ||
+      !session_.preview().has_value() || session_.preview()->encoded_frame.empty() ||
+      result_kind_label_->property("paeResultState").toString() != QStringLiteral("success")) {
+    if (error.isEmpty())
+      error = QStringLiteral("Binary Host Encode controls did not produce a typed Encode result");
+    return false;
+  }
+  const QString workbench_state = BinaryStateSignatureForSmoke();
+  const QString workbench_input = inspect_input_->toPlainText();
+  const auto workbench_preview = session_.preview()->encoded_frame;
+  const int control_tab = control_tabs_->currentIndex();
+  const int result_tab = right_tabs_->currentIndex();
+  control_tabs_->setCurrentIndex(1);
+  right_tabs_->setCurrentIndex(1);
+  right_tabs_->setCurrentIndex(diagnostic_tab_index_);
+  control_tabs_->setCurrentIndex(control_tab);
+  right_tabs_->setCurrentIndex(result_tab);
+  if (BinaryStateSignatureForSmoke() != workbench_state ||
+      inspect_input_->toPlainText() != workbench_input || !session_.preview().has_value() ||
+      session_.preview()->encoded_frame != workbench_preview ||
+      result_kind_label_->property("paeResultState").toString() != QStringLiteral("success")) {
+    error = QStringLiteral("workbench tab roundtrip changed Binary Encode draft or result");
+    return false;
+  }
+  host_binding_combo_->setCurrentIndex(0);
+  QApplication::processEvents();
+  if (host_binding_combo_->currentIndex() != 0 || session_.mode() != OperationMode::INSPECT ||
+      !session_.InspectAvailable()) {
+    error = QStringLiteral("Binary Host controls did not return to Decode binding");
+    return false;
+  }
+#endif
   const auto selector_model_count = [this] {
     return host_binding_combo_
                ->findChildren<QAbstractItemModel*>(QString{}, Qt::FindDirectChildrenOnly)
@@ -1838,6 +1948,31 @@ bool DocumentTab::VerifyBinaryHostStage1ForSmoke(QString& error) {
     error = QStringLiteral("cancelled close changed the active Binary document");
     return false;
   }
+  const QModelIndex temperature_type = field_model_->index(7, FieldTableModel::TYPE);
+  const QModelIndex temperature_value = field_model_->index(7, FieldTableModel::VALUE);
+  const QModelIndex marker_value = field_model_->index(8, FieldTableModel::VALUE);
+  const QString temperature_tooltip =
+      field_model_->data(temperature_value, Qt::ToolTipRole).toString();
+  const QString marker_tooltip = field_model_->data(marker_value, Qt::ToolTipRole).toString();
+  field_table_->selectRow(7);
+  RefreshFieldDetails(7);
+  right_tabs_->setCurrentIndex(0);
+  const QString temperature_details = details_view_->toPlainText();
+  if (field_model_->data(temperature_type).toString() != QStringLiteral("DECIMAL64") ||
+      !temperature_tooltip.contains(
+          QStringLiteral("Logical DECIMAL64 with observed signed raw.")) ||
+      !marker_tooltip.contains(QStringLiteral("只读原因：当前为 Decode 结果")) ||
+      !marker_tooltip.contains(QStringLiteral("Read-only constant.")) ||
+      !temperature_details.contains(QStringLiteral("字段：Temperature")) ||
+      !temperature_details.contains(
+          QStringLiteral("Logical DECIMAL64 with observed signed raw.")) ||
+      !temperature_details.contains(QStringLiteral("转换：逻辑 Decimal64 结果")) ||
+      !temperature_details.contains(
+          QStringLiteral("物理字节 / 位 / 掩码（从 0 起，LSB0）："))) {
+    error = QStringLiteral(
+        "Binary readability labels, original descriptions, type, or read-only reason differ");
+    return false;
+  }
   return true;
 }
 
@@ -1882,45 +2017,81 @@ bool DocumentTab::VerifyBinaryReloadFailureForSmoke(QString& error) {
 }
 #endif
 
-void DocumentTab::BuildHostUi(QVBoxLayout* root) {
-  host_panel_ = new QWidget(this);
+void DocumentTab::BuildHostUi(QVBoxLayout* operation_root, QVBoxLayout* binding_root) {
+  auto* host_group = new QGroupBox(UiText("绑定与上下文 · 绑定草稿·尚未应用"), this);
+  host_panel_ = host_group;
+  host_panel_->setObjectName(QStringLiteral("hostPanel"));
   auto* layout = new QVBoxLayout(host_panel_);
   layout->setContentsMargins(0, 0, 0, 0);
-  host_draft_ = new QTableWidget(0, 3, host_panel_);
+  host_toggle_ = new QPushButton(UiText("展开绑定设置"), host_panel_);
+  host_toggle_->setObjectName(QStringLiteral("hostPanelToggle"));
+  host_toggle_->setCheckable(true);
+  host_toggle_->setChecked(true);
+  layout->addWidget(host_toggle_);
+  host_content_ = new QWidget(host_panel_);
+  host_content_->setObjectName(QStringLiteral("hostPanelContent"));
+  auto* content_layout = new QVBoxLayout(host_content_);
+  content_layout->setContentsMargins(8, 4, 8, 8);
+  host_draft_ = new QTableWidget(0, 3, host_content_);
   host_draft_->setObjectName(QStringLiteral("hostBindingDraft"));
-  host_draft_->setHorizontalHeaderLabels({QStringLiteral("Endpoint (draft)"),
-                                          QStringLiteral("Action"), QStringLiteral("Pipeline ID")});
+  host_draft_->setHorizontalHeaderLabels(
+      {UiText("端点（草稿）"), UiText("动作"), UiText("处理管线（Pipeline）ID")});
   host_draft_->horizontalHeader()->setStretchLastSection(true);
   host_draft_->setMaximumHeight(110);
-  layout->addWidget(host_draft_);
+  content_layout->addWidget(host_draft_);
   auto* row = new QHBoxLayout;
-  auto* add = new QPushButton(QStringLiteral("Add binding"), host_panel_);
-  auto* remove = new QPushButton(QStringLiteral("Remove selected"), host_panel_);
-  host_apply_ = new QPushButton(QStringLiteral("Apply binding table"), host_panel_);
+  auto* add = new QPushButton(UiText("添加绑定"), host_content_);
+  add->setObjectName(QStringLiteral("hostAddBinding"));
+  auto* remove = new QPushButton(UiText("移除所选绑定"), host_content_);
+  remove->setObjectName(QStringLiteral("hostRemoveBinding"));
+  host_apply_ = new QPushButton(UiText("应用绑定表"), host_content_);
   host_apply_->setObjectName(QStringLiteral("hostApply"));
-  host_binding_combo_ = new QComboBox(host_panel_);
-  host_binding_combo_->setObjectName(QStringLiteral("hostBinding"));
-  host_flow_combo_ = new QComboBox(host_panel_);
-  host_flow_combo_->setObjectName(QStringLiteral("hostFlow"));
-  host_flow_combo_->addItems({QStringLiteral("Flow 0"), QStringLiteral("Flow 1")});
   row->addWidget(add);
   row->addWidget(remove);
   row->addWidget(host_apply_);
-  row->addWidget(new QLabel(QStringLiteral("Active binding"), host_panel_));
-  row->addWidget(host_binding_combo_, 1);
-  row->addWidget(host_flow_combo_);
-  layout->addLayout(row);
-  host_status_ = new QLabel(host_panel_);
+  content_layout->addLayout(row);
+  layout->addWidget(host_content_);
+  host_content_->setVisible(true);
+  connect(host_toggle_, &QPushButton::toggled, this, [this](bool expanded) {
+    host_content_->setVisible(expanded);
+    host_toggle_->setText(expanded ? UiText("收起绑定设置") : UiText("展开绑定设置"));
+  });
+  host_toggle_->setText(UiText("收起绑定设置"));
+  binding_root->addWidget(host_panel_);
+  binding_root->addStretch(1);
+
+  host_active_panel_ = new QGroupBox(UiText("当前 Host 上下文"), this);
+  host_active_panel_->setObjectName(QStringLiteral("hostActiveContext"));
+  auto* active_layout = new QFormLayout(host_active_panel_);
+  active_layout->setFieldGrowthPolicy(QFormLayout::AllNonFixedFieldsGrow);
+  host_binding_combo_ = new QComboBox(host_active_panel_);
+  host_binding_combo_->setObjectName(QStringLiteral("hostBinding"));
+  host_binding_combo_->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Fixed);
+  active_layout->addRow(UiText("当前绑定 / 动作"), host_binding_combo_);
+  host_flow_combo_ = new QComboBox(host_active_panel_);
+  host_flow_combo_->setObjectName(QStringLiteral("hostFlow"));
+  host_flow_combo_->addItem(UiText("流编号（Flow）0"), 0);
+  host_flow_combo_->addItem(UiText("流编号（Flow）1"), 1);
+  active_layout->addRow(UiText("当前 Flow"), host_flow_combo_);
+  host_status_ = new QLabel(host_active_panel_);
   host_status_->setObjectName(QStringLiteral("hostStatus"));
   host_status_->setWordWrap(true);
-  layout->addWidget(host_status_);
-  root->addWidget(host_panel_);
+  host_status_->setTextInteractionFlags(Qt::TextSelectableByMouse);
+  active_layout->addRow(UiText("状态"), host_status_);
+  operation_root->addWidget(host_active_panel_);
   connect(add, &QPushButton::clicked, this, [this] {
-    if (!host_pending_revision_) AddHostDraftRow();
+    if (!host_pending_revision_) {
+      AddHostDraftRow();
+      host_draft_dirty_ = true;
+      RefreshState();
+    }
   });
   connect(remove, &QPushButton::clicked, this, [this] {
-    if (!host_pending_revision_ && host_draft_->currentRow() >= 0)
+    if (!host_pending_revision_ && host_draft_->currentRow() >= 0) {
       host_draft_->removeRow(host_draft_->currentRow());
+      host_draft_dirty_ = true;
+      RefreshState();
+    }
   });
   connect(host_apply_, &QPushButton::clicked, this, [this] { ApplyHostDraft(); });
   connect(host_binding_combo_, qOverload<int>(&QComboBox::currentIndexChanged), this, [this](int) {
@@ -1944,10 +2115,16 @@ void DocumentTab::AddHostDraftRow() {
   auto* action = new QComboBox(host_draft_);
 #if defined(PAE_BUILD_PROTOCOL_LAB_BINARY_UI)
   if (session_.IsBinaryHostDocument()) {
-    action->addItem(QStringLiteral("Decode"));
+    action->addItem(UiText("解析"), 0);
+#if defined(PAE_BUILD_PROTOCOL_LAB_BINARY_PUBLIC_H2)
+    action->addItem(UiText("组包"), 1);
+#endif
   } else
 #endif
-    action->addItems({QStringLiteral("Decode"), QStringLiteral("Encode")});
+  {
+    action->addItem(UiText("解析"), 0);
+    action->addItem(UiText("组包"), 1);
+  }
   auto* pipeline = new QComboBox(host_draft_);
   for (const auto& item : session_.description()->pipelines)
     pipeline->addItem(FromUtf8(item.id),
@@ -1955,9 +2132,28 @@ void DocumentTab::AddHostDraftRow() {
   host_draft_->setCellWidget(row, 0, endpoint);
   host_draft_->setCellWidget(row, 1, action);
   host_draft_->setCellWidget(row, 2, pipeline);
+  connect(endpoint, &QLineEdit::textChanged, this, [this] {
+    if (!rebuilding_selectors_) {
+      host_draft_dirty_ = true;
+      RefreshState();
+    }
+  });
+  connect(action, qOverload<int>(&QComboBox::currentIndexChanged), this, [this](int) {
+    if (!rebuilding_selectors_) {
+      host_draft_dirty_ = true;
+      RefreshState();
+    }
+  });
+  connect(pipeline, qOverload<int>(&QComboBox::currentIndexChanged), this, [this](int) {
+    if (!rebuilding_selectors_) {
+      host_draft_dirty_ = true;
+      RefreshState();
+    }
+  });
 }
 void DocumentTab::InitializeHostDraft() {
   rebuilding_selectors_ = true;
+  host_draft_dirty_ = true;
   host_draft_->setRowCount(0);
   host_binding_combo_->clear();
   host_flow_combo_->setCurrentIndex(0);
@@ -1971,9 +2167,8 @@ void DocumentTab::InitializeHostDraft() {
     if (session_.IsBinaryHostDocument()) {
       if (auto* action = qobject_cast<QComboBox*>(host_draft_->cellWidget(0, 1)))
         action->setCurrentIndex(0);
-      host_status_->setText(QStringLiteral(
-          "Schema 0.9 is unbound. Edit the draft and Apply explicitly; Decode remains disabled "
-          "until publication succeeds."));
+      host_status_->setText(
+          UiText("Schema 0.9 尚未绑定。请编辑草稿并显式应用；发布成功前解析保持禁用。"));
       rebuilding_selectors_ = false;
       return;
     }
@@ -1982,8 +2177,7 @@ void DocumentTab::InitializeHostDraft() {
     if (auto* action = qobject_cast<QComboBox*>(host_draft_->cellWidget(1, 1)))
       action->setCurrentIndex(1);
     host_status_->setText(
-        QStringLiteral("Draft only. Apply explicitly to activate Host Session; current execution "
-                       "is legacy offline."));
+        UiText("当前仅为草稿。请显式应用以启用 Host Session；当前执行仍为旧版离线模式。"));
   }
   rebuilding_selectors_ = false;
 }
@@ -2019,15 +2213,14 @@ void DocumentTab::ApplyHostDraft() {
             : session_.prepared()->ascii_adapter->HostTransitionAdmissionBytes();
 #endif
     if (current_bytes > protocol_lab::ascii::HostObserverAdapter::kMaximumAccountedBytes) {
-      host_status_->setText(QStringLiteral(
-          "Active document exceeds Host transition admission limit; no candidate created."));
+      host_status_->setText(UiText("当前文档超过 Host 切换准入上限，未创建候选项。"));
       return;
     }
 #endif
   }
   const auto high_bit = Revision{1} << 63U;
   if (host_request_sequence_ == high_bit - 1U) {
-    host_status_->setText(QStringLiteral("Binding request sequence exhausted; reopen document."));
+    host_status_->setText(UiText("绑定请求序号已耗尽，请重新打开文档。"));
     return;
   }
   std::vector<AsciiHostBinding> bindings;
@@ -2040,25 +2233,28 @@ void DocumentTab::ApplyHostDraft() {
     const auto* pipeline = qobject_cast<QComboBox*>(host_draft_->cellWidget(row, 2));
     if (!endpoint || !action || !pipeline || pipeline->currentIndex() < 0 ||
         endpoint->text().isEmpty() || endpoint->text().toUtf8().size() > 256) {
-      host_status_->setText(QStringLiteral("Invalid binding draft; active Session unchanged."));
+      host_status_->setText(UiText("绑定草稿无效；当前 Session 保持不变。"));
       return;
     }
     const auto pipeline_index = static_cast<std::size_t>(pipeline->currentData().toULongLong());
 #if defined(PAE_BUILD_PROTOCOL_LAB_BINARY_UI)
     if (binary) {
-      if (action->currentIndex() != 0 ||
+      if ((action->currentIndex() != 0 && action->currentIndex() != 1) ||
           pipeline_index >= session_.description()->pipelines.size()) {
         host_status_->setText(
-            QStringLiteral("Stage 1 accepts Decode bindings only; active Session unchanged."));
+            QStringLiteral("Binary Host 绑定无效；当前 Session 保持不变。"));
         return;
       }
       binary_bindings.push_back({Utf8(endpoint->text()),
 #if defined(PAE_BUILD_PROTOCOL_LAB_BINARY_PUBLIC_H2)
-                                 pae::HostAction::DECODE,
+                                 action->currentIndex() == 0 ? pae::HostAction::DECODE
+                                                             : pae::HostAction::ENCODE,
 #else
-                                 host_endpoint::Action::DECODE,
+                                 action->currentIndex() == 0 ? host_endpoint::Action::DECODE
+                                                             : host_endpoint::Action::ENCODE,
 #endif
-                                 session_.description()->pipelines[pipeline_index].id, 2U});
+                                 session_.description()->pipelines[pipeline_index].id,
+                                 action->currentIndex() == 0 ? 2U : 1U});
     } else
 #endif
       bindings.push_back({Utf8(endpoint->text()),
@@ -2071,7 +2267,7 @@ void DocumentTab::ApplyHostDraft() {
       && binary_bindings.empty()
 #endif
   ) {
-    host_status_->setText(QStringLiteral("At least one binding required."));
+    host_status_->setText(UiText("至少需要一条绑定。"));
     return;
   }
   host_pending_revision_ = high_bit | ++host_request_sequence_;
@@ -2092,11 +2288,9 @@ void DocumentTab::ApplyHostDraft() {
     binary_host_pending_bindings_.clear();
     binary_host_pending_identity_.reset();
 #endif
-    host_status_->setText(
-        QStringLiteral("Preparation scheduler rejected request; active Session unchanged."));
+    host_status_->setText(UiText("准备调度器拒绝了请求；当前 Session 保持不变。"));
   } else
-    host_status_->setText(QStringLiteral(
-        "Preparing candidate Session. Active state retained until confirmed publication."));
+    host_status_->setText(UiText("正在准备候选 Session；确认发布前保留当前生效状态。"));
   RefreshState();
 }
 void DocumentTab::AcceptHostCompletion(std::unique_ptr<CompileCompletion> completion) {
@@ -2129,7 +2323,9 @@ void DocumentTab::AcceptHostCompletion(std::unique_ptr<CompileCompletion> comple
         message_model = new QStandardItemModel(message_combo_);
         for (const auto& binding : binary_host_pending_bindings_)
           selector_model->appendRow(new QStandardItem(FromUtf8(binding.endpoint) +
-                                                      QStringLiteral(" / Decode / ") +
+                                                      (binding.action == pae::HostAction::DECODE
+                                                           ? UiText(" / 解析 / ")
+                                                           : UiText(" / 组包 / ")) +
                                                       FromUtf8(binding.pipeline_id)));
         for (const auto& pipeline : session_.description()->pipelines) {
           const auto& label = pipeline.display_name.empty() ? pipeline.id : pipeline.display_name;
@@ -2220,8 +2416,7 @@ void DocumentTab::AcceptHostCompletion(std::unique_ptr<CompileCompletion> comple
       delete pipeline_model;
       delete message_model;
       host_status_->setText(
-          QStringLiteral("Preparation failed; active Session and retry draft retained: %1")
-              .arg(FromUtf8(error)));
+          UiText("准备失败；已保留当前 Session 和重试草稿。\n%1").arg(FromUtf8(error)));
       RefreshState();
       return;
     }
@@ -2231,8 +2426,7 @@ void DocumentTab::AcceptHostCompletion(std::unique_ptr<CompileCompletion> comple
       delete selector_model;
       delete pipeline_model;
       delete message_model;
-      host_status_->setText(QStringLiteral(
-          "Candidate publication preparation failed; active Session and retry draft retained."));
+      host_status_->setText(UiText("候选发布准备失败；已保留当前 Session 和重试草稿。"));
       RefreshState();
       return;
     }
@@ -2244,8 +2438,7 @@ void DocumentTab::AcceptHostCompletion(std::unique_ptr<CompileCompletion> comple
       delete selector_model;
       delete pipeline_model;
       delete message_model;
-      host_status_->setText(QStringLiteral(
-          "Selector preparation allocation failed; active Session and retry draft retained."));
+      host_status_->setText(UiText("选择器准备分配失败；已保留当前 Session 和重试草稿。"));
       RefreshState();
       return;
     }
@@ -2267,8 +2460,7 @@ void DocumentTab::AcceptHostCompletion(std::unique_ptr<CompileCompletion> comple
       delete selector_model;
       delete pipeline_model;
       delete message_model;
-      host_status_->setText(QStringLiteral(
-          "UI view preparation allocation failed; active Session and retry draft retained."));
+      host_status_->setText(UiText("UI 视图准备分配失败；已保留当前 Session 和重试草稿。"));
       RefreshState();
       return;
     }
@@ -2276,22 +2468,18 @@ void DocumentTab::AcceptHostCompletion(std::unique_ptr<CompileCompletion> comple
       delete selector_model;
       delete pipeline_model;
       delete message_model;
-      host_status_->setText(QStringLiteral(
-          "UI presentation accounting failed; active Session and retry draft retained."));
+      host_status_->setText(UiText("UI 展示计费失败；已保留当前 Session 和重试草稿。"));
       RefreshState();
       return;
     }
     if (session_.BinaryHasDiscardableState()) {
-      const auto answer = QMessageBox::question(
-          this, QStringLiteral("Replace Binary Host Session"),
-          QStringLiteral("Publishing will discard active Binary flow drafts/results. Continue?"),
-          QMessageBox::Yes | QMessageBox::No, QMessageBox::No);
+      const auto answer = AskChineseQuestion(this, UiText("替换 Binary Host Session"),
+                                             UiText("发布将丢弃当前 Binary 流草稿和结果。是否继续？"));
       if (answer != QMessageBox::Yes) {
         delete selector_model;
         delete pipeline_model;
         delete message_model;
-        host_status_->setText(
-            QStringLiteral("Publication cancelled; active Session and retry draft retained."));
+        host_status_->setText(UiText("已取消发布；已保留当前 Session 和重试草稿。"));
         RefreshState();
         return;
       }
@@ -2319,12 +2507,13 @@ void DocumentTab::AcceptHostCompletion(std::unique_ptr<CompileCompletion> comple
     if (old_pipeline_model) delete old_pipeline_model.data();
     if (old_message_model) delete old_message_model.data();
     session_.PublishBinaryHostPublication(std::move(*publication));
+    host_draft_dirty_ = false;
     field_model_->Reset(CurrentMessage(), {}, {}, false, session_.representation(),
                         FieldPresentationAction::INSPECT);
     RefreshInspect();
     RefreshModePresentation();
     RefreshState();
-    host_status_->setText(QStringLiteral("Binary Host Session published."));
+    host_status_->setText(UiText("Binary Host Session 已发布。"));
     return;
   }
 #endif
@@ -2374,8 +2563,7 @@ void DocumentTab::AcceptHostCompletion(std::unique_ptr<CompileCompletion> comple
 #endif
   host_pending_bindings_.clear();
   if (!candidate) {
-    host_status_->setText(
-        QStringLiteral("Preparation failed; active state unchanged: %1").arg(FromUtf8(error)));
+    host_status_->setText(UiText("准备失败；当前状态保持不变。\n%1").arg(FromUtf8(error)));
     RefreshState();
     return;
   }
@@ -2385,8 +2573,7 @@ void DocumentTab::AcceptHostCompletion(std::unique_ptr<CompileCompletion> comple
       candidate->AccountedBytes() >
           2U * protocol_lab::ascii::HostObserverAdapter::kMaximumAccountedBytes -
               session_.prepared()->host_adapter->AccountedBytes()) {
-    host_status_->setText(
-        QStringLiteral("Rebinding peak admission limit; active state unchanged."));
+    host_status_->setText(UiText("重新绑定超过峰值准入上限；当前状态保持不变。"));
     RefreshState();
     return;
   }
@@ -2394,42 +2581,38 @@ void DocumentTab::AcceptHostCompletion(std::unique_ptr<CompileCompletion> comple
 #if defined(PAE_BUILD_PROTOCOL_LAB_ASCII_PUBLIC_A2)
   if (session_.HostActive() && session_.prepared()->host_adapter->IsPublicCompleteRecord() &&
       session_.HostHasDiscardableState()) {
-    const auto answer = QMessageBox::question(
-        this, QStringLiteral("Replace ASCII Host Session"),
-        QStringLiteral("Publishing will discard active ASCII flow drafts/results. Continue?"),
-        QMessageBox::Yes | QMessageBox::No, QMessageBox::No);
+    const auto answer = AskChineseQuestion(this, UiText("替换 ASCII Host Session"),
+                                           UiText("发布将丢弃当前 ASCII 流草稿和结果。是否继续？"));
     if (answer != QMessageBox::Yes) {
-      host_status_->setText(
-          QStringLiteral("Publication cancelled; active Session and retry draft retained."));
+      host_status_->setText(UiText("已取消发布；已保留当前 Session 和重试草稿。"));
       RefreshState();
       return;
     }
   }
 #endif
-  if (!ConfirmStreamDiscardOnly(QStringLiteral("publish replacement binding table"))) {
-    host_status_->setText(QStringLiteral("Publication cancelled; all active flows preserved."));
+  if (!ConfirmStreamDiscardOnly(UiText("发布替换后的绑定表"))) {
+    host_status_->setText(UiText("已取消发布；所有活动流均已保留。"));
     RefreshState();
     return;
   }
   try {
     if (!session_.ApplyHostAdapter(std::move(candidate))) {
-      host_status_->setText(QStringLiteral("Candidate publication rejected."));
+      host_status_->setText(UiText("候选发布被拒绝。"));
       RefreshState();
       return;
     }
   } catch (const std::exception&) {
-    host_status_->setText(
-        QStringLiteral("Publication preparation allocation failed; active Session unchanged."));
+    host_status_->setText(UiText("发布准备分配失败；当前 Session 保持不变。"));
     RefreshState();
     return;
   }
+  host_draft_dirty_ = false;
   rebuilding_selectors_ = true;
   host_binding_combo_->clear();
   for (const auto& binding : session_.prepared()->host_adapter->Bindings())
     host_binding_combo_->addItem(
         FromUtf8(binding.endpoint) +
-        (IsDecodeHostAction(binding.action) ? QStringLiteral(" / Decode / ")
-                                            : QStringLiteral(" / Encode / ")) +
+        (IsDecodeHostAction(binding.action) ? UiText(" / 解析 / ") : UiText(" / 组包 / ")) +
         FromUtf8(session_.description()->pipelines[binding.pipeline_index].id));
   host_binding_combo_->setCurrentIndex(0);
   host_flow_combo_->setCurrentIndex(0);
@@ -2496,8 +2679,11 @@ void DocumentTab::SelectHostView() {
   rebuilding_selectors_ = false;
   timing_label_->clear();
   if (session_.BinaryHostActive()) {
-    field_model_->Reset(CurrentMessage(), {}, {}, false, session_.representation(),
-                        FieldPresentationAction::INSPECT);
+    if (session_.mode() == OperationMode::ENCODE)
+      RebuildMessageSelector();
+    else
+      field_model_->Reset(CurrentMessage(), {}, {}, false, session_.representation(),
+                          FieldPresentationAction::INSPECT);
   } else {
     RebuildSelectorsAndModel();
   }
@@ -2506,8 +2692,8 @@ void DocumentTab::SelectHostView() {
   RefreshModePresentation();
   RefreshState();
   host_status_->setText(
-      QStringLiteral("Host Session active | Tab=%1 load=%2 session=%3 binding=%4 flow=%5. Draft "
-                     "edits require Apply; view switches preserve flows.")
+      UiText("Host Session 已生效 | Tab=%1 加载=%2 Session=%3 绑定=%4 "
+             "流编号（Flow）=%5。草稿编辑需应用后生效；切换视图会保留各流状态。")
           .arg(session_.id())
           .arg(session_.load_revision())
           .arg(session_.plan_generation())
@@ -2524,86 +2710,291 @@ void DocumentTab::SelectHostView() {
 }
 #endif
 
-void DocumentTab::BuildUi() {
-  auto* root = new QVBoxLayout(this);
-  auto* path_row = new QHBoxLayout;
-  path_edit_ = new QLineEdit(this);
-  path_edit_->setPlaceholderText(QStringLiteral("PAE configuration JSON path"));
-  browse_button_ = new QPushButton(QStringLiteral("Browse..."), this);
-  load_button_ = new QPushButton(QStringLiteral("Load / Reload"), this);
-  path_row->addWidget(path_edit_, 1);
-  path_row->addWidget(browse_button_);
-  path_row->addWidget(load_button_);
-  root->addLayout(path_row);
-
-  identity_label_ = new QLabel(this);
-  identity_label_->setTextInteractionFlags(Qt::TextSelectableByMouse);
-  root->addWidget(identity_label_);
+bool DocumentTab::VerifyLocalizationAnchorsForSmoke(QString& error) {
+  const auto require_name = [&error](const QObject* object, const char* expected) {
+    if (object != nullptr && object->objectName() == QLatin1String(expected)) return true;
+    error = QStringLiteral("missing stable UI anchor: %1").arg(QLatin1String(expected));
+    return false;
+  };
+  if (!require_name(path_edit_, "configPath") ||
+      !require_name(config_path_toggle_, "configPathToggle") ||
+      !require_name(load_button_, "loadConfig") ||
+      !require_name(mode_combo_, "operationMode") ||
+      !require_name(pipeline_combo_, "pipelineSelector") ||
+      !require_name(message_combo_, "messageSelector") ||
+      !require_name(representation_combo_, "inputRepresentation") ||
+      !require_name(inspect_button_, "primaryAction") ||
+      !require_name(result_kind_label_, "resultStatus") ||
+      !require_name(diagnostic_label_, "diagnosticView") ||
+      !require_name(field_table_, "fieldTable") || !require_name(hex_view_, "hexView") ||
+      !require_name(right_tabs_, "resultDetailsTabs") ||
+      !require_name(control_tabs_, "controlTabs") ||
+      !require_name(workbench_splitter_, "workbenchSplitter") ||
+      !require_name(result_splitter_, "resultWorkspaceSplitter"))
+    return false;
+  if (findChild<QScrollArea*>(QStringLiteral("operationScroll")) == nullptr ||
+      findChild<QScrollArea*>(QStringLiteral("bindingScroll")) == nullptr ||
+      findChild<QScrollArea*>(QStringLiteral("diagnosticScroll")) == nullptr) {
+    error = QStringLiteral("local workbench scroll anchor is missing");
+    return false;
+  }
+  if (workbench_splitter_->orientation() != Qt::Horizontal || workbench_splitter_->count() != 2 ||
+      result_splitter_->orientation() != Qt::Vertical || result_splitter_->count() != 2 ||
+      control_tabs_->count() != 2 || right_tabs_->count() < 3 ||
+      field_table_->horizontalHeader()->length() <= field_table_->viewport()->width()) {
+    error = QStringLiteral("workbench splitters, tabs, or field horizontal reachability differ");
+    return false;
+  }
+  if (field_table_->columnWidth(FieldTableModel::TYPE) <
+          field_table_->fontMetrics().horizontalAdvance(QStringLiteral("DECIMAL64")) + 24 ||
+      !(details_view_->textInteractionFlags() & Qt::TextSelectableByMouse) ||
+      !(details_view_->textInteractionFlags() & Qt::TextSelectableByKeyboard) ||
+      field_model_->headerData(FieldTableModel::TYPE, Qt::Horizontal, Qt::ToolTipRole)
+          .toString()
+          .isEmpty()) {
+    error = QStringLiteral(
+                "field readability anchor differs: type_width=%1 required=%2 detail_flags=%3 "
+                "type_header_help=%4")
+                .arg(field_table_->columnWidth(FieldTableModel::TYPE))
+                .arg(field_table_->fontMetrics().horizontalAdvance(QStringLiteral("DECIMAL64")) +
+                     24)
+                .arg(static_cast<int>(details_view_->textInteractionFlags()))
+                .arg(field_model_
+                         ->headerData(FieldTableModel::TYPE, Qt::Horizontal, Qt::ToolTipRole)
+                         .toString());
+    return false;
+  }
+  if (mode_combo_->findData(static_cast<int>(OperationMode::ENCODE)) < 0 ||
+      mode_combo_->findData(static_cast<int>(OperationMode::INSPECT)) < 0 ||
+      representation_combo_->findData(static_cast<int>(ByteRepresentation::HEX)) < 0 ||
+      representation_combo_->findData(static_cast<int>(ByteRepresentation::ASCII_ESCAPED)) < 0) {
+    error = QStringLiteral("stable mode/representation itemData is missing");
+    return false;
+  }
+  if (field_model_->rowCount() > 0 &&
+      !field_model_->index(0, FieldTableModel::ID).data(FieldTableModel::FieldIndexRole).isValid()) {
+    error = QStringLiteral("stable field model role is missing");
+    return false;
+  }
+  const auto state_before_tabs = session_.state();
+  const auto generation_before_tabs = session_.plan_generation();
+  const auto preview_before_tabs = PreviewFrameSizeForSmoke();
+  const QString input_before_tabs = inspect_input_->toPlainText();
+  const int field_row_before_tabs = field_table_->currentIndex().row();
+  const int control_before = control_tabs_->currentIndex();
+  const int result_before = right_tabs_->currentIndex();
+  for (int index = 0; index < control_tabs_->count(); ++index)
+    if (control_tabs_->isTabEnabled(index)) control_tabs_->setCurrentIndex(index);
+  for (int index = 0; index < right_tabs_->count(); ++index)
+    if (right_tabs_->isTabEnabled(index)) right_tabs_->setCurrentIndex(index);
+  control_tabs_->setCurrentIndex(control_before);
+  right_tabs_->setCurrentIndex(result_before);
+  if (session_.state() != state_before_tabs ||
+      session_.plan_generation() != generation_before_tabs ||
+      PreviewFrameSizeForSmoke() != preview_before_tabs ||
+      inspect_input_->toPlainText() != input_before_tabs ||
+      field_table_->currentIndex().row() != field_row_before_tabs) {
+    error = QStringLiteral("workbench tab navigation changed execution, draft, result, or selection");
+    return false;
+  }
 #if defined(PAE_BUILD_PROTOCOL_LAB_HOST_OBSERVER)
-  BuildHostUi(root);
+  if (!host_panel_->isHidden()) {
+    if (qobject_cast<QGroupBox*>(host_panel_) == nullptr || host_content_ == nullptr ||
+        host_toggle_ == nullptr) {
+      error = QStringLiteral("collapsible Host panel anchor is missing");
+      return false;
+    }
+    const auto state_before = session_.state();
+    const auto generation_before = session_.plan_generation();
+    const auto preview_size_before = PreviewFrameSizeForSmoke();
+    const bool checked_before = host_toggle_->isChecked();
+    host_toggle_->setChecked(!checked_before);
+    const bool visibility_matches = host_content_->isHidden() == checked_before;
+    host_toggle_->setChecked(checked_before);
+    if (!visibility_matches || session_.state() != state_before ||
+        session_.plan_generation() != generation_before ||
+        PreviewFrameSizeForSmoke() != preview_size_before) {
+      error = QStringLiteral("Host panel collapse changed execution state or visibility mapping");
+      return false;
+    }
+    host_toggle_->setChecked(false);
+    if (!host_binding_combo_->isVisibleTo(this) ||
+        !host_flow_combo_->isVisibleTo(this) || !host_status_->isVisibleTo(this) ||
+        session_.state() != state_before || session_.plan_generation() != generation_before ||
+        PreviewFrameSizeForSmoke() != preview_size_before) {
+      error = QStringLiteral("collapsed Host settings hid active context or changed execution state");
+      host_toggle_->setChecked(checked_before);
+      return false;
+    }
+    host_toggle_->setChecked(checked_before);
+  }
 #endif
+  return true;
+}
 
-  auto* selection_row = new QHBoxLayout;
+void DocumentTab::BuildUi() {
+  setObjectName(QStringLiteral("documentTab"));
+  auto* root = new QVBoxLayout(this);
+  root->setContentsMargins(8, 6, 8, 8);
+  auto* config_group = new QGroupBox(UiText("文档与编译"), this);
+  config_group->setObjectName(QStringLiteral("documentConfigGroup"));
+  auto* config_layout = new QVBoxLayout(config_group);
+  config_layout->setContentsMargins(8, 4, 8, 6);
+  auto* config_summary = new QHBoxLayout;
+  config_name_label_ = new QLabel(UiText("未选择配置"), config_group);
+  config_name_label_->setObjectName(QStringLiteral("configFileName"));
+  config_name_label_->setTextInteractionFlags(Qt::TextSelectableByMouse);
+  config_name_label_->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Preferred);
+  identity_label_ = new QLabel(config_group);
+  identity_label_->setObjectName(QStringLiteral("documentIdentity"));
+  identity_label_->setTextInteractionFlags(Qt::TextSelectableByMouse);
+  identity_label_->setWordWrap(true);
+  identity_label_->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Preferred);
+  config_summary->addWidget(config_name_label_, 1);
+  browse_button_ = new QPushButton(UiText("浏览..."), config_group);
+  browse_button_->setObjectName(QStringLiteral("browseConfig"));
+  load_button_ = new QPushButton(UiText("加载 / 重新加载"), config_group);
+  load_button_->setObjectName(QStringLiteral("loadConfig"));
+  config_path_toggle_ = new QPushButton(UiText("展开完整路径"), config_group);
+  config_path_toggle_->setObjectName(QStringLiteral("configPathToggle"));
+  config_path_toggle_->setCheckable(true);
+  config_summary->addWidget(browse_button_);
+  config_summary->addWidget(load_button_);
+  config_summary->addWidget(config_path_toggle_);
+  config_layout->addLayout(config_summary);
+  config_layout->addWidget(identity_label_);
+
+  config_path_details_ = new QWidget(config_group);
+  config_path_details_->setObjectName(QStringLiteral("configPathDetails"));
+  auto* path_row = new QHBoxLayout(config_path_details_);
+  path_row->setContentsMargins(0, 0, 0, 0);
+  path_row->addWidget(new QLabel(UiText("完整路径"), config_path_details_));
+  path_edit_ = new QLineEdit(config_path_details_);
+  path_edit_->setObjectName(QStringLiteral("configPath"));
+  path_edit_->setPlaceholderText(UiText("PAE 配置 JSON 路径"));
+  path_row->addWidget(path_edit_, 1);
+  config_layout->addWidget(config_path_details_);
+  config_path_details_->setVisible(false);
+  connect(config_path_toggle_, &QPushButton::toggled, this, [this](bool expanded) {
+    config_path_details_->setVisible(expanded);
+    config_path_toggle_->setText(expanded ? UiText("收起完整路径") : UiText("展开完整路径"));
+  });
+  root->addWidget(config_group);
+
+  workbench_splitter_ = new QSplitter(Qt::Horizontal, this);
+  workbench_splitter_->setObjectName(QStringLiteral("workbenchSplitter"));
+  workbench_splitter_->setChildrenCollapsible(false);
+  control_tabs_ = new QTabWidget(workbench_splitter_);
+  control_tabs_->setObjectName(QStringLiteral("controlTabs"));
+  auto* operation_scroll = new QScrollArea(control_tabs_);
+  operation_scroll->setObjectName(QStringLiteral("operationScroll"));
+  operation_scroll->setWidgetResizable(true);
+  operation_scroll->setHorizontalScrollBarPolicy(Qt::ScrollBarAsNeeded);
+  auto* operation_page = new QWidget(operation_scroll);
+  operation_page->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Preferred);
+  auto* operation_page_layout = new QVBoxLayout(operation_page);
+  operation_page_layout->setContentsMargins(8, 8, 8, 8);
+  auto* operation_group = new QGroupBox(UiText("操作与输入"), operation_page);
+  operation_group->setObjectName(QStringLiteral("operationGroup"));
+  auto* operation_layout = new QVBoxLayout(operation_group);
+  auto* selection_form = new QFormLayout;
+  selection_form->setFieldGrowthPolicy(QFormLayout::AllNonFixedFieldsGrow);
   pipeline_combo_ = new QComboBox(this);
+  pipeline_combo_->setObjectName(QStringLiteral("pipelineSelector"));
+  pipeline_combo_->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Fixed);
   mode_combo_ = new QComboBox(this);
-  mode_combo_->addItem(QStringLiteral("Encode"), static_cast<int>(OperationMode::ENCODE));
-  mode_combo_->addItem(QStringLiteral("Inspect"), static_cast<int>(OperationMode::INSPECT));
+  mode_combo_->setObjectName(QStringLiteral("operationMode"));
+  mode_combo_->addItem(UiText("组包"), static_cast<int>(OperationMode::ENCODE));
+  mode_combo_->addItem(UiText("解析"), static_cast<int>(OperationMode::INSPECT));
 #if defined(PAE_BUILD_PROTOCOL_LAB_ASCII_STREAM_OBSERVER)
-  mode_combo_->addItem(QStringLiteral("Stream Inspect"),
+  mode_combo_->addItem(UiText("流式解析"),
                        static_cast<int>(OperationMode::STREAM_INSPECT));
 #endif
   message_combo_ = new QComboBox(this);
+  message_combo_->setObjectName(QStringLiteral("messageSelector"));
+  message_combo_->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Fixed);
   representation_combo_ = new QComboBox(this);
+  representation_combo_->setObjectName(QStringLiteral("inputRepresentation"));
   representation_combo_->setToolTip(QStringLiteral(
       "切换表示会按当前格式解析并转换已有草稿，不会重新解释输入。\n"
       "转换失败时保留当前格式与草稿；请修正草稿，或先复制/清空，再切换格式并输入。"));
   representation_combo_->addItem(QStringLiteral("Hex"), static_cast<int>(ByteRepresentation::HEX));
   representation_combo_->addItem(QStringLiteral("ASCII (escaped)"),
                                  static_cast<int>(ByteRepresentation::ASCII_ESCAPED));
-  encode_button_ = new QPushButton(QStringLiteral("Encode"), this);
-  inspect_button_ = new QPushButton(QStringLiteral("Inspect complete record"), this);
+  encode_button_ = new QPushButton(QStringLiteral("生成报文（Encode）"), this);
+  encode_button_->setObjectName(QStringLiteral("encodeAction"));
+  inspect_button_ = new QPushButton(QStringLiteral("解析完整记录（Decode）"), this);
+  inspect_button_->setObjectName(QStringLiteral("primaryAction"));
 #if defined(PAE_BUILD_PROTOCOL_LAB_ASCII_STREAM_OBSERVER)
-  continue_button_ = new QPushButton(QStringLiteral("Continue"), this);
-  reset_stream_button_ = new QPushButton(QStringLiteral("Reset stream"), this);
+  continue_button_ = new QPushButton(UiText("继续"), this);
+  continue_button_->setObjectName(QStringLiteral("continueStream"));
+  reset_stream_button_ = new QPushButton(UiText("重置流"), this);
+  reset_stream_button_->setObjectName(QStringLiteral("resetStream"));
 #endif
-  selection_row->addWidget(new QLabel(QStringLiteral("Mode"), this));
-  selection_row->addWidget(mode_combo_);
-  selection_row->addWidget(new QLabel(QStringLiteral("Pipeline"), this));
-  selection_row->addWidget(pipeline_combo_, 1);
-  selection_row->addWidget(new QLabel(QStringLiteral("Encode Message"), this));
-  selection_row->addWidget(message_combo_, 1);
-  selection_row->addWidget(new QLabel(QStringLiteral("Representation"), this));
-  selection_row->addWidget(representation_combo_);
-  selection_row->addWidget(encode_button_);
-  selection_row->addWidget(inspect_button_);
+  selection_form->addRow(UiText("当前动作"), mode_combo_);
+  selection_form->addRow(UiText("处理管线（Pipeline）"), pipeline_combo_);
+  selection_form->addRow(UiText("组包消息"), message_combo_);
+  selection_form->addRow(UiText("输入表示"), representation_combo_);
+  operation_layout->addLayout(selection_form);
+  auto* action_row = new QHBoxLayout;
+  action_row->addWidget(encode_button_);
+  action_row->addWidget(inspect_button_);
 #if defined(PAE_BUILD_PROTOCOL_LAB_ASCII_STREAM_OBSERVER)
-  selection_row->addWidget(continue_button_);
-  selection_row->addWidget(reset_stream_button_);
+  action_row->addWidget(continue_button_);
+  action_row->addWidget(reset_stream_button_);
 #endif
-  root->addLayout(selection_row);
+  action_row->addStretch(1);
+  operation_layout->addLayout(action_row);
 
-  inspect_input_label_ =
-      new QLabel(QStringLiteral("Raw input / 原始输入（Hex；允许大小写及 SP/HT/CR/LF）"), this);
+  auto* binding_scroll = new QScrollArea(control_tabs_);
+  binding_scroll->setObjectName(QStringLiteral("bindingScroll"));
+  binding_scroll->setWidgetResizable(true);
+  binding_scroll->setHorizontalScrollBarPolicy(Qt::ScrollBarAsNeeded);
+  auto* binding_page = new QWidget(binding_scroll);
+  auto* binding_layout = new QVBoxLayout(binding_page);
+  binding_layout->setContentsMargins(8, 8, 8, 8);
+#if defined(PAE_BUILD_PROTOCOL_LAB_HOST_OBSERVER)
+  BuildHostUi(operation_page_layout, binding_layout);
+#else
+  binding_layout->addWidget(new QLabel(UiText("当前构建未启用 Host 绑定观察。"), binding_page));
+  binding_layout->addStretch(1);
+#endif
+
+  inspect_input_label_ = new QLabel(UiText("原始输入（Hex；允许大小写及 SP/HT/CR/LF）"), this);
+  inspect_input_label_->setWordWrap(true);
   inspect_input_ = new QPlainTextEdit(this);
-  inspect_input_->setPlaceholderText(
-      QStringLiteral("Paste one complete record, for example: AA 00 06 00 00 55"));
-  inspect_input_->setMaximumHeight(92);
-  root->addWidget(inspect_input_label_);
-  root->addWidget(inspect_input_);
+  inspect_input_->setObjectName(QStringLiteral("inputEditor"));
+  inspect_input_->setPlaceholderText(UiText("粘贴一条完整记录，例如：AA 00 06 00 00 55"));
+  inspect_input_->setMaximumHeight(180);
+  operation_layout->addWidget(inspect_input_label_);
+  operation_layout->addWidget(inspect_input_);
+  operation_page_layout->insertWidget(0, operation_group);
+  operation_page_layout->addStretch(1);
+  operation_scroll->setWidget(operation_page);
+  binding_scroll->setWidget(binding_page);
+  control_tabs_->addTab(operation_scroll, UiText("操作"));
+  control_tabs_->addTab(binding_scroll, UiText("绑定设置"));
 
-  result_kind_label_ = new QLabel(this);
+  auto* result_workspace = new QWidget(workbench_splitter_);
+  result_workspace->setObjectName(QStringLiteral("resultWorkspace"));
+  auto* result_layout = new QVBoxLayout(result_workspace);
+  result_layout->setContentsMargins(8, 0, 0, 0);
+  result_kind_label_ = new QLabel(result_workspace);
+  result_kind_label_->setObjectName(QStringLiteral("resultStatus"));
   result_kind_label_->setTextInteractionFlags(Qt::TextSelectableByMouse);
-  root->addWidget(result_kind_label_);
+  result_layout->addWidget(result_kind_label_);
 #if defined(PAE_BUILD_PROTOCOL_LAB_ASCII_STREAM_OBSERVER)
-  stream_status_label_ = new QLabel(this);
+  stream_status_label_ = new QLabel(result_workspace);
+  stream_status_label_->setObjectName(QStringLiteral("streamStatus"));
   stream_status_label_->setWordWrap(true);
   stream_status_label_->setTextInteractionFlags(Qt::TextSelectableByMouse);
-  root->addWidget(stream_status_label_);
 #endif
 
-  auto* vertical_splitter = new QSplitter(Qt::Vertical, this);
-  auto* upper_splitter = new QSplitter(Qt::Horizontal, vertical_splitter);
-  field_table_ = new QTableView(upper_splitter);
+  result_splitter_ = new QSplitter(Qt::Vertical, result_workspace);
+  result_splitter_->setObjectName(QStringLiteral("resultWorkspaceSplitter"));
+  result_splitter_->setChildrenCollapsible(false);
+  field_table_ = new QTableView(result_splitter_);
+  field_table_->setObjectName(QStringLiteral("fieldTable"));
   field_model_ = new FieldTableModel(field_table_);
   value_delegate_ = new ExactValueDelegate(field_table_);
   field_table_->setModel(field_model_);
@@ -2611,36 +3002,86 @@ void DocumentTab::BuildUi() {
   field_table_->setSelectionBehavior(QAbstractItemView::SelectRows);
   field_table_->setSelectionMode(QAbstractItemView::SingleSelection);
   field_table_->setAlternatingRowColors(true);
-  field_table_->horizontalHeader()->setStretchLastSection(true);
+  field_table_->setHorizontalScrollMode(QAbstractItemView::ScrollPerPixel);
+  field_table_->horizontalHeader()->setStretchLastSection(false);
+  field_table_->horizontalHeader()->setSectionResizeMode(QHeaderView::Interactive);
+  field_table_->setColumnWidth(FieldTableModel::ID, 140);
+  field_table_->setColumnWidth(FieldTableModel::DISPLAY_NAME, 150);
+  field_table_->setColumnWidth(
+      FieldTableModel::TYPE,
+      (std::max)(140, field_table_->fontMetrics().horizontalAdvance(QStringLiteral("DECIMAL64")) +
+                          24));
+  field_table_->setColumnWidth(FieldTableModel::SOURCE, 110);
+  field_table_->setColumnWidth(FieldTableModel::VALUE, 180);
+  field_table_->setColumnWidth(FieldTableModel::RAW_RESULT, 150);
+  field_table_->setColumnWidth(FieldTableModel::LOGICAL_RESULT, 150);
+  field_table_->setColumnWidth(FieldTableModel::PHYSICAL_LOCATION, 190);
   field_table_->verticalHeader()->setVisible(false);
-  details_view_ = new QTextBrowser(upper_splitter);
+  right_tabs_ = new QTabWidget(result_splitter_);
+  right_tabs_->setObjectName(QStringLiteral("resultDetailsTabs"));
+  details_view_ = new QTextBrowser(right_tabs_);
+  details_view_->setObjectName(QStringLiteral("detailsView"));
   details_view_->setOpenExternalLinks(false);
-  details_view_->setPlaceholderText(
-      QStringLiteral("Description, source, conversion and integrity annotations"));
-  upper_splitter->addWidget(field_table_);
-  upper_splitter->addWidget(details_view_);
-  upper_splitter->setStretchFactor(0, 3);
-  upper_splitter->setStretchFactor(1, 1);
+  details_view_->setTextInteractionFlags(Qt::TextBrowserInteraction |
+                                         Qt::TextSelectableByKeyboard);
+  details_view_->setPlaceholderText(UiText("字段说明、来源、转换和完整性注释"));
+  right_tabs_->addTab(details_view_, UiText("字段详情"));
 
-  hex_view_ = new HexView(vertical_splitter);
-  vertical_splitter->addWidget(upper_splitter);
-  vertical_splitter->addWidget(hex_view_);
-  vertical_splitter->setStretchFactor(0, 3);
-  vertical_splitter->setStretchFactor(1, 2);
-  root->addWidget(vertical_splitter, 1);
+  hex_view_ = new HexView(right_tabs_);
+  hex_view_->setObjectName(QStringLiteral("hexView"));
+  right_tabs_->addTab(hex_view_, UiText("报文字节"));
 
-  diagnostic_label_ = new QLabel(this);
+  auto* diagnostic_scroll = new QScrollArea(right_tabs_);
+  diagnostic_scroll->setObjectName(QStringLiteral("diagnosticScroll"));
+  diagnostic_scroll->setWidgetResizable(true);
+  auto* diagnostic_content = new QWidget(diagnostic_scroll);
+  auto* diagnostic_layout = new QVBoxLayout(diagnostic_content);
+  diagnostic_label_ = new QLabel(diagnostic_content);
+  diagnostic_label_->setObjectName(QStringLiteral("diagnosticView"));
   diagnostic_label_->setWordWrap(true);
   diagnostic_label_->setTextInteractionFlags(Qt::TextSelectableByMouse);
-  timing_label_ = new QLabel(this);
+  diagnostic_label_->setAlignment(Qt::AlignLeft | Qt::AlignTop);
+  timing_label_ = new QLabel(diagnostic_content);
+  timing_label_->setObjectName(QStringLiteral("timingStatus"));
+  timing_label_->setWordWrap(true);
   timing_label_->setTextInteractionFlags(Qt::TextSelectableByMouse);
-  root->addWidget(diagnostic_label_);
-  root->addWidget(timing_label_);
+  timing_label_->setAlignment(Qt::AlignLeft | Qt::AlignTop);
+  diagnostic_layout->addWidget(diagnostic_label_);
+  diagnostic_layout->addWidget(timing_label_);
+  diagnostic_layout->addStretch(1);
+  diagnostic_scroll->setWidget(diagnostic_content);
+  diagnostic_tab_index_ = right_tabs_->addTab(diagnostic_scroll, UiText("诊断与计时"));
+
+#if defined(PAE_BUILD_PROTOCOL_LAB_ASCII_STREAM_OBSERVER)
+  auto* stream_scroll = new QScrollArea(right_tabs_);
+  stream_scroll->setObjectName(QStringLiteral("streamStatusScroll"));
+  stream_scroll->setWidgetResizable(true);
+  auto* stream_content = new QWidget(stream_scroll);
+  auto* stream_layout = new QVBoxLayout(stream_content);
+  stream_status_label_->setParent(stream_content);
+  stream_status_label_->setAlignment(Qt::AlignLeft | Qt::AlignTop);
+  stream_layout->addWidget(stream_status_label_);
+  stream_layout->addStretch(1);
+  stream_scroll->setWidget(stream_content);
+  stream_tab_index_ = right_tabs_->addTab(stream_scroll, UiText("流状态"));
+#endif
+
+  result_splitter_->addWidget(field_table_);
+  result_splitter_->addWidget(right_tabs_);
+  result_splitter_->setStretchFactor(0, 3);
+  result_splitter_->setStretchFactor(1, 2);
+  result_splitter_->setSizes({480, 260});
+  result_layout->addWidget(result_splitter_, 1);
+  workbench_splitter_->addWidget(control_tabs_);
+  workbench_splitter_->addWidget(result_workspace);
+  workbench_splitter_->setStretchFactor(0, 3);
+  workbench_splitter_->setStretchFactor(1, 7);
+  workbench_splitter_->setSizes({360, 840});
+  root->addWidget(workbench_splitter_, 1);
 
   connect(browse_button_, &QPushButton::clicked, this, [this] {
-    const auto path = QFileDialog::getOpenFileName(this, QStringLiteral("Open PAE configuration"),
-                                                   path_edit_->text(),
-                                                   QStringLiteral("JSON (*.json);;All files (*)"));
+    const auto path = QFileDialog::getOpenFileName(this, UiText("打开 PAE 配置"), path_edit_->text(),
+                                                   UiText("JSON 文件 (*.json);;所有文件 (*)"));
     if (!path.isEmpty()) {
       LoadPath(path);
     }
@@ -2703,18 +3144,16 @@ void DocumentTab::BeginLoadFromPath(bool discard_confirmed) {
     return;
   }
 #if defined(PAE_BUILD_PROTOCOL_LAB_ASCII_STREAM_OBSERVER)
-  if (!discard_confirmed && !ConfirmStreamDiscard(QStringLiteral("reload this configuration")))
+  if (!discard_confirmed && !ConfirmStreamDiscard(UiText("重新加载此配置")))
     return;
 #endif
 #if defined(PAE_BUILD_PROTOCOL_LAB_BINARY_UI) && defined(PAE_BUILD_PROTOCOL_LAB_HOST_OBSERVER)
   if (!discard_confirmed &&
       (session_.BinaryHasDiscardableState() ||
        (session_.IsBinaryHostDocument() && host_pending_revision_)) &&
-      QMessageBox::question(this, QStringLiteral("Reload Binary Host document"),
-                            QStringLiteral("Reloading will discard Binary flow drafts/results or "
-                                           "pending preparation. Continue?"),
-                            QMessageBox::Yes | QMessageBox::No,
-                            QMessageBox::No) != QMessageBox::Yes)
+      AskChineseQuestion(this, UiText("重新加载 Binary Host 文档"),
+                         UiText("重新加载将丢弃 Binary 流草稿、结果或等待中的准备任务。是否继续？")) !=
+          QMessageBox::Yes)
     return;
 #endif
 #if defined(PAE_BUILD_PROTOCOL_LAB_HOST_OBSERVER)
@@ -2820,7 +3259,12 @@ void DocumentTab::RebuildMessageSelector() {
   }
   rebuilding_selectors_ = true;
   message_combo_->clear();
-  for (const auto message_index : description->pipelines[pipeline_index].message_indices) {
+  const auto& pipeline = description->pipelines[pipeline_index];
+  const auto& selectable = session_.IsBinaryHostDocument() &&
+                                   session_.mode() == OperationMode::ENCODE
+                               ? pipeline.encode_message_indices
+                               : pipeline.message_indices;
+  for (const auto message_index : selectable) {
     if (message_index >= description->messages.size()) {
       continue;
     }
@@ -2830,9 +3274,9 @@ void DocumentTab::RebuildMessageSelector() {
     if (description->layout == DocumentLayout::ASCII_TEXT) {
       label +=
           QStringLiteral(" [%1%2]")
-              .arg(message.encode_available ? QStringLiteral("Encode") : QStringLiteral(""))
-              .arg(message.decode_available ? (message.encode_available ? QStringLiteral("/Decode")
-                                                                        : QStringLiteral("Decode"))
+              .arg(message.encode_available ? UiText("组包") : QStringLiteral(""))
+              .arg(message.decode_available ? (message.encode_available ? UiText("/解析")
+                                                                        : UiText("解析"))
                                             : QStringLiteral(""));
     }
     message_combo_->addItem(label, QVariant::fromValue(static_cast<qulonglong>(message_index)));
@@ -2875,14 +3319,44 @@ void DocumentTab::RebuildMessageSelector() {
 
 void DocumentTab::RefreshState() {
   const auto* description = session_.description();
+  const QString config_name =
+      Title() == QStringLiteral("Untitled") ? UiText("未选择配置") : Title();
+  config_name_label_->setText(config_name);
+  config_name_label_->setToolTip(config_name);
+  QString state_text;
+  switch (session_.state()) {
+    case DocumentState::EMPTY:
+      state_text = UiText("未加载");
+      break;
+    case DocumentState::LOADING:
+      state_text = UiText("加载 / 编译中…");
+      break;
+    case DocumentState::READY:
+      state_text = UiText("已编译");
+      break;
+    case DocumentState::PREVIEW_VALID:
+      state_text = UiText("已生成有效结果");
+      break;
+    case DocumentState::CONFIG_ERROR:
+      state_text = UiText("配置错误");
+      break;
+    case DocumentState::CLOSING:
+      state_text = UiText("正在关闭");
+      break;
+    case DocumentState::CLOSED:
+      state_text = UiText("已关闭");
+      break;
+  }
   if (description != nullptr) {
-    identity_label_->setText(QStringLiteral("Schema %1 | Protocol %2 %3")
-                                 .arg(FromUtf8(description->schema_version),
+    identity_label_->setText(UiText("%1 | Schema %2 | 协议 %3 %4")
+                                 .arg(state_text,
+                                      FromUtf8(description->schema_version),
                                       FromUtf8(description->protocol_id),
                                       FromUtf8(description->protocol_version)));
   } else {
-    identity_label_->setText(QStringLiteral("No compiled document"));
+    identity_label_->setText(UiText("%1 | 尚未编译文档").arg(state_text));
   }
+  identity_label_->setToolTip(identity_label_->text());
   const bool loading = session_.state() == DocumentState::LOADING;
   pipeline_combo_->setEnabled(description != nullptr && !loading);
   mode_combo_->setEnabled(description != nullptr && !loading);
@@ -2893,6 +3367,9 @@ void DocumentTab::RefreshState() {
 #endif
       ;
   host_panel_->setVisible(host_document);
+  host_active_panel_->setVisible(host_document);
+  if (control_tabs_ != nullptr && control_tabs_->count() > 1)
+    control_tabs_->setTabEnabled(1, host_document);
   host_apply_->setEnabled(host_document && !loading && !host_pending_revision_);
   host_draft_->setEnabled(!host_pending_revision_);
   const bool active_host = session_.HostActive()
@@ -2900,6 +3377,17 @@ void DocumentTab::RefreshState() {
                            || session_.BinaryHostActive()
 #endif
       ;
+  if (auto* host_group = qobject_cast<QGroupBox*>(host_panel_)) {
+    if (host_pending_revision_) {
+      host_group->setTitle(UiText("绑定与上下文 · 正在准备候选会话…"));
+    } else if (active_host && host_draft_dirty_) {
+      host_group->setTitle(UiText("绑定与上下文 · 绑定已生效 · 草稿尚未应用"));
+    } else if (active_host) {
+      host_group->setTitle(UiText("绑定与上下文 · 绑定已生效"));
+    } else {
+      host_group->setTitle(UiText("绑定与上下文 · 绑定草稿·尚未应用"));
+    }
+  }
   host_binding_combo_->setEnabled(active_host);
   host_flow_combo_->setEnabled(
       active_host &&
@@ -2931,9 +3419,7 @@ void DocumentTab::RefreshState() {
 #endif
   representation_combo_->setVisible(session_.IsAsciiDocument());
   representation_combo_->setEnabled(session_.IsAsciiDocument() && !loading);
-#if defined(PAE_BUILD_PROTOCOL_LAB_BINARY_UI)
-  encode_button_->setVisible(!session_.IsBinaryHostDocument());
-#endif
+  encode_button_->setVisible(true);
   const bool encode_mode = session_.mode() == OperationMode::ENCODE;
   const bool inspect_mode = session_.mode() == OperationMode::INSPECT;
 #if defined(PAE_BUILD_PROTOCOL_LAB_ASCII_STREAM_OBSERVER)
@@ -2959,8 +3445,7 @@ void DocumentTab::RefreshState() {
 #endif
   );
 #if defined(PAE_BUILD_PROTOCOL_LAB_ASCII_STREAM_OBSERVER)
-  inspect_button_->setText(stream_mode ? QStringLiteral("Submit chunk")
-                                       : QStringLiteral("Inspect complete record"));
+  inspect_button_->setText(stream_mode ? UiText("提交输入块") : UiText("解析完整记录"));
   continue_button_->setVisible(stream_mode);
   reset_stream_button_->setVisible(stream_mode);
   stream_status_label_->setVisible(stream_mode);
@@ -2972,10 +3457,9 @@ void DocumentTab::RefreshState() {
     const auto observation = session_.StreamObservation();
     if (observation.has_value()) {
       QString text =
-          QStringLiteral(
-              "phase=%1 | buffered=%2 | internal=%3 | C=%4 | work=%5 | "
-              "frozen=%6/%7 | generation=%8 | step=%9 | candidates=%10 | "
-              "decode_ok=%11 | discarded=%12 | malformed=%13 | reset_required=%14")
+          UiText("阶段=%1 | 缓冲=%2 | 内部工作=%3 | C=%4 | 工作量=%5 | "
+                 "冻结=%6/%7 | 代次=%8 | 步骤=%9 | 候选=%10 | "
+                 "解析成功=%11 | 已丢弃=%12 | 异常=%13 | 需要重置=%14")
               .arg(StreamPhaseName(observation->phase))
               .arg(static_cast<qulonglong>(observation->buffered_bytes))
               .arg(observation->has_internal_work ? QStringLiteral("true")
@@ -2993,9 +3477,8 @@ void DocumentTab::RefreshState() {
               .arg(observation->reset_required ? QStringLiteral("true") : QStringLiteral("false"));
       if (session_.stream_step().has_value()) {
         const auto& step = *session_.stream_step();
-        text += QStringLiteral(
-                    "\nlast step: api=%1 | stop=%2 | consumed=%3 | frames=%4 | "
-                    "discarded=%5 | malformed=%6 | issue=%7 | work=%8")
+        text += UiText("\n上一步：API=%1 | 停止原因=%2 | 已消费=%3 | 帧=%4 | "
+                       "已丢弃=%5 | 异常=%6 | 问题=%7 | 工作量=%8")
                     .arg(SubmitApiStatusName(step.framing.status))
                     .arg(StopReasonName(step.framing.stop_reason))
                     .arg(static_cast<qulonglong>(step.framing.bytes_consumed))
@@ -3007,21 +3490,42 @@ void DocumentTab::RefreshState() {
       }
 #if defined(PAE_BUILD_PROTOCOL_LAB_HOST_OBSERVER)
       if (session_.HostActive())
-        text += QStringLiteral(" | observed=%1 | business=%2")
+        text += UiText(" | 已观察=%1 | 业务输出=%2")
                     .arg(observation->total_observed_candidates)
                     .arg(observation->total_business_outputs);
 #endif
       stream_status_label_->setText(text);
     } else {
-      stream_status_label_->setText(QStringLiteral("Stream observer unavailable"));
+      stream_status_label_->setText(UiText("流观察器不可用"));
+    }
+  }
+  if (right_tabs_ != nullptr && stream_tab_index_ >= 0) {
+    right_tabs_->setTabEnabled(stream_tab_index_, stream_mode);
+    if (stream_mode && session_.StreamObservation().has_value()) {
+      const auto observation = *session_.StreamObservation();
+      right_tabs_->setTabText(
+          stream_tab_index_, observation.reset_required
+                                 ? UiText("流状态 · 需要重置")
+                                 : (session_.StreamContinueAvailable()
+                                        ? UiText("流状态 · 可继续处理")
+                                        : UiText("流状态")));
+    } else {
+      right_tabs_->setTabText(stream_tab_index_, UiText("流状态"));
     }
   }
 #endif
   if (session_.diagnostic_id().empty() && session_.diagnostic_detail().empty()) {
     diagnostic_label_->clear();
   } else {
-    diagnostic_label_->setText(QStringLiteral("%1: %2").arg(
-        FromUtf8(session_.diagnostic_id()), FromUtf8(session_.diagnostic_detail())));
+    diagnostic_label_->setText(UiText("操作失败（%1）\n%2")
+                                   .arg(FromUtf8(session_.diagnostic_id()),
+                                        FromUtf8(session_.diagnostic_detail())));
+  }
+  if (right_tabs_ != nullptr && diagnostic_tab_index_ >= 0) {
+    right_tabs_->setTabText(
+        diagnostic_tab_index_, diagnostic_label_->text().isEmpty() && timing_label_->text().isEmpty()
+                                   ? UiText("诊断与计时")
+                                   : UiText("诊断与计时 · 有内容"));
   }
 }
 
@@ -3034,11 +3538,11 @@ void DocumentTab::RefreshModePresentation() {
 #endif
   inspect_input_label_->setText(
       session_.IsAsciiDocument() && session_.representation() == ByteRepresentation::ASCII_ESCAPED
-          ? QStringLiteral("Raw input / 原始输入（ASCII escaped；实际控制字符和非ASCII被拒绝）")
-          : QStringLiteral("Raw input / 原始输入（Hex；允许大小写及 SP/HT/CR/LF）"));
+          ? UiText("原始输入（ASCII escaped；实际控制字符和非 ASCII 被拒绝）")
+          : UiText("原始输入（Hex；允许大小写及 SP/HT/CR/LF）"));
   if (stream_mode) {
-    inspect_input_label_->setText(QStringLiteral(
-        "Stream chunk / 流输入块（容量按 C=min(65536,effective max_submit_bytes)）"));
+    inspect_input_label_->setText(
+        UiText("流输入块（容量按 C=min(65536,effective max_submit_bytes)）"));
   }
   inspect_input_label_->setVisible(inspect_mode);
   inspect_input_->setVisible(inspect_mode);
@@ -3069,8 +3573,9 @@ void DocumentTab::RefreshModePresentation() {
     field_model_->ApplyInvalidDrafts(session_.invalid_drafts());
     result_kind_label_->setText(
         session_.IsAsciiDocument()
-            ? QStringLiteral("ASCII Encode output / 待执行")
-            : QStringLiteral("Valid encoded output / 有效编码输出（仅 Encode OK 时）"));
+            ? UiText("○ 待组包 | ASCII Encode")
+            : UiText("○ 待组包 | 仅组包成功后显示有效输出"));
+    result_kind_label_->setProperty("paeResultState", QStringLiteral("waiting"));
     RefreshPreview();
   }
   RefreshState();
@@ -3095,10 +3600,10 @@ void DocumentTab::RefreshInspect() {
     field_model_->SetActualFrameSize(frame->size());
     field_model_->ApplyResults(session_.inspect_result()->fields);
     result_kind_label_->setText(
-        QStringLiteral(
-            "Valid decoded result / 有效解码结果 | matched Message: %1 | 成功，%2 个字段")
+        UiText("✓ 解析成功 | Message: %1 | 成功，%2 个字段")
             .arg(FromUtf8(session_.inspect_result()->message_id).toHtmlEscaped())
             .arg(session_.inspect_result()->fields.size()));
+    result_kind_label_->setProperty("paeResultState", QStringLiteral("success"));
     const auto* field = field_model_->FieldAt(field_table_->currentIndex().row());
     if (session_.IsAsciiDocument()
 #if defined(PAE_BUILD_PROTOCOL_LAB_BINARY_PUBLIC_H2)
@@ -3112,7 +3617,8 @@ void DocumentTab::RefreshInspect() {
   } else if (session_.inspect_failure().has_value()) {
     const auto& failure = *session_.inspect_failure();
     frame = &failure.input_frame;
-    result_kind_label_->setText(QStringLiteral("Failure location / 失败定位（非有效结果）"));
+    result_kind_label_->setText(UiText("✕ 解析失败 | 当前内容仅用于失败定位，不是有效结果"));
+    result_kind_label_->setProperty("paeResultState", QStringLiteral("failure"));
     field_model_->SetFailedField(failure.failed_field_index);
     FillInspectFailureHighlights(message, highlights);
     if (message != nullptr && failure.failed_field_index.has_value() &&
@@ -3123,10 +3629,18 @@ void DocumentTab::RefreshInspect() {
     result_kind_label_->setText(
 #if defined(PAE_BUILD_PROTOCOL_LAB_ASCII_STREAM_OBSERVER)
         session_.mode() == OperationMode::STREAM_INSPECT && session_.stream_step().has_value()
-            ? QStringLiteral("Current step / 本步无候选")
+            ? UiText("◇ 本步无候选记录")
             :
 #endif
-            QStringLiteral("Raw input / 原始输入（尚无有效解码结果）"));
+            UiText("○ 待解析 | 尚无有效解析结果"));
+    result_kind_label_->setProperty(
+        "paeResultState",
+#if defined(PAE_BUILD_PROTOCOL_LAB_ASCII_STREAM_OBSERVER)
+        session_.mode() == OperationMode::STREAM_INSPECT && session_.stream_step().has_value()
+            ? QStringLiteral("candidate_empty")
+            :
+#endif
+            QStringLiteral("waiting"));
   }
   if (frame->empty()) {
     hex_view_->ClearFrame();
@@ -3163,11 +3677,18 @@ void DocumentTab::RefreshPreview() {
           : FieldHighlights(CurrentMessage(), field, session_.preview()->encoded_frame.size()));
   if (session_.IsAsciiDocument()) {
     result_kind_label_->setText(
-        QStringLiteral("Valid ASCII Encode / 成功，%1 个字段 | review kind: %2")
+        UiText("✓ 组包成功 | 成功，%1 个字段 | review kind: %2")
             .arg(session_.preview()->fields.size())
             .arg(session_.preview()->tx_template_review ? QStringLiteral("TX_TEMPLATE")
                                                         : QStringLiteral("NOT_APPLICABLE")));
+  } else {
+    const auto* message = CurrentMessage();
+    result_kind_label_->setText(
+        UiText("✓ 组包成功 | Message: %1 | 输出 %2 字节")
+            .arg(message == nullptr ? QStringLiteral("-") : FromUtf8(message->id))
+            .arg(session_.preview()->encoded_frame.size()));
   }
+  result_kind_label_->setProperty("paeResultState", QStringLiteral("success"));
   RefreshFieldDetails(current_row, false);
 }
 
@@ -3191,13 +3712,13 @@ void DocumentTab::RefreshFieldDetails(int row, bool refresh_frame) {
   if (message != nullptr) {
     const auto& message_name = message->display_name.empty() ? message->id : message->display_name;
     details.push_back(
-        QStringLiteral("<b>Message</b>: %1").arg(FromUtf8(message_name).toHtmlEscaped()));
+        QStringLiteral("<b>报文</b>：%1").arg(HtmlPreservingLines(message_name)));
     if (!message->description.empty()) {
-      details.push_back(FromUtf8(message->description).toHtmlEscaped());
+      details.push_back(HtmlPreservingLines(message->description));
     }
     if (!message->source_ref.empty()) {
-      details.push_back(QStringLiteral("<b>Message source</b>: %1")
-                            .arg(FromUtf8(message->source_ref).toHtmlEscaped()));
+      details.push_back(QStringLiteral("<b>报文来源</b>：%1")
+                            .arg(HtmlPreservingLines(message->source_ref)));
     }
     if (message->integrity_storage.has_value()) {
       const auto actual_storage = ActualFrameSize().has_value()
@@ -3205,56 +3726,52 @@ void DocumentTab::RefreshFieldDetails(int row, bool refresh_frame) {
                                       : std::optional<ByteRange>{};
       if (message->integrity_storage_at_payload_end && !actual_storage.has_value()) {
         details.push_back(QStringLiteral(
-            "<b>Integrity storage</b>: dynamic at payload end; current range unavailable"));
+            "<b>完整性校验存储位置</b>：位于动态载荷末尾；当前实际范围不可用"));
       } else {
         const auto& storage =
             actual_storage.has_value() ? *actual_storage : *message->integrity_storage;
-        details.push_back(QStringLiteral("<b>Integrity storage</b>: %1 + %2")
+        details.push_back(QStringLiteral("<b>完整性校验存储位置</b>：%1 + %2")
                               .arg(static_cast<qulonglong>(storage.offset))
                               .arg(static_cast<qulonglong>(storage.length)));
       }
       if (message->integrity_range_ends_at_payload) {
         details.push_back(QStringLiteral(
-            "<b>Integrity coverage</b>: configured range ends at actual payload end"));
+            "<b>完整性校验覆盖范围</b>：配置范围结束于实际载荷末尾"));
       }
     }
 #if defined(PAE_ENABLE_SCHEMA_V07_LENGTH_COMPILER)
     if (message->computed_length_storage.has_value()) {
       details.push_back(
-          QStringLiteral("<b>Computed length storage</b>: %1 + %2")
+          QStringLiteral("<b>计算长度存储位置</b>：%1 + %2")
               .arg(static_cast<qulonglong>(message->computed_length_storage->offset))
               .arg(static_cast<qulonglong>(message->computed_length_storage->length)));
     }
 #endif
   }
-  details.push_back(QStringLiteral("<b>%1</b>")
-                        .arg(FromUtf8(field->display_name.empty() ? field->id : field->display_name)
-                                 .toHtmlEscaped()));
+  details.push_back(QStringLiteral("<b>字段</b>：%1")
+                        .arg(HtmlPreservingLines(field->display_name.empty() ? field->id
+                                                                           : field->display_name)));
   if (!field->description.empty()) {
-    details.push_back(FromUtf8(field->description).toHtmlEscaped());
+    details.push_back(HtmlPreservingLines(field->description));
   }
   if (!field->source_ref.empty()) {
     details.push_back(
-        QStringLiteral("<b>Source</b>: %1").arg(FromUtf8(field->source_ref).toHtmlEscaped()));
+        QStringLiteral("<b>来源</b>：%1").arg(HtmlPreservingLines(field->source_ref)));
   }
   if (field->ascii_text) {
-    details.push_back(QStringLiteral("<b>Action participation</b>: Decode %1; Encode %2")
-                          .arg(field->decode_referenced ? QStringLiteral("referenced")
-                                                        : QStringLiteral("not referenced"),
-                               field->encode_referenced ? QStringLiteral("referenced")
-                                                        : QStringLiteral("not referenced")));
+    details.push_back(QStringLiteral("<b>动作参与情况</b>：Decode %1；Encode %2")
+                          .arg(field->decode_referenced ? UiText("已引用") : UiText("未引用"),
+                               field->encode_referenced ? UiText("已引用") : UiText("未引用")));
   } else if (!field->read_only_annotation.empty()) {
-    details.push_back(QStringLiteral("<b>Storage / integrity / conversion</b>: %1")
-                          .arg(FromUtf8(field->read_only_annotation).toHtmlEscaped()));
+    details.push_back(QStringLiteral("<b>存储 / 完整性校验 / 转换</b>：%1")
+                          .arg(HtmlPreservingLines(field->read_only_annotation)));
   }
 #if defined(PAE_ENABLE_SCHEMA_V05_COMPILER)
   if (field->decimal_conversion || field->decode_decimal64) {
     details.push_back(
         field->decode_decimal64
-            ? QStringLiteral("<b>Conversion</b>: logical Decimal64 result; Core performs "
-                             "logical/raw representability checks")
-            : QStringLiteral("<b>Conversion</b>: logical Decimal64 input; Core performs "
-                             "logical/raw representability checks"));
+            ? QStringLiteral("<b>转换</b>：逻辑 Decimal64 结果；Core 执行逻辑值与原始值的可表示性检查")
+            : QStringLiteral("<b>转换</b>：逻辑 Decimal64 输入；Core 执行逻辑值与原始值的可表示性检查"));
   }
 #endif
   std::optional<ByteRange> actual_result_range;
@@ -3276,34 +3793,33 @@ void DocumentTab::RefreshFieldDetails(int row, bool refresh_frame) {
     }
   }
   if (field->byte_length_bounds.has_value()) {
-    details.push_back(QStringLiteral("<b>Payload length bounds</b>: %1..%2 bytes")
+    details.push_back(QStringLiteral("<b>载荷长度边界</b>：%1..%2 字节")
                           .arg(static_cast<qulonglong>(field->byte_length_bounds->minimum))
                           .arg(static_cast<qulonglong>(field->byte_length_bounds->maximum)));
     if (actual_result_range.has_value()) {
-      details.push_back(QStringLiteral("<b>Actual byte range</b>: %1 + %2")
+      details.push_back(QStringLiteral("<b>实际字节范围</b>：%1 + %2")
                             .arg(static_cast<qulonglong>(actual_result_range->offset))
                             .arg(static_cast<qulonglong>(actual_result_range->length)));
     } else if (!session_.IsAsciiDocument() && ActualFrameSize().has_value()) {
       const auto range = ResolveActualFieldRange(*message, *field, *ActualFrameSize());
       if (range.has_value()) {
-        details.push_back(QStringLiteral("<b>Actual byte range</b>: %1 + %2")
+        details.push_back(QStringLiteral("<b>实际字节范围</b>：%1 + %2")
                               .arg(static_cast<qulonglong>(range->offset))
                               .arg(static_cast<qulonglong>(range->length)));
       }
     }
   } else if (field->byte_range.has_value()) {
-    details.push_back(QStringLiteral("<b>Byte range</b>: %1 + %2")
+    details.push_back(QStringLiteral("<b>字节范围</b>：%1 + %2")
                           .arg(static_cast<qulonglong>(field->byte_range->offset))
                           .arg(static_cast<qulonglong>(field->byte_range->length)));
   }
   if (!field->physical_bits.empty()) {
-    details.push_back(QStringLiteral("<b>Physical bit cells</b>: %1")
+    details.push_back(QStringLiteral("<b>物理位单元数</b>：%1")
                           .arg(static_cast<qulonglong>(field->physical_bits.size())));
   }
   if (session_.IsAsciiDocument()) {
     if (actual_result_range.has_value()) {
-      details.push_back(QStringLiteral("<b>Actual physical bytes (zero-based)</b>: [%1, %2), "
-                                       "full-byte range")
+      details.push_back(QStringLiteral("<b>实际物理字节（从 0 起）</b>：[%1, %2)，整字节范围")
                             .arg(static_cast<qulonglong>(actual_result_range->offset))
                             .arg(static_cast<qulonglong>(actual_result_range->offset +
                                                          actual_result_range->length)));
@@ -3322,8 +3838,8 @@ void DocumentTab::RefreshFieldDetails(int row, bool refresh_frame) {
         message == nullptr ? FormatPhysicalLocation(*field)
                            : FormatPhysicalLocation(*message, *field, ActualFrameSize());
     if (!physical.empty()) {
-      details.push_back(QStringLiteral("<b>Physical byte / bit / mask (zero-based, LSB0)</b>: %1")
-                            .arg(FromUtf8(physical).toHtmlEscaped()));
+      details.push_back(QStringLiteral("<b>物理字节 / 位 / 掩码（从 0 起，LSB0）</b>：%1")
+                            .arg(HtmlPreservingLines(physical)));
     }
   }
   details_view_->setHtml(details.join(QStringLiteral("<br/>")));
@@ -3368,7 +3884,7 @@ void DocumentTab::SelectPipeline(int combo_index) {
 #if defined(PAE_BUILD_PROTOCOL_LAB_ASCII_STREAM_OBSERVER)
   if (session_.selected_pipeline_index().has_value() &&
       requested != *session_.selected_pipeline_index() &&
-      !ConfirmStreamDiscard(QStringLiteral("switch Pipeline"))) {
+      !ConfirmStreamDiscard(UiText("切换处理管线（Pipeline）"))) {
     rebuilding_selectors_ = true;
     for (int index = 0; index < pipeline_combo_->count(); ++index) {
       if (pipeline_combo_->itemData(index).toULongLong() ==
@@ -3407,7 +3923,7 @@ void DocumentTab::SelectMode(int combo_index) {
   const auto mode = static_cast<OperationMode>(mode_combo_->itemData(combo_index).toInt());
 #if defined(PAE_BUILD_PROTOCOL_LAB_ASCII_STREAM_OBSERVER)
   if (session_.mode() == OperationMode::STREAM_INSPECT && mode != OperationMode::STREAM_INSPECT &&
-      !ConfirmStreamDiscard(QStringLiteral("leave Stream Inspect"))) {
+      !ConfirmStreamDiscard(UiText("退出流式解析"))) {
     rebuilding_selectors_ = true;
     mode_combo_->setCurrentIndex(
         mode_combo_->findData(static_cast<int>(OperationMode::STREAM_INSPECT)));
@@ -3493,25 +4009,36 @@ void DocumentTab::EncodeCurrent() {
   if (!success) {
     hex_view_->ClearFrame();
     field_model_->ClearResults();
+    result_kind_label_->setText(
+        UiText("✕ 组包失败（%1）").arg(FromUtf8(session_.diagnostic_id())));
+    result_kind_label_->setProperty("paeResultState", QStringLiteral("failure"));
   }
   RefreshState();
   hex_view_->viewport()->repaint();
   timing_.first_repaint_total_ns = total.nsecsElapsed();
   if (session_.IsAsciiDocument()) {
+    const bool tx_template_review =
+        session_.preview().has_value() && session_.preview()->tx_template_review;
+    timing_label_->setProperty("paeReviewKind",
+                               tx_template_review ? QStringLiteral("TX_TEMPLATE") : QString{});
     timing_label_->setText(
-        session_.preview().has_value() && session_.preview()->tx_template_review
+        tx_template_review
             ? QStringLiteral("input %1 ms | adapter + UI total %2 ms | review kind TX_TEMPLATE; no "
                              "independent RX Decode timing")
                   .arg(static_cast<double>(timing_.exact_input_ns) / 1000000.0, 0, 'f', 3)
                   .arg(static_cast<double>(timing_.first_repaint_total_ns) / 1000000.0, 0, 'f', 3)
             : QStringLiteral("ASCII Encode failed; no successful review result"));
   } else {
+    timing_label_->setProperty("paeReviewKind", QString{});
     timing_label_->setText(TimingText(timing_));
   }
+  if (right_tabs_ != nullptr && diagnostic_tab_index_ >= 0)
+    right_tabs_->setTabText(diagnostic_tab_index_, UiText("诊断与计时 · 有内容"));
 }
 
 void DocumentTab::InspectCurrent() {
   timing_label_->clear();
+  timing_label_->setProperty("paeReviewKind", QString{});
   field_table_->clearFocus();
   QApplication::processEvents(QEventLoop::ExcludeUserInputEvents);
   session_.SetInspectDraftUtf16(Utf16(inspect_input_->toPlainText()));
@@ -3589,12 +4116,9 @@ bool DocumentTab::ConfirmStreamDiscard(const QString& action) {
 
 bool DocumentTab::ConfirmStreamDiscardOnly(const QString& action) {
   if (!session_.StreamHasDiscardableState()) return true;
-  const auto answer =
-      QMessageBox::question(this, QStringLiteral("Discard stream state?"),
-                            QStringLiteral("%1 will discard affected stream state (including "
-                                           "non-selected flows) and any frozen suffix. Continue?")
-                                .arg(action),
-                            QMessageBox::Yes | QMessageBox::No, QMessageBox::No);
+  const auto answer = AskChineseQuestion(
+      this, UiText("丢弃流状态？"),
+      UiText("%1 将丢弃受影响的流状态（包括未选择的流）及冻结后缀。是否继续？").arg(action));
   return answer == QMessageBox::Yes;
 }
 #endif

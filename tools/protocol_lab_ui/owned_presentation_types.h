@@ -42,6 +42,7 @@ enum class FieldEncodeSource {
   INPUT,
   CONSTANT,
   COMPUTED,
+  NOT_REFERENCED,
 };
 
 struct Decimal64 {
@@ -130,6 +131,7 @@ struct PipelineDescriptor {
   std::string source_ref;
   std::vector<std::size_t> message_indices;
   std::vector<std::size_t> decode_message_indices;
+  std::vector<std::size_t> encode_message_indices;
   bool stream_ascii_crlf = false;
   std::size_t maximum_frame_length = 0U;
 };

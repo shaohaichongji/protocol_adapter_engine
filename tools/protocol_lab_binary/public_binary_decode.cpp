@@ -37,11 +37,27 @@ std::size_t Account(const Candidate& value) {
     n = Add(n, Add(field.id.capacity() + 1U, field.bytes.capacity()));
   return n;
 }
+std::size_t Account(const Encoded& value) {
+  auto n = Add(sizeof(Encoded), Add(value.frame.capacity(), value.message_id.capacity() + 1U));
+  n = Add(n, Multiply(value.inputs.capacity(), sizeof(EncodeInput)));
+  for (const auto& input : value.inputs) n = Add(n, input.bytes.capacity());
+  n = Add(n, Multiply(value.fields.capacity(), sizeof(EncodedField)));
+  for (const auto& field : value.fields) n = Add(n, field.id.capacity() + 1U);
+  return n;
+}
 struct Callback {
   const CompiledProtocol& compiled;
   const std::vector<OwnedMessageName>& names;
   const Limits& limits;
   std::optional<Candidate> pending;
+};
+struct EncodeCallback {
+  const CompiledProtocol& compiled;
+  const std::vector<OwnedMessageName>& names;
+  const Limits& limits;
+  std::size_t message_index = 0U;
+  const std::vector<EncodeInput>& inputs;
+  std::optional<Encoded> pending;
 };
 HostCallbackAction Observe(const HostCandidateView& view, void* context) {
   auto& call = *static_cast<Callback*>(context);
@@ -184,7 +200,84 @@ HostCallbackAction Output(const HostOutputView& view, void* context) {
   call.pending = std::move(candidate);
   return HostCallbackAction::STOP;
 }
+HostCallbackAction EncodeOutput(const HostOutputView& view, void* context) {
+  auto& call = *static_cast<EncodeCallback*>(context);
+  Require(view.action == HostAction::ENCODE && view.message_index == call.message_index &&
+          (view.bytes.data || view.bytes.size == 0U) &&
+          view.bytes.size <= call.limits.max_frame_bytes);
+  const auto message = call.compiled.Message(view.message_index);
+  const auto named = std::find_if(call.names.begin(), call.names.end(), [&](const auto& item) {
+    return item.index == view.message_index;
+  });
+  const auto physical = call.compiled.ResolveMessagePhysical(view.message_index, view.bytes.size);
+  Require(message && named != call.names.end() && named->id == message->id &&
+          named->field_ids.size() == message->field_count &&
+          physical.status == PhysicalQueryStatus::OK && physical.value);
+  Encoded encoded;
+  encoded.message_index = view.message_index;
+  encoded.message_id = named->id;
+  encoded.inputs = call.inputs;
+  CopyFrame(encoded.frame, view.bytes, call.limits);
+  encoded.integrity_storage = physical.value->integrity_storage;
+  encoded.computed_length_storage = physical.value->computed_length_storage;
+  if (encoded.integrity_storage) CheckRange(*encoded.integrity_storage, view.bytes.size);
+  if (encoded.computed_length_storage)
+    CheckRange(*encoded.computed_length_storage, view.bytes.size);
+  encoded.fields.reserve(message->field_count);
+  for (std::size_t f = 0U; f < message->field_count; ++f) {
+    const auto meta = call.compiled.Field(message->field_begin + f);
+    const auto layout = call.compiled.ResolveFieldPhysical(message->field_begin + f,
+                                                           view.bytes.size);
+    Require(meta && meta->message_index == view.message_index && meta->index_in_message == f &&
+            layout.status == PhysicalQueryStatus::OK && layout.value &&
+            layout.value->message_index == view.message_index &&
+            layout.value->field_index == f);
+    EncodedField field;
+    field.field_index = f;
+    field.id = named->field_ids[f];
+    if (layout.value->physical_kind == FieldPhysicalKind::BYTE_RANGE) {
+      Require(layout.value->byte_range.has_value());
+      field.byte_range = layout.value->byte_range;
+      CheckRange(*field.byte_range, view.bytes.size);
+    } else {
+      Require(!layout.value->byte_range && layout.value->bit_mask_count > 0U &&
+              layout.value->bit_mask_count <= kMaximumFieldPhysicalBitMasks);
+      field.bit_masks = layout.value->bit_masks;
+      field.bit_mask_count = layout.value->bit_mask_count;
+    }
+    encoded.fields.push_back(std::move(field));
+  }
+  encoded.accounted_bytes = Account(encoded);
+  Require(encoded.accounted_bytes <= call.limits.max_result_bytes);
+  call.pending = std::move(encoded);
+  return HostCallbackAction::STOP;
+}
 }  // namespace
+
+EncodeInput EncodeInput::UInt64(std::size_t field, std::uint64_t value) {
+  EncodeInput out; out.field_index = field; out.kind = ValueKind::UINT64;
+  out.uint64_value = value; return out;
+}
+EncodeInput EncodeInput::Int64(std::size_t field, std::int64_t value) {
+  EncodeInput out; out.field_index = field; out.kind = ValueKind::INT64;
+  out.int64_value = value; return out;
+}
+EncodeInput EncodeInput::Bool(std::size_t field, bool value) {
+  EncodeInput out; out.field_index = field; out.kind = ValueKind::BOOL;
+  out.bool_value = value; return out;
+}
+EncodeInput EncodeInput::Bytes(std::size_t field, std::vector<std::uint8_t> value) {
+  EncodeInput out; out.field_index = field; out.kind = ValueKind::BYTES;
+  out.bytes = std::move(value); return out;
+}
+EncodeInput EncodeInput::Enum(std::size_t field, std::size_t entry) {
+  EncodeInput out; out.field_index = field; out.kind = ValueKind::ENUM;
+  out.enum_entry_index = entry; return out;
+}
+EncodeInput EncodeInput::Decimal(std::size_t field, Decimal64 value) {
+  EncodeInput out; out.field_index = field; out.kind = ValueKind::DECIMAL64;
+  out.decimal = value; return out;
+}
 
 Adapter::~Adapter() = default;
 
@@ -203,7 +296,8 @@ Preparation Adapter::Create(std::string_view json, std::string_view endpoint,
       return result;
     }
     return AdoptCompiled(std::move(compiled).TakeCompiled(),
-                         {{std::string(endpoint), std::string(pipeline_id), 2U}}, limits,
+                         {{std::string(endpoint), HostAction::DECODE,
+                           std::string(pipeline_id), 2U}}, limits,
                          previous_instance_bytes);
   } catch (const std::exception&) {
     result.status = LocalStatus::RESOURCE_LIMIT;
@@ -248,6 +342,7 @@ Preparation Adapter::AdoptCompiled(CompiledProtocol compiled, std::vector<Bindin
         result.status = LocalStatus::INVALID_BINDING;
         return result;
       }
+      std::size_t available_messages = 0U;
       for (std::size_t a = 0U; a < pipeline->message_count; ++a) {
         const auto index = out->compiled_.PipelineMessageIndex(*pipeline_index, a);
         const auto execution = index ? out->compiled_.PipelineMessageExecution(*pipeline_index, *index)
@@ -255,8 +350,16 @@ Preparation Adapter::AdoptCompiled(CompiledProtocol compiled, std::vector<Bindin
         const auto representation = index ? out->compiled_.MessageRepresentation(*index)
                                           : MessageRepresentationQueryResult{};
         const auto message = index ? out->compiled_.Message(*index) : std::nullopt;
-        if (!execution || !execution->decode_available ||
-            representation.status != PhysicalQueryStatus::OK ||
+        if (!execution) {
+          result.status = LocalStatus::INVALID_BINDING;
+          return result;
+        }
+        const bool available = binding.action == HostAction::DECODE
+                                   ? execution->decode_available
+                                   : execution->encode_available;
+        if (!available) continue;
+        ++available_messages;
+        if (representation.status != PhysicalQueryStatus::OK ||
             representation.value != RecordRepresentation::BINARY || !message) {
           result.status = LocalStatus::INVALID_BINDING;
           return result;
@@ -282,9 +385,17 @@ Preparation Adapter::AdoptCompiled(CompiledProtocol compiled, std::vector<Bindin
         }
         out->messages_.push_back(std::move(named));
       }
+      if (available_messages == 0U) {
+        result.status = LocalStatus::INVALID_BINDING;
+        return result;
+      }
       out->flow_begin_.push_back(channels);
       channels += binding.flow_count;
-      specs.push_back({binding.endpoint, HostAction::DECODE, *pipeline_index,
+      if (binding.action == HostAction::ENCODE && binding.flow_count != 1U) {
+        result.status = LocalStatus::INVALID_BINDING;
+        return result;
+      }
+      specs.push_back({binding.endpoint, binding.action, *pipeline_index,
                        binding.flow_count, {}});
     }
     description = Add(description, Multiply(out->flow_begin_.capacity(), sizeof(std::size_t)));
@@ -307,8 +418,11 @@ Preparation Adapter::AdoptCompiled(CompiledProtocol compiled, std::vector<Bindin
     out->flows_.resize(channels);
     for (std::size_t b = 0U; b < out->bindings_.size(); ++b) {
       for (std::size_t flow = 0U; flow < out->bindings_[b].flow_count; ++flow) {
-        const auto found = out->host_->Find(out->bindings_[b].endpoint, HostAction::DECODE, flow);
-        if (found.status != HostStatus::OK || out->host_->Observe(found.handle).stream) return result;
+        const auto found = out->host_->Find(out->bindings_[b].endpoint,
+                                            out->bindings_[b].action, flow);
+        if (found.status != HostStatus::OK ||
+            (out->bindings_[b].action == HostAction::DECODE &&
+             out->host_->Observe(found.handle).stream)) return result;
         out->flows_[out->flow_begin_[b] + flow].handle = found.handle;
       }
     }
@@ -343,6 +457,12 @@ const Operation& Adapter::Decode(std::size_t flow, ByteView frame) {
     rejected_.local_status = LocalStatus::INVALID_INPUT;
     return rejected_;
   }
+  std::size_t binding = 0U;
+  while (binding + 1U < flow_begin_.size() && flow_begin_[binding + 1U] <= flow) ++binding;
+  if (bindings_[binding].action != HostAction::DECODE) {
+    rejected_.local_status = LocalStatus::INVALID_BINDING;
+    return rejected_;
+  }
   auto& state = flows_[flow];
   Callback call{compiled_, messages_, limits_, {}};
   Operation next;
@@ -364,6 +484,94 @@ const Operation& Adapter::Decode(std::size_t flow, ByteView frame) {
              ? state.current : rejected_;
 }
 
+const Operation& Adapter::Encode(std::size_t binding, std::size_t message_index,
+                                 const std::vector<EncodeInput>& inputs) {
+  rejected_ = {};
+  if (binding >= bindings_.size() || bindings_[binding].action != HostAction::ENCODE ||
+      flow_begin_[binding] >= flows_.size()) {
+    rejected_.local_status = LocalStatus::INVALID_BINDING;
+    return rejected_;
+  }
+  auto& state = flows_[flow_begin_[binding]];
+  const auto reject = [&](LocalStatus status) -> const Operation& {
+    state.current = {};
+    state.current.local_status = status;
+    return state.current;
+  };
+  if (inputs.size() > limits_.max_fields) return reject(LocalStatus::RESOURCE_LIMIT);
+  const auto message = compiled_.Message(message_index);
+  const auto pipeline = compiled_.PipelineMessageExecution(
+      [&] {
+        for (std::size_t p = 0U; p < compiled_.PipelineCount(); ++p) {
+          const auto item = compiled_.Pipeline(p);
+          if (item && item->id == bindings_[binding].pipeline_id) return p;
+        }
+        return compiled_.PipelineCount();
+      }(), message_index);
+  if (!message || !pipeline || !pipeline->encode_available) {
+    return reject(LocalStatus::INVALID_INPUT);
+  }
+  std::vector<EncodeValue> values;
+  values.reserve(inputs.size());
+  std::vector<bool> seen(message->field_count, false);
+  try {
+    for (const auto& input : inputs) {
+      if (input.field_index >= message->field_count || seen[input.field_index]) {
+        return reject(LocalStatus::INVALID_INPUT);
+      }
+      seen[input.field_index] = true;
+      const auto flat = message->field_begin + input.field_index;
+      const auto field = compiled_.Field(flat);
+      if (!field || field->value_kind != input.kind ||
+          field->encode_value_source != EncodeValueSource::CALLER_INPUT) {
+        return reject(LocalStatus::INVALID_INPUT);
+      }
+      const FieldSelector selector{message_index, input.field_index};
+      switch (input.kind) {
+        case ValueKind::UINT64:
+          values.push_back(EncodeValue::UInt64(selector, input.uint64_value)); break;
+        case ValueKind::INT64:
+          values.push_back(EncodeValue::Int64(selector, input.int64_value)); break;
+        case ValueKind::BOOL:
+          values.push_back(EncodeValue::Bool(selector, input.bool_value)); break;
+        case ValueKind::BYTES:
+          if (input.bytes.size() > limits_.max_field_bytes) {
+            return reject(LocalStatus::RESOURCE_LIMIT);
+          }
+          values.push_back(EncodeValue::Bytes(
+              selector, {input.bytes.empty() ? nullptr : input.bytes.data(), input.bytes.size()}));
+          break;
+        case ValueKind::ENUM:
+          if (input.enum_entry_index >= field->enum_count) {
+            return reject(LocalStatus::INVALID_INPUT);
+          }
+          values.push_back(EncodeValue::Enum(
+              {message_index, input.field_index, input.enum_entry_index}));
+          break;
+        case ValueKind::DECIMAL64:
+          values.push_back(EncodeValue::Decimal(selector, input.decimal)); break;
+      }
+    }
+  } catch (const std::exception&) {
+    return reject(LocalStatus::RESOURCE_LIMIT);
+  }
+  EncodeCallback call{compiled_, messages_, limits_, message_index, inputs, {}};
+  Operation next;
+  next.host = host_->Encode(state.handle, message_index,
+                            values.empty() ? nullptr : values.data(), values.size(),
+                            {EncodeOutput, &call});
+  if (next.host.status == HostStatus::OK && call.pending)
+    next.encoded = std::move(call.pending);
+  else if (next.host.status == HostStatus::CALLBACK_FAILED)
+    next.local_status = LocalStatus::MATERIALIZATION_FAILED;
+  state.current = std::move(next);
+  return state.current;
+}
+
+void Adapter::ClearCurrent(std::size_t flow) noexcept {
+  if (flow < flows_.size()) flows_[flow].current = {};
+}
+
 HostStatus Adapter::Reset(std::size_t flow) noexcept {
   if (flow >= flows_.size()) return HostStatus::INVALID_ARGUMENT;
   const auto status = host_->Reset(flows_[flow].handle);
@@ -374,7 +582,7 @@ HostStatus Adapter::Reset(std::size_t flow) noexcept {
     flows_[flow].current.local_status = LocalStatus::OK;
     std::size_t binding = 0U;
     while (binding + 1U < flow_begin_.size() && flow_begin_[binding + 1U] <= flow) ++binding;
-    auto found = host_->Find(bindings_[binding].endpoint, HostAction::DECODE,
+    auto found = host_->Find(bindings_[binding].endpoint, bindings_[binding].action,
                              flow - flow_begin_[binding]);
     if (found.status != HostStatus::OK) return found.status;
     flows_[flow].handle = found.handle;

@@ -23,7 +23,7 @@ FieldEncodeSource UiSource(pae::EncodeValueSource source) {
     case pae::EncodeValueSource::CALLER_INPUT: return FieldEncodeSource::INPUT;
     case pae::EncodeValueSource::CONSTANT: return FieldEncodeSource::CONSTANT;
     case pae::EncodeValueSource::COMPUTED: return FieldEncodeSource::COMPUTED;
-    case pae::EncodeValueSource::NOT_REFERENCED: return FieldEncodeSource::INPUT;
+    case pae::EncodeValueSource::NOT_REFERENCED: return FieldEncodeSource::NOT_REFERENCED;
   }
   return FieldEncodeSource::INPUT;
 }
@@ -68,6 +68,8 @@ bool BuildPublicBinaryDescription(const pae::CompiledProtocol& compiled,
       message.display_name = meta->display_name;
       message.description = meta->description;
       message.source_ref = meta->source_ref;
+      message.decode_available = false;
+      message.encode_available = false;
       message.frame_size = physical.value->record_length.maximum;
       built.max_frame_bytes = (std::max)(built.max_frame_bytes, message.frame_size);
       if (physical.value->maximum_integrity_storage)
@@ -98,8 +100,11 @@ bool BuildPublicBinaryDescription(const pae::CompiledProtocol& compiled,
         field.source_ref = field_meta->source_ref;
         field.value_type = UiType(field_meta->value_kind);
         field.decode_decimal64 = field_meta->value_kind == pae::ValueKind::DECIMAL64;
+        field.decimal_conversion = field_meta->value_kind == pae::ValueKind::DECIMAL64;
         field.encode_source = UiSource(field_meta->encode_value_source);
-        field.decode_referenced = true;
+        field.decode_referenced = false;
+        field.encode_referenced =
+            field_meta->encode_value_source != pae::EncodeValueSource::NOT_REFERENCED;
         if (field_meta->encode_value_source != pae::EncodeValueSource::CALLER_INPUT &&
             field_meta->encode_value_source != pae::EncodeValueSource::NOT_REFERENCED)
           field.read_only_annotation = "constant/computed; read-only";
@@ -154,7 +159,15 @@ bool BuildPublicBinaryDescription(const pae::CompiledProtocol& compiled,
           return false;
         }
         pipeline.message_indices.push_back(*index);
-        if (execution->decode_available) pipeline.decode_message_indices.push_back(*index);
+        if (execution->decode_available) {
+          pipeline.decode_message_indices.push_back(*index);
+          for (auto& field : built.messages[*index].fields) field.decode_referenced = true;
+        }
+        if (execution->encode_available) pipeline.encode_message_indices.push_back(*index);
+        built.messages[*index].decode_available =
+            built.messages[*index].decode_available || execution->decode_available;
+        built.messages[*index].encode_available =
+            built.messages[*index].encode_available || execution->encode_available;
       }
       built.pipelines.push_back(std::move(pipeline));
     }

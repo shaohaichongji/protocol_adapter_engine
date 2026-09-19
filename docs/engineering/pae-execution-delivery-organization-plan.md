@@ -5,7 +5,59 @@
 
 ## 顺序与出口
 
+### 本地提交检查点授权（2026-09-19）
+
+用户授权将G1 Binary完整组包、U1/U2/U2B工作台与可读性收尾累积变更整理为本地提交；不Push、不正式发布。源码及对应契约/验证报告一同纳入，out生成产物、deliverables、SDK和仓库外AGENTS不纳入。验证沿用各片已复核证据，本次提交检查不冒充重新构建或全矩阵验证。U2B布局已获用户实际体验确认；可读性收尾仅定向自动/隐藏渲染验证。Binary stream和结构化诊断均待后续派发，公共API/Schema本检查点未扩展。
+
+### 当前授权：工作台可读性短收尾（2026-09-19）
+
+最新回收：Lab已完成document_tab.cpp、field_table_model.cpp及lab-ui-readability-polish-validation.md，停止写入。总控限定核对类型列动态下限、详情选择属性、tooltip与配置原文保留，查看1280截图及D/R各2项专项、Binary Host隐藏烟测、两尺寸严格截图日志，diff --check通过、暂存为空；未重复构建或测试。本片限定复核完成，不新增整套人工验收，真实复制/DPI/多显示器未验证。下一步整理累积变更提交候选，尚未Stage/Commit/Push；Binary stream未派发。
+
+用户已实际打开U2B、解析Binary九字段并查看字段详情，明确确认左右布局符合使用习惯；此项人工体验通过，不扩大为全能力、DPI或真实协议验收。保留左右工作台结构，不追加整套人工验收。用户授权Lab独占下一小片：固定字段详情/只读原因中文化、类型等默认列宽、长文本可查看复制；配置自带描述、ID、稳定错误码和机器日志保持原样，不按英文detail猜状态。
+
+范围限定tools/protocol_lab_ui/document_tab、field_table_model、hex_view、exact_value_delegate、application_window中的必要纯展示改动及对应测试；若文字源在Adapter/Session，先报告，不扩大执行层修改。新报告lab-ui-readability-polish-validation.md，独占新构建out/build/windows-msvc-lab-ui-polish与证据out/validation/lab-ui-readability-polish；保护现用U2B和全部旧部署/SDK。沿用main@19c5247及共享未提交变更。D/R受影响专项及隐藏布局截图校验，避免重复全矩阵；不启动可见窗口、不触碰用户进程或Qt环境。总控维护本计划与外层AGENTS，其他执行任务不派新工作。
+
+回收后先整理G1/U1/U2/U2B/本片提交候选，列出确切文件和提交信息待用户授权；随后再派Binary stream公开消费预检、收敛契约、串行非Qt适配/UI；结构化编译诊断后置。本轮不启动Binary stream、不扩公共API/Schema/通信，不Stage/Commit/Push/发布/删除。完成主动反馈总控一次并停止写入。
+
+### 当前授权：U2B 左操作台与右结果工作区（2026-09-19）
+
+返修回收：顶部摘要分行和可压缩控件已完成；总控独立读取refinement PNG确认实际1280x820与1920x1080，并目视1280布局，核对D/R双文档Binary Host烟测及两组严格requested/actual截图日志通过，diff --check通过。原错误图片保留并更正，不再作为1280证据。候选路径为out/build/windows-msvc-lab-ui-u2b/out/protocol_lab_ui/Release/pae_protocol_lab_ui.exe；执行任务停止，等待用户简短实际体验。未人工拖动/DPI/真实配置验证，未重复全矩阵，无Stage/Commit/Push/发布。
+
+回收与限定返修：左右工作台已交付，总控查看两张实际渲染图并核对D/R各3项专项及各5组隐藏烟测通过日志，未重复运行。但独立读取PNG发现标称1280x820实为1420x820；截图函数仅打印请求尺寸，不能作为1280适配通过证据。已派Lab仅在U2B原UI文件和报告范围定位最小尺寸来源、修正小窗口局部布局及requested/actual尺寸校验，原证据保留并更正说明；增量D/R及相称定向验证，不无理由重跑全矩阵。1920x1080图片实际尺寸匹配；人工/DPI未验证。当前仍待返修复核，U3不启动，无Git/发布/删除授权。
+
+用户实际体验U2后认为横向平铺过度，明确同意左右分区方案并授权实施。Lab独占展示层，PAE/工程整理不派新工作。沿用main@19c5247及全部未提交G1/U1/U2改动，不覆盖当前U2运行目录。布局：顶部精简配置栏（完整路径可访问/复制）；左右可拖动约30/70；左侧操作/绑定设置Tab，当前binding/action/Flow始终可见，标签与控件配对、按钮自然宽度、局部滚动；右侧摘要与字段表，下方字段详情/报文字节/诊断/流状态Tab，上下可拖动。字段表保留全部原数据列，默认突出常用列且技术列可显示/横向滚动，不得删除数据或将失败/未观察值伪装成功。字段选中同步Hex高亮但不强制抢走用户当前详情Tab。切展示Tab不得重新编译/Decode/Encode、清输入、切Flow或丢选择/结果；保留唯一一套编辑器/model与稳定定位。
+
+允许tools/protocol_lab_ui的application_window/document_tab/field_table_model/hex_view及必要纯展示辅助、对应tests、局部CMake及lab-ui-workbench-u2b-validation.md；Session/Adapter/Core/API/Schema、根CMake、依赖、通信与协议功能不改。新构建out/build/windows-msvc-lab-ui-u2b、证据out/validation/lab-ui-workbench-u2b，显式v142工具链与现有Qt。D/R定向布局/切Tab状态不变/真实组包入口/字段Hex联动/长文本与局部滚动验证；争取隐藏离屏截图检查1280x820及用户宽屏尺寸，不把截图当真实DPI验收，不抢用户桌面。无全仓重复验证或无限隐藏焦点复跑；无Stage/Commit/Push/发布/删除、旧部署覆盖或Qt/全局环境修改授权。完成反馈总控并停止，回收后仅短时实际体验。
+
+### 最新回收：G1 / U1 / U2 可体验候选（2026-09-19）
+
+U2纠偏已限定总控复核：public Binary动作下拉框确有Encode，Apply/切绑定/消息选择/typed组包自动路径通过；active绑定、Flow、状态已移出折叠区。读取refinement D/R各3项专项与各5组隐藏烟测通过日志，diff --check通过，暂存为空。总控未重复运行测试；控件程序驱动不是人工编辑/DPI验收，已知隐藏焦点依赖的完整ASCII/v0.8 GUI路径仍保留未通过边界。新候选为out/build/windows-msvc-lab-ui-u2/out/protocol_lab_ui/Release（已核实EXE、Qt DLL、platforms/qwindows.dll与configs存在），不是裸bin目录，不覆盖deliverables/lab/98df5e0。G1/U1/U2限定实施回收，执行任务停止，U3不启动；下一步建议用户短时真实体验后集中修正或整理提交候选，不自动Stage/Commit/Push/发布。全能力图形覆盖仍未完成，不能将本轮UI优化等同Binary stream等后续入口已实现。
+
+### 当前实施：U2 布局与诊断可读性（2026-09-19）
+
+U2初次交付已回收，总控读取源码及D/R各3项专项、各5组隐藏烟测日志，但发现真实入口遗漏：AddHostDraftRow的Binary动作仅Decode，G1组包未能从普通下拉框选择；且折叠内容包含active binding/Flow，执行上下文不可见。已限定派Lab补实际控件Encode→Apply→typed输入→组包路径及折叠可见性断言并修正，尚未收口，不启动U3。原自动通过不作为上述未覆盖路径的验收。
+
+U1已限定复核文案、objectName/role与实际日志：D/R各3项专项及Binary/stream隐藏烟测通过；ASCII完整记录/v0.8隐藏焦点步骤失败仍保留，不当作通过，也未证明仅由隐藏窗口导致。未人工UI/DPI验证，未重跑构建。Lab停止后串行实施U2，不扩PAE或业务执行。采用既有可用性方案的小布局片：绑定草稿可折叠且保留生效上下文；字段/字节联动保持；长诊断与流状态有独立可滚动可复制区域；状态同时含文本、不只用颜色。补回U1移除的TX_TEMPLATE timing语义断言，以稳定语义定位，不强依赖英文文案。范围限application_window/document_tab/hex_view及必要展示辅助、对应tests和lab-ui-layout-u2-validation.md；不改Session/Adapter/Core/API/Schema/协议解释。新根out/build/windows-msvc-lab-ui-u2（显式已验证v142），证据out/validation/lab-ui-layout-u2；定向D/R及受影响烟测，无法自动观察的DPI/交互据实保留。旧部署/SDK/用户输入不覆盖，不启动可见窗口、不擅自更改进程DPI策略或Qt环境；无Stage/Commit/Push/发布/删除授权。PAE/工程整理停止，U3不提前实施，完成反馈总控并停止。
+
+### 当前实施：U1 中文常用界面与稳定测试定位（2026-09-19）
+
+G1已完成限定总控源码/证据复核：核对失败清旧、多消息身份和local缓存先准备计费后发布的修正；读取修前失败及四组终态专项通过日志，独立重算static/shared各99个映射文件及18个模块输入/部署哈希零差异，未重复构建运行。权威证据为lab-binary-encode-g1-validation.md的atomic2-final；未人工UI验证，不宣称生产稳定或正式发布。用户既有UI中文化授权继续有效，串行派Lab实施U1；工程整理/PAE停止。
+
+U1仅常用固定文案、稳定控件objectName/枚举定位及相应测试，不改布局/功能/公共API。依据lab-ui-usability-localization-plan.md，总控术语为处理管线（Pipeline）、流编号（Flow）、解析、组包。允许application_window、document_tab、field_table_model、exact_value_delegate、hex_view及必要同目录UI文案辅助文件/局部CMake和对应tests；不得为翻译修改Session/Adapter执行语义、标识符、用户配置数据或机器错误码。错误用中文摘要+原技术详情，不解析英文句子猜状态，不搭建完整多语言平台。新根out/build/windows-msvc-lab-ui-u1，定向D/R覆盖受影响UI烟测及G1回归，保持断言有效；验证报告lab-ui-localization-u1-validation.md。不覆盖98df5e0部署/SDK、不启动可见Lab、不修改Qt/全局环境，无Stage/Commit/Push/发布/删除授权。完成停止并向总控反馈；U2布局等待复核再派。
+
+### 当前实施：G1 Binary Encode 与 UI 中文化准备（2026-09-19）
+
+返修复核更新：失败缓存清理和多消息身份已见源码修正，修前失败及修后专项有报告/日志；但新local无效草稿缓存在PublishBinaryHostFlow调用SaveDraftsAndSelect发布adapter状态后才分配复制，且未纳入预算，破坏原有切换失败原子性。已再次限定派发先准备/计费后不抛发布，并补分配失败/超预算回归；G1继续保持待复核，U1不提前开始。本轮总控未重跑构建或独立重算全部快照哈希。
+
+G1初次交付已回收，尚未收口：总控源码复核发现Session本地输入拒绝未清owner成功缓存、以及多Encode消息往返时固定首消息selection与缓存结果身份可能不一致，已派Lab在原范围先断言复现再定向返修。初次D/R与四组installed-SDK专项通过为执行任务报告，不能替代上述状态组合验证；终态证据待修后更新。U1仍等待G1复核，不新增人工步骤，不执行Git写操作或覆盖用户部署。
+
+UI方案已回收并完成总控文档复核：[可用性与中文化方案](lab-ui-usability-localization-plan.md)。工程整理已停止写入；G1仍在实施，不同时派发修改UI的任务。后续顺序为G1功能复核 → U1固定文案中文化及稳定测试定位 → U2布局/状态/长诊断分区；结构化诊断增强再按公开能力单独收敛。总控采用“处理管线（Pipeline）”与“流编号（Flow）”区分概念，替代方案中的“执行流”译法。保留配置提供的名称/描述、标识符、稳定错误码及原始技术数据，不做全仓字符串替换或新增多语言平台。参考工具的设计原则不等于本机Qt版本验证；本次仅方案复核，尚无中文化UI实现、DPI或人工显示验证。
+
+用户采纳受限成功展示方案并授权后续UI优化/中文化。首片契约见[Binary Encode G1](lab-binary-encode-g1-contract.md)：Lab独占功能与定向D/R，工程整理并行只读界面/官方工具参考，仅写lab-ui-usability-localization-plan.md；PAE任务停止。公共API/Schema不扩展，不覆盖用户使用的98df5e0部署和私有输入。具体文件、构建/验证根、展示边界和停点以首片契约为准；无新Git/发布授权。两任务不得同时写UI。
+
 ### 当前授权：整理检查点与 Lab 图形能力覆盖（2026-09-19）
+
+盘点回收：Lab覆盖计划与PAE公开消费审计已交付；总控核对EncodeResult/HostOutputView及public_binary_description映射，确认基本Binary完整Encode无需新API，但Decimal64编辑映射和NOT_REFERENCED参与性需在Lab修正。首片建议仅展示caller输入、成功输出字节、按实际长度解析的物理位置和明确失败，不提供未公开的逐字段生成raw/转换轨迹或integrity算法/coverage。Lab报告第6节较宽的coverage展示以公开审计支持域为限，不作为实施承诺。待用户拍板此展示边界后落盘首片契约和实施派发；两任务停止，尚未改功能/构建，19c5247之后仅盘点文档未提交。
 
 用户授权修正残留状态文字并提交本轮整理检查点，不推送；下一步推进 PAE 现有公开能力的图形入口，用户自行开展真实使用验证。先由 Lab 盘点 UI 覆盖与分片方案、PAE 并行核对公开能力/观察接口支持域，再由总控收敛实施顺序。只读盘点先行，不把“全能力入口”解释为新增协议、通信框架、私有API回读或稳定ABI承诺。新实现与用户正在使用的98df5e0交付目录隔离，不覆盖其测试输入和部署；验证以定向自动化为主，新增人工操作仅在必要时简短说明。此前无Git授权表述均为各历史切片边界。
 

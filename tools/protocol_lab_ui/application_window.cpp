@@ -3,10 +3,13 @@
 #include <QAction>
 #include <QApplication>
 #include <QCloseEvent>
+#include <QCoreApplication>
+#include <QEventLoop>
 #include <QFileDialog>
 #include <QFileInfo>
 #include <QMenuBar>
 #include <QMessageBox>
+#include <QPixmap>
 #include <QStatusBar>
 #include <QTabWidget>
 #include <QTimer>
@@ -26,6 +29,8 @@
 
 namespace pae::protocol_lab_ui {
 namespace {
+
+QString UiText(const char* text) { return QCoreApplication::translate("PaeLabUi", text); }
 
 struct SmokeExpectation {
   std::vector<std::uint8_t> frame;
@@ -117,23 +122,29 @@ void PrintPerformanceSummary(std::size_t document_index,
 }  // namespace
 
 ApplicationWindow::ApplicationWindow(QWidget* parent) : QMainWindow(parent) {
-  setWindowTitle(QStringLiteral("PAE Offline Encode Inspector"));
+  setObjectName(QStringLiteral("paeLabMainWindow"));
+  setWindowTitle(UiText("PAE 协议实验室"));
   resize(1280, 820);
   tabs_ = new QTabWidget(this);
+  tabs_->setObjectName(QStringLiteral("documentTabs"));
   tabs_->setTabsClosable(true);
   tabs_->setMovable(false);
   setCentralWidget(tabs_);
 
-  auto* file_menu = menuBar()->addMenu(QStringLiteral("&File"));
-  new_action_ = file_menu->addAction(QStringLiteral("&New document"));
-  open_action_ = file_menu->addAction(QStringLiteral("&Open configuration..."));
-  auto* quit_action = file_menu->addAction(QStringLiteral("E&xit"));
+  auto* file_menu = menuBar()->addMenu(UiText("文件(&F)"));
+  file_menu->setObjectName(QStringLiteral("fileMenu"));
+  new_action_ = file_menu->addAction(UiText("新建文档(&N)"));
+  new_action_->setObjectName(QStringLiteral("newDocument"));
+  open_action_ = file_menu->addAction(UiText("打开配置(&O)..."));
+  open_action_->setObjectName(QStringLiteral("openConfiguration"));
+  auto* quit_action = file_menu->addAction(UiText("退出(&X)"));
+  quit_action->setObjectName(QStringLiteral("quitApplication"));
 
   connect(new_action_, &QAction::triggered, this, [this] { AddDocument(); });
   connect(open_action_, &QAction::triggered, this, [this] {
     const auto path =
-        QFileDialog::getOpenFileName(this, QStringLiteral("Open PAE configuration"), {},
-                                     QStringLiteral("JSON (*.json);;All files (*)"));
+        QFileDialog::getOpenFileName(this, UiText("打开 PAE 配置"), {},
+                                     UiText("JSON 文件 (*.json);;所有文件 (*)"));
     if (!path.isEmpty()) {
       AddDocument(path);
     }
@@ -150,7 +161,8 @@ ApplicationWindow::ApplicationWindow(QWidget* parent) : QMainWindow(parent) {
     }
   });
   result_timer_->start();
-  statusBar()->showMessage(QStringLiteral("Offline only - no communication or Evidence output"));
+  statusBar()->setObjectName(QStringLiteral("globalStatus"));
+  statusBar()->showMessage(UiText("仅离线分析：不执行通信，也不输出 Evidence"));
   AddDocument();
 }
 
@@ -186,11 +198,11 @@ void ApplicationWindow::closeEvent(QCloseEvent* event) {
 
 DocumentTab* ApplicationWindow::AddDocument(const QString& config_path) {
   if (tabs_->count() >= 2) {
-    statusBar()->showMessage(QStringLiteral("At most two documents may be open"), 4000);
+    statusBar()->showMessage(UiText("最多只能同时打开两个文档"), 4000);
     return nullptr;
   }
   auto* document = new DocumentTab(next_document_id_++, worker_, tabs_);
-  const int index = tabs_->addTab(document, QStringLiteral("Untitled"));
+  const int index = tabs_->addTab(document, UiText("未命名"));
   tabs_->setCurrentIndex(index);
   if (!config_path.isEmpty()) {
     document->LoadPath(config_path);
@@ -221,6 +233,7 @@ void ApplicationWindow::StartUiSmoke(QStringList config_paths) {
   }
   smoke_paths_ = std::move(config_paths);
   smoke_documents_.clear();
+  smoke_snapshot_written_ = false;
   for (const auto& path : smoke_paths_) {
     auto* document = AddDocument(path);
     if (document == nullptr) {
@@ -315,7 +328,8 @@ void ApplicationWindow::AdvanceSmoke() {
   QString error;
   if (!smoke_drafts_populated_) {
     for (std::size_t index = 0; index < smoke_documents_.size(); ++index) {
-      if (!smoke_documents_[index]->PopulateCanonicalDraftsForSmoke(error)) {
+      if (!smoke_documents_[index]->VerifyLocalizationAnchorsForSmoke(error) ||
+          !smoke_documents_[index]->PopulateCanonicalDraftsForSmoke(error)) {
         FinishSmoke(
             false,
             QStringLiteral("document %1: %2").arg(static_cast<qulonglong>(index + 1U)).arg(error));
@@ -333,6 +347,10 @@ void ApplicationWindow::AdvanceSmoke() {
         FinishSmoke(false, QStringLiteral("Binary Host document %1: %2")
                                .arg(static_cast<qulonglong>(index + 1U))
                                .arg(error));
+        return;
+      }
+      if (!CaptureSmokeSnapshot(error)) {
+        FinishSmoke(false, QStringLiteral("Binary Host snapshot: %1").arg(error));
         return;
       }
       std::fprintf(stdout, "UI_BINARY_HOST_SMOKE_DOCUMENT index=%zu fields=%d\n", index + 1U,
@@ -619,6 +637,65 @@ void ApplicationWindow::AdvanceSmoke() {
     }
   }
   FinishSmoke(true, QStringLiteral("%1 document(s)").arg(smoke_documents_.size()));
+}
+
+bool ApplicationWindow::CaptureSmokeSnapshot(QString& error) {
+  if (smoke_snapshot_written_) return true;
+  const QString path = qEnvironmentVariable("PAE_LAB_UI_SNAPSHOT_PATH");
+  if (path.isEmpty()) return true;
+  bool width_ok = false;
+  bool height_ok = false;
+  const int width = qEnvironmentVariableIntValue("PAE_LAB_UI_SNAPSHOT_WIDTH", &width_ok);
+  const int height = qEnvironmentVariableIntValue("PAE_LAB_UI_SNAPSHOT_HEIGHT", &height_ok);
+  if (!width_ok || !height_ok || width < 960 || height < 640) {
+    error = QStringLiteral("snapshot dimensions must be integers at least 960x640");
+    return false;
+  }
+  const auto log_size_hints = [this](const char* phase) {
+    const auto print_widget = [phase](const QWidget* widget, const char* name) {
+      if (widget == nullptr) return;
+      const QSize minimum_hint = widget->minimumSizeHint();
+      const QSize preferred_hint = widget->sizeHint();
+      std::fprintf(stdout,
+                   "UI_SNAPSHOT_SIZE_HINT phase=%s widget=%s minimum=%dx%d "
+                   "minimum_hint=%dx%d size_hint=%dx%d actual=%dx%d\n",
+                   phase, name, widget->minimumWidth(), widget->minimumHeight(),
+                   minimum_hint.width(), minimum_hint.height(), preferred_hint.width(),
+                   preferred_hint.height(), widget->width(), widget->height());
+    };
+    print_widget(this, "window");
+    print_widget(centralWidget(), "central");
+    for (const char* name : {"documentConfigGroup", "workbenchSplitter", "controlTabs",
+                             "operationGroup", "hostActiveContext", "resultWorkspace",
+                             "resultWorkspaceSplitter", "fieldTable"})
+      print_widget(findChild<QWidget*>(QLatin1String(name)), name);
+  };
+  log_size_hints("before_resize");
+  resize(width, height);
+  QApplication::processEvents(QEventLoop::ExcludeUserInputEvents);
+  log_size_hints("after_resize");
+  if (size() != QSize(width, height)) {
+    error = QStringLiteral("snapshot size mismatch: requested=%1x%2 actual=%3x%4")
+                .arg(width)
+                .arg(height)
+                .arg(this->width())
+                .arg(this->height());
+    return false;
+  }
+  QPixmap image(size());
+  image.fill(Qt::transparent);
+  render(&image);
+  if (!image.save(path, "PNG")) {
+    error = QStringLiteral("could not save %1").arg(path);
+    return false;
+  }
+  smoke_snapshot_written_ = true;
+  const auto path_utf8 = path.toUtf8();
+  std::fprintf(stdout,
+               "UI_SNAPSHOT_PASS path=%s requested=%dx%d actual=%dx%d\n",
+               path_utf8.constData(), width, height, this->width(), this->height());
+  std::fflush(stdout);
+  return true;
 }
 
 void ApplicationWindow::FinishSmoke(bool success, const QString& detail) {

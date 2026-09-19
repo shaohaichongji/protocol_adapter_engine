@@ -267,6 +267,8 @@ void DocumentSession::PublishBinaryHostPublication(BinaryPublication publication
   static_assert(std::is_nothrow_move_assignable_v<SelectionKey>);
   description_ = std::move(publication.description);
   prepared_->binary_host_adapter = std::move(publication.adapter);
+  binary_encode_local_states_.clear();
+  binary_encode_local_state_bytes_ = 0U;
   binary_host_binding_ = 0U;
   binary_host_flow_ = 0U;
   binary_session_revision_ = publication.session_revision;
@@ -302,8 +304,15 @@ std::optional<DocumentSession::BinaryFlowPublication> DocumentSession::PrepareBi
   const auto found =
       std::find_if(description_->pipelines.begin(), description_->pipelines.end(),
                    [&](const auto& value) { return value.id == target.pipeline_id; });
-  if (found == description_->pipelines.end() || found->message_indices.empty()) return std::nullopt;
-  const auto message_index = found->message_indices.front();
+  if (found == description_->pipelines.end()) return std::nullopt;
+  const bool encode = target.action == pae::HostAction::ENCODE;
+  const auto& allowed = encode ? found->encode_message_indices : found->decode_message_indices;
+  if (allowed.empty()) return std::nullopt;
+  const auto saved_message = encode
+      ? prepared_->binary_host_adapter->MessageSelection(binding, flow) : std::nullopt;
+  const auto message_index = saved_message.value_or(allowed.front());
+  if (std::find(allowed.begin(), allowed.end(), message_index) == allowed.end())
+    return std::nullopt;
   if (message_index >= description_->messages.size()) return std::nullopt;
   try {
     if (before_copy != nullptr) before_copy();
@@ -311,15 +320,49 @@ std::optional<DocumentSession::BinaryFlowPublication> DocumentSession::PrepareBi
     publication.binding = binding;
     publication.flow = flow;
     publication.pipeline_index = found->pipeline_index;
+    publication.mode = encode ? OperationMode::ENCODE : OperationMode::INSPECT;
     publication.selection = SelectionKey{plan_generation_, found->pipeline_index, found->id,
                                          message_index, description_->messages[message_index].id};
+    if (encode) {
+      publication.drafts = prepared_->binary_host_adapter->TypedDrafts(binding, flow);
+      const auto local = binary_encode_local_states_.find({binding, flow});
+      if (local != binary_encode_local_states_.end()) {
+        publication.invalid_drafts = local->second.invalid_drafts;
+        publication.encode_failure = local->second.encode_failure;
+      }
+      auto view = prepared_->binary_host_adapter->MapCurrentEncode(
+          binding, flow, binary_active_view_bytes_);
+      if (view.result) {
+        if (view.result->message_index != message_index) return std::nullopt;
+        publication.mapped_view_bytes = view.result->accounted_bytes;
+        PreviewResult result;
+        result.key = PreviewKey{document_id_, load_revision_, plan_generation_,
+                                selection_revision_ + 1U, input_revision_ + 1U,
+                                publication.selection};
+        result.encoded_frame = std::move(view.result->frame);
+        result.fields = std::move(view.result->fields);
+        result.zero_field_success = result.fields.empty();
+        publication.preview = std::move(result);
+        publication.encode_failure.reset();
+      } else if (view.failure) {
+        publication.encode_failure = OperationDiagnostic{
+            "UI_BINARY_HOST_ENCODE_FAILED",
+            std::string{"Binary Host complete-record Encode failed: "} +
+                PublicBinaryCodecStatusName(view.public_host.codec_status)};
+      }
+      if (publication.encode_failure) {
+        publication.diagnostic_id = publication.encode_failure->id;
+        publication.diagnostic_detail = publication.encode_failure->detail;
+      }
+      return publication;
+    }
     const auto draft = prepared_->binary_host_adapter->Draft(binding, flow);
     publication.inspect_draft_utf16.assign(draft.begin(), draft.end());
     publication.inspect_draft.reserve(draft.size());
     for (const auto value : draft)
       publication.inspect_draft.push_back(value <= 0xFFU ? static_cast<char>(value) : '?');
-    auto view =
-        prepared_->binary_host_adapter->MapCurrent(binding, flow, binary_active_view_bytes_);
+    auto view = prepared_->binary_host_adapter->MapCurrent(binding, flow,
+                                                           binary_active_view_bytes_);
     InspectResultKey key;
     key.document_id = document_id_;
     key.load_revision = load_revision_;
@@ -361,18 +404,87 @@ std::optional<DocumentSession::BinaryFlowPublication> DocumentSession::PrepareBi
   }
 }
 
-bool DocumentSession::PublishBinaryHostFlow(BinaryFlowPublication publication) {
+bool DocumentSession::PublishBinaryHostFlow(BinaryFlowPublication publication,
+                                            BinaryPreparationHook before_local_cache_copy) {
   if (!BinaryHostActive() ||
       publication.binding >= prepared_->binary_host_adapter->Bindings().size() ||
       publication.flow >= prepared_->binary_host_adapter->FlowCount(publication.binding))
     return false;
   if (publication.binding == binary_host_binding_ && publication.flow == binary_host_flow_)
     return true;
+  const bool save_local_encode =
+      prepared_->binary_host_adapter->IsCompleteEncode(binary_host_binding_, binary_host_flow_);
+  BinaryEncodeLocalState pending_local;
+  std::map<std::pair<std::size_t, std::size_t>, BinaryEncodeLocalState>::iterator local_slot;
+  bool inserted_local_slot = false;
+  std::size_t retained_local_bytes = binary_encode_local_state_bytes_;
   try {
-    prepared_->binary_host_adapter->SaveAndSelect(inspect_draft_utf16_, publication.binding,
-                                                  publication.flow);
+    if (save_local_encode) {
+      if (before_local_cache_copy != nullptr) before_local_cache_copy();
+      pending_local.invalid_drafts = invalid_drafts_;
+      pending_local.encode_failure = encode_failure_;
+
+      if (pending_local.invalid_drafts.size() >
+          (std::numeric_limits<std::size_t>::max)() /
+              sizeof(std::pair<const std::size_t, InvalidDraftState>))
+        return false;
+      std::size_t bytes = sizeof(std::pair<
+          const std::pair<std::size_t, std::size_t>, BinaryEncodeLocalState>);
+      const auto add = [&](std::size_t value) {
+        if (value > (std::numeric_limits<std::size_t>::max)() - bytes) return false;
+        bytes += value;
+        return true;
+      };
+      if (!add(pending_local.invalid_drafts.size() *
+               sizeof(std::pair<const std::size_t, InvalidDraftState>)))
+        return false;
+      for (const auto& item : pending_local.invalid_drafts) {
+        if (item.second.text.capacity() >
+                (std::numeric_limits<std::size_t>::max)() / sizeof(char16_t) ||
+            !add(item.second.text.capacity() * sizeof(char16_t)) ||
+            item.second.validation_error.capacity() ==
+                (std::numeric_limits<std::size_t>::max)() ||
+            !add(item.second.validation_error.capacity() + 1U))
+          return false;
+      }
+      if (pending_local.encode_failure &&
+          (!add(sizeof(OperationDiagnostic)) ||
+           pending_local.encode_failure->id.capacity() ==
+               (std::numeric_limits<std::size_t>::max)() ||
+           !add(pending_local.encode_failure->id.capacity() + 1U) ||
+           pending_local.encode_failure->detail.capacity() ==
+               (std::numeric_limits<std::size_t>::max)() ||
+           !add(pending_local.encode_failure->detail.capacity() + 1U)))
+        return false;
+      const auto key = std::make_pair(binary_host_binding_, binary_host_flow_);
+      const auto existing = binary_encode_local_states_.find(key);
+      if (existing != binary_encode_local_states_.end()) {
+        if (existing->second.accounted_bytes > retained_local_bytes) return false;
+        retained_local_bytes -= existing->second.accounted_bytes;
+      }
+      const auto budget = prepared_->binary_host_adapter->UiViewReserveBytes() / 4U;
+      if (retained_local_bytes > budget || bytes > budget - retained_local_bytes) return false;
+      pending_local.accounted_bytes = bytes;
+
+      const auto inserted = binary_encode_local_states_.try_emplace(key);
+      local_slot = inserted.first;
+      inserted_local_slot = inserted.second;
+    }
+    if (!prepared_->binary_host_adapter->SaveDraftsAndSelect(
+            inspect_draft_utf16_, drafts_, selection_ ? selection_->message_index : 0U,
+            publication.binding, publication.flow)) {
+      if (inserted_local_slot) binary_encode_local_states_.erase(local_slot);
+      return false;
+    }
   } catch (const std::exception&) {
+    if (inserted_local_slot) binary_encode_local_states_.erase(local_slot);
     return false;
+  }
+  if (save_local_encode) {
+    static_assert(std::is_nothrow_move_assignable_v<BinaryEncodeLocalState>);
+    local_slot->second = std::move(pending_local);
+    binary_encode_local_state_bytes_ =
+        retained_local_bytes + local_slot->second.accounted_bytes;
   }
   binary_host_binding_ = publication.binding;
   binary_host_flow_ = publication.flow;
@@ -381,20 +493,20 @@ bool DocumentSession::PublishBinaryHostFlow(BinaryFlowPublication publication) {
   ++inspect_input_revision_;
   selected_pipeline_index_ = publication.pipeline_index;
   selection_ = std::move(publication.selection);
-  drafts_.clear();
-  invalid_drafts_.clear();
-  ClearPreview();
+  drafts_ = std::move(publication.drafts);
+  invalid_drafts_ = std::move(publication.invalid_drafts);
+  preview_ = std::move(publication.preview);
   ClearInspectOutcome();
   inspect_draft_ = std::move(publication.inspect_draft);
   inspect_draft_utf16_ = std::move(publication.inspect_draft_utf16);
   inspect_result_ = std::move(publication.inspect_result);
   inspect_failure_ = std::move(publication.inspect_failure);
   binary_active_view_bytes_ = publication.mapped_view_bytes;
-  mode_ = OperationMode::INSPECT;
+  mode_ = publication.mode;
   representation_ = ByteRepresentation::HEX;
-  ClearEncodeFailure();
-  diagnostic_id_.clear();
-  diagnostic_detail_.clear();
+  encode_failure_ = std::move(publication.encode_failure);
+  diagnostic_id_ = std::move(publication.diagnostic_id);
+  diagnostic_detail_ = std::move(publication.diagnostic_detail);
   RefreshDocumentState();
   return true;
 }
@@ -1023,7 +1135,12 @@ bool DocumentSession::SetRepresentation(ByteRepresentation representation) {
 
 bool DocumentSession::EncodeAvailable() const noexcept {
 #if defined(PAE_BUILD_PROTOCOL_LAB_BINARY_UI)
-  if (IsBinaryHostDocument()) return false;
+  if (IsBinaryHostDocument())
+    return BinaryHostActive() && prepared_->binary_host_adapter->IsCompleteEncode(
+                                     binary_host_binding_, binary_host_flow_) &&
+           selection_.has_value() && description_ &&
+           selection_->message_index < description_->messages.size() &&
+           description_->messages[selection_->message_index].encode_available;
 #endif
 #if defined(PAE_BUILD_PROTOCOL_LAB_HOST_OBSERVER)
   if (HostActive() &&
@@ -1077,6 +1194,23 @@ bool DocumentSession::SelectMessage(std::size_t message_index) {
     }
   }
   if (!allowed) return false;
+#if defined(PAE_BUILD_PROTOCOL_LAB_BINARY_PUBLIC_H2)
+  if (IsBinaryHostDocument() && BinaryHostActive() &&
+      prepared_->binary_host_adapter->IsCompleteEncode(binary_host_binding_, binary_host_flow_) &&
+      !prepared_->binary_host_adapter->SelectEncodeMessage(
+          binary_host_binding_, binary_host_flow_, message_index)) return false;
+  if (IsBinaryHostDocument() && BinaryHostActive()) {
+    const auto cached =
+        binary_encode_local_states_.find({binary_host_binding_, binary_host_flow_});
+    if (cached != binary_encode_local_states_.end()) {
+      binary_encode_local_state_bytes_ =
+          cached->second.accounted_bytes <= binary_encode_local_state_bytes_
+              ? binary_encode_local_state_bytes_ - cached->second.accounted_bytes
+              : 0U;
+      binary_encode_local_states_.erase(cached);
+    }
+  }
+#endif
   ++selection_revision_;
   const auto& message = description_->messages[message_index];
   selection_ = SelectionKey{plan_generation_, pipeline.pipeline_index, pipeline.id,
@@ -1098,6 +1232,12 @@ void DocumentSession::InvalidateInput() {
     return;
   }
   ++input_revision_;
+#if defined(PAE_BUILD_PROTOCOL_LAB_BINARY_PUBLIC_H2)
+  if (IsBinaryHostDocument() && BinaryHostActive()) {
+    prepared_->binary_host_adapter->ClearCurrentEncode(binary_host_binding_, binary_host_flow_);
+    binary_active_view_bytes_ = 0U;
+  }
+#endif
   ClearPreview();
   ClearEncodeFailure();
   if (mode_ == OperationMode::ENCODE) {
@@ -1112,6 +1252,12 @@ void DocumentSession::InvalidateDraft(std::size_t field_index) {
     return;
   }
   ++input_revision_;
+#if defined(PAE_BUILD_PROTOCOL_LAB_BINARY_PUBLIC_H2)
+  if (IsBinaryHostDocument() && BinaryHostActive()) {
+    prepared_->binary_host_adapter->ClearCurrentEncode(binary_host_binding_, binary_host_flow_);
+    binary_active_view_bytes_ = 0U;
+  }
+#endif
   drafts_.erase(field_index);
   invalid_drafts_.erase(field_index);
   ClearPreview();
@@ -1138,6 +1284,12 @@ bool DocumentSession::SetInvalidDraftUtf16(std::size_t field_index, std::u16stri
     return false;
   }
   ++input_revision_;
+#if defined(PAE_BUILD_PROTOCOL_LAB_BINARY_PUBLIC_H2)
+  if (IsBinaryHostDocument() && BinaryHostActive()) {
+    prepared_->binary_host_adapter->ClearCurrentEncode(binary_host_binding_, binary_host_flow_);
+    binary_active_view_bytes_ = 0U;
+  }
+#endif
   drafts_.erase(field_index);
   invalid_drafts_[field_index] = InvalidDraftState{std::move(text), std::move(validation_error)};
   ClearPreview();
@@ -1182,6 +1334,88 @@ bool DocumentSession::Encode(LabExecutionObserver* observer,
   if (input_materialization_timer != nullptr) {
     input_materialization_timer->Start();
   }
+#if defined(PAE_BUILD_PROTOCOL_LAB_BINARY_PUBLIC_H2)
+  if (IsBinaryHostDocument()) {
+    if (!BinaryHostActive() || !prepared_->binary_host_adapter->IsCompleteEncode(
+                                   binary_host_binding_, binary_host_flow_)) {
+      SetEncodeFailure("UI_ENCODE_NOT_READY", "Binary public Host Encode is not ready");
+      ClearPreview();
+      return false;
+    }
+    std::vector<protocol_lab_binary::public_decode::EncodeInput> inputs;
+    inputs.reserve(message->fields.size());
+    for (const auto& field : message->fields) {
+      if (field.encode_source != FieldEncodeSource::INPUT) continue;
+      const auto draft = drafts_.find(field.field_index);
+      if (draft == drafts_.end() || !DraftMatches(field, draft->second)) {
+        const auto invalid = invalid_drafts_.find(field.field_index);
+        SetEncodeFailure(invalid == invalid_drafts_.end() ? "UI_INPUT_INCOMPLETE"
+                                                          : "UI_INPUT_INVALID",
+                         "field=" + field.id + "; reason=" +
+                             (invalid == invalid_drafts_.end()
+                                  ? std::string{"no valid typed draft"}
+                                  : invalid->second.validation_error));
+        ClearPreview();
+        RefreshDocumentState();
+        return false;
+      }
+      const auto& value = draft->second;
+      if (const auto* uint_value = std::get_if<std::uint64_t>(&value))
+        inputs.push_back(protocol_lab_binary::public_decode::EncodeInput::UInt64(
+            field.field_index, *uint_value));
+      else if (const auto* int_value = std::get_if<std::int64_t>(&value))
+        inputs.push_back(protocol_lab_binary::public_decode::EncodeInput::Int64(
+            field.field_index, *int_value));
+      else if (const auto* bool_value = std::get_if<bool>(&value))
+        inputs.push_back(protocol_lab_binary::public_decode::EncodeInput::Bool(
+            field.field_index, *bool_value));
+      else if (const auto* bytes_value = std::get_if<std::vector<std::uint8_t>>(&value))
+        inputs.push_back(protocol_lab_binary::public_decode::EncodeInput::Bytes(
+            field.field_index, *bytes_value));
+      else if (const auto* enum_value = std::get_if<EnumSelection>(&value))
+        inputs.push_back(protocol_lab_binary::public_decode::EncodeInput::Enum(
+            field.field_index, enum_value->entry_index));
+      else if (const auto* decimal_value = std::get_if<Decimal64>(&value))
+        inputs.push_back(protocol_lab_binary::public_decode::EncodeInput::Decimal(
+            field.field_index, {decimal_value->coefficient, decimal_value->scale}));
+      else {
+        SetEncodeFailure("UI_INPUT_INVALID", "field=" + field.id + "; reason=typed draft mismatch");
+        ClearPreview();
+        return false;
+      }
+    }
+    if (input_materialization_timer != nullptr && input_materialization_ns != nullptr)
+      *input_materialization_ns = input_materialization_timer->ElapsedNanoseconds();
+    const PreviewKey requested_key = MakePreviewKey();
+    if (observer) observer->PhaseStarted(LabExecutionPhase::MAIN_CODEC);
+    auto view = prepared_->binary_host_adapter->EncodeComplete(
+        binary_host_binding_, binary_host_flow_, selection_->message_index, inputs,
+        binary_active_view_bytes_);
+    if (observer)
+      observer->PhaseFinished(LabExecutionPhase::MAIN_CODEC,
+                              PublicBinaryCodecStatusName(view.public_host.codec_status));
+    if (!PreviewKeyStillCurrent(requested_key) || !view.ok || !view.result) {
+      const std::string status = PublicBinaryCodecStatusName(view.public_host.codec_status);
+      SetEncodeFailure("UI_BINARY_HOST_ENCODE_" + status,
+                       "Binary Host complete-record Encode failed: " + status);
+      ClearPreview();
+      RefreshDocumentState();
+      return false;
+    }
+    PreviewResult published;
+    published.key = requested_key;
+    published.encoded_frame = std::move(view.result->frame);
+    published.fields = std::move(view.result->fields);
+    published.zero_field_success = published.fields.empty();
+    preview_ = std::move(published);
+    binary_active_view_bytes_ = view.result->accounted_bytes;
+    diagnostic_id_.clear();
+    diagnostic_detail_.clear();
+    ClearEncodeFailure();
+    RefreshDocumentState();
+    return true;
+  }
+#endif
 #if defined(PAE_ENABLE_SCHEMA_V10_ASCII_TEXT_CODEC)
   if (IsAsciiDocument()) {
     if (!AsciiBackendReady()) {
@@ -2290,6 +2524,10 @@ void DocumentSession::Close() {
   state_ = DocumentState::CLOSING;
 #if defined(PAE_BUILD_PROTOCOL_LAB_HOST_OBSERVER)
   host_views_.clear();
+#endif
+#if defined(PAE_BUILD_PROTOCOL_LAB_BINARY_UI)
+  binary_encode_local_states_.clear();
+  binary_encode_local_state_bytes_ = 0U;
 #endif
   ClearSelectionAndPreview();
   inspect_draft_.clear();

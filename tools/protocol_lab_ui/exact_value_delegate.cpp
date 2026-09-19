@@ -5,6 +5,7 @@
 #endif
 
 #include <QComboBox>
+#include <QCoreApplication>
 #include <QHBoxLayout>
 #include <QLineEdit>
 #include <QSignalBlocker>
@@ -20,16 +21,18 @@
 namespace pae::protocol_lab_ui {
 namespace {
 
+QString UiText(const char* text) { return QCoreApplication::translate("PaeLabUi", text); }
+
 class DecimalEditor final : public QWidget {
  public:
   explicit DecimalEditor(QWidget* parent) : QWidget(parent) {
     auto* layout = new QHBoxLayout(this);
     layout->setContentsMargins(0, 0, 0, 0);
     coefficient = new QLineEdit(this);
-    coefficient->setPlaceholderText(QStringLiteral("coefficient"));
+    coefficient->setPlaceholderText(UiText("系数"));
     scale = new QSpinBox(this);
     scale->setRange(0, 18);
-    scale->setPrefix(QStringLiteral("scale "));
+    scale->setPrefix(UiText("小数位 "));
     layout->addWidget(coefficient, 1);
     layout->addWidget(scale);
   }
@@ -118,14 +121,12 @@ QWidget* ExactValueDelegate::createEditor(QWidget* parent, const QStyleOptionVie
     line_edit->setProperty("paeCapacityRejected", false);
     line_edit->setPlaceholderText(representation == ByteRepresentation::ASCII_ESCAPED
                                       ? QStringLiteral("ASCII (escaped)")
-                                      : QStringLiteral("uppercase Hex"));
+                                      : UiText("大写 Hex"));
     const QPersistentModelIndex persistent_index{index};
     QObject::connect(
         line_edit, &QLineEdit::inputRejected, line_edit,
         [line_edit, persistent_index, capacity, representation] {
-          const QString feedback = QStringLiteral(
-                                       "Input exceeds bounded editor capacity (%1 %2 "
-                                       "characters); entire edit rejected")
+          const QString feedback = UiText("输入超过编辑器容量上限（%1 个 %2 字符）；本次编辑已整体拒绝")
                                        .arg(capacity)
                                        .arg(representation == ByteRepresentation::ASCII_ESCAPED
                                                 ? QStringLiteral("ASCII escaped")
@@ -147,8 +148,8 @@ QWidget* ExactValueDelegate::createEditor(QWidget* parent, const QStyleOptionVie
     });
   } else {
     line_edit->setPlaceholderText(value_type == FieldValueType::UINT64
-                                      ? QStringLiteral("canonical unsigned decimal")
-                                      : QStringLiteral("canonical signed decimal"));
+                                      ? UiText("规范无符号十进制")
+                                      : UiText("规范有符号十进制"));
   }
   QObject::connect(line_edit, &QLineEdit::textChanged, line_edit,
                    [callback = editor_changed_, field_index](const QString&) {

@@ -43,6 +43,8 @@ class FieldTableModel final : public QAbstractTableModel {
     HasConversionRole,
     EditorCapacityRejectedRole,
     ByteRepresentationRole,
+    ActionReferencedRole,
+    PresentationActionRole,
   };
 
   using DraftChanged =

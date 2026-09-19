@@ -9,10 +9,12 @@ int main(int argc, char* argv[]) {
   QCoreApplication::setApplicationName(QStringLiteral("PAE Offline Encode Inspector"));
   QCoreApplication::setOrganizationName(QStringLiteral("PAE"));
 
+  const auto arguments = QCoreApplication::arguments();
   pae::protocol_lab_ui::ApplicationWindow window;
+  if (!qEnvironmentVariableIsEmpty("PAE_LAB_UI_SNAPSHOT_PATH"))
+    window.setAttribute(Qt::WA_DontShowOnScreen, true);
   window.show();
 
-  const auto arguments = QCoreApplication::arguments();
   const int smoke_index = arguments.indexOf(QStringLiteral("--ui-smoke"));
   if (smoke_index >= 0) {
     const auto paths = arguments.mid(smoke_index + 1);

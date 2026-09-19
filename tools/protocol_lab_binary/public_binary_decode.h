@@ -60,10 +60,48 @@ struct Candidate {
   std::size_t accounted_bytes = 0U;
 };
 
+struct EncodeInput {
+  std::size_t field_index = 0U;
+  ValueKind kind = ValueKind::UINT64;
+  std::uint64_t uint64_value = 0U;
+  std::int64_t int64_value = 0;
+  bool bool_value = false;
+  std::vector<std::uint8_t> bytes;
+  std::size_t enum_entry_index = 0U;
+  Decimal64 decimal;
+
+  static EncodeInput UInt64(std::size_t field, std::uint64_t value);
+  static EncodeInput Int64(std::size_t field, std::int64_t value);
+  static EncodeInput Bool(std::size_t field, bool value);
+  static EncodeInput Bytes(std::size_t field, std::vector<std::uint8_t> value);
+  static EncodeInput Enum(std::size_t field, std::size_t entry);
+  static EncodeInput Decimal(std::size_t field, Decimal64 value);
+};
+
+struct EncodedField {
+  std::size_t field_index = 0U;
+  std::string id;
+  std::optional<ByteRange> byte_range;
+  std::array<PhysicalBitMask, kMaximumFieldPhysicalBitMasks> bit_masks{};
+  std::size_t bit_mask_count = 0U;
+};
+
+struct Encoded {
+  std::size_t message_index = 0U;
+  std::string message_id;
+  std::vector<EncodeInput> inputs;
+  std::vector<std::uint8_t> frame;
+  std::vector<EncodedField> fields;
+  std::optional<ByteRange> integrity_storage;
+  std::optional<ByteRange> computed_length_storage;
+  std::size_t accounted_bytes = 0U;
+};
+
 struct Operation {
   LocalStatus local_status = LocalStatus::OK;
   HostOperationResult host;
   std::optional<Candidate> candidate;
+  std::optional<Encoded> encoded;
 };
 
 struct FlowState {
@@ -87,6 +125,7 @@ struct Preparation {
 
 struct Binding {
   std::string endpoint;
+  HostAction action = HostAction::DECODE;
   std::string pipeline_id;
   std::size_t flow_count = 2U;
 };
@@ -104,7 +143,10 @@ class Adapter final {
   ~Adapter();
 
   const Operation& Decode(std::size_t flow, ByteView frame);
+  const Operation& Encode(std::size_t binding, std::size_t message_index,
+                          const std::vector<EncodeInput>& inputs);
   HostStatus Reset(std::size_t flow) noexcept;
+  void ClearCurrent(std::size_t flow) noexcept;
   bool SetDraft(std::size_t flow, std::string_view text);
   const FlowState* State(std::size_t flow) const noexcept;
   std::size_t FlowCount(std::size_t binding) const noexcept;

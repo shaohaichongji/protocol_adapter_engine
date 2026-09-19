@@ -39,6 +39,51 @@ int main(int argc, char** argv) {
     return 1;
   }
   auto& adapter = *prepared.adapter;
+  auto encode_compiled = pae::CompileProtocolJson(json);
+  assert(encode_compiled.Succeeded());
+  auto encode_prepared = Adapter::AdoptCompiled(
+      std::move(encode_compiled).TakeCompiled(),
+      {{"tx", pae::HostAction::ENCODE, "ui_pipeline", 1U}});
+  assert(encode_prepared.status == LocalStatus::OK && encode_prepared.adapter);
+  std::vector<EncodeInput> encode_inputs;
+  encode_inputs.push_back(EncodeInput::Bool(0U, true));
+  encode_inputs.push_back(EncodeInput::Enum(1U, 1U));
+  encode_inputs.push_back(EncodeInput::UInt64(2U, 0x00D0U));
+  encode_inputs.push_back(EncodeInput::UInt64(3U, 3U));
+  encode_inputs.push_back(EncodeInput::UInt64(4U, 1U));
+  encode_inputs.push_back(EncodeInput::Int64(5U, 0));
+  encode_inputs.push_back(EncodeInput::Bytes(6U, {0xCAU, 0xFEU}));
+  encode_inputs.push_back(EncodeInput::Decimal(7U, {5, 0}));
+  const auto& encoded = encode_prepared.adapter->Encode(0U, 0U, encode_inputs);
+  assert(encoded.host.status == pae::HostStatus::OK && encoded.encoded &&
+         encoded.encoded->message_id == "typed_record" &&
+         encoded.encoded->frame ==
+             std::vector<std::uint8_t>({0x8DU, 0x0DU, 0xC3U, 0U, 1U, 0U,
+                                        0xCAU, 0xFEU, 5U, 0x5AU}) &&
+         encoded.encoded->fields.size() == 9U &&
+         encoded.encoded->fields[7].byte_range &&
+         encoded.encoded->fields[7].byte_range->offset == 8U);
+  auto invalid_enum = encode_inputs;
+  invalid_enum[1] = EncodeInput::Enum(1U, 99U);
+  const auto& locally_rejected = encode_prepared.adapter->Encode(0U, 0U, invalid_enum);
+  assert(locally_rejected.local_status == LocalStatus::INVALID_INPUT &&
+         !encode_prepared.adapter->State(0U)->current.encoded);
+  assert(encode_prepared.adapter->Encode(0U, 0U, encode_inputs).encoded);
+  std::vector<EncodeInput> too_many(Limits{}.max_fields + 1U);
+  const auto& over_budget = encode_prepared.adapter->Encode(0U, 0U, too_many);
+  assert(over_budget.local_status == LocalStatus::RESOURCE_LIMIT &&
+         !encode_prepared.adapter->State(0U)->current.encoded);
+  assert(encode_prepared.adapter->Encode(0U, 0U, encode_inputs).encoded);
+  const auto& wrong_message = encode_prepared.adapter->Encode(0U, 1U, {});
+  assert(wrong_message.local_status == LocalStatus::INVALID_INPUT &&
+         !wrong_message.host.codec_attempted &&
+         !encode_prepared.adapter->State(0U)->current.encoded);
+  assert(encode_prepared.adapter->Encode(0U, 0U, encode_inputs).encoded);
+  auto bad_encode = encode_inputs;
+  bad_encode.pop_back();
+  const auto& encode_failed = encode_prepared.adapter->Encode(0U, 0U, bad_encode);
+  assert(encode_failed.host.status != pae::HostStatus::OK && !encode_failed.encoded &&
+         !encode_prepared.adapter->State(0U)->current.encoded);
   assert(adapter.SetDraft(0U, "800D03000100CAFE055A"));
   assert(adapter.SetDraft(1U, "flow-two"));
   assert(!adapter.SetDraft(1U, std::string(131073U, 'x')) &&

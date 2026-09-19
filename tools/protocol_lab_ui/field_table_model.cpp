@@ -2,6 +2,7 @@
 
 #include <QBrush>
 #include <QColor>
+#include <QCoreApplication>
 #include <QStringList>
 #include <algorithm>
 #include <exception>
@@ -13,6 +14,8 @@
 
 namespace pae::protocol_lab_ui {
 namespace {
+
+QString UiText(const char* text) { return QCoreApplication::translate("PaeLabUi", text); }
 
 QString ValueTypeName(FieldValueType value_type) {
   switch (value_type) {
@@ -33,13 +36,15 @@ QString ValueTypeName(FieldValueType value_type) {
 QString SourceName(FieldEncodeSource source) {
   switch (source) {
     case FieldEncodeSource::INPUT:
-      return QStringLiteral("input");
+      return UiText("调用方输入");
     case FieldEncodeSource::CONSTANT:
-      return QStringLiteral("constant");
+      return UiText("常量");
     case FieldEncodeSource::COMPUTED:
-      return QStringLiteral("computed");
+      return UiText("自动计算");
+    case FieldEncodeSource::NOT_REFERENCED:
+      return UiText("未引用");
   }
-  return QStringLiteral("unknown");
+  return UiText("未知");
 }
 
 bool ReferencedByPresentedAction(const FieldDescriptor& field,
@@ -116,6 +121,8 @@ QVariant FieldTableModel::data(const QModelIndex& index, int role) const {
     return static_cast<qulonglong>(field->byte_width);
   }
   if (role == ByteRepresentationRole) return static_cast<int>(representation_);
+  if (role == ActionReferencedRole) return ReferencedByPresentedAction(*field, action_);
+  if (role == PresentationActionRole) return static_cast<int>(action_);
   if (role == FieldIndexRole) {
     return static_cast<qulonglong>(field->field_index);
   }
@@ -156,12 +163,38 @@ QVariant FieldTableModel::data(const QModelIndex& index, int role) const {
       return row.validation_error;
     }
     QStringList lines;
+    const QString displayed = data(index, Qt::DisplayRole).toString();
+    if (!displayed.isEmpty()) {
+      lines.push_back(UiText("完整内容：%1").arg(displayed));
+    }
+    if (index.column() == VALUE &&
+        (!editable_ || field->encode_source != FieldEncodeSource::INPUT)) {
+      QString reason;
+      if (!editable_) {
+        reason = UiText("当前为 Decode 结果");
+      } else {
+        switch (field->encode_source) {
+          case FieldEncodeSource::CONSTANT:
+            reason = UiText("该字段由配置常量提供");
+            break;
+          case FieldEncodeSource::COMPUTED:
+            reason = UiText("该字段由引擎自动计算");
+            break;
+          case FieldEncodeSource::NOT_REFERENCED:
+            reason = UiText("当前动作未引用该字段");
+            break;
+          case FieldEncodeSource::INPUT:
+            break;
+        }
+      }
+      if (!reason.isEmpty()) lines.push_back(UiText("只读原因：%1").arg(reason));
+    }
     if (!field->description.empty()) {
       lines.push_back(QString::fromUtf8(field->description.data(),
                                         static_cast<int>(field->description.size())));
     }
     if (!field->source_ref.empty()) {
-      lines.push_back(QStringLiteral("source: %1")
+      lines.push_back(UiText("来源：%1")
                           .arg(QString::fromUtf8(field->source_ref.data(),
                                                  static_cast<int>(field->source_ref.size()))));
     }
@@ -192,14 +225,14 @@ QVariant FieldTableModel::data(const QModelIndex& index, int role) const {
                                      : ValueTypeName(field->value_type);
     case SOURCE:
       if (field->ascii_text) {
-        if (!ReferencedByPresentedAction(*field, action_)) return QStringLiteral("not referenced");
-        return action_ == FieldPresentationAction::ENCODE ? QStringLiteral("input")
-                                                          : QStringLiteral("decoded");
+        if (!ReferencedByPresentedAction(*field, action_)) return UiText("未引用");
+        return action_ == FieldPresentationAction::ENCODE ? UiText("调用方输入")
+                                                          : UiText("解析结果");
       }
       return SourceName(field->encode_source);
     case VALUE:
       if (field->ascii_text && !ReferencedByPresentedAction(*field, action_)) {
-        return QStringLiteral("not referenced by %1 action").arg(PresentedActionName(action_));
+        return UiText("未被 %1 动作引用").arg(PresentedActionName(action_));
       }
       if (field->ascii_text && action_ == FieldPresentationAction::INSPECT) return {};
       if (field->encode_source != FieldEncodeSource::INPUT) {
@@ -233,8 +266,8 @@ QVariant FieldTableModel::data(const QModelIndex& index, int role) const {
       }
       if (field->ascii_text) {
         return ReferencedByPresentedAction(*field, action_)
-                   ? QStringLiteral("actual range unavailable")
-                   : QStringLiteral("not referenced by %1 action")
+                   ? UiText("当前实际范围不可用")
+                   : UiText("未被 %1 动作引用")
                          .arg(PresentedActionName(action_));
       }
       const auto location = message_ == nullptr
@@ -248,12 +281,19 @@ QVariant FieldTableModel::data(const QModelIndex& index, int role) const {
 }
 
 QVariant FieldTableModel::headerData(int section, Qt::Orientation orientation, int role) const {
-  if (orientation != Qt::Horizontal || role != Qt::DisplayRole) {
-    return {};
+  if (orientation != Qt::Horizontal) return {};
+  static const char* const labels[] = {"ID",       "名称", "类型",     "来源",
+                                       "值",       "原始值", "逻辑值", "物理字节 / 位 / 掩码"};
+  if (section < 0 || section >= COLUMN_COUNT) return {};
+  if (role == Qt::DisplayRole) return UiText(labels[section]);
+  if (role == Qt::ToolTipRole) {
+    static const char* const descriptions[] = {
+        "字段稳定 ID", "字段显示名称", "字段值类型", "值的提供来源",
+        "Encode 输入值或只读说明", "解码后的原始值", "转换后的逻辑值",
+        "物理字节、位及掩码位置"};
+    return UiText(descriptions[section]);
   }
-  static const char* const labels[] = {"Id",    "Name", "Type",    "Source",
-                                       "Value", "Raw",  "Logical", "Physical byte / bit / mask"};
-  return section >= 0 && section < COLUMN_COUNT ? QString::fromLatin1(labels[section]) : QVariant{};
+  return {};
 }
 
 Qt::ItemFlags FieldTableModel::flags(const QModelIndex& index) const {
@@ -447,7 +487,7 @@ bool FieldTableModel::ParseDraft(int row, const QVariant& value, int role, Typed
                                  QString& canonical, QString& error) const {
   const auto* field = FieldAt(row);
   if (field == nullptr || field->encode_source != FieldEncodeSource::INPUT) {
-    error = QStringLiteral("Field is read-only");
+    error = UiText("字段为只读");
     return false;
   }
   if (field->value_type == FieldValueType::BOOL) {

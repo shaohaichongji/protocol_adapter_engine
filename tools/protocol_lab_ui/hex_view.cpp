@@ -2,6 +2,7 @@
 
 #include <QAbstractTableModel>
 #include <QColor>
+#include <QCoreApplication>
 #include <QHeaderView>
 #include <QString>
 #include <algorithm>
@@ -11,6 +12,8 @@ namespace pae::protocol_lab_ui {
 namespace {
 
 constexpr int kBytesPerRow = 16;
+
+QString UiText(const char* text) { return QCoreApplication::translate("PaeLabUi", text); }
 
 }  // namespace
 
@@ -60,7 +63,7 @@ class HexView::Model final : public QAbstractTableModel {
       return QColor(255, 224, 128);
     }
     if (role == Qt::ToolTipRole && mask != 0U) {
-      return QStringLiteral("byte %1, bit mask 0x%2")
+      return UiText("字节 %1，位掩码 0x%2")
           .arg(static_cast<qulonglong>(byte_index))
           .arg(static_cast<unsigned int>(mask), 2, 16, QLatin1Char('0'))
           .toUpper();
@@ -76,7 +79,7 @@ class HexView::Model final : public QAbstractTableModel {
       return {};
     }
     if (section == 0) {
-      return QStringLiteral("Offset");
+      return UiText("偏移");
     }
     return QStringLiteral("%1").arg(section - 1, 2, 16, QLatin1Char('0')).toUpper();
   }

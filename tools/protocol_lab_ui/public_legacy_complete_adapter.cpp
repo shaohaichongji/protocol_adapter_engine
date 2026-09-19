@@ -88,7 +88,7 @@ FieldEncodeSource UiSource(pae::EncodeValueSource value) noexcept {
     case pae::EncodeValueSource::CALLER_INPUT: return FieldEncodeSource::INPUT;
     case pae::EncodeValueSource::CONSTANT: return FieldEncodeSource::CONSTANT;
     case pae::EncodeValueSource::COMPUTED: return FieldEncodeSource::COMPUTED;
-    case pae::EncodeValueSource::NOT_REFERENCED: return FieldEncodeSource::INPUT;
+    case pae::EncodeValueSource::NOT_REFERENCED: return FieldEncodeSource::NOT_REFERENCED;
   }
   return FieldEncodeSource::INPUT;
 }

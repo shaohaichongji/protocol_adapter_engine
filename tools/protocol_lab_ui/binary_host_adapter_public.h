@@ -7,10 +7,12 @@
 #include <optional>
 #include <string>
 #include <string_view>
+#include <unordered_map>
 #include <vector>
 
 #include "pae/host_endpoint.h"
 #include "../protocol_lab_binary/public_binary_decode.h"
+#include "owned_presentation_types.h"
 #include "ui_field_result.h"
 
 namespace pae::protocol_lab_ui {
@@ -53,6 +55,21 @@ struct BinaryUiDecodeView {
   bool ok = false;
   pae::HostOperationResult public_host;
   std::optional<BinaryUiDecodeResult> result;
+  std::optional<BinaryUiDecodeFailure> failure;
+};
+
+struct BinaryUiEncodeResult {
+  std::vector<std::uint8_t> frame;
+  std::size_t message_index = 0U;
+  std::string message_id;
+  std::vector<UiFieldResult> fields;
+  std::size_t accounted_bytes = 0U;
+};
+
+struct BinaryUiEncodeView {
+  bool ok = false;
+  pae::HostOperationResult public_host;
+  std::optional<BinaryUiEncodeResult> result;
   std::optional<BinaryUiDecodeFailure> failure;
 };
 
@@ -101,16 +118,36 @@ class BinaryHostAdapter final {
   static std::size_t AccountDescriptionBytes(const DocumentDescription& description);
   std::uint64_t Instance() const noexcept { return instance_; }
   bool IsCompleteDecode(std::size_t binding, std::size_t flow) const noexcept;
+  bool IsCompleteEncode(std::size_t binding, std::size_t flow) const noexcept;
   std::size_t FlowCount(std::size_t binding) const noexcept;
   BinaryUiDecodeView DecodeComplete(std::size_t binding, std::size_t flow,
                                     const std::vector<std::uint8_t>& frame,
                                     std::size_t active_view_bytes = 0U);
   BinaryUiDecodeView MapCurrent(std::size_t binding, std::size_t flow,
                                 std::size_t active_view_bytes = 0U) const;
+  BinaryUiEncodeView EncodeComplete(
+      std::size_t binding, std::size_t flow, std::size_t message_index,
+      const std::vector<protocol_lab_binary::public_decode::EncodeInput>& inputs,
+      std::size_t active_view_bytes = 0U);
+  BinaryUiEncodeView MapCurrentEncode(std::size_t binding, std::size_t flow,
+                                      std::size_t active_view_bytes = 0U) const;
   const void* Current(std::size_t binding, std::size_t flow) const noexcept;
   std::u16string_view Draft(std::size_t binding, std::size_t flow) const noexcept;
   std::size_t DraftLimit(std::size_t binding, std::size_t flow) const noexcept;
   void SaveAndSelect(std::u16string_view draft, std::size_t binding, std::size_t flow);
+  bool SaveDraftsAndSelect(
+      std::u16string_view inspect_draft,
+      const std::unordered_map<std::size_t, TypedDraft>& typed_drafts,
+      std::size_t source_message_index, std::size_t binding, std::size_t flow);
+  bool SaveTypedDrafts(std::size_t binding, std::size_t flow,
+                       const std::unordered_map<std::size_t, TypedDraft>& drafts);
+  const std::unordered_map<std::size_t, TypedDraft>& TypedDrafts(
+      std::size_t binding, std::size_t flow) const noexcept;
+  std::optional<std::size_t> MessageSelection(std::size_t binding,
+                                               std::size_t flow) const noexcept;
+  bool SelectEncodeMessage(std::size_t binding, std::size_t flow,
+                           std::size_t message_index) noexcept;
+  void ClearCurrentEncode(std::size_t binding, std::size_t flow) noexcept;
 
  private:
   BinaryHostAdapter();
@@ -119,11 +156,16 @@ class BinaryHostAdapter final {
   BinaryUiDecodeView MapOperation(
       const protocol_lab_binary::public_decode::Operation& operation,
       std::size_t active_view_bytes) const;
+  BinaryUiEncodeView MapEncodeOperation(
+      const protocol_lab_binary::public_decode::Operation& operation,
+      std::size_t active_view_bytes) const;
   std::unique_ptr<DocumentDescription> description_;
   std::unique_ptr<DocumentDescription> publication_description_;
   std::unique_ptr<protocol_lab_binary::public_decode::Adapter> owner_;
   std::vector<BinaryHostBinding> bindings_;
   std::vector<std::u16string> drafts_;
+  std::vector<std::unordered_map<std::size_t, TypedDraft>> typed_drafts_;
+  std::vector<std::optional<std::size_t>> message_selections_;
   std::size_t selected_binding_ = 0U;
   std::size_t selected_flow_ = 0U;
   BinaryPreparationIdentity identity_;
