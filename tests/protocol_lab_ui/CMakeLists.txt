@@ -1,10 +1,30 @@
 set(pae_lab_ui_test_source_root "${PROJECT_SOURCE_DIR}")
 set(pae_lab_ui_headless_test_target pae_protocol_lab_ui_headless_internal)
-set(pae_lab_ui_smoke_executable "$<TARGET_FILE:pae_protocol_lab_ui>")
+set(
+    pae_lab_ui_smoke_executable
+    "${PROJECT_BINARY_DIR}/out/protocol_lab_ui/$<CONFIG>/pae_protocol_lab_ui.exe"
+)
 if(DEFINED PAE_LAB_STANDALONE_TEST_SOURCE_ROOT)
     set(pae_lab_ui_test_source_root "${PAE_LAB_STANDALONE_TEST_SOURCE_ROOT}")
     set(pae_lab_ui_headless_test_target "${PAE_PROTOCOL_LAB_UI_HEADLESS_TEST_TARGET}")
     set(pae_lab_ui_smoke_executable "${PAE_LAB_UI_SMOKE_EXECUTABLE}")
+endif()
+
+if(MSVC)
+    add_test(
+        NAME pae.tools.protocol_lab_ui.ui_smoke_crt_assert_probe
+        COMMAND
+            "${CMAKE_COMMAND}"
+            "-DPAE_SMOKE_EXECUTABLE=${pae_lab_ui_smoke_executable}"
+            -P "${CMAKE_CURRENT_SOURCE_DIR}/verify_crt_assert_probe.cmake"
+    )
+    set_tests_properties(
+        pae.tools.protocol_lab_ui.ui_smoke_crt_assert_probe
+        PROPERTIES
+            CONFIGURATIONS Debug
+            LABELS "tools;protocol_lab_ui;offline;diagnostic;smoke;crt"
+            TIMEOUT 30
+    )
 endif()
 
 set(
@@ -376,3 +396,33 @@ set_tests_properties(
         LABELS "tools;protocol_lab_ui;offline;qt;window;smoke"
         TIMEOUT 180
 )
+
+set(
+    pae_protocol_lab_ui_qwindows_smoke_tests
+        pae.tools.protocol_lab_ui.qt_smoke
+        pae.tools.protocol_lab_ui.qt_smoke_v07
+        pae.tools.protocol_lab_ui.qt_smoke_v08
+)
+if(PAE_BUILD_PROTOCOL_LAB_BINARY_UI)
+    list(APPEND pae_protocol_lab_ui_qwindows_smoke_tests pae.tools.protocol_lab_ui.qt_smoke_binary_stage1)
+endif()
+if(PAE_BUILD_PROTOCOL_LAB_ASCII_STREAM_OBSERVER)
+    list(
+        APPEND pae_protocol_lab_ui_qwindows_smoke_tests
+        pae.tools.protocol_lab_ui.qt_smoke_ascii_stream
+        pae.tools.protocol_lab_ui.qt_smoke_ascii_stream_close_cancel
+    )
+endif()
+if(PAE_BUILD_PROTOCOL_LAB_ASCII_ADAPTER)
+    list(
+        APPEND pae_protocol_lab_ui_qwindows_smoke_tests
+        pae.tools.protocol_lab_ui.qt_smoke_ascii
+        pae.tools.protocol_lab_ui.qt_smoke_ascii_one_way
+    )
+endif()
+foreach(pae_protocol_lab_ui_qwindows_smoke_test IN LISTS pae_protocol_lab_ui_qwindows_smoke_tests)
+    set_property(
+        TEST "${pae_protocol_lab_ui_qwindows_smoke_test}"
+        APPEND PROPERTY ENVIRONMENT "QT_QPA_PLATFORM=windows"
+    )
+endforeach()

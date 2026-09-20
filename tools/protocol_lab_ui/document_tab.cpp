@@ -854,6 +854,26 @@ bool DocumentTab::VerifyBoundedV08ForSmoke(QString& error) {
     error = QStringLiteral("bounded BYTES editor vanished during keyboard entry");
     return false;
   }
+  QPointer<QLineEdit> focus_editor = editor;
+  QWidget* top_level = window();
+  if (top_level == nullptr) {
+    error = QStringLiteral("focus-out smoke has no top-level window");
+    return false;
+  }
+  top_level->activateWindow();
+  QApplication::processEvents(QEventLoop::ExcludeUserInputEvents);
+  if (!focus_editor) {
+    error = QStringLiteral("bounded BYTES editor vanished before focus-out precondition");
+    return false;
+  }
+  focus_editor->setFocus(Qt::OtherFocusReason);
+  QApplication::processEvents(QEventLoop::ExcludeUserInputEvents);
+  if (!focus_editor || QApplication::focusWidget() != focus_editor.data()) {
+    error = QStringLiteral("hidden focus-out smoke could not establish editor focus");
+    return false;
+  }
+  std::fputs("UI_SMOKE_EDITOR_COMMIT case=v08 method=focus_out precondition=focused\n", stdout);
+  std::fflush(stdout);
   encode_button_->setFocus(Qt::OtherFocusReason);
   QApplication::processEvents(QEventLoop::ExcludeUserInputEvents);
   QApplication::sendPostedEvents(nullptr, QEvent::DeferredDelete);
@@ -861,11 +881,15 @@ bool DocumentTab::VerifyBoundedV08ForSmoke(QString& error) {
     error = QStringLiteral("focus-out did not commit corrected legal BYTES");
     return false;
   }
+  std::fputs("UI_SMOKE_EDITOR_COMMIT case=v08 method=focus_out model=accepted\n", stdout);
+  std::fflush(stdout);
   EncodeCurrent();
   if (!session_.preview().has_value()) {
     error = QStringLiteral("focus-out correction did not recover a valid Encode result");
     return false;
   }
+  std::fputs("UI_SMOKE_EDITOR_COMMIT case=v08 method=focus_out output=accepted\n", stdout);
+  std::fflush(stdout);
 
   editor = open_editor();
   if (editor == nullptr) {
@@ -1224,20 +1248,46 @@ bool DocumentTab::VerifyAsciiForSmoke(QString& error) {
     error = QStringLiteral("ASCII_DIAG_EDITOR_LOST during first keyboard entry");
     return false;
   }
-  ascii_smoke_diagnostic::Trace("editor_first_before_focus_commit", editor.data(),
+  ascii_smoke_diagnostic::Trace("editor_first_before_return_commit", editor.data(),
                                 ascii_smoke_diagnostic::EditorId(editor.data()));
 #endif
-  encode_button_->setFocus(Qt::OtherFocusReason);
-  QApplication::processEvents(QEventLoop::ExcludeUserInputEvents);
-  QApplication::sendPostedEvents(nullptr, QEvent::DeferredDelete);
+  CommitEditorByKey(*editor, Qt::Key_Return);
+  if (field_model_->data(name_index, Qt::EditRole).toString() != QStringLiteral("ALICE")) {
+    error = QStringLiteral("ASCII Return did not commit ALICE to the field model");
+    return false;
+  }
+  const auto committed_draft =
+      session_.drafts().find(message->fields[static_cast<std::size_t>(name_row)].field_index);
+  const std::vector<std::uint8_t> expected_name{'A', 'L', 'I', 'C', 'E'};
+  const auto* committed_bytes =
+      committed_draft == session_.drafts().end()
+          ? nullptr
+          : std::get_if<std::vector<std::uint8_t>>(&committed_draft->second);
+  if (committed_bytes == nullptr || *committed_bytes != expected_name) {
+    error = QStringLiteral("ASCII Return did not commit ALICE to the document session");
+    return false;
+  }
+  std::fputs("UI_SMOKE_EDITOR_COMMIT case=ascii method=return model=accepted session=accepted\n",
+             stdout);
+  std::fflush(stdout);
   EncodeCurrent();
   const std::vector<std::uint8_t> expected{'T', 'X', ' ', 'A', 'L',  'I',
                                            'C', 'E', '!', 'A', '\r', '\n'};
-  if (!session_.preview().has_value() || session_.preview()->encoded_frame != expected ||
-      !session_.preview()->tx_template_review) {
-    error = QStringLiteral("ASCII Enter commit did not produce independent TX template bytes");
+  if (!session_.preview().has_value()) {
+    error = QStringLiteral("ASCII Return-committed ALICE did not produce an Encode preview: %1")
+                .arg(FromUtf8(session_.diagnostic_id()));
     return false;
   }
+  if (session_.preview()->encoded_frame != expected) {
+    error = QStringLiteral("ASCII Return-committed ALICE produced unexpected TX template bytes");
+    return false;
+  }
+  if (!session_.preview()->tx_template_review) {
+    error = QStringLiteral("ASCII Return-committed ALICE lost TX_TEMPLATE review identity");
+    return false;
+  }
+  std::fputs("UI_SMOKE_EDITOR_COMMIT case=ascii method=return output=accepted\n", stdout);
+  std::fflush(stdout);
   if (timing_label_->property("paeReviewKind").toString() != QStringLiteral("TX_TEMPLATE") ||
       !timing_label_->text().contains(QStringLiteral("TX_TEMPLATE")) ||
       result_kind_label_->property("paeResultState").toString() != QStringLiteral("success")) {
@@ -1382,18 +1432,30 @@ bool DocumentTab::VerifyAsciiForSmoke(QString& error) {
   const QModelIndex tx_source = field_model_->index(2, FieldTableModel::SOURCE);
   const QModelIndex tx_value = field_model_->index(2, FieldTableModel::VALUE);
   const QModelIndex tx_raw = field_model_->index(2, FieldTableModel::RAW_RESULT);
-  if (field_model_->data(rx_source).toString() != QStringLiteral("decoded") ||
-      !field_model_->data(rx_value).toString().isEmpty() ||
-      field_model_->data(rx_raw).toString() != QStringLiteral("4F4B") ||
-      field_model_->data(rx_logical).toString() != QStringLiteral("OK") ||
-      field_model_->data(rx_physical).toString() != QStringLiteral("9 + 2") ||
-      field_model_->data(tx_source).toString() != QStringLiteral("not referenced") ||
-      field_model_->data(tx_value).toString() !=
-          QStringLiteral("not referenced by Decode action") ||
-      !field_model_->data(tx_raw).toString().isEmpty()) {
-    error = QStringLiteral("ASCII Inspect action/source/result annotations are inconsistent");
+  const auto expect_inspect_display = [&](const QModelIndex& index, const char* field_id,
+                                          const char* column, const QString& expected) {
+    const QString actual = field_model_->data(index).toString();
+    if (actual == expected) return true;
+    const auto visible = [](const QString& value) {
+      return value.isEmpty() ? QStringLiteral("<empty>") : value;
+    };
+    error = QStringLiteral("ASCII Inspect display mismatch: field=%1; column=%2; expected=%3; "
+                           "actual=%4")
+                .arg(QString::fromLatin1(field_id), QString::fromLatin1(column), visible(expected),
+                     visible(actual));
     return false;
-  }
+  };
+  if (!expect_inspect_display(rx_source, "rx_code", "SOURCE", QStringLiteral("解析结果")) ||
+      !expect_inspect_display(rx_value, "rx_code", "VALUE", QString{}) ||
+      !expect_inspect_display(rx_raw, "rx_code", "RAW_RESULT", QStringLiteral("4F4B")) ||
+      !expect_inspect_display(rx_logical, "rx_code", "LOGICAL_RESULT", QStringLiteral("OK")) ||
+      !expect_inspect_display(rx_physical, "rx_code", "PHYSICAL_LOCATION",
+                              QStringLiteral("9 + 2")) ||
+      !expect_inspect_display(tx_source, "tx_tag", "SOURCE", QStringLiteral("未引用")) ||
+      !expect_inspect_display(tx_value, "tx_tag", "VALUE",
+                              QStringLiteral("未被 Decode 动作引用")) ||
+      !expect_inspect_display(tx_raw, "tx_tag", "RAW_RESULT", QString{}))
+    return false;
   field_table_->selectRow(1);
   RefreshFieldDetails(1);
   const QString rx_details = details_view_->toPlainText();
