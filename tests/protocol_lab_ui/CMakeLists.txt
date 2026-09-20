@@ -17,11 +17,11 @@ if(MSVC)
             "${CMAKE_COMMAND}"
             "-DPAE_SMOKE_EXECUTABLE=${pae_lab_ui_smoke_executable}"
             -P "${CMAKE_CURRENT_SOURCE_DIR}/verify_crt_assert_probe.cmake"
+        CONFIGURATIONS Debug
     )
     set_tests_properties(
         pae.tools.protocol_lab_ui.ui_smoke_crt_assert_probe
         PROPERTIES
-            CONFIGURATIONS Debug
             LABELS "tools;protocol_lab_ui;offline;diagnostic;smoke;crt"
             TIMEOUT 30
     )
@@ -86,6 +86,9 @@ endif()
 
 if(PAE_BUILD_PROTOCOL_LAB_ASCII_ADAPTER)
     list(APPEND pae_protocol_lab_ui_headless_test_names ascii_input ascii_session)
+endif()
+
+if(PAE_BUILD_PROTOCOL_LAB_ASCII_ADAPTER OR PAE_BUILD_PROTOCOL_LAB_ASCII_PUBLIC_A2)
     add_executable(pae_protocol_lab_ui_ascii_smoke_editor_tests ascii_smoke_editor_tests.cpp)
     target_include_directories(pae_protocol_lab_ui_ascii_smoke_editor_tests PRIVATE "${pae_lab_ui_test_source_root}/tools/protocol_lab_ui")
     target_link_libraries(pae_protocol_lab_ui_ascii_smoke_editor_tests PRIVATE PAE::Qt5Widgets pae::project_options)
@@ -332,7 +335,7 @@ add_test(
         "${CMAKE_CURRENT_SOURCE_DIR}/fixtures/synthetic_ui_v06.pae.json"
 )
 
-if(PAE_BUILD_PROTOCOL_LAB_ASCII_ADAPTER)
+if(PAE_BUILD_PROTOCOL_LAB_ASCII_ADAPTER OR PAE_BUILD_PROTOCOL_LAB_ASCII_PUBLIC_A2)
     add_test(
         NAME pae.tools.protocol_lab_ui.qt_smoke_ascii
         COMMAND
@@ -413,7 +416,7 @@ if(PAE_BUILD_PROTOCOL_LAB_ASCII_STREAM_OBSERVER)
         pae.tools.protocol_lab_ui.qt_smoke_ascii_stream_close_cancel
     )
 endif()
-if(PAE_BUILD_PROTOCOL_LAB_ASCII_ADAPTER)
+if(PAE_BUILD_PROTOCOL_LAB_ASCII_ADAPTER OR PAE_BUILD_PROTOCOL_LAB_ASCII_PUBLIC_A2)
     list(
         APPEND pae_protocol_lab_ui_qwindows_smoke_tests
         pae.tools.protocol_lab_ui.qt_smoke_ascii

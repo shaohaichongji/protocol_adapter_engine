@@ -5,6 +5,30 @@
 
 ## 顺序与出口
 
+### 最新限定回收：试用 Lab 独立消费矩阵（2026-09-20）
+
+Lab已停止并交接。总控复核CRT注册差异及其文件hash，读取四组CTest成功汇总：static/shared各Debug33/33、Release32/32；现场重算四组模块记录的18个模块输入/部署/加载文件hash，均匹配。子任务报告四组Testing-off新构建及既定负例通过；总控未重跑构建测试、未逐份复核全部负例日志。最终static Debug Testing-on补同前缀增量build日志时，部署脚本拒绝覆盖非空既有部署，日志已核对；这是重复部署停点，不抹去此前实际测试通过，也不写成最后构建成功。不为日志前缀整齐而清空部署或重跑完整矩阵。本轮限定回收，后续建议整理累计补丁提交候选和试用入口，Git写操作与交付归集另行授权。SDK仍clean7b4205e，Lab仍为该基线加明确未提交补丁；人工真实协议、稳定ABI、Linux及正式发布未验证。详见lab-trial-sdk-7b4205e-validation.md第9节。
+
+### 补充授权：CRT 探针按配置注册及续验（2026-09-20）
+
+standalone 派生定义补齐后 static Debug Testing-on 33/33 通过；Release 构建成功，测试32/33，唯一失败为仅Debug实现的CRT探针被错误注册到Release。用户授权Lab将tests/protocol_lab_ui/CMakeLists.txt中的CONFIGURATIONS Debug从set_tests_properties移入add_test，保留探针及断言、不改产品逻辑。同步隔离输入/hash并保留历史日志，重新生成后核对Debug含探针、Release不含探针的实际测试名称清单，再继续原static/shared D/R Testing-on/off、模块来源及负例矩阵。其他类型失败停报；SDK只读、Lab仍为明确未提交补丁输入。其他任务停止，无Git写操作、删除、现用交付替换或正式发布授权。已派发《Lab应用推进》，完成主动交接并停止，待总控复核。
+
+### 补充授权：standalone 特性定义一致性收尾（2026-09-20）
+
+STREAM_UI 缺口消失后链接暴露 BINDING_UI 遗漏，用户同意整体核对相关派生宏。Lab 先对照仓内规则、standalone 与源码条件，区分产品/测试及 CMake 变量/预处理宏，仅在 standalone/CMakeLists.txt 补齐当前已启用功能所必需的确定派生定义（已确认 HOST_OBSERVER OR BINARY_PUBLIC_H2 → BINDING_UI）。不机械复制全部宏，不改功能源码或启用 private adapter。追加原 validation 对照表，同步隔离输入/hash并用新日志续跑原矩阵；其他类型问题停报。保留SDK和所有旧证据，Lab仍为未提交补丁输入，无Git写操作、删除、交付覆盖或发布。
+
+### 补充授权：standalone 流式 UI 特性定义（2026-09-20）
+
+首次 static Debug Testing-on 构建因 standalone 缺 PAE_BUILD_PROTOCOL_LAB_STREAM_UI 而失败，测试尚未执行。用户授权 Lab 仅在 standalone/CMakeLists.txt 的 pae_lab_features 上补与仓内一致的条件定义，保留失败日志并同步隔离输入/hash，继续原 static/shared D/R Testing-on/off 与来源验证矩阵。不得以此扩大执行源码或 PAE 修改；SDK只读，Lab保留未提交补丁身份。范围外失败停报，无 Git 写操作、交付覆盖或删除。
+
+### 当前实施：同批试用 Lab 独立消费（2026-09-20）
+
+PAE五包/六组包外消费已交接；总控读取验证日志并现场核对五包provenance、清单文件hash与源码clone clean，未重跑构建。Lab串行接手：仅补PrepareStandaloneInputs.ps1三项测试输入及tests/protocol_lab_ui/CMakeLists.txt中public A2的真实消费测试门禁，随后static/shared D/R Testing-on/off与模块来源验证。新根为F:/PersonalWorkspace/pae-trial-7b4205e-20260920/lab，SDK只读；仅新增lab-trial-sdk-7b4205e-validation.md报告。SDK为clean 7b4205e，Lab为该提交加明确记录的未提交输入/测试修正，不能混称clean同提交。范围外失败停报，不改诊断功能、不替换deliverables、不删除或Git写操作。复核后再决定归集；真实协议输入仍待用户提供。
+
+### 当前推进：统一试用交付、真实使用与诊断入口（2026-09-20）
+
+用户同意三步方向。固定功能输入为干净提交 7b4205ea899cf16b9c73ba6ebc4c64382b71dc63。PAE任务先检查既有打包入口，无缺口则在新隔离根 F:/PersonalWorkspace/pae-trial-7b4205e-20260920 生成五包并验证六组包外消费；共享树仅写 pae-trial-sdk-7b4205e-validation.md，需改脚本/功能则停报。Lab并行只读预检同批standalone及结构化编译诊断，仅写 lab-trial-sdk-diagnostics-plan-20260920.md，不构建或提前消费未完成包。SDK复核后再串行派Lab同批构建/验证/新交付归集；现用包不覆盖。诊断代码待交付基线闭合后实施，避免混入当前候选。真实使用待用户给出协议与宿主路径，只读评估后明确接入范围，不以合成样例代替真实证据。无Git写操作、正式发布、旧产物删除或系统Qt变更授权。
+
 ### 最新限定收口：编辑提交与中文展示 smoke 修复（2026-09-20）
 
 总控已复核实际 document_tab.cpp 差异及 annotations-fix 下 D/R 测试日志：三个过期英文展示期望已同步中文，八项独立固定期望保留，失败提示可定位字段/列；真实 Return/FocusOut 路径保留，未改生产 delegate/model/session 或 EncodeCurrent。Debug 与 Release 两项均 2/2 PASS，本片限定收口；未重跑全量、人工 UI 或 SDK 消费，不升级为整体发布验证。证据见 lab-editor-commit-repair-20260920.md 第 7 节。执行任务停止，无 Stage/Commit/Push 或部署替换。下一步建议汇总累计命名整理、清理入口及 smoke 修复形成提交候选，提交另行授权。

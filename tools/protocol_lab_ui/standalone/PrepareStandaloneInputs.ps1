@@ -64,7 +64,9 @@ $labFiles = @(
     'tools\protocol_lab_ui\smoke_editor_target.h', 'tools\protocol_lab_ui\ui_field_result.h',
     'tools\protocol_lab_ui\ui_physical_types.h',
     'tests\protocol_lab_ui\CMakeLists.txt', 'tests\protocol_lab_ui\test_support.h',
+    'tests\protocol_lab_ui\verify_crt_assert_probe.cmake',
     'tests\protocol_lab_binary\CMakeLists.txt', 'tests\protocol_lab_binary\public_binary_decode_tests.cpp',
+    'tests\protocol_lab_binary\public_binary_stream_tests.cpp',
     'tests\protocol_lab_ascii\CMakeLists.txt', 'tests\protocol_lab_ascii\public_ascii_offline_adapter_tests.cpp',
     'tests\protocol_lab_ascii\public_ascii_stream_adapter_tests.cpp'
 )
@@ -86,6 +88,7 @@ $configs = @(
     'examples\config\synthetic_ascii_text_slice.pae.json',
     'examples\config\synthetic_ascii_literal_only.pae.json',
     'examples\config\synthetic_ascii_stream_slice.pae.json',
+    'examples\config\synthetic_stream_framing_slice.pae.json',
     'examples\config\synthetic_bounded_variable_record.pae.json',
     'examples\config\synthetic_int64_slice.pae.json',
     'examples\config\synthetic_crc_slice.pae.json'
