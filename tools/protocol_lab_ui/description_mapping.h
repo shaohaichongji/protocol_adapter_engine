@@ -9,7 +9,7 @@
 #endif
 #include "owned_presentation_types.h"
 #if !defined(PAE_PROTOCOL_LAB_STANDALONE_PUBLIC_ONLY) && \
-    defined(PAE_ENABLE_SCHEMA_V10_ASCII_TEXT_CODEC)
+    defined(PAE_BUILD_PROTOCOL_LAB_ASCII_ADAPTER)
 #include "../protocol_lab_ascii/ascii_offline_adapter.h"
 #endif
 #if defined(PAE_BUILD_PROTOCOL_LAB_ASCII_PUBLIC_A2)
@@ -22,7 +22,8 @@ namespace pae::protocol_lab_ui {
 bool BuildDocumentDescription(const protocol_plan::PlanBundle& plan,
                               const config_compiler::UiDescriptionSidecar& sidecar,
                               DocumentDescription& output, std::string& error);
-#if defined(PAE_ENABLE_SCHEMA_V10_ASCII_TEXT_CODEC)
+#if defined(PAE_BUILD_PROTOCOL_LAB_ASCII_ADAPTER) || \
+    defined(PAE_PROTOCOL_LAB_STANDALONE_PUBLIC_ONLY)
 bool BuildDocumentDescription(const protocol_lab::ascii::DocumentDescription& source,
                               DocumentDescription& output, std::string& error);
 #endif

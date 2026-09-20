@@ -86,7 +86,8 @@ SchemaDispatchResult ClassifySchemaVersion(std::string_view json_bytes) {
         SchemaDispatchStatus::PRIVATE_LEGACY,
 #endif
         {}};
-#if defined(PAE_ENABLE_SCHEMA_V10_ASCII_TEXT_CODEC)
+#if defined(PAE_BUILD_PROTOCOL_LAB_ASCII_ADAPTER) || \
+    defined(PAE_PROTOCOL_LAB_STANDALONE_PUBLIC_ONLY)
   if (value == "0.10")
     return {
 #if defined(PAE_BUILD_PROTOCOL_LAB_ASCII_PUBLIC_A2)

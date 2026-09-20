@@ -74,6 +74,10 @@ class DocumentTab final : public QWidget {
   bool VerifyBinaryHostStage1ForSmoke(QString& error);
   QString BinaryStateSignatureForSmoke() const;
   bool VerifyBinaryReloadFailureForSmoke(QString& error);
+#if defined(PAE_BUILD_PROTOCOL_LAB_BINARY_PUBLIC_H2)
+  bool IsBinaryStreamForSmoke() const noexcept { return session_.StreamInspectAvailable(); }
+  bool VerifyBinaryStreamForSmoke(QString& error);
+#endif
 #endif
 #if defined(PAE_BUILD_PROTOCOL_LAB_ASCII_STREAM_OBSERVER)
   bool IsAsciiStreamForSmoke() const noexcept { return session_.StreamInspectAvailable(); }
@@ -92,7 +96,7 @@ class DocumentTab final : public QWidget {
   const EncodeTimingSnapshot& LastTiming() const noexcept { return timing_; }
 
  private:
-#if defined(PAE_BUILD_PROTOCOL_LAB_HOST_OBSERVER)
+#if defined(PAE_BUILD_PROTOCOL_LAB_BINDING_UI)
   void BuildHostUi(QVBoxLayout* operation_root, QVBoxLayout* binding_root);
   void InitializeHostDraft();
   void AddHostDraftRow();
@@ -112,7 +116,9 @@ class DocumentTab final : public QWidget {
   std::optional<Revision> host_pending_revision_;
   bool host_draft_dirty_ = true;
   Revision host_request_sequence_ = 0U;
+#if defined(PAE_BUILD_PROTOCOL_LAB_HOST_OBSERVER)
   std::vector<AsciiHostBinding> host_pending_bindings_;
+#endif
 #if defined(PAE_BUILD_PROTOCOL_LAB_BINARY_UI)
   std::vector<BinaryHostBinding> binary_host_pending_bindings_;
   std::optional<BinaryPreparationIdentity> binary_host_pending_identity_;
@@ -132,7 +138,7 @@ class DocumentTab final : public QWidget {
   void SelectMessage(int combo_index);
   void EncodeCurrent();
   void InspectCurrent();
-#if defined(PAE_BUILD_PROTOCOL_LAB_ASCII_STREAM_OBSERVER)
+#if defined(PAE_BUILD_PROTOCOL_LAB_STREAM_UI)
   void ContinueStream();
   void ResetStream();
   bool ConfirmStreamDiscard(const QString& action);
@@ -166,7 +172,7 @@ class DocumentTab final : public QWidget {
   QComboBox* representation_combo_ = nullptr;
   QPushButton* encode_button_ = nullptr;
   QPushButton* inspect_button_ = nullptr;
-#if defined(PAE_BUILD_PROTOCOL_LAB_ASCII_STREAM_OBSERVER)
+#if defined(PAE_BUILD_PROTOCOL_LAB_STREAM_UI)
   QPushButton* continue_button_ = nullptr;
   QPushButton* reset_stream_button_ = nullptr;
   QLabel* stream_status_label_ = nullptr;
@@ -184,7 +190,7 @@ class DocumentTab final : public QWidget {
   QTextBrowser* details_view_ = nullptr;
   QTabWidget* right_tabs_ = nullptr;
   int diagnostic_tab_index_ = -1;
-#if defined(PAE_BUILD_PROTOCOL_LAB_ASCII_STREAM_OBSERVER)
+#if defined(PAE_BUILD_PROTOCOL_LAB_STREAM_UI)
   int stream_tab_index_ = -1;
 #endif
   QLabel* diagnostic_label_ = nullptr;

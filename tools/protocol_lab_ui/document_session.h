@@ -34,7 +34,7 @@
 #include "../protocol_lab_ascii/host_observer_adapter.h"
 #endif
 #if !defined(PAE_PROTOCOL_LAB_STANDALONE_PUBLIC_ONLY) && \
-    defined(PAE_ENABLE_SCHEMA_V10_ASCII_TEXT_CODEC)
+    defined(PAE_BUILD_PROTOCOL_LAB_ASCII_ADAPTER)
 #include "../protocol_lab_ascii/ascii_offline_adapter.h"
 #endif
 
@@ -53,7 +53,7 @@ enum class DocumentState {
 enum class OperationMode {
   ENCODE,
   INSPECT,
-#if defined(PAE_BUILD_PROTOCOL_LAB_ASCII_STREAM_OBSERVER)
+#if defined(PAE_BUILD_PROTOCOL_LAB_STREAM_UI)
   STREAM_INSPECT,
 #endif
 };
@@ -159,7 +159,7 @@ struct PreparedDocument {
 #endif
   std::string config_sha256;
 #if !defined(PAE_PROTOCOL_LAB_STANDALONE_PUBLIC_ONLY) && \
-    defined(PAE_ENABLE_SCHEMA_V10_ASCII_TEXT_CODEC)
+    defined(PAE_BUILD_PROTOCOL_LAB_ASCII_ADAPTER)
   std::unique_ptr<protocol_lab::ascii::OfflineAdapter> ascii_adapter;
 #elif defined(PAE_PROTOCOL_LAB_STANDALONE_PUBLIC_ONLY)
   // Source-compatible negative assertion only; no private adapter type enters this build.
@@ -204,6 +204,9 @@ class DocumentSession final {
     std::u16string inspect_draft_utf16;
     std::optional<InspectResult> inspect_result;
     std::optional<InspectFailure> inspect_failure;
+#if defined(PAE_BUILD_PROTOCOL_LAB_BINARY_PUBLIC_H2)
+    std::optional<BinaryUiStreamView> stream_view;
+#endif
     std::size_t mapped_view_bytes = 0U;
     OperationMode mode = OperationMode::INSPECT;
     std::unordered_map<std::size_t, TypedDraft> drafts;
@@ -231,6 +234,12 @@ class DocumentSession final {
   Revision BinarySessionRevision() const noexcept { return binary_session_revision_; }
   std::size_t BinaryActiveViewBytes() const noexcept { return binary_active_view_bytes_; }
   bool BinaryHasDiscardableState() const noexcept;
+#if defined(PAE_BUILD_PROTOCOL_LAB_BINARY_PUBLIC_H2)
+  const std::optional<BinaryUiStreamView>& binary_stream_view() const noexcept {
+    return binary_stream_view_;
+  }
+  std::optional<StreamPresentationObservation> BinaryStreamObservation() const noexcept;
+#endif
 #endif
 #if defined(PAE_BUILD_PROTOCOL_LAB_HOST_OBSERVER)
 #if defined(PAE_BUILD_PROTOCOL_LAB_ASCII_PUBLIC_A2)
@@ -268,7 +277,7 @@ class DocumentSession final {
   bool SetInspectDraftUtf16(std::u16string text);
   void RejectInspectCapacity(std::size_t capacity);
   bool Inspect(LabExecutionObserver* observer = nullptr);
-#if defined(PAE_BUILD_PROTOCOL_LAB_ASCII_STREAM_OBSERVER)
+#if defined(PAE_BUILD_PROTOCOL_LAB_STREAM_UI)
   bool SubmitStream();
   bool ContinueStream();
   bool ResetStream();
@@ -276,6 +285,8 @@ class DocumentSession final {
   bool StreamContinueAvailable() const noexcept;
   bool StreamHasDiscardableState() const noexcept;
   std::size_t StreamChunkBudget() const noexcept;
+#endif
+#if defined(PAE_BUILD_PROTOCOL_LAB_ASCII_STREAM_OBSERVER)
   const std::optional<AsciiStreamStepResult>& stream_step() const noexcept {
     return stream_step_;
   }
@@ -327,6 +338,9 @@ class DocumentSession final {
   std::size_t binary_host_flow_ = 0U;
   Revision binary_session_revision_ = 0U;
   std::size_t binary_active_view_bytes_ = 0U;
+#if defined(PAE_BUILD_PROTOCOL_LAB_BINARY_PUBLIC_H2)
+  std::optional<BinaryUiStreamView> binary_stream_view_;
+#endif
   struct BinaryEncodeLocalState {
     std::unordered_map<std::size_t, InvalidDraftState> invalid_drafts;
     std::optional<OperationDiagnostic> encode_failure;

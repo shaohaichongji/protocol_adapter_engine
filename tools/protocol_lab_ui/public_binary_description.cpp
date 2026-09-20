@@ -1,36 +1,65 @@
 #include "public_binary_description.h"
-#include "description_mapping.h"
 
 #include <algorithm>
 #include <exception>
+
+#include "description_mapping.h"
+#include "pae/stream_framer.h"
 
 namespace pae::protocol_lab_ui {
 namespace {
 FieldValueType UiType(pae::ValueKind kind) {
   switch (kind) {
-    case pae::ValueKind::UINT64: return FieldValueType::UINT64;
-    case pae::ValueKind::INT64: return FieldValueType::INT64;
-    case pae::ValueKind::BOOL: return FieldValueType::BOOL;
-    case pae::ValueKind::BYTES: return FieldValueType::BYTES;
-    case pae::ValueKind::ENUM: return FieldValueType::ENUM;
-    case pae::ValueKind::DECIMAL64: return FieldValueType::INT64;
+    case pae::ValueKind::UINT64:
+      return FieldValueType::UINT64;
+    case pae::ValueKind::INT64:
+      return FieldValueType::INT64;
+    case pae::ValueKind::BOOL:
+      return FieldValueType::BOOL;
+    case pae::ValueKind::BYTES:
+      return FieldValueType::BYTES;
+    case pae::ValueKind::ENUM:
+      return FieldValueType::ENUM;
+    case pae::ValueKind::DECIMAL64:
+      return FieldValueType::INT64;
   }
   return FieldValueType::UINT64;
 }
 
 FieldEncodeSource UiSource(pae::EncodeValueSource source) {
   switch (source) {
-    case pae::EncodeValueSource::CALLER_INPUT: return FieldEncodeSource::INPUT;
-    case pae::EncodeValueSource::CONSTANT: return FieldEncodeSource::CONSTANT;
-    case pae::EncodeValueSource::COMPUTED: return FieldEncodeSource::COMPUTED;
-    case pae::EncodeValueSource::NOT_REFERENCED: return FieldEncodeSource::NOT_REFERENCED;
+    case pae::EncodeValueSource::CALLER_INPUT:
+      return FieldEncodeSource::INPUT;
+    case pae::EncodeValueSource::CONSTANT:
+      return FieldEncodeSource::CONSTANT;
+    case pae::EncodeValueSource::COMPUTED:
+      return FieldEncodeSource::COMPUTED;
+    case pae::EncodeValueSource::NOT_REFERENCED:
+      return FieldEncodeSource::NOT_REFERENCED;
   }
   return FieldEncodeSource::INPUT;
 }
 
 template <typename Value>
-bool Good(const Value& query) { return query.status == pae::PhysicalQueryStatus::OK &&
-                                        query.value.has_value(); }
+bool Good(const Value& query) {
+  return query.status == pae::PhysicalQueryStatus::OK && query.value.has_value();
+}
+
+StreamFramingStrategy UiStrategy(pae::PipelineFramingStrategy strategy) {
+  switch (strategy) {
+    case pae::PipelineFramingStrategy::COMPLETE_RECORD:
+      return StreamFramingStrategy::COMPLETE_RECORD;
+    case pae::PipelineFramingStrategy::FIXED_LENGTH:
+      return StreamFramingStrategy::FIXED_LENGTH;
+    case pae::PipelineFramingStrategy::SYNC_FIXED_LENGTH:
+      return StreamFramingStrategy::SYNC_FIXED_LENGTH;
+    case pae::PipelineFramingStrategy::SYNC_LENGTH_FIELD:
+      return StreamFramingStrategy::SYNC_LENGTH_FIELD;
+    case pae::PipelineFramingStrategy::ASCII_CRLF:
+      return StreamFramingStrategy::ASCII_CRLF;
+  }
+  return StreamFramingStrategy::COMPLETE_RECORD;
+}
 }  // namespace
 
 bool BuildPublicBinaryDescription(const pae::CompiledProtocol& compiled,
@@ -73,22 +102,22 @@ bool BuildPublicBinaryDescription(const pae::CompiledProtocol& compiled,
       message.frame_size = physical.value->record_length.maximum;
       built.max_frame_bytes = (std::max)(built.max_frame_bytes, message.frame_size);
       if (physical.value->maximum_integrity_storage)
-        message.integrity_storage = ByteRange{
-            physical.value->maximum_integrity_storage->offset,
-            physical.value->maximum_integrity_storage->length};
+        message.integrity_storage = ByteRange{physical.value->maximum_integrity_storage->offset,
+                                              physical.value->maximum_integrity_storage->length};
       message.integrity_storage_at_payload_end =
           physical.value->integrity_storage_offset_depends_on_frame_size;
       if (physical.value->computed_length_storage)
-        message.computed_length_storage = ByteRange{
-            physical.value->computed_length_storage->offset,
-            physical.value->computed_length_storage->length};
+        message.computed_length_storage =
+            ByteRange{physical.value->computed_length_storage->offset,
+                      physical.value->computed_length_storage->length};
       message.fields.reserve(meta->field_count);
       for (std::size_t f = 0U; f < meta->field_count; ++f) {
         const auto field_meta = compiled.Field(meta->field_begin + f);
         const auto field_physical = compiled.FieldPhysical(meta->field_begin + f);
-        if (!field_meta || !Good(field_physical) || field_meta->flat_index != meta->field_begin + f ||
-            field_meta->message_index != m || field_meta->index_in_message != f ||
-            field_physical.value->message_index != m || field_physical.value->field_index != f) {
+        if (!field_meta || !Good(field_physical) ||
+            field_meta->flat_index != meta->field_begin + f || field_meta->message_index != m ||
+            field_meta->index_in_message != f || field_physical.value->message_index != m ||
+            field_physical.value->field_index != f) {
           error = "public Binary Field metadata/physical query mismatch";
           return false;
         }
@@ -116,13 +145,12 @@ bool BuildPublicBinaryDescription(const pae::CompiledProtocol& compiled,
         }
         if (field_physical.value->byte_value_length &&
             field_physical.value->byte_range_length_depends_on_frame_size)
-          field.byte_length_bounds = ByteLengthBounds{
-              field_physical.value->byte_value_length->minimum,
-              field_physical.value->byte_value_length->maximum};
+          field.byte_length_bounds =
+              ByteLengthBounds{field_physical.value->byte_value_length->minimum,
+                               field_physical.value->byte_value_length->maximum};
         for (std::size_t bit = 0U; bit < field_physical.value->bit_mask_count; ++bit)
-          field.physical_bits.push_back({
-              field_physical.value->bit_masks[bit].frame_byte_index,
-              field_physical.value->bit_masks[bit].mask});
+          field.physical_bits.push_back({field_physical.value->bit_masks[bit].frame_byte_index,
+                                         field_physical.value->bit_masks[bit].mask});
         for (std::size_t e = 0U; e < field_meta->enum_count; ++e) {
           const auto item = compiled.Enum(field_meta->enum_begin + e);
           if (!item || item->field_flat_index != field_meta->flat_index ||
@@ -130,8 +158,8 @@ bool BuildPublicBinaryDescription(const pae::CompiledProtocol& compiled,
             error = "public Binary Enum metadata mismatch";
             return false;
           }
-          field.enum_entries.push_back({e, std::string(item->id),
-                                        std::string(item->display_name), item->raw_value});
+          field.enum_entries.push_back(
+              {e, std::string(item->id), std::string(item->display_name), item->raw_value});
         }
         message.fields.push_back(std::move(field));
       }
@@ -151,6 +179,26 @@ bool BuildPublicBinaryDescription(const pae::CompiledProtocol& compiled,
       pipeline.display_name = meta->display_name;
       pipeline.description = meta->description;
       pipeline.source_ref = meta->source_ref;
+      const auto framing = pae::QueryPipelineFramingDescription(compiled, p);
+      if (framing.status != pae::PipelineFramingQueryStatus::OK || !framing.value ||
+          framing.value->pipeline_index != p) {
+        error = "public Binary Pipeline framing query mismatch";
+        return false;
+      }
+      pipeline.input_kind = framing.value->input_kind == pae::PipelineInputKind::STREAM_CHUNK
+                                ? StreamInputKind::STREAM_CHUNK
+                                : StreamInputKind::COMPLETE_RECORD;
+      pipeline.framing_strategy = UiStrategy(framing.value->strategy);
+      pipeline.maximum_candidate_frame_bytes = framing.value->maximum_candidate_frame_bytes;
+      if ((pipeline.input_kind == StreamInputKind::COMPLETE_RECORD) !=
+              (pipeline.framing_strategy == StreamFramingStrategy::COMPLETE_RECORD) ||
+          pipeline.framing_strategy == StreamFramingStrategy::ASCII_CRLF ||
+          (pipeline.input_kind == StreamInputKind::STREAM_CHUNK &&
+           (!pipeline.maximum_candidate_frame_bytes ||
+            *pipeline.maximum_candidate_frame_bytes == 0U))) {
+        error = "public Binary Pipeline framing facts are incompatible";
+        return false;
+      }
       for (std::size_t a = 0U; a < meta->message_count; ++a) {
         const auto index = compiled.PipelineMessageIndex(p, a);
         const auto execution = index ? compiled.PipelineMessageExecution(p, *index) : std::nullopt;

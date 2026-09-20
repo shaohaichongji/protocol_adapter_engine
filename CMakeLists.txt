@@ -201,6 +201,12 @@ if(PAE_BUILD_PROTOCOL_LAB_ASCII_PUBLIC_A2 AND
     NOT PAE_BUILD_PUBLIC_API_STAGE1 OR NOT PAE_BUILD_HOST_ENDPOINT_SLICE))
     message(FATAL_ERROR "ASCII public A2 requires UI, public A1, public API Stage 1 and Host endpoint.")
 endif()
+if(PAE_BUILD_PROTOCOL_LAB_ASCII_PUBLIC_A2 AND NOT PAE_BUILD_PROTOCOL_LAB_ASCII_ADAPTER)
+    message(
+        FATAL_ERROR
+        "ASCII public A2 currently requires PAE_BUILD_PROTOCOL_LAB_ASCII_ADAPTER=ON in this repository's Lab UI build. This is a Lab build-combination constraint; the PAE public API itself does not depend on the private Lab ASCII adapter."
+    )
+endif()
 
 if(PAE_BUILD_PROTOCOL_LAB_ASCII_PUBLIC_STREAM_UI AND
    (NOT PAE_BUILD_PROTOCOL_LAB_UI OR NOT PAE_BUILD_PROTOCOL_LAB_ASCII_PUBLIC_A2 OR
@@ -264,15 +270,6 @@ endif()
 
 if(PAE_ENABLE_SCHEMA_V11_ASCII_STREAM_FRAMING AND PAE_BUILD_PROTOCOL_LAB)
     message(FATAL_ERROR "Schema 0.11 remains unsupported by Protocol Lab CLI and Evidence.")
-endif()
-
-if(PAE_ENABLE_SCHEMA_V11_ASCII_STREAM_FRAMING AND
-   (PAE_BUILD_PROTOCOL_LAB_UI OR PAE_BUILD_PROTOCOL_LAB_ASCII_ADAPTER) AND
-   NOT PAE_BUILD_PROTOCOL_LAB_ASCII_STREAM_OBSERVER)
-    message(
-        FATAL_ERROR
-        "Schema 0.11 Lab adapter/UI requires the explicit Lab ASCII stream observer option."
-    )
 endif()
 
 if(PAE_BUILD_PROTOCOL_LAB_UI)
@@ -428,13 +425,6 @@ if(PAE_ENABLE_SCHEMA_V10_ASCII_TEXT_CODEC AND PAE_BUILD_PROTOCOL_LAB)
     message(
         FATAL_ERROR
         "Schema 0.10 ASCII execution is not connected to Protocol Lab or its evidence formats."
-    )
-endif()
-if(PAE_ENABLE_SCHEMA_V10_ASCII_TEXT_CODEC AND PAE_BUILD_PROTOCOL_LAB_UI AND
-   NOT PAE_BUILD_PROTOCOL_LAB_ASCII_ADAPTER)
-    message(
-        FATAL_ERROR
-        "Schema 0.10 Protocol Lab UI requires PAE_BUILD_PROTOCOL_LAB_ASCII_ADAPTER=ON."
     )
 endif()
 if(PAE_BUILD_PROTOCOL_LAB_ASCII_ADAPTER AND NOT PAE_ENABLE_SCHEMA_V10_ASCII_TEXT_CODEC)

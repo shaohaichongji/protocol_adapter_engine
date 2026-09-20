@@ -1,7 +1,4 @@
-#include "description_mapping.h"
-#include "ui_field_result.h"
 #include "binary_host_adapter_public.h"
-#include "public_binary_description.h"
 
 #include <algorithm>
 #include <atomic>
@@ -9,6 +6,10 @@
 #include <limits>
 #include <stdexcept>
 #include <utility>
+
+#include "description_mapping.h"
+#include "public_binary_description.h"
+#include "ui_field_result.h"
 
 namespace pae::protocol_lab_ui {
 namespace {
@@ -79,12 +80,14 @@ std::size_t StringCapacityUpper(std::size_t size) {
 void ChargeDestinationString(std::string_view value, std::size_t& total) {
   total = Add(total, StringCapacityUpper(value.size()) + 1U);
 }
-template <typename Integer> std::size_t Characters(Integer value) noexcept {
+template <typename Integer>
+std::size_t Characters(Integer value) noexcept {
   char buffer[64];
   const auto converted = std::to_chars(std::begin(buffer), std::end(buffer), value);
   return converted.ec == std::errc{} ? static_cast<std::size_t>(converted.ptr - buffer) : 64U;
 }
-template <typename Integer> std::string Number(Integer value) {
+template <typename Integer>
+std::string Number(Integer value) {
   char buffer[64];
   const auto converted = std::to_chars(std::begin(buffer), std::end(buffer), value);
   Require(converted.ec == std::errc{}, "public Binary numeric formatting failed");
@@ -125,26 +128,96 @@ std::size_t AccountResult(const BinaryUiEncodeResult& result) {
   }
   return total;
 }
+
+StreamFramingStrategy UiStrategy(pae::PipelineFramingStrategy strategy) noexcept {
+  switch (strategy) {
+    case pae::PipelineFramingStrategy::COMPLETE_RECORD:
+      return StreamFramingStrategy::COMPLETE_RECORD;
+    case pae::PipelineFramingStrategy::FIXED_LENGTH:
+      return StreamFramingStrategy::FIXED_LENGTH;
+    case pae::PipelineFramingStrategy::SYNC_FIXED_LENGTH:
+      return StreamFramingStrategy::SYNC_FIXED_LENGTH;
+    case pae::PipelineFramingStrategy::SYNC_LENGTH_FIELD:
+      return StreamFramingStrategy::SYNC_LENGTH_FIELD;
+    case pae::PipelineFramingStrategy::ASCII_CRLF:
+      return StreamFramingStrategy::ASCII_CRLF;
+  }
+  return StreamFramingStrategy::COMPLETE_RECORD;
+}
+
+StreamRuntimePhase UiPhase(pae::StreamFramingPhase phase) noexcept {
+  switch (phase) {
+    case pae::StreamFramingPhase::COLLECTING:
+      return StreamRuntimePhase::COLLECTING;
+    case pae::StreamFramingPhase::DELIVERY_PENDING:
+      return StreamRuntimePhase::DELIVERY_PENDING;
+    case pae::StreamFramingPhase::DISCARDING_UNTIL_CRLF:
+      return StreamRuntimePhase::DISCARDING_UNTIL_CRLF;
+  }
+  return StreamRuntimePhase::COLLECTING;
+}
+
+StreamPresentationObservation UiObservation(
+    const protocol_lab_binary::public_decode::StreamObservation& source) noexcept {
+  StreamPresentationObservation result;
+  result.strategy = UiStrategy(source.strategy);
+  result.phase = UiPhase(source.phase);
+  result.maximum_candidate_frame_bytes = source.maximum_candidate_frame_bytes;
+  result.effective_max_submit_bytes = source.effective_max_submit_bytes;
+  result.effective_max_work_units = source.effective_max_work_units;
+  result.buffered_bytes = source.buffered_bytes;
+  result.frozen_input_bytes = source.frozen_input_bytes;
+  result.frozen_cursor = source.frozen_cursor;
+  result.has_internal_work = source.has_internal_work;
+  result.reset_required = source.reset_required;
+  result.generation = source.generation;
+  result.step_sequence = source.step_sequence;
+  result.total_candidates = source.total_candidates;
+  result.total_decode_successes = source.total_decode_successes;
+  result.total_decode_failures = source.total_decode_failures;
+  result.total_observer_callbacks = source.total_observer_callbacks;
+  result.total_business_callbacks = source.total_business_callbacks;
+  result.total_discarded_bytes = source.total_discarded_bytes;
+  result.total_malformed_candidates = source.total_malformed_candidates;
+  return result;
+}
 }  // namespace
 
 const char* PublicBinaryCodecStatusName(pae::CodecStatus status) noexcept {
-#define PAE_CODEC_CASE(name) case pae::CodecStatus::name: return #name
+#define PAE_CODEC_CASE(name)   \
+  case pae::CodecStatus::name: \
+    return #name
   switch (status) {
-    PAE_CODEC_CASE(OK); PAE_CODEC_CASE(INVALID_ARGUMENT);
-    PAE_CODEC_CASE(INVALID_COMPILED_PROTOCOL); PAE_CODEC_CASE(RESOURCE_LIMIT_EXCEEDED);
-    PAE_CODEC_CASE(ALLOCATION_FAILED); PAE_CODEC_CASE(WORKSPACE_BUSY);
-    PAE_CODEC_CASE(INPUT_VALUES_TOO_MANY); PAE_CODEC_CASE(UNKNOWN_MESSAGE);
-    PAE_CODEC_CASE(AMBIGUOUS_MESSAGE); PAE_CODEC_CASE(OUTPUT_SLOTS_TOO_SMALL);
-    PAE_CODEC_CASE(INTEGRITY_FAILED); PAE_CODEC_CASE(MESSAGE_NOT_ALLOWED);
-    PAE_CODEC_CASE(FIELD_REFERENCE_MISMATCH); PAE_CODEC_CASE(DUPLICATE_FIELD);
-    PAE_CODEC_CASE(MISSING_FIELD); PAE_CODEC_CASE(TYPE_MISMATCH);
-    PAE_CODEC_CASE(VALUE_NOT_REPRESENTABLE); PAE_CODEC_CASE(BYTES_LENGTH_MISMATCH);
-    PAE_CODEC_CASE(UNKNOWN_ENUM_VALUE); PAE_CODEC_CASE(ENUM_REFERENCE_MISMATCH);
-    PAE_CODEC_CASE(CONSTANT_FIELD_OVERRIDE); PAE_CODEC_CASE(INPUT_OUTPUT_OVERLAP);
-    PAE_CODEC_CASE(BUFFER_TOO_SMALL); PAE_CODEC_CASE(FINAL_REVIEW_FAILED);
-    PAE_CODEC_CASE(ASCII_CHARACTER_NOT_ALLOWED); PAE_CODEC_CASE(ASCII_TERMINATOR_CONFLICT);
-    PAE_CODEC_CASE(OPERATION_NOT_SUPPORTED); PAE_CODEC_CASE(COMPUTED_FIELD_OVERRIDE);
-    PAE_CODEC_CASE(LENGTH_MISMATCH); PAE_CODEC_CASE(INTERNAL_ERROR);
+    PAE_CODEC_CASE(OK);
+    PAE_CODEC_CASE(INVALID_ARGUMENT);
+    PAE_CODEC_CASE(INVALID_COMPILED_PROTOCOL);
+    PAE_CODEC_CASE(RESOURCE_LIMIT_EXCEEDED);
+    PAE_CODEC_CASE(ALLOCATION_FAILED);
+    PAE_CODEC_CASE(WORKSPACE_BUSY);
+    PAE_CODEC_CASE(INPUT_VALUES_TOO_MANY);
+    PAE_CODEC_CASE(UNKNOWN_MESSAGE);
+    PAE_CODEC_CASE(AMBIGUOUS_MESSAGE);
+    PAE_CODEC_CASE(OUTPUT_SLOTS_TOO_SMALL);
+    PAE_CODEC_CASE(INTEGRITY_FAILED);
+    PAE_CODEC_CASE(MESSAGE_NOT_ALLOWED);
+    PAE_CODEC_CASE(FIELD_REFERENCE_MISMATCH);
+    PAE_CODEC_CASE(DUPLICATE_FIELD);
+    PAE_CODEC_CASE(MISSING_FIELD);
+    PAE_CODEC_CASE(TYPE_MISMATCH);
+    PAE_CODEC_CASE(VALUE_NOT_REPRESENTABLE);
+    PAE_CODEC_CASE(BYTES_LENGTH_MISMATCH);
+    PAE_CODEC_CASE(UNKNOWN_ENUM_VALUE);
+    PAE_CODEC_CASE(ENUM_REFERENCE_MISMATCH);
+    PAE_CODEC_CASE(CONSTANT_FIELD_OVERRIDE);
+    PAE_CODEC_CASE(INPUT_OUTPUT_OVERLAP);
+    PAE_CODEC_CASE(BUFFER_TOO_SMALL);
+    PAE_CODEC_CASE(FINAL_REVIEW_FAILED);
+    PAE_CODEC_CASE(ASCII_CHARACTER_NOT_ALLOWED);
+    PAE_CODEC_CASE(ASCII_TERMINATOR_CONFLICT);
+    PAE_CODEC_CASE(OPERATION_NOT_SUPPORTED);
+    PAE_CODEC_CASE(COMPUTED_FIELD_OVERRIDE);
+    PAE_CODEC_CASE(LENGTH_MISMATCH);
+    PAE_CODEC_CASE(INTERNAL_ERROR);
   }
 #undef PAE_CODEC_CASE
   return "UNKNOWN_CODEC_STATUS";
@@ -161,7 +234,8 @@ std::unique_ptr<BinaryHostAdapter> BinaryHostAdapter::CreatePublic(
     const BinaryUiCopyControls* copy_controls) {
   try {
     Require(identity.document && identity.load && identity.session && identity.request &&
-                !identity.config_sha256.empty(), "public Binary identity is incomplete");
+                !identity.config_sha256.empty(),
+            "public Binary identity is incomplete");
     if (previous)
       Require(previous->identity_.document == identity.document &&
                   previous->identity_.load == identity.load &&
@@ -175,7 +249,8 @@ std::unique_ptr<BinaryHostAdapter> BinaryHostAdapter::CreatePublic(
     Require(limits.instance_bytes <= hard.instance_bytes &&
                 limits.replacement_bytes <= hard.replacement_bytes &&
                 limits.max_result_bytes <= hard.max_result_bytes &&
-                limits.max_frame_bytes <= hard.max_frame_bytes,
+                limits.max_frame_bytes <= hard.max_frame_bytes &&
+                limits.max_stream_chunk_bytes <= hard.max_stream_chunk_bytes,
             "public Binary limits exceed hard ceilings");
     auto adapter = std::unique_ptr<BinaryHostAdapter>(new BinaryHostAdapter);
     adapter->limits_ = limits;
@@ -201,19 +276,16 @@ std::unique_ptr<BinaryHostAdapter> BinaryHostAdapter::CreatePublic(
       public_bindings.push_back(
           {binding.endpoint, binding.action, binding.pipeline_id, binding.streams});
     }
-    adapter->utf16_draft_reserve_bytes_ = Multiply(
-        channels + 1U, Add(Multiply(4U, limits.max_frame_bytes),
-                           sizeof(std::u16string)));
+    adapter->utf16_draft_reserve_bytes_ =
+        Multiply(channels + 1U, Add(Multiply(4U, limits.max_frame_bytes), sizeof(std::u16string)));
     const auto mapped_description_bytes = AccountDescription(*adapter->description_);
     Require(mapped_description_bytes <= limits.max_description_bytes,
             "public Binary UI description exceeds bound");
-    adapter->description_copy_upper_bound_bytes_ =
-        Multiply(2U, mapped_description_bytes);
+    adapter->description_copy_upper_bound_bytes_ = Multiply(2U, mapped_description_bytes);
     Require(adapter->description_copy_upper_bound_bytes_ <=
                 adapter->copy_controls_.description_copy_limit,
             "public Binary description copy preflight exceeded");
-    auto before_copy = Add(mapped_description_bytes,
-                           adapter->description_copy_upper_bound_bytes_);
+    auto before_copy = Add(mapped_description_bytes, adapter->description_copy_upper_bound_bytes_);
     before_copy = Add(before_copy, externally_retained_bytes);
     before_copy = Add(before_copy, preparation_coexisting_bytes);
     before_copy = Add(before_copy, adapter->ui_view_reserve_bytes_);
@@ -227,9 +299,10 @@ std::unique_ptr<BinaryHostAdapter> BinaryHostAdapter::CreatePublic(
     adapter->publication_description_ =
         std::make_unique<DocumentDescription>(*adapter->description_);
     adapter->ui_description_bytes_ = Add(AccountDescription(*adapter->description_),
-                                          AccountDescription(*adapter->publication_description_));
-    adapter->ui_description_bytes_ = Add(adapter->ui_description_bytes_,
-        Multiply(adapter->bindings_.capacity(), sizeof(BinaryHostBinding)));
+                                         AccountDescription(*adapter->publication_description_));
+    adapter->ui_description_bytes_ =
+        Add(adapter->ui_description_bytes_,
+            Multiply(adapter->bindings_.capacity(), sizeof(BinaryHostBinding)));
     for (const auto& binding : adapter->bindings_) {
       ChargeString(binding.endpoint, adapter->ui_description_bytes_);
       ChargeString(binding.pipeline_id, adapter->ui_description_bytes_);
@@ -237,16 +310,19 @@ std::unique_ptr<BinaryHostAdapter> BinaryHostAdapter::CreatePublic(
     const auto previous_bytes = previous ? previous->owner_->InstanceAdmissionBytes() : 0U;
     auto prepared = protocol_lab_binary::public_decode::Adapter::AdoptCompiled(
         std::move(compiled), std::move(public_bindings), limits, previous_bytes);
-    Require(prepared.status == protocol_lab_binary::public_decode::LocalStatus::OK &&
-                prepared.adapter, "public Binary H1 adoption or Host binding failed");
+    Require(
+        prepared.status == protocol_lab_binary::public_decode::LocalStatus::OK && prepared.adapter,
+        "public Binary H1 adoption or Host binding failed");
     adapter->owner_ = std::move(prepared.adapter);
     adapter->drafts_.resize(channels);
     adapter->typed_drafts_.resize(channels);
     adapter->message_selections_.resize(channels);
-    adapter->ui_description_bytes_ = Add(
-        adapter->ui_description_bytes_,
-        Multiply(adapter->message_selections_.capacity(),
-                 sizeof(std::optional<std::size_t>)));
+    adapter->stream_mapping_faulted_.resize(channels);
+    adapter->ui_description_bytes_ =
+        Add(adapter->ui_description_bytes_,
+            Multiply(adapter->message_selections_.capacity(), sizeof(std::optional<std::size_t>)));
+    adapter->ui_description_bytes_ =
+        Add(adapter->ui_description_bytes_, adapter->stream_mapping_faulted_.capacity());
     for (std::size_t binding = 0U; binding < adapter->bindings_.size(); ++binding) {
       if (adapter->bindings_[binding].action != pae::HostAction::ENCODE) continue;
       const auto pipeline = std::find_if(
@@ -276,17 +352,16 @@ std::unique_ptr<BinaryHostAdapter> BinaryHostAdapter::CreatePublic(
   }
 }
 
-const DocumentDescription& BinaryHostAdapter::Description() const noexcept {
-  return *description_;
-}
+const DocumentDescription& BinaryHostAdapter::Description() const noexcept { return *description_; }
 DocumentDescription BinaryHostAdapter::TakeDescription() {
   Require(publication_description_ != nullptr, "public Binary description already published");
   auto moved = std::move(*publication_description_);
   publication_description_.reset();
   return moved;
 }
-std::size_t BinaryHostAdapter::AccountDescriptionBytes(
-    const DocumentDescription& description) { return AccountDescription(description); }
+std::size_t BinaryHostAdapter::AccountDescriptionBytes(const DocumentDescription& description) {
+  return AccountDescription(description);
+}
 std::size_t BinaryHostAdapter::AccountedInstanceBytes() const noexcept {
   if (!owner_) return (std::numeric_limits<std::size_t>::max)();
   try {
@@ -295,18 +370,39 @@ std::size_t BinaryHostAdapter::AccountedInstanceBytes() const noexcept {
     total = Add(total, ui_view_reserve_bytes_);
     total = Add(total, hex_preview_reserve_bytes_);
     return Add(total, utf16_draft_reserve_bytes_);
-  } catch (...) { return (std::numeric_limits<std::size_t>::max)(); }
+  } catch (...) {
+    return (std::numeric_limits<std::size_t>::max)();
+  }
 }
 std::size_t BinaryHostAdapter::AccountedPreparationBytes() const noexcept {
-  try { return Add(AccountedInstanceBytes(), preparation_coexisting_bytes_); }
-  catch (...) { return (std::numeric_limits<std::size_t>::max)(); }
+  try {
+    return Add(AccountedInstanceBytes(), preparation_coexisting_bytes_);
+  } catch (...) {
+    return (std::numeric_limits<std::size_t>::max)();
+  }
 }
 std::size_t BinaryHostAdapter::FlowCount(std::size_t binding) const noexcept {
   return owner_ ? owner_->FlowCount(binding) : 0U;
 }
 bool BinaryHostAdapter::IsCompleteDecode(std::size_t binding, std::size_t flow) const noexcept {
-  return binding < bindings_.size() && flow < FlowCount(binding) &&
-         bindings_[binding].action == pae::HostAction::DECODE;
+  if (binding >= bindings_.size() || flow >= FlowCount(binding) ||
+      bindings_[binding].action != pae::HostAction::DECODE)
+    return false;
+  const auto pipeline =
+      std::find_if(description_->pipelines.begin(), description_->pipelines.end(),
+                   [&](const auto& value) { return value.id == bindings_[binding].pipeline_id; });
+  return pipeline != description_->pipelines.end() &&
+         pipeline->input_kind == StreamInputKind::COMPLETE_RECORD;
+}
+bool BinaryHostAdapter::IsStreamDecode(std::size_t binding, std::size_t flow) const noexcept {
+  if (binding >= bindings_.size() || flow >= FlowCount(binding) ||
+      bindings_[binding].action != pae::HostAction::DECODE)
+    return false;
+  const auto pipeline =
+      std::find_if(description_->pipelines.begin(), description_->pipelines.end(),
+                   [&](const auto& value) { return value.id == bindings_[binding].pipeline_id; });
+  return pipeline != description_->pipelines.end() &&
+         pipeline->input_kind == StreamInputKind::STREAM_CHUNK;
 }
 bool BinaryHostAdapter::IsCompleteEncode(std::size_t binding, std::size_t flow) const noexcept {
   return binding < bindings_.size() && flow < FlowCount(binding) &&
@@ -317,17 +413,22 @@ bool BinaryHostAdapter::SetPresentationRetainedBytes(std::size_t bytes) noexcept
   presentation_retained_bytes_ = bytes;
   return true;
 }
-std::u16string_view BinaryHostAdapter::Draft(std::size_t binding,
-                                             std::size_t flow) const noexcept {
+std::u16string_view BinaryHostAdapter::Draft(std::size_t binding, std::size_t flow) const noexcept {
   const auto flat = owner_->FlowIndex(binding, flow);
   return flat < drafts_.size() ? std::u16string_view(drafts_[flat]) : std::u16string_view{};
 }
-std::size_t BinaryHostAdapter::DraftLimit(std::size_t,
-                                          std::size_t) const noexcept {
+std::size_t BinaryHostAdapter::DraftLimit(std::size_t binding, std::size_t flow) const noexcept {
+  if (IsStreamDecode(binding, flow)) {
+    const auto observed = ObserveStream(binding, flow);
+    if (!observed || observed->effective_max_submit_bytes >
+                         (std::numeric_limits<std::size_t>::max)() / 3U)
+      return 0U;
+    return observed->effective_max_submit_bytes * 3U;
+  }
   return limits_.max_frame_bytes * 2U;
 }
-void BinaryHostAdapter::SaveAndSelect(std::u16string_view draft,
-                                      std::size_t binding, std::size_t flow) {
+void BinaryHostAdapter::SaveAndSelect(std::u16string_view draft, std::size_t binding,
+                                      std::size_t flow) {
   const auto target = owner_->FlowIndex(binding, flow);
   const auto source = owner_->FlowIndex(selected_binding_, selected_flow_);
   Require(target < drafts_.size() && source < drafts_.size(),
@@ -339,7 +440,8 @@ void BinaryHostAdapter::SaveAndSelect(std::u16string_view draft,
     Require(unit <= 0x7FU, "public Binary Hex draft is not ASCII");
     ascii.push_back(static_cast<char>(unit));
   }
-  Require(owner_->SetDraft(source, ascii), "public Binary Flow draft exceeds budget");
+  if (!IsStreamDecode(selected_binding_, selected_flow_))
+    Require(owner_->SetDraft(source, ascii), "public Binary Flow draft exceeds budget");
   drafts_[source] = std::move(pending);
   selected_binding_ = binding;
   selected_flow_ = flow;
@@ -350,8 +452,8 @@ bool BinaryHostAdapter::SaveDraftsAndSelect(
     std::size_t source_message_index, std::size_t binding, std::size_t flow) {
   const auto target = owner_->FlowIndex(binding, flow);
   const auto source = owner_->FlowIndex(selected_binding_, selected_flow_);
-  if (target >= drafts_.size() || source >= drafts_.size() ||
-      source >= typed_drafts_.size() || typed_drafts.size() > limits_.max_fields)
+  if (target >= drafts_.size() || source >= drafts_.size() || source >= typed_drafts_.size() ||
+      typed_drafts.size() > limits_.max_fields)
     return false;
   try {
     std::u16string pending_inspect(inspect_draft);
@@ -361,8 +463,8 @@ bool BinaryHostAdapter::SaveDraftsAndSelect(
       if (unit > 0x7FU) return false;
       ascii.push_back(static_cast<char>(unit));
     }
-    std::size_t bytes = Multiply(
-        typed_drafts.size(), sizeof(std::pair<const std::size_t, TypedDraft>));
+    std::size_t bytes =
+        Multiply(typed_drafts.size(), sizeof(std::pair<const std::size_t, TypedDraft>));
     for (const auto& item : typed_drafts) {
       if (const auto* value = std::get_if<std::vector<std::uint8_t>>(&item.second))
         bytes = Add(bytes, value->capacity());
@@ -373,7 +475,8 @@ bool BinaryHostAdapter::SaveDraftsAndSelect(
     auto pending_typed = typed_drafts;
 
     // All Lab-owned copies and budget checks complete before changing H1 or selection state.
-    if (!owner_->SetDraft(source, ascii)) return false;
+    if (!IsStreamDecode(selected_binding_, selected_flow_) && !owner_->SetDraft(source, ascii))
+      return false;
     drafts_[source] = std::move(pending_inspect);
     typed_drafts_[source] = std::move(pending_typed);
     if (bindings_[selected_binding_].action == pae::HostAction::ENCODE)
@@ -385,14 +488,12 @@ bool BinaryHostAdapter::SaveDraftsAndSelect(
     return false;
   }
 }
-bool BinaryHostAdapter::SaveTypedDrafts(
-    std::size_t binding, std::size_t flow,
-    const std::unordered_map<std::size_t, TypedDraft>& drafts) {
+bool BinaryHostAdapter::SaveTypedDrafts(std::size_t binding, std::size_t flow,
+                                        const std::unordered_map<std::size_t, TypedDraft>& drafts) {
   const auto flat = owner_->FlowIndex(binding, flow);
   if (flat >= typed_drafts_.size() || drafts.size() > limits_.max_fields) return false;
   try {
-    std::size_t bytes = Multiply(
-        drafts.size(), sizeof(std::pair<const std::size_t, TypedDraft>));
+    std::size_t bytes = Multiply(drafts.size(), sizeof(std::pair<const std::size_t, TypedDraft>));
     for (const auto& item : drafts) {
       if (const auto* value = std::get_if<std::vector<std::uint8_t>>(&item.second))
         bytes = Add(bytes, value->capacity());
@@ -413,19 +514,21 @@ const std::unordered_map<std::size_t, TypedDraft>& BinaryHostAdapter::TypedDraft
   const auto flat = owner_->FlowIndex(binding, flow);
   return flat < typed_drafts_.size() ? typed_drafts_[flat] : empty;
 }
-std::optional<std::size_t> BinaryHostAdapter::MessageSelection(
-    std::size_t binding, std::size_t flow) const noexcept {
+std::optional<std::size_t> BinaryHostAdapter::MessageSelection(std::size_t binding,
+                                                               std::size_t flow) const noexcept {
   const auto flat = owner_->FlowIndex(binding, flow);
   return flat < message_selections_.size() ? message_selections_[flat] : std::nullopt;
 }
 bool BinaryHostAdapter::SelectEncodeMessage(std::size_t binding, std::size_t flow,
                                             std::size_t message_index) noexcept {
   if (!IsCompleteEncode(binding, flow)) return false;
-  const auto pipeline = std::find_if(description_->pipelines.begin(), description_->pipelines.end(),
-      [&](const auto& value) { return value.id == bindings_[binding].pipeline_id; });
+  const auto pipeline =
+      std::find_if(description_->pipelines.begin(), description_->pipelines.end(),
+                   [&](const auto& value) { return value.id == bindings_[binding].pipeline_id; });
   if (pipeline == description_->pipelines.end() ||
       std::find(pipeline->encode_message_indices.begin(), pipeline->encode_message_indices.end(),
-                message_index) == pipeline->encode_message_indices.end()) return false;
+                message_index) == pipeline->encode_message_indices.end())
+    return false;
   const auto flat = owner_->FlowIndex(binding, flow);
   if (flat >= message_selections_.size()) return false;
   if (message_selections_[flat] != message_index) {
@@ -438,19 +541,24 @@ bool BinaryHostAdapter::SelectEncodeMessage(std::size_t binding, std::size_t flo
 void BinaryHostAdapter::ClearCurrentEncode(std::size_t binding, std::size_t flow) noexcept {
   if (IsCompleteEncode(binding, flow)) owner_->ClearCurrent(owner_->FlowIndex(binding, flow));
 }
-const void* BinaryHostAdapter::Current(std::size_t binding,
-                                       std::size_t flow) const noexcept {
+const void* BinaryHostAdapter::Current(std::size_t binding, std::size_t flow) const noexcept {
   const auto* state = owner_->State(owner_->FlowIndex(binding, flow));
   return state && (state->current.host.codec_attempted ||
                    state->current.host.status == pae::HostStatus::CALLBACK_FAILED)
-             ? static_cast<const void*>(&state->current) : nullptr;
+             ? static_cast<const void*>(&state->current)
+             : nullptr;
 }
 
 std::size_t BinaryHostAdapter::ResultCopyUpperBound(
     const protocol_lab_binary::public_decode::Operation& operation) const {
-  const auto& candidate = operation.candidate;
+  return ResultCopyUpperBound(operation.host, operation.candidate);
+}
+
+std::size_t BinaryHostAdapter::ResultCopyUpperBound(
+    const pae::HostOperationResult& host,
+    const std::optional<protocol_lab_binary::public_decode::Candidate>& candidate) const {
   if (!candidate || !candidate->success || !candidate->message_index ||
-      operation.host.status != pae::HostStatus::OK)
+      host.status != pae::HostStatus::OK)
     return Add(sizeof(BinaryUiDecodeFailure), candidate ? candidate->frame.size() : 0U);
   Require(*candidate->message_index < description_->messages.size(),
           "public Binary result Message index mismatch");
@@ -466,34 +574,45 @@ std::size_t BinaryHostAdapter::ResultCopyUpperBound(
     std::size_t raw = 0U;
     std::size_t logical = 0U;
     switch (field.kind) {
-      case pae::ValueKind::UINT64: raw = logical = Characters(field.uint64_value); break;
-      case pae::ValueKind::INT64: raw = logical = Characters(field.int64_value); break;
+      case pae::ValueKind::UINT64:
+        raw = logical = Characters(field.uint64_value);
+        break;
+      case pae::ValueKind::INT64:
+        raw = logical = Characters(field.int64_value);
+        break;
       case pae::ValueKind::BOOL:
         raw = std::string_view{"未单独提供"}.size();
-        logical = field.bool_value ? 4U : 5U; break;
-      case pae::ValueKind::BYTES: raw = logical = Multiply(field.bytes.size(), 2U); break;
+        logical = field.bool_value ? 4U : 5U;
+        break;
+      case pae::ValueKind::BYTES:
+        raw = logical = Multiply(field.bytes.size(), 2U);
+        break;
       case pae::ValueKind::ENUM: {
         Require(field.enum_raw.has_value(), "public Binary Enum result has no raw value");
         raw = Characters(*field.enum_raw);
         logical = 7U;
         if (field.known_enum_flat_index) {
           const auto& entries = message.fields[i].enum_entries;
-          const auto found = std::find_if(entries.begin(), entries.end(),
-              [&](const auto& item) { return item.raw_value == *field.enum_raw; });
+          const auto found = std::find_if(entries.begin(), entries.end(), [&](const auto& item) {
+            return item.raw_value == *field.enum_raw;
+          });
           Require(found != entries.end(), "public Binary known Enum mapping mismatch");
-          logical = Add(Add(found->display_name.empty() ? found->id.size()
-                                                    : found->display_name.size(),
-                            found->id.size()), 3U);
+          logical =
+              Add(Add(found->display_name.empty() ? found->id.size() : found->display_name.size(),
+                      found->id.size()),
+                  3U);
         }
         break;
       }
       case pae::ValueKind::DECIMAL64:
-        Require(field.conversion_raw_kind.has_value(), "public Binary Decimal64 has no raw integer");
+        Require(field.conversion_raw_kind.has_value(),
+                "public Binary Decimal64 has no raw integer");
         raw = *field.conversion_raw_kind == pae::RawIntegerKind::UINT64
                   ? Characters(*field.conversion_raw_uint64)
                   : Characters(*field.conversion_raw_int64);
-        logical = Add(Add(Characters(field.decimal.coefficient), 1U),
-                      Characters(field.decimal.scale)); break;
+        logical =
+            Add(Add(Characters(field.decimal.coefficient), 1U), Characters(field.decimal.scale));
+        break;
     }
     total = Add(total, StringCapacityUpper(raw) + 1U);
     total = Add(total, StringCapacityUpper(logical) + 1U);
@@ -504,20 +623,26 @@ std::size_t BinaryHostAdapter::ResultCopyUpperBound(
 BinaryUiDecodeView BinaryHostAdapter::MapOperation(
     const protocol_lab_binary::public_decode::Operation& operation,
     std::size_t active_view_bytes) const {
-  const auto upper = ResultCopyUpperBound(operation);
+  return MapCandidate(operation.host, operation.candidate, active_view_bytes, 0U);
+}
+
+BinaryUiDecodeView BinaryHostAdapter::MapCandidate(
+    const pae::HostOperationResult& host,
+    const std::optional<protocol_lab_binary::public_decode::Candidate>& candidate,
+    std::size_t active_view_bytes, std::size_t input_peak_bytes) const {
+  const auto upper = ResultCopyUpperBound(host, candidate);
   const auto budget = UiViewReserveBytes() / 2U;
-  Require(presentation_retained_bytes_ <= budget &&
-              active_view_bytes <= budget - presentation_retained_bytes_ &&
-              upper <= budget - presentation_retained_bytes_ &&
-              upper <= copy_controls_.result_copy_limit,
-          "public Binary UI result copy preflight exceeded");
-  if (copy_controls_.before_result_copy)
-    copy_controls_.before_result_copy(copy_controls_.context);
+  auto occupied = Add(presentation_retained_bytes_, active_view_bytes);
+  occupied = Add(occupied, input_peak_bytes);
+  Require(
+      occupied <= budget && upper <= budget - occupied && upper <= copy_controls_.result_copy_limit,
+      "public Binary UI result copy preflight exceeded");
+  if (copy_controls_.before_result_copy) copy_controls_.before_result_copy(copy_controls_.context);
   BinaryUiDecodeView view;
-  view.public_host = operation.host;
-  if (operation.host.status == pae::HostStatus::OK && operation.candidate &&
-      operation.candidate->success && operation.candidate->message_index) {
-    const auto& source = *operation.candidate;
+  view.public_host = host;
+  if (host.status == pae::HostStatus::OK && candidate && candidate->success &&
+      candidate->message_index) {
+    const auto& source = *candidate;
     const auto& message = description_->messages[*source.message_index];
     auto& result = view.result.emplace();
     result.frame = source.frame;
@@ -532,26 +657,30 @@ BinaryUiDecodeView BinaryHostAdapter::MapOperation(
       field.field_index = i;
       field.id = source_field.id;
       if (source_field.byte_range)
-        field.actual_range = ByteRange{source_field.byte_range->offset,
-                                       source_field.byte_range->length};
+        field.actual_range =
+            ByteRange{source_field.byte_range->offset, source_field.byte_range->length};
       switch (source_field.kind) {
         case pae::ValueKind::UINT64:
           field.raw_value = Number(source_field.uint64_value);
-          field.logical_value = field.raw_value; break;
+          field.logical_value = field.raw_value;
+          break;
         case pae::ValueKind::INT64:
           field.raw_value = Number(source_field.int64_value);
-          field.logical_value = field.raw_value; break;
+          field.logical_value = field.raw_value;
+          break;
         case pae::ValueKind::BOOL:
           field.raw_value = "未单独提供";
-          field.logical_value = source_field.bool_value ? "true" : "false"; break;
+          field.logical_value = source_field.bool_value ? "true" : "false";
+          break;
         case pae::ValueKind::BYTES:
-          field.raw_value = field.logical_value = Hex(source_field.bytes); break;
+          field.raw_value = field.logical_value = Hex(source_field.bytes);
+          break;
         case pae::ValueKind::ENUM: {
           field.raw_value = Number(*source_field.enum_raw);
           field.logical_value = "unknown";
           if (source_field.known_enum_flat_index) {
-            const auto found = std::find_if(described.enum_entries.begin(),
-                                            described.enum_entries.end(),
+            const auto found = std::find_if(
+                described.enum_entries.begin(), described.enum_entries.end(),
                 [&](const auto& item) { return item.raw_value == *source_field.enum_raw; });
             Require(found != described.enum_entries.end(),
                     "public Binary known Enum mapping mismatch");
@@ -566,36 +695,95 @@ BinaryUiDecodeView BinaryHostAdapter::MapOperation(
           field.raw_value = *source_field.conversion_raw_kind == pae::RawIntegerKind::UINT64
                                 ? Number(*source_field.conversion_raw_uint64)
                                 : Number(*source_field.conversion_raw_int64);
-          field.logical_value = Decimal(source_field.decimal.coefficient,
-                                        source_field.decimal.scale); break;
+          field.logical_value =
+              Decimal(source_field.decimal.coefficient, source_field.decimal.scale);
+          break;
       }
       result.fields.push_back(std::move(field));
     }
     result.accounted_bytes = AccountResult(result);
-    Require(result.accounted_bytes <= upper &&
-                result.accounted_bytes <= budget - presentation_retained_bytes_,
+    Require(result.accounted_bytes <= upper && result.accounted_bytes <= budget - occupied,
             "public Binary active UI view budget exceeded");
     view.ok = true;
     return view;
   }
   auto& failure = view.failure.emplace();
-  failure.host_status = operation.host.status;
-  failure.codec_status = operation.host.codec_status;
-  if (operation.candidate) {
-    failure.diagnostic_frame = operation.candidate->frame;
-    failure.message_index = operation.candidate->message_index;
+  failure.host_status = host.status;
+  failure.codec_status = host.codec_status;
+  if (candidate) {
+    failure.diagnostic_frame = candidate->frame;
+    failure.message_index = candidate->message_index;
     // A failed flat Field index alone does not establish a Message identity.
   }
   failure.accounted_bytes = sizeof(BinaryUiDecodeFailure) + failure.diagnostic_frame.capacity();
-  Require(failure.accounted_bytes <= upper &&
-              failure.accounted_bytes <= budget - presentation_retained_bytes_,
+  Require(failure.accounted_bytes <= upper && failure.accounted_bytes <= budget - occupied,
           "public Binary failure UI view budget exceeded");
   return view;
 }
 
-BinaryUiDecodeView BinaryHostAdapter::DecodeComplete(
-    std::size_t binding, std::size_t flow, const std::vector<std::uint8_t>& frame,
-    std::size_t active_view_bytes) {
+BinaryUiStreamView BinaryHostAdapter::MapStreamStep(
+    const protocol_lab_binary::public_decode::StreamStep& step, std::size_t active_view_bytes,
+    std::size_t input_peak_bytes) const {
+  BinaryUiStreamView view;
+  view.local_status = step.local_status;
+  view.diagnostic = step.diagnostic;
+  view.host_called = step.host_called;
+  view.public_host = step.host;
+  view.before = UiObservation(step.before);
+  view.after = UiObservation(step.after);
+  if (!step.host_called) {
+    view.status = BinaryStreamPresentationStatus::PREFLIGHT_REJECTED;
+    return view;
+  }
+  if (!step.candidate && step.host.status == pae::HostStatus::OK) {
+    view.status = BinaryStreamPresentationStatus::NO_CANDIDATE;
+    return view;
+  }
+  auto mapped = MapCandidate(step.host, step.candidate, active_view_bytes, input_peak_bytes);
+  view.result = std::move(mapped.result);
+  view.failure = std::move(mapped.failure);
+  view.status =
+      mapped.ok
+          ? BinaryStreamPresentationStatus::DECODE_SUCCESS
+          : (step.local_status ==
+                         protocol_lab_binary::public_decode::LocalStatus::MATERIALIZATION_FAILED ||
+                     step.diagnostic == protocol_lab_binary::public_decode::StreamDiagnostic::
+                                            COPY_FAILED_RESET_REQUIRED
+                 ? BinaryStreamPresentationStatus::MATERIALIZATION_FAILURE
+                 : BinaryStreamPresentationStatus::DECODE_FAILURE);
+  return view;
+}
+
+BinaryUiStreamView BinaryHostAdapter::ProjectStreamMappingFailure(
+    const protocol_lab_binary::public_decode::StreamStep& step) const noexcept {
+  BinaryUiStreamView view;
+  view.status = BinaryStreamPresentationStatus::MATERIALIZATION_FAILURE;
+  view.local_status = protocol_lab_binary::public_decode::LocalStatus::MATERIALIZATION_FAILED;
+  view.diagnostic =
+      protocol_lab_binary::public_decode::StreamDiagnostic::COPY_FAILED_RESET_REQUIRED;
+  view.host_called = step.host_called;
+  view.public_host = step.host;
+  view.before = UiObservation(step.before);
+  view.after = UiObservation(step.after);
+  view.after.reset_required = true;
+  auto& failure = view.failure.emplace();
+  failure.host_status = step.host.status;
+  failure.codec_status = step.host.codec_status;
+  failure.accounted_bytes = sizeof(BinaryUiDecodeFailure);
+  return view;
+}
+
+BinaryUiStreamView BinaryHostAdapter::StreamMappingFailure(
+    const protocol_lab_binary::public_decode::StreamStep& step, std::size_t binding,
+    std::size_t flow) noexcept {
+  const auto flat = owner_->FlowIndex(binding, flow);
+  if (flat < stream_mapping_faulted_.size()) stream_mapping_faulted_[flat] = 1U;
+  return ProjectStreamMappingFailure(step);
+}
+
+BinaryUiDecodeView BinaryHostAdapter::DecodeComplete(std::size_t binding, std::size_t flow,
+                                                     const std::vector<std::uint8_t>& frame,
+                                                     std::size_t active_view_bytes) {
   if (!IsCompleteDecode(binding, flow)) {
     BinaryUiDecodeView view;
     view.public_host.status = pae::HostStatus::WRONG_INPUT_KIND;
@@ -603,16 +791,119 @@ BinaryUiDecodeView BinaryHostAdapter::DecodeComplete(
     return view;
   }
   const auto& operation = owner_->Decode(owner_->FlowIndex(binding, flow),
-      {frame.empty() ? nullptr : frame.data(), frame.size()});
+                                         {frame.empty() ? nullptr : frame.data(), frame.size()});
   return MapOperation(operation, active_view_bytes);
 }
-BinaryUiDecodeView BinaryHostAdapter::MapCurrent(
-    std::size_t binding, std::size_t flow, std::size_t active_view_bytes) const {
+BinaryUiDecodeView BinaryHostAdapter::MapCurrent(std::size_t binding, std::size_t flow,
+                                                 std::size_t active_view_bytes) const {
   if (!IsCompleteDecode(binding, flow)) return {};
   const auto* state = owner_->State(owner_->FlowIndex(binding, flow));
   return state && (state->current.host.codec_attempted ||
                    state->current.host.status == pae::HostStatus::CALLBACK_FAILED)
-             ? MapOperation(state->current, active_view_bytes) : BinaryUiDecodeView{};
+             ? MapOperation(state->current, active_view_bytes)
+             : BinaryUiDecodeView{};
+}
+
+std::optional<StreamPresentationObservation> BinaryHostAdapter::ObserveStream(
+    std::size_t binding, std::size_t flow) const noexcept {
+  if (!IsStreamDecode(binding, flow)) return std::nullopt;
+  const auto observed = owner_->ObserveStream(binding, flow);
+  if (!observed) return std::nullopt;
+  auto result = UiObservation(*observed);
+  const auto flat = owner_->FlowIndex(binding, flow);
+  if (flat < stream_mapping_faulted_.size() && stream_mapping_faulted_[flat])
+    result.reset_required = true;
+  return result;
+}
+
+bool BinaryHostAdapter::StreamContinueAvailable(std::size_t binding,
+                                                std::size_t flow) const noexcept {
+  if (!IsStreamDecode(binding, flow)) return false;
+  const auto flat = owner_->FlowIndex(binding, flow);
+  return flat < stream_mapping_faulted_.size() && !stream_mapping_faulted_[flat] &&
+         owner_->StreamContinueAvailable(binding, flow);
+}
+
+BinaryUiStreamView BinaryHostAdapter::SubmitStream(std::size_t binding, std::size_t flow,
+                                                   const std::vector<std::uint8_t>& chunk,
+                                                   std::size_t active_view_bytes) {
+  BinaryUiStreamView rejected;
+  if (!IsStreamDecode(binding, flow)) return rejected;
+  const auto flat = owner_->FlowIndex(binding, flow);
+  const auto observed = ObserveStream(binding, flow);
+  if (observed) rejected.before = rejected.after = *observed;
+  if (flat >= stream_mapping_faulted_.size() || stream_mapping_faulted_[flat]) {
+    rejected.local_status = protocol_lab_binary::public_decode::LocalStatus::MATERIALIZATION_FAILED;
+    rejected.diagnostic = protocol_lab_binary::public_decode::StreamDiagnostic::RESET_REQUIRED;
+    rejected.after.reset_required = true;
+    return rejected;
+  }
+  try {
+    const auto occupied =
+        Add(Add(presentation_retained_bytes_, active_view_bytes), chunk.capacity());
+    Require(occupied <= UiViewReserveBytes() / 2U,
+            "public Binary stream input peak preflight exceeded");
+  } catch (...) {
+    rejected.local_status = protocol_lab_binary::public_decode::LocalStatus::RESOURCE_LIMIT;
+    rejected.diagnostic = protocol_lab_binary::public_decode::StreamDiagnostic::INVALID_CHUNK;
+    return rejected;
+  }
+  const auto& step = owner_->SubmitStreamChunk(binding, flow, chunk);
+  try {
+    return MapStreamStep(step, active_view_bytes, chunk.capacity());
+  } catch (...) {
+    return StreamMappingFailure(step, binding, flow);
+  }
+}
+
+BinaryUiStreamView BinaryHostAdapter::ContinueStream(std::size_t binding, std::size_t flow,
+                                                     std::size_t active_view_bytes) {
+  BinaryUiStreamView rejected;
+  if (!IsStreamDecode(binding, flow)) return rejected;
+  const auto flat = owner_->FlowIndex(binding, flow);
+  const auto observed = ObserveStream(binding, flow);
+  if (observed) rejected.before = rejected.after = *observed;
+  if (flat >= stream_mapping_faulted_.size() || stream_mapping_faulted_[flat]) {
+    rejected.local_status = protocol_lab_binary::public_decode::LocalStatus::MATERIALIZATION_FAILED;
+    rejected.diagnostic = protocol_lab_binary::public_decode::StreamDiagnostic::RESET_REQUIRED;
+    rejected.after.reset_required = true;
+    return rejected;
+  }
+  const auto& step = owner_->ContinueStream(binding, flow);
+  try {
+    return MapStreamStep(step, active_view_bytes, 0U);
+  } catch (...) {
+    return StreamMappingFailure(step, binding, flow);
+  }
+}
+
+BinaryUiStreamView BinaryHostAdapter::MapCurrentStream(std::size_t binding, std::size_t flow,
+                                                       std::size_t active_view_bytes) {
+  BinaryUiStreamView empty;
+  if (!IsStreamDecode(binding, flow)) return empty;
+  const auto flat = owner_->FlowIndex(binding, flow);
+  const auto* state = owner_->State(flat);
+  if (!state || state->stream.step_sequence == 0U || flat >= stream_mapping_faulted_.size()) {
+    const auto observed = ObserveStream(binding, flow);
+    if (observed) empty.before = empty.after = *observed;
+    return empty;
+  }
+  if (stream_mapping_faulted_[flat])
+    return ProjectStreamMappingFailure(state->stream.current);
+  try {
+    return MapStreamStep(state->stream.current, active_view_bytes, 0U);
+  } catch (...) {
+    return StreamMappingFailure(state->stream.current, binding, flow);
+  }
+}
+
+pae::HostStatus BinaryHostAdapter::ResetStream(std::size_t binding, std::size_t flow) noexcept {
+  if (!IsStreamDecode(binding, flow)) return pae::HostStatus::WRONG_INPUT_KIND;
+  const auto flat = owner_->FlowIndex(binding, flow);
+  const auto status = owner_->Reset(flat);
+  if (status == pae::HostStatus::OK && flat < stream_mapping_faulted_.size())
+    stream_mapping_faulted_[flat] = 0U;
+  return status;
 }
 
 BinaryUiEncodeView BinaryHostAdapter::MapEncodeOperation(
@@ -624,8 +915,7 @@ BinaryUiEncodeView BinaryHostAdapter::MapEncodeOperation(
               limits_.max_result_bytes <= budget - presentation_retained_bytes_ &&
               limits_.max_result_bytes <= copy_controls_.result_copy_limit,
           "public Binary Encode UI result copy preflight exceeded");
-  if (copy_controls_.before_result_copy)
-    copy_controls_.before_result_copy(copy_controls_.context);
+  if (copy_controls_.before_result_copy) copy_controls_.before_result_copy(copy_controls_.context);
   BinaryUiEncodeView view;
   view.public_host = operation.host;
   if (operation.host.status == pae::HostStatus::OK && operation.encoded) {
@@ -654,15 +944,23 @@ BinaryUiEncodeView BinaryHostAdapter::MapEncodeOperation(
                                 : "由 PAE 生成";
       if (layout.byte_range)
         field.actual_range = ByteRange{layout.byte_range->offset, layout.byte_range->length};
-      const auto input = std::find_if(source.inputs.begin(), source.inputs.end(),
-          [&](const auto& value) { return value.field_index == index; });
+      const auto input =
+          std::find_if(source.inputs.begin(), source.inputs.end(),
+                       [&](const auto& value) { return value.field_index == index; });
       if (input != source.inputs.end()) {
         switch (input->kind) {
-          case pae::ValueKind::UINT64: field.logical_value = Number(input->uint64_value); break;
-          case pae::ValueKind::INT64: field.logical_value = Number(input->int64_value); break;
+          case pae::ValueKind::UINT64:
+            field.logical_value = Number(input->uint64_value);
+            break;
+          case pae::ValueKind::INT64:
+            field.logical_value = Number(input->int64_value);
+            break;
           case pae::ValueKind::BOOL:
-            field.logical_value = input->bool_value ? "true" : "false"; break;
-          case pae::ValueKind::BYTES: field.logical_value = Hex(input->bytes); break;
+            field.logical_value = input->bool_value ? "true" : "false";
+            break;
+          case pae::ValueKind::BYTES:
+            field.logical_value = Hex(input->bytes);
+            break;
           case pae::ValueKind::ENUM: {
             Require(input->enum_entry_index < described.enum_entries.size(),
                     "public Binary Encode Enum identity mismatch");
@@ -672,7 +970,8 @@ BinaryUiEncodeView BinaryHostAdapter::MapEncodeOperation(
             break;
           }
           case pae::ValueKind::DECIMAL64:
-            field.logical_value = Decimal(input->decimal.coefficient, input->decimal.scale); break;
+            field.logical_value = Decimal(input->decimal.coefficient, input->decimal.scale);
+            break;
         }
       }
       result.fields.push_back(std::move(field));
@@ -704,19 +1003,21 @@ BinaryUiEncodeView BinaryHostAdapter::EncodeComplete(
   return MapEncodeOperation(operation, active_view_bytes);
 }
 
-BinaryUiEncodeView BinaryHostAdapter::MapCurrentEncode(
-    std::size_t binding, std::size_t flow, std::size_t active_view_bytes) const {
+BinaryUiEncodeView BinaryHostAdapter::MapCurrentEncode(std::size_t binding, std::size_t flow,
+                                                       std::size_t active_view_bytes) const {
   if (!IsCompleteEncode(binding, flow)) return {};
   const auto* state = owner_->State(owner_->FlowIndex(binding, flow));
   return state && (state->current.host.codec_attempted ||
                    state->current.host.status == pae::HostStatus::CALLBACK_FAILED)
-             ? MapEncodeOperation(state->current, active_view_bytes) : BinaryUiEncodeView{};
+             ? MapEncodeOperation(state->current, active_view_bytes)
+             : BinaryUiEncodeView{};
 }
-std::size_t BinaryHostAdapter::CurrentResultCopyUpperBoundBytes(
-    std::size_t binding, std::size_t flow) const {
+std::size_t BinaryHostAdapter::CurrentResultCopyUpperBoundBytes(std::size_t binding,
+                                                                std::size_t flow) const {
   const auto* state = owner_->State(owner_->FlowIndex(binding, flow));
   return state && (state->current.host.codec_attempted ||
                    state->current.host.status == pae::HostStatus::CALLBACK_FAILED)
-             ? ResultCopyUpperBound(state->current) : 0U;
+             ? ResultCopyUpperBound(state->current)
+             : 0U;
 }
 }  // namespace pae::protocol_lab_ui

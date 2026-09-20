@@ -45,6 +45,47 @@ enum class FieldEncodeSource {
   NOT_REFERENCED,
 };
 
+enum class StreamInputKind {
+  COMPLETE_RECORD,
+  STREAM_CHUNK,
+};
+
+enum class StreamFramingStrategy {
+  COMPLETE_RECORD,
+  FIXED_LENGTH,
+  SYNC_FIXED_LENGTH,
+  SYNC_LENGTH_FIELD,
+  ASCII_CRLF,
+};
+
+enum class StreamRuntimePhase {
+  COLLECTING,
+  DELIVERY_PENDING,
+  DISCARDING_UNTIL_CRLF,
+};
+
+struct StreamPresentationObservation {
+  StreamFramingStrategy strategy = StreamFramingStrategy::COMPLETE_RECORD;
+  StreamRuntimePhase phase = StreamRuntimePhase::COLLECTING;
+  std::size_t maximum_candidate_frame_bytes = 0U;
+  std::size_t effective_max_submit_bytes = 0U;
+  std::size_t effective_max_work_units = 0U;
+  std::size_t buffered_bytes = 0U;
+  std::size_t frozen_input_bytes = 0U;
+  std::size_t frozen_cursor = 0U;
+  bool has_internal_work = false;
+  bool reset_required = false;
+  std::uint64_t generation = 0U;
+  std::uint64_t step_sequence = 0U;
+  std::uint64_t total_candidates = 0U;
+  std::uint64_t total_decode_successes = 0U;
+  std::uint64_t total_decode_failures = 0U;
+  std::uint64_t total_observer_callbacks = 0U;
+  std::uint64_t total_business_callbacks = 0U;
+  std::size_t total_discarded_bytes = 0U;
+  std::size_t total_malformed_candidates = 0U;
+};
+
 struct Decimal64 {
   std::int64_t coefficient = 0;
   std::int32_t scale = 0;
@@ -132,6 +173,9 @@ struct PipelineDescriptor {
   std::vector<std::size_t> message_indices;
   std::vector<std::size_t> decode_message_indices;
   std::vector<std::size_t> encode_message_indices;
+  StreamInputKind input_kind = StreamInputKind::COMPLETE_RECORD;
+  StreamFramingStrategy framing_strategy = StreamFramingStrategy::COMPLETE_RECORD;
+  std::optional<std::size_t> maximum_candidate_frame_bytes;
   bool stream_ascii_crlf = false;
   std::size_t maximum_frame_length = 0U;
 };

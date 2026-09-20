@@ -31,7 +31,7 @@ add_library(
         ui_physical_types.h
 )
 
-if(PAE_ENABLE_SCHEMA_V10_ASCII_TEXT_CODEC)
+if(PAE_BUILD_PROTOCOL_LAB_ASCII_ADAPTER)
     add_library(
         pae_protocol_lab_ui_ascii_types_compat
         STATIC
@@ -178,7 +178,7 @@ target_link_libraries(
         pae::project_options
         pae::yyjson
 )
-if(PAE_ENABLE_SCHEMA_V10_ASCII_TEXT_CODEC)
+if(PAE_BUILD_PROTOCOL_LAB_ASCII_ADAPTER)
     if(NOT TARGET pae_protocol_lab_ascii_adapter_internal)
         message(FATAL_ERROR "Schema 0.10 Protocol Lab UI requires the ASCII adapter target.")
     endif()
@@ -186,6 +186,12 @@ if(PAE_ENABLE_SCHEMA_V10_ASCII_TEXT_CODEC)
         pae_protocol_lab_ui_headless_internal
         PUBLIC pae_protocol_lab_ascii_adapter_internal
         PRIVATE pae_protocol_lab_ui_ascii_types_compat
+    )
+endif()
+if(PAE_BUILD_PROTOCOL_LAB_ASCII_ADAPTER)
+    target_compile_definitions(
+        pae_protocol_lab_ui_headless_internal
+        PUBLIC PAE_BUILD_PROTOCOL_LAB_ASCII_ADAPTER=1
     )
 endif()
 if(PAE_BUILD_PROTOCOL_LAB_BINARY_UI)
@@ -244,6 +250,18 @@ if(PAE_BUILD_PROTOCOL_LAB_ASCII_PUBLIC_STREAM_UI)
         PUBLIC PAE_BUILD_PROTOCOL_LAB_ASCII_PUBLIC_STREAM_UI=1
     )
 endif()
+if(PAE_BUILD_PROTOCOL_LAB_ASCII_STREAM_OBSERVER OR PAE_BUILD_PROTOCOL_LAB_BINARY_PUBLIC_H2)
+    target_compile_definitions(
+        pae_protocol_lab_ui_headless_internal
+        PUBLIC PAE_BUILD_PROTOCOL_LAB_STREAM_UI=1
+    )
+endif()
+if(PAE_BUILD_PROTOCOL_LAB_HOST_OBSERVER OR PAE_BUILD_PROTOCOL_LAB_BINARY_PUBLIC_H2)
+    target_compile_definitions(
+        pae_protocol_lab_ui_headless_internal
+        PUBLIC PAE_BUILD_PROTOCOL_LAB_BINDING_UI=1
+    )
+endif()
 set_target_properties(
     pae_protocol_lab_ui_headless_internal
     PROPERTIES
@@ -291,7 +309,7 @@ set(
         "${PROJECT_SOURCE_DIR}/tests/protocol_lab_ui/fixtures/synthetic_ui_v08.pae.json"
         "${pae_protocol_lab_ui_max_fixture}"
 )
-if(PAE_ENABLE_SCHEMA_V10_ASCII_TEXT_CODEC)
+if(PAE_BUILD_PROTOCOL_LAB_ASCII_ADAPTER)
     list(
         APPEND pae_protocol_lab_ui_deployment_configs
         "${PROJECT_SOURCE_DIR}/examples/config/synthetic_ascii_text_slice.pae.json"
@@ -309,6 +327,11 @@ endif()
 if(PAE_BUILD_PROTOCOL_LAB_BINARY_UI)
     list(APPEND pae_protocol_lab_ui_deployment_configs
         "${PROJECT_SOURCE_DIR}/tests/protocol_lab_ui/fixtures/synthetic_binary_ui_stage1.pae.json"
+    )
+endif()
+if(PAE_BUILD_PROTOCOL_LAB_BINARY_PUBLIC_H2)
+    list(APPEND pae_protocol_lab_ui_deployment_configs
+        "${PROJECT_SOURCE_DIR}/examples/config/synthetic_stream_framing_slice.pae.json"
     )
 endif()
 pae_configure_protocol_lab_ui_deployment(

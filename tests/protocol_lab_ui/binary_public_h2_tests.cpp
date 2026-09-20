@@ -10,6 +10,10 @@
 #include <thread>
 #include <vector>
 
+#if defined(NDEBUG)
+#error binary_public_h2_tests requires active assertions in every configuration
+#endif
+
 #include "../../tools/protocol_lab_ui/binary_host_adapter.h"
 #include "../../tools/protocol_lab_ui/compile_worker.h"
 #include "../../tools/protocol_lab_ui/document_session.h"
@@ -23,6 +27,20 @@ std::string Read(const wchar_t* path) {
 }
 
 void FailBinaryFlowCopy() { throw std::runtime_error("injected Binary Flow copy failure"); }
+
+struct ResultCopyFailureState {
+  std::size_t calls = 0U;
+  bool fail_next = true;
+};
+
+void FailResultCopy(void* context) {
+  auto& state = *static_cast<ResultCopyFailureState*>(context);
+  ++state.calls;
+  if (state.fail_next) {
+    state.fail_next = false;
+    throw std::runtime_error("injected Binary result copy failure");
+  }
+}
 
 std::unique_ptr<ui::CompileCompletion> Compile(ui::CompileWorker& worker, ui::DocumentId document,
                                                ui::Revision revision, std::string_view text) {
@@ -43,6 +61,13 @@ std::unique_ptr<ui::CompileCompletion> Compile(ui::CompileWorker& worker, ui::Do
 
 int main() {
   const auto binary_json = Read(PAE_BINARY_UI_CONFIG);
+  const auto repository_root = std::filesystem::path(PAE_BINARY_UI_CONFIG)
+                                   .parent_path()
+                                   .parent_path()
+                                   .parent_path()
+                                   .parent_path();
+  const auto stream_json =
+      Read((repository_root / "examples/config/synthetic_stream_framing_slice.pae.json").c_str());
   const auto legacy_json = Read(PAE_LEGACY_UI_CONFIG);
   const auto ascii_json = Read(PAE_ASCII_TEXT_CONFIG);
   ui::CompileWorker worker;
@@ -78,9 +103,13 @@ int main() {
 #if defined(PAE_BUILD_PROTOCOL_LAB_ASCII_PUBLIC_A2)
   assert(ascii->route == ui::SchemaDispatchStatus::ASCII_PUBLIC &&
          ascii->compiler_attempt_count == 1U && ascii->public_compiled && !ascii->artifacts);
-#else
+#elif defined(PAE_BUILD_PROTOCOL_LAB_ASCII_ADAPTER)
   assert(ascii->route == ui::SchemaDispatchStatus::PRIVATE_ASCII &&
          ascii->compiler_attempt_count == 1U && ascii->artifacts && !ascii->public_compiled);
+#else
+  assert(ascii->route == ui::SchemaDispatchStatus::CLASSIFICATION_FAILED &&
+         ascii->compiler_attempt_count == 0U && !ascii->artifacts && !ascii->public_compiled &&
+         !ascii->classification_error.empty());
 #endif
   ui::DocumentSession session{106U};
   const auto load = session.BeginLoad();
@@ -104,9 +133,8 @@ int main() {
        {"other", pae::HostAction::DECODE, "alternate_pipeline", 2U},
        {"tx", pae::HostAction::ENCODE, "ui_pipeline", 1U}},
       {106U, load, 1U, 9U, config_hash}, nullptr, 0U, 0U, error);
-  assert(adapter && error.empty() && adapter->FlowCount(0U) == 2U &&
-         adapter->FlowCount(1U) == 2U && adapter->FlowCount(2U) == 1U &&
-         adapter->IsCompleteEncode(2U, 0U));
+  assert(adapter && error.empty() && adapter->FlowCount(0U) == 2U && adapter->FlowCount(1U) == 2U &&
+         adapter->FlowCount(2U) == 1U && adapter->IsCompleteEncode(2U, 0U));
   assert(adapter->Description().messages[0].fields[0].physical_bits.size() > 0U);
   assert(adapter->AccountedInstanceBytes() <= 128U * 1024U * 1024U);
   const auto description_upper = adapter->DescriptionCopyUpperBoundBytes();
@@ -126,6 +154,250 @@ int main() {
                                           description_reject_error, {}, &copy_reject);
   assert(!description_reject && description_copy_calls == 0 &&
          description_reject_error == "public Binary description copy preflight exceeded");
+
+  auto stream_compiled = pae::CompileProtocolJson(stream_json);
+  assert(stream_compiled.Succeeded());
+  pae::protocol_lab_binary::public_decode::Limits stream_limits;
+  stream_limits.max_stream_chunk_bytes = 32U;
+  std::string stream_error;
+  auto stream_adapter = ui::BinaryHostAdapter::CreatePublic(
+      std::move(stream_compiled).TakeCompiled(),
+      {{"fixed", pae::HostAction::DECODE, "fixed_rx", 2U},
+       {"sync", pae::HostAction::DECODE, "sync_fixed_rx", 2U},
+       {"length", pae::HostAction::DECODE, "sync_length_rx", 2U}},
+      {108U, 1U, 1U, 1U, "stream-description"}, nullptr, 0U, 0U, stream_error, stream_limits);
+  assert(stream_adapter && stream_error.empty() &&
+         stream_adapter->Description().pipelines.size() == 3U &&
+         stream_adapter->Description().pipelines[0].input_kind ==
+             ui::StreamInputKind::STREAM_CHUNK &&
+         stream_adapter->Description().pipelines[0].framing_strategy ==
+             ui::StreamFramingStrategy::FIXED_LENGTH &&
+         stream_adapter->Description().pipelines[0].maximum_candidate_frame_bytes == 3U &&
+         stream_adapter->Description().pipelines[1].framing_strategy ==
+             ui::StreamFramingStrategy::SYNC_FIXED_LENGTH &&
+         stream_adapter->Description().pipelines[1].maximum_candidate_frame_bytes == 4U &&
+         stream_adapter->Description().pipelines[2].framing_strategy ==
+             ui::StreamFramingStrategy::SYNC_LENGTH_FIELD &&
+         stream_adapter->Description().pipelines[2].maximum_candidate_frame_bytes == 8U &&
+         stream_adapter->IsStreamDecode(0U, 0U) && !stream_adapter->IsCompleteDecode(0U, 0U));
+  const auto initial_stream = stream_adapter->ObserveStream(0U, 0U);
+  assert(initial_stream && initial_stream->strategy == ui::StreamFramingStrategy::FIXED_LENGTH &&
+         initial_stream->maximum_candidate_frame_bytes == 3U &&
+         initial_stream->effective_max_submit_bytes == 32U);
+  const auto partial_stream = stream_adapter->SubmitStream(0U, 0U, {0xAAU});
+  assert(partial_stream.status == ui::BinaryStreamPresentationStatus::NO_CANDIDATE &&
+         partial_stream.host_called && !partial_stream.result && !partial_stream.failure &&
+         partial_stream.after.buffered_bytes == 1U);
+  const auto before_oversize = *stream_adapter->ObserveStream(0U, 0U);
+  const auto oversized_stream =
+      stream_adapter->SubmitStream(0U, 0U, std::vector<std::uint8_t>(33U));
+  const auto after_oversize = *stream_adapter->ObserveStream(0U, 0U);
+  assert(oversized_stream.status == ui::BinaryStreamPresentationStatus::PREFLIGHT_REJECTED &&
+         !oversized_stream.host_called &&
+         oversized_stream.diagnostic ==
+             pae::protocol_lab_binary::public_decode::StreamDiagnostic::INVALID_CHUNK &&
+         after_oversize.buffered_bytes == before_oversize.buffered_bytes &&
+         after_oversize.generation == before_oversize.generation);
+  const std::vector<std::uint8_t> glued_stream{0x01U, 0x02U, 0x00U, 0x00U,
+                                               0x00U, 0xAAU, 0x03U, 0x04U};
+  const auto stream_success = stream_adapter->SubmitStream(0U, 0U, glued_stream);
+  assert(stream_success.status == ui::BinaryStreamPresentationStatus::DECODE_SUCCESS &&
+         stream_success.result && stream_success.result->message_id == "fixed_message" &&
+         stream_success.result->fields[0].logical_value == "258" &&
+         stream_success.public_host.bytes_consumed == 2U &&
+         stream_success.after.frozen_cursor == 2U);
+  const auto blocked_stream = stream_adapter->SubmitStream(0U, 0U, {0xAAU, 9U, 9U});
+  assert(blocked_stream.status == ui::BinaryStreamPresentationStatus::PREFLIGHT_REJECTED &&
+         blocked_stream.diagnostic ==
+             pae::protocol_lab_binary::public_decode::StreamDiagnostic::CONTINUE_REQUIRED &&
+         blocked_stream.after.frozen_cursor == 2U);
+  const auto stream_failure = stream_adapter->ContinueStream(0U, 0U);
+  assert(stream_failure.status == ui::BinaryStreamPresentationStatus::DECODE_FAILURE &&
+         stream_failure.failure && !stream_failure.result &&
+         stream_failure.public_host.decode_failures == 1U &&
+         !stream_adapter->MapCurrentStream(0U, 0U).result);
+  const auto stream_recovered = stream_adapter->ContinueStream(0U, 0U);
+  assert(stream_recovered.status == ui::BinaryStreamPresentationStatus::DECODE_SUCCESS &&
+         stream_recovered.result && stream_recovered.result->fields[0].logical_value == "772" &&
+         stream_recovered.after.frozen_input_bytes == 0U);
+  const auto no_stale = stream_adapter->SubmitStream(0U, 0U, {0xAAU});
+  assert(no_stale.status == ui::BinaryStreamPresentationStatus::NO_CANDIDATE &&
+         !stream_adapter->MapCurrentStream(0U, 0U).result);
+  assert(stream_adapter->SubmitStream(0U, 1U, {0xAAU}).status ==
+         ui::BinaryStreamPresentationStatus::NO_CANDIDATE);
+  const auto flow_one_before_reset = *stream_adapter->ObserveStream(0U, 1U);
+  const auto flow_zero_generation = stream_adapter->ObserveStream(0U, 0U)->generation;
+  assert(stream_adapter->ResetStream(0U, 0U) == pae::HostStatus::OK &&
+         stream_adapter->ObserveStream(0U, 0U)->generation == flow_zero_generation + 1U &&
+         stream_adapter->ObserveStream(0U, 1U)->buffered_bytes ==
+             flow_one_before_reset.buffered_bytes);
+  const auto isolated_flow = stream_adapter->SubmitStream(0U, 1U, {0x12U, 0x34U});
+  assert(isolated_flow.status == ui::BinaryStreamPresentationStatus::DECODE_SUCCESS &&
+         isolated_flow.result && isolated_flow.result->fields[0].logical_value == "4660");
+
+  ui::BinaryUiCopyControls stream_copy_failure_controls;
+  ResultCopyFailureState stream_copy_failure_state;
+  stream_copy_failure_controls.before_result_copy = &FailResultCopy;
+  stream_copy_failure_controls.context = &stream_copy_failure_state;
+  auto stream_copy_failure_compiled = pae::CompileProtocolJson(stream_json);
+  assert(stream_copy_failure_compiled.Succeeded());
+  std::string stream_copy_failure_error;
+  auto stream_copy_failure_adapter = ui::BinaryHostAdapter::CreatePublic(
+      std::move(stream_copy_failure_compiled).TakeCompiled(),
+      {{"fixed", pae::HostAction::DECODE, "fixed_rx", 2U}},
+      {109U, 1U, 1U, 1U, "stream-copy-failure"}, nullptr, 0U, 0U, stream_copy_failure_error,
+      stream_limits, &stream_copy_failure_controls);
+  assert(stream_copy_failure_adapter && stream_copy_failure_error.empty());
+  const auto stream_copy_failure =
+      stream_copy_failure_adapter->SubmitStream(0U, 0U, {0xAAU, 1U, 2U});
+  assert(stream_copy_failure.status ==
+             ui::BinaryStreamPresentationStatus::MATERIALIZATION_FAILURE &&
+         stream_copy_failure.host_called && stream_copy_failure.public_host.bytes_consumed == 3U &&
+         stream_copy_failure.after.reset_required && !stream_copy_failure.result &&
+         stream_copy_failure_adapter->ObserveStream(0U, 0U)->reset_required &&
+         !stream_copy_failure_adapter->ObserveStream(0U, 1U)->reset_required &&
+         stream_copy_failure_state.calls == 1U);
+  const auto copy_failure_observation = *stream_copy_failure_adapter->ObserveStream(0U, 0U);
+  const auto mapped_copy_failure = stream_copy_failure_adapter->MapCurrentStream(0U, 0U);
+  const auto copy_failure_after_map = *stream_copy_failure_adapter->ObserveStream(0U, 0U);
+  assert(mapped_copy_failure.status ==
+             ui::BinaryStreamPresentationStatus::MATERIALIZATION_FAILURE &&
+         mapped_copy_failure.local_status ==
+             pae::protocol_lab_binary::public_decode::LocalStatus::MATERIALIZATION_FAILED &&
+         mapped_copy_failure.diagnostic ==
+             pae::protocol_lab_binary::public_decode::StreamDiagnostic::
+                 COPY_FAILED_RESET_REQUIRED &&
+         mapped_copy_failure.host_called &&
+         mapped_copy_failure.public_host.status == pae::HostStatus::OK &&
+         mapped_copy_failure.public_host.bytes_consumed == 3U && mapped_copy_failure.failure &&
+         mapped_copy_failure.failure->host_status == pae::HostStatus::OK &&
+         !mapped_copy_failure.result && mapped_copy_failure.after.reset_required &&
+         stream_copy_failure_state.calls == 1U &&
+         copy_failure_after_map.step_sequence == copy_failure_observation.step_sequence &&
+         copy_failure_after_map.total_candidates == copy_failure_observation.total_candidates &&
+         !stream_copy_failure_adapter->ObserveStream(0U, 1U)->reset_required);
+  const auto copy_fault_blocked =
+      stream_copy_failure_adapter->SubmitStream(0U, 0U, {0xAAU, 3U, 4U});
+  assert(copy_fault_blocked.status == ui::BinaryStreamPresentationStatus::PREFLIGHT_REJECTED &&
+         copy_fault_blocked.diagnostic ==
+             pae::protocol_lab_binary::public_decode::StreamDiagnostic::RESET_REQUIRED &&
+         !copy_fault_blocked.host_called);
+  assert(stream_copy_failure_adapter->ResetStream(0U, 0U) == pae::HostStatus::OK &&
+         !stream_copy_failure_adapter->ObserveStream(0U, 0U)->reset_required);
+  const auto copy_failure_recovered =
+      stream_copy_failure_adapter->SubmitStream(0U, 0U, {0xAAU, 3U, 4U});
+  assert(copy_failure_recovered.status == ui::BinaryStreamPresentationStatus::DECODE_SUCCESS &&
+         copy_failure_recovered.result && stream_copy_failure_state.calls == 2U);
+
+  auto stream_budget_compiled = pae::CompileProtocolJson(stream_json);
+  assert(stream_budget_compiled.Succeeded());
+  std::string stream_budget_error;
+  auto stream_budget_adapter =
+      ui::BinaryHostAdapter::CreatePublic(std::move(stream_budget_compiled).TakeCompiled(),
+                                          {{"fixed", pae::HostAction::DECODE, "fixed_rx", 1U}},
+                                          {110U, 1U, 1U, 1U, "stream-budget-failure"}, nullptr, 0U,
+                                          0U, stream_budget_error, stream_limits);
+  assert(stream_budget_adapter && stream_budget_error.empty());
+  const auto stream_view_budget = stream_budget_adapter->UiViewReserveBytes() / 2U;
+  const auto stream_budget_failure =
+      stream_budget_adapter->SubmitStream(0U, 0U, {0xAAU, 1U, 2U}, stream_view_budget - 3U);
+  assert(stream_budget_failure.status ==
+             ui::BinaryStreamPresentationStatus::MATERIALIZATION_FAILURE &&
+         stream_budget_failure.public_host.bytes_consumed == 3U &&
+         stream_budget_failure.after.reset_required && !stream_budget_failure.result &&
+         stream_budget_adapter->ObserveStream(0U, 0U)->reset_required);
+  const auto budget_failure_observation = *stream_budget_adapter->ObserveStream(0U, 0U);
+  const auto mapped_budget_failure = stream_budget_adapter->MapCurrentStream(0U, 0U);
+  const auto budget_failure_after_map = *stream_budget_adapter->ObserveStream(0U, 0U);
+  assert(mapped_budget_failure.status ==
+             ui::BinaryStreamPresentationStatus::MATERIALIZATION_FAILURE &&
+         mapped_budget_failure.local_status ==
+             pae::protocol_lab_binary::public_decode::LocalStatus::MATERIALIZATION_FAILED &&
+         mapped_budget_failure.public_host.status == pae::HostStatus::OK &&
+         mapped_budget_failure.public_host.bytes_consumed == 3U &&
+         mapped_budget_failure.failure &&
+         mapped_budget_failure.failure->host_status == pae::HostStatus::OK &&
+         !mapped_budget_failure.result && mapped_budget_failure.after.reset_required &&
+         budget_failure_after_map.step_sequence == budget_failure_observation.step_sequence &&
+         budget_failure_after_map.total_candidates == budget_failure_observation.total_candidates);
+  assert(stream_budget_adapter->ResetStream(0U, 0U) == pae::HostStatus::OK);
+
+  ui::DocumentSession stream_session{111U};
+  const auto stream_load = stream_session.BeginLoad();
+  auto stream_opening = Compile(worker, 111U, stream_load, stream_json);
+  const auto stream_config_hash = stream_opening->config_sha256;
+  assert(stream_opening->route == ui::SchemaDispatchStatus::BINARY_PUBLIC &&
+         stream_session.ApplyCompileCompletion(std::move(stream_opening)) &&
+         stream_session.IsBinaryHostDocument() && !stream_session.BinaryHostActive());
+  auto stream_session_compiled = pae::CompileProtocolJson(stream_json);
+  assert(stream_session_compiled.Succeeded());
+  std::string stream_session_error;
+  auto stream_session_adapter = ui::BinaryHostAdapter::CreatePublic(
+      std::move(stream_session_compiled).TakeCompiled(),
+      {{"fixed", pae::HostAction::DECODE, "fixed_rx", 2U},
+       {"sync", pae::HostAction::DECODE, "sync_fixed_rx", 2U},
+       {"length", pae::HostAction::DECODE, "sync_length_rx", 2U}},
+      {111U, stream_load, 1U, 77U, stream_config_hash}, nullptr, 0U, 0U,
+      stream_session_error, stream_limits);
+  assert(stream_session_adapter && stream_session_error.empty());
+  auto stream_publication =
+      stream_session.PrepareBinaryHostPublication(std::move(stream_session_adapter), 77U);
+  assert(stream_publication);
+  stream_session.PublishBinaryHostPublication(std::move(*stream_publication));
+  assert(stream_session.BinaryHostActive() &&
+         stream_session.mode() == ui::OperationMode::STREAM_INSPECT &&
+         stream_session.StreamInspectAvailable() && stream_session.StreamChunkBudget() == 32U);
+  assert(stream_session.SetInspectDraft("AA") && stream_session.SubmitStream() &&
+         !stream_session.inspect_result() && !stream_session.inspect_failure() &&
+         stream_session.BinaryStreamObservation()->buffered_bytes == 1U &&
+         stream_session.StreamHasDiscardableState());
+  assert(stream_session.SetInspectDraft("01 02") && stream_session.SubmitStream() &&
+         stream_session.inspect_result() &&
+         stream_session.inspect_result()->fields[0].logical_value == "258");
+  assert(stream_session.SetInspectDraft("AA 03 04 AA 05 06") &&
+         stream_session.SubmitStream() && stream_session.inspect_result() &&
+         stream_session.inspect_result()->fields[0].logical_value == "772" &&
+         stream_session.StreamContinueAvailable());
+  assert(stream_session.SetInspectDraft("FF") && !stream_session.inspect_result() &&
+         stream_session.ContinueStream() && stream_session.inspect_result() &&
+         stream_session.inspect_result()->fields[0].logical_value == "1286" &&
+         stream_session.inspect_draft() == "FF" && !stream_session.StreamContinueAvailable());
+  auto select_stream = [&](std::size_t binding, std::size_t flow) {
+    auto publication = stream_session.PrepareBinaryHostFlow(binding, flow);
+    return publication && stream_session.PublishBinaryHostFlow(std::move(*publication));
+  };
+  assert(select_stream(0U, 1U) && stream_session.mode() == ui::OperationMode::STREAM_INSPECT &&
+         stream_session.SetInspectDraft("AA 07 08") && stream_session.SubmitStream() &&
+         stream_session.inspect_result() &&
+         stream_session.inspect_result()->fields[0].logical_value == "1800");
+  const auto flow_one_generation = stream_session.BinaryStreamObservation()->generation;
+  assert(select_stream(0U, 0U) && stream_session.inspect_draft() == "FF" &&
+         stream_session.inspect_result() &&
+         stream_session.inspect_result()->fields[0].logical_value == "1286" &&
+         stream_session.ResetStream() && !stream_session.inspect_result() &&
+         !stream_session.inspect_failure());
+  assert(select_stream(0U, 1U) && stream_session.inspect_result() &&
+         stream_session.inspect_result()->fields[0].logical_value == "1800" &&
+         stream_session.BinaryStreamObservation()->generation == flow_one_generation);
+  assert(select_stream(1U, 0U) && stream_session.SetInspectDraft(
+                                         "00 A5 5A 01 02 A5 5A 03 04") &&
+         stream_session.SubmitStream() && stream_session.inspect_result() &&
+         stream_session.inspect_result()->fields[0].logical_value == "258" &&
+         stream_session.BinaryStreamObservation()->total_discarded_bytes == 1U &&
+         stream_session.ContinueStream() && stream_session.inspect_result() &&
+         stream_session.inspect_result()->fields[0].logical_value == "772");
+  assert(select_stream(2U, 0U) && stream_session.SetInspectDraft(
+                                         "00 C3 3C 06 01 02 55 C3 3C 06 03 04 55") &&
+         stream_session.SubmitStream() && stream_session.inspect_result() &&
+         stream_session.inspect_result()->fields[1].logical_value == "258" &&
+         stream_session.ContinueStream() && stream_session.inspect_result() &&
+         stream_session.inspect_result()->fields[1].logical_value == "772");
+  assert(stream_session.SetInspectDraft("C3") && stream_session.SubmitStream() &&
+         !stream_session.inspect_result() && !stream_session.inspect_failure());
+  assert(stream_session.SetInspectDraft("C3 3C 06 00 00 00") && stream_session.SubmitStream() &&
+         !stream_session.inspect_result() && stream_session.inspect_failure());
+  stream_session.Close();
+
   const std::vector<std::uint8_t> frame{0x80U, 0x0DU, 0x03U, 0x00U, 0x01U,
                                         0x00U, 0xCAU, 0xFEU, 0x05U, 0x5AU};
   auto first = adapter->DecodeComplete(0U, 0U, frame);
@@ -145,9 +417,9 @@ int main() {
   public_inputs.push_back(PublicInput::Bytes(6U, {0xCAU, 0xFEU}));
   public_inputs.push_back(PublicInput::Decimal(7U, {5, 0}));
   auto encoded = adapter->EncodeComplete(2U, 0U, 0U, public_inputs);
-  assert(encoded.ok && encoded.result && encoded.result->frame ==
-             std::vector<std::uint8_t>({0x8DU, 0x0DU, 0xC3U, 0U, 1U, 0U,
-                                        0xCAU, 0xFEU, 5U, 0x5AU}) &&
+  assert(encoded.ok && encoded.result &&
+         encoded.result->frame == std::vector<std::uint8_t>(
+                                      {0x8DU, 0x0DU, 0xC3U, 0U, 1U, 0U, 0xCAU, 0xFEU, 5U, 0x5AU}) &&
          encoded.result->fields[7].raw_value == "未观察" &&
          encoded.result->fields[7].logical_value == "5@0" &&
          encoded.result->fields[8].logical_value == "由 PAE 生成");
@@ -256,6 +528,7 @@ int main() {
     std::cerr << "H2_FLOW_ROUNDTRIP_FAIL draft, count, or decoded frame mismatched\n";
     return 3;
   }
+  assert(session.BinaryHasDiscardableState() && !session.StreamHasDiscardableState());
   constexpr auto uninspected = u"80 0D 03 00 03 00 CA FE 05 5A";
   if (!session.SetInspectDraftUtf16(uninspected) || session.inspect_result() || !move_to(0U, 1U) ||
       !matches(0U, 1U, flow1_frame, 2, 2U) || !move_to(0U, 0U) ||
@@ -299,41 +572,35 @@ int main() {
     return 9;
   }
   if (!move_to(2U, 0U) || session.mode() != ui::OperationMode::ENCODE ||
-      !session.EncodeAvailable() ||
-      !session.SetDraft(0U, true) ||
+      !session.EncodeAvailable() || !session.SetDraft(0U, true) ||
       !session.SetDraft(1U, ui::EnumSelection{1U, "active"}) ||
-      !session.SetDraft(2U, std::uint64_t{0xD0U}) ||
-      !session.SetDraft(3U, std::uint64_t{3U}) ||
-      !session.SetDraft(4U, std::uint64_t{1U}) ||
-      !session.SetDraft(5U, std::int64_t{0}) ||
+      !session.SetDraft(2U, std::uint64_t{0xD0U}) || !session.SetDraft(3U, std::uint64_t{3U}) ||
+      !session.SetDraft(4U, std::uint64_t{1U}) || !session.SetDraft(5U, std::int64_t{0}) ||
       !session.SetDraft(6U, std::vector<std::uint8_t>{0xCAU, 0xFEU}) ||
-      !session.SetDraft(7U, ui::Decimal64{5, 0}) || !session.Encode() ||
-      !session.preview() || session.preview()->encoded_frame !=
-          std::vector<std::uint8_t>({0x8DU, 0x0DU, 0xC3U, 0U, 1U, 0U,
-                                     0xCAU, 0xFEU, 5U, 0x5AU}) ||
+      !session.SetDraft(7U, ui::Decimal64{5, 0}) || !session.Encode() || !session.preview() ||
+      session.preview()->encoded_frame !=
+          std::vector<std::uint8_t>({0x8DU, 0x0DU, 0xC3U, 0U, 1U, 0U, 0xCAU, 0xFEU, 5U, 0x5AU}) ||
       session.preview()->fields[7].raw_value != "未观察" ||
       session.preview()->fields[8].logical_value != "由 PAE 生成") {
     std::cerr << "H2_ENCODE_SUCCESS_FAIL typed inputs or bounded presentation mismatched\n";
     return 10;
   }
-  if (!session.SetDraft(7U, ui::Decimal64{1000, 0}) || session.Encode() ||
-      session.preview() ||
+  if (!session.SetDraft(7U, ui::Decimal64{1000, 0}) || session.Encode() || session.preview() ||
       session.diagnostic_id() != "UI_BINARY_HOST_ENCODE_VALUE_NOT_REPRESENTABLE") {
     std::cerr << "H2_ENCODE_FAILURE_CLEAR_FAIL old successful output survived failure\n";
     return 11;
   }
-  if (!session.SetDraft(7U, ui::Decimal64{5, 0}) || !session.Encode() ||
-      !session.preview() || !move_to(0U, 1U) || session.mode() != ui::OperationMode::INSPECT ||
-      !move_to(2U, 0U) || session.mode() != ui::OperationMode::ENCODE ||
-      !session.preview() || session.drafts().size() != 8U ||
+  if (!session.SetDraft(7U, ui::Decimal64{5, 0}) || !session.Encode() || !session.preview() ||
+      !move_to(0U, 1U) || session.mode() != ui::OperationMode::INSPECT || !move_to(2U, 0U) ||
+      session.mode() != ui::OperationMode::ENCODE || !session.preview() ||
+      session.drafts().size() != 8U ||
       !(std::get<ui::Decimal64>(session.drafts().at(7U)) == ui::Decimal64{5, 0})) {
     std::cerr << "H2_ENCODE_FLOW_ROUNDTRIP_FAIL drafts or preview were not isolated\n";
     return 12;
   }
   if (!session.SetInvalidDraft(7U, "invalid", "not Decimal64") || session.Encode() ||
       session.preview() || !move_to(0U, 1U) || !move_to(2U, 0U) || session.preview() ||
-      session.invalid_drafts().count(7U) != 1U ||
-      session.diagnostic_id() != "UI_INPUT_INVALID") {
+      session.invalid_drafts().count(7U) != 1U || session.diagnostic_id() != "UI_INPUT_INVALID") {
     std::cerr << "H2_ENCODE_LOCAL_FAILURE_ROUNDTRIP_FAIL old success was restored\n";
     return 13;
   }
@@ -356,9 +623,8 @@ int main() {
           source_draft_count_before_copy_failure ||
       session.prepared()->binary_host_adapter->TypedDrafts(2U, 0U).count(7U) !=
           source_field7_before_copy_failure ||
-      std::get<std::uint64_t>(
-          session.prepared()->binary_host_adapter->TypedDrafts(2U, 0U).at(2U)) !=
-          source_field2_before_copy_failure ||
+      std::get<std::uint64_t>(session.prepared()->binary_host_adapter->TypedDrafts(2U, 0U).at(
+          2U)) != source_field2_before_copy_failure ||
       session.invalid_drafts().count(7U) != 1U ||
       session.diagnostic_id() != diagnostic_before_copy_failure) {
     std::cerr << "H2_ENCODE_LOCAL_CACHE_COPY_ATOMICITY_FAIL partial Flow state was published\n";
@@ -369,7 +635,8 @@ int main() {
   if (!session.SetInvalidDraftUtf16(
           7U, std::u16string(local_cache_budget / sizeof(char16_t) + 1U, u'X'),
           "oversized local diagnostic")) {
-    std::cerr << "H2_ENCODE_LOCAL_CACHE_BUDGET_PRECONDITION_FAIL invalid draft was rejected early\n";
+    std::cerr
+        << "H2_ENCODE_LOCAL_CACHE_BUDGET_PRECONDITION_FAIL invalid draft was rejected early\n";
     return 16;
   }
   const auto& source_drafts_before_budget_failure =
@@ -383,8 +650,7 @@ int main() {
           source_draft_count_before_budget_failure ||
       session.prepared()->binary_host_adapter->TypedDrafts(2U, 0U).count(7U) !=
           source_field7_before_budget_failure ||
-      session.invalid_drafts().count(7U) != 1U ||
-      session.diagnostic_id() != "UI_INPUT_INVALID") {
+      session.invalid_drafts().count(7U) != 1U || session.diagnostic_id() != "UI_INPUT_INVALID") {
     std::cerr << "H2_ENCODE_LOCAL_CACHE_BUDGET_FAIL oversized cache was published\n";
     return 17;
   }
@@ -408,11 +674,9 @@ int main() {
       std::move(multi_compiled).TakeCompiled(),
       {{"rx", pae::HostAction::DECODE, "ui_pipeline", 1U},
        {"tx", pae::HostAction::ENCODE, "ui_pipeline", 1U}},
-      {107U, multi_load, 1U, 1U, multi_config_hash}, nullptr, 0U, 0U,
-      multi_error);
+      {107U, multi_load, 1U, 1U, multi_config_hash}, nullptr, 0U, 0U, multi_error);
   assert(multi_adapter && multi_error.empty());
-  auto multi_publication =
-      multi_session.PrepareBinaryHostPublication(std::move(multi_adapter), 1U);
+  auto multi_publication = multi_session.PrepareBinaryHostPublication(std::move(multi_adapter), 1U);
   assert(multi_publication);
   multi_session.PublishBinaryHostPublication(std::move(*multi_publication));
   const auto multi_move_to = [&](std::size_t binding) {
@@ -426,11 +690,12 @@ int main() {
       multi_session.selection()->message_index != 1U ||
       multi_session.selection()->message_id != "alternate_record" ||
       multi_session.drafts().size() != 1U ||
-      std::get<std::uint64_t>(multi_session.drafts().at(0U)) != 42U ||
-      !multi_session.preview() || multi_session.preview()->encoded_frame != alternate ||
+      std::get<std::uint64_t>(multi_session.drafts().at(0U)) != 42U || !multi_session.preview() ||
+      multi_session.preview()->encoded_frame != alternate ||
       multi_session.preview()->key.selection.message_index != 1U ||
       multi_session.preview()->key.selection.message_id != "alternate_record") {
-    std::cerr << "H2_ENCODE_MULTI_MESSAGE_ROUNDTRIP_FAIL selection, draft, result, or key crossed\n";
+    std::cerr
+        << "H2_ENCODE_MULTI_MESSAGE_ROUNDTRIP_FAIL selection, draft, result, or key crossed\n";
     return 14;
   }
   multi_session.Close();

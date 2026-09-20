@@ -64,7 +64,7 @@ if(PAE_BUILD_PROTOCOL_LAB_BINARY_UI)
     )
 endif()
 
-if(PAE_ENABLE_SCHEMA_V10_ASCII_TEXT_CODEC)
+if(PAE_BUILD_PROTOCOL_LAB_ASCII_ADAPTER)
     list(APPEND pae_protocol_lab_ui_headless_test_names ascii_input ascii_session)
     add_executable(pae_protocol_lab_ui_ascii_smoke_editor_tests ascii_smoke_editor_tests.cpp)
     target_include_directories(pae_protocol_lab_ui_ascii_smoke_editor_tests PRIVATE "${pae_lab_ui_test_source_root}/tools/protocol_lab_ui")
@@ -131,6 +131,56 @@ if(PAE_BUILD_PROTOCOL_LAB_BINARY_UI AND NOT PAE_BUILD_PROTOCOL_LAB_BINARY_PUBLIC
 endif()
 if(PAE_BUILD_PROTOCOL_LAB_BINARY_PUBLIC_H2)
     list(APPEND pae_protocol_lab_ui_headless_test_names binary_public_h2 binary_public_header)
+    add_executable(
+        pae_protocol_lab_ui_binary_stream_qt_smoke_tests
+        binary_stream_qt_smoke_tests.cpp
+        ${pae_lab_ui_test_source_root}/tools/protocol_lab_ui/document_tab.cpp
+        ${pae_lab_ui_test_source_root}/tools/protocol_lab_ui/exact_value_delegate.cpp
+        ${pae_lab_ui_test_source_root}/tools/protocol_lab_ui/field_table_model.cpp
+        ${pae_lab_ui_test_source_root}/tools/protocol_lab_ui/hex_view.cpp
+    )
+    target_include_directories(
+        pae_protocol_lab_ui_binary_stream_qt_smoke_tests
+        PRIVATE "${pae_lab_ui_test_source_root}/tools/protocol_lab_ui"
+    )
+    target_link_libraries(
+        pae_protocol_lab_ui_binary_stream_qt_smoke_tests
+        PRIVATE pae_protocol_lab_ui_headless_internal PAE::Qt5Widgets pae::project_options
+    )
+    target_compile_definitions(
+        pae_protocol_lab_ui_binary_stream_qt_smoke_tests
+        PRIVATE
+            "PAE_BINARY_STREAM_CONFIG=L\"${pae_lab_ui_test_source_root}/examples/config/synthetic_stream_framing_slice.pae.json\""
+    )
+    if(MSVC)
+        target_compile_options(pae_protocol_lab_ui_binary_stream_qt_smoke_tests PRIVATE /UNDEBUG)
+    else()
+        target_compile_options(pae_protocol_lab_ui_binary_stream_qt_smoke_tests PRIVATE -UNDEBUG)
+    endif()
+    set(pae_binary_stream_qt_config "$<IF:$<CONFIG:Debug>,debug,release>")
+    set(pae_binary_stream_qt_suffix "$<IF:$<CONFIG:Debug>,d,>")
+    add_custom_command(
+        TARGET pae_protocol_lab_ui_binary_stream_qt_smoke_tests POST_BUILD
+        COMMAND
+            "${CMAKE_COMMAND}" -E make_directory
+            "$<TARGET_FILE_DIR:pae_protocol_lab_ui_binary_stream_qt_smoke_tests>/platforms"
+        COMMAND "${CMAKE_COMMAND}" -E copy_if_different
+            "${PAE_QT_ROOT}/bin/${pae_binary_stream_qt_config}/Qt5Core${pae_binary_stream_qt_suffix}.dll"
+            "${PAE_QT_ROOT}/bin/${pae_binary_stream_qt_config}/Qt5Gui${pae_binary_stream_qt_suffix}.dll"
+            "${PAE_QT_ROOT}/bin/${pae_binary_stream_qt_config}/Qt5Widgets${pae_binary_stream_qt_suffix}.dll"
+            "$<TARGET_FILE_DIR:pae_protocol_lab_ui_binary_stream_qt_smoke_tests>"
+        COMMAND "${CMAKE_COMMAND}" -E copy_if_different
+            "${PAE_QT_ROOT}/bin/${pae_binary_stream_qt_config}/platforms/qwindows${pae_binary_stream_qt_suffix}.dll"
+            "$<TARGET_FILE_DIR:pae_protocol_lab_ui_binary_stream_qt_smoke_tests>/platforms"
+    )
+    add_test(
+        NAME pae.tools.protocol_lab_ui.binary_stream_qt_smoke
+        COMMAND pae_protocol_lab_ui_binary_stream_qt_smoke_tests
+    )
+    set_tests_properties(
+        pae.tools.protocol_lab_ui.binary_stream_qt_smoke
+        PROPERTIES LABELS "tools;protocol_lab_ui;offline;qt;binary;stream;smoke" TIMEOUT 180
+    )
 endif()
 if(PAE_BUILD_PROTOCOL_LAB_ASCII_PUBLIC_A2)
     add_executable(
@@ -235,6 +285,7 @@ foreach(pae_ui_test_name IN LISTS pae_protocol_lab_ui_headless_test_names)
                 "PAE_BINARY_UI_CONFIG=L\"${CMAKE_CURRENT_SOURCE_DIR}/fixtures/synthetic_binary_ui_stage1.pae.json\""
                 "PAE_LEGACY_UI_CONFIG=L\"${CMAKE_CURRENT_SOURCE_DIR}/fixtures/synthetic_ui_v05.pae.json\""
                 "PAE_ASCII_TEXT_CONFIG=L\"${pae_lab_ui_test_source_root}/examples/config/synthetic_ascii_text_slice.pae.json\""
+                "PAE_BINARY_STREAM_CONFIG=L\"${pae_lab_ui_test_source_root}/examples/config/synthetic_stream_framing_slice.pae.json\""
         )
     endif()
     set_target_properties(
@@ -261,7 +312,7 @@ add_test(
         "${CMAKE_CURRENT_SOURCE_DIR}/fixtures/synthetic_ui_v06.pae.json"
 )
 
-if(PAE_ENABLE_SCHEMA_V10_ASCII_TEXT_CODEC)
+if(PAE_BUILD_PROTOCOL_LAB_ASCII_ADAPTER)
     add_test(
         NAME pae.tools.protocol_lab_ui.qt_smoke_ascii
         COMMAND

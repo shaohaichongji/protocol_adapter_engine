@@ -6,7 +6,7 @@
 #include "ascii_host_adapter_compat.h"
 #endif
 #if !defined(PAE_PROTOCOL_LAB_STANDALONE_PUBLIC_ONLY) && \
-    defined(PAE_ENABLE_SCHEMA_V10_ASCII_TEXT_CODEC)
+    defined(PAE_BUILD_PROTOCOL_LAB_ASCII_ADAPTER)
 #include "ascii_host_types_compat.h"
 #endif
 #include "canonical_input.h"
@@ -83,6 +83,68 @@ std::string AsciiInputFailureDetail(std::string_view detail, std::size_t utf16_o
   return output.str();
 }
 
+#if defined(PAE_BUILD_PROTOCOL_LAB_BINARY_PUBLIC_H2)
+struct BinaryStreamProjection {
+  BinaryUiStreamView view;
+  std::optional<InspectResult> result;
+  std::optional<InspectFailure> failure;
+  std::size_t accounted_bytes = 0U;
+  std::string diagnostic_id;
+  std::string diagnostic_detail;
+};
+
+BinaryStreamProjection ProjectBinaryStreamView(BinaryUiStreamView view,
+                                               InspectResultKey key) {
+  BinaryStreamProjection projected;
+  if (view.result) {
+    projected.accounted_bytes = view.result->accounted_bytes;
+    InspectResult result;
+    result.key = std::move(key);
+    result.input_frame = std::move(view.result->frame);
+    result.message_index = view.result->message_index;
+    result.message_id = std::move(view.result->message_id);
+    result.fields = std::move(view.result->fields);
+    result.zero_field_success = result.fields.empty();
+    projected.result = std::move(result);
+    view.result.reset();
+  } else if (view.failure) {
+    projected.accounted_bytes = view.failure->accounted_bytes;
+    InspectFailure failure;
+    failure.stage = view.status == BinaryStreamPresentationStatus::MATERIALIZATION_FAILURE
+                        ? InspectFailureStage::MATERIALIZATION
+                        : InspectFailureStage::CODEC;
+    failure.status = PublicBinaryCodecStatusName(view.public_host.codec_status);
+    failure.diagnostic_id =
+        view.status == BinaryStreamPresentationStatus::MATERIALIZATION_FAILURE
+            ? "UI_BINARY_STREAM_MATERIALIZATION_FAILED"
+            : "UI_BINARY_STREAM_DECODE_FAILED";
+    failure.detail =
+        view.status == BinaryStreamPresentationStatus::MATERIALIZATION_FAILURE
+            ? "Binary stream result materialization failed; Reset is required"
+            : "Binary stream candidate Decode failed";
+    failure.input_frame = std::move(view.failure->diagnostic_frame);
+    failure.message_index = view.failure->message_index;
+    failure.failed_field_index = view.failure->failed_field_index;
+    projected.diagnostic_id = failure.diagnostic_id;
+    projected.diagnostic_detail = failure.detail;
+    projected.failure = std::move(failure);
+    view.failure.reset();
+  } else if (view.status == BinaryStreamPresentationStatus::PREFLIGHT_REJECTED &&
+             view.diagnostic != protocol_lab_binary::public_decode::StreamDiagnostic::NO_WORK) {
+    InspectFailure failure;
+    failure.stage = InspectFailureStage::INPUT;
+    failure.status = "STREAM_PREFLIGHT_REJECTED";
+    failure.diagnostic_id = "UI_BINARY_STREAM_PREFLIGHT_REJECTED";
+    failure.detail = "Binary stream input was rejected before Host execution";
+    projected.diagnostic_id = failure.diagnostic_id;
+    projected.diagnostic_detail = failure.detail;
+    projected.failure = std::move(failure);
+  }
+  projected.view = std::move(view);
+  return projected;
+}
+#endif
+
 bool DraftMatches(const FieldDescriptor& field, const TypedDraft& value) noexcept {
 #if defined(PAE_ENABLE_SCHEMA_V05_COMPILER)
   if (field.decimal_conversion) {
@@ -149,7 +211,8 @@ std::vector<UiFieldResult> CopyLegacyFields(
 }
 #endif
 
-#if defined(PAE_ENABLE_SCHEMA_V10_ASCII_TEXT_CODEC)
+#if defined(PAE_BUILD_PROTOCOL_LAB_ASCII_ADAPTER) || \
+    defined(PAE_PROTOCOL_LAB_STANDALONE_PUBLIC_ONLY)
 bool IsAsciiDecodeAction(
 #if defined(PAE_BUILD_PROTOCOL_LAB_ASCII_PUBLIC_A2)
     AsciiHostAction action
@@ -193,7 +256,8 @@ std::vector<UiFieldResult> CopyAsciiFields(
 DocumentSession::DocumentSession(DocumentId document_id) : document_id_(document_id) {}
 
 bool DocumentSession::AsciiBackendReady() const noexcept {
-#if defined(PAE_ENABLE_SCHEMA_V10_ASCII_TEXT_CODEC)
+#if defined(PAE_BUILD_PROTOCOL_LAB_ASCII_ADAPTER) || \
+    defined(PAE_PROTOCOL_LAB_STANDALONE_PUBLIC_ONLY)
   if (!prepared_) return false;
   bool ready = false;
 #if !defined(PAE_PROTOCOL_LAB_STANDALONE_PUBLIC_ONLY)
@@ -281,7 +345,14 @@ void DocumentSession::PublishBinaryHostPublication(BinaryPublication publication
   inspect_failure_ = std::move(publication.inspect_failure);
   selected_pipeline_index_ = publication.selection.pipeline_index;
   selection_ = std::move(publication.selection);
+#if defined(PAE_BUILD_PROTOCOL_LAB_BINARY_PUBLIC_H2)
+  mode_ = prepared_->binary_host_adapter->IsStreamDecode(0U, 0U)
+              ? OperationMode::STREAM_INSPECT
+              : OperationMode::INSPECT;
+  binary_stream_view_.reset();
+#else
   mode_ = OperationMode::INSPECT;
+#endif
   representation_ = ByteRepresentation::HEX;
   diagnostic_id_.clear();
   diagnostic_detail_.clear();
@@ -321,6 +392,10 @@ std::optional<DocumentSession::BinaryFlowPublication> DocumentSession::PrepareBi
     publication.flow = flow;
     publication.pipeline_index = found->pipeline_index;
     publication.mode = encode ? OperationMode::ENCODE : OperationMode::INSPECT;
+#if defined(PAE_BUILD_PROTOCOL_LAB_BINARY_PUBLIC_H2)
+    if (!encode && prepared_->binary_host_adapter->IsStreamDecode(binding, flow))
+      publication.mode = OperationMode::STREAM_INSPECT;
+#endif
     publication.selection = SelectionKey{plan_generation_, found->pipeline_index, found->id,
                                          message_index, description_->messages[message_index].id};
     if (encode) {
@@ -361,6 +436,23 @@ std::optional<DocumentSession::BinaryFlowPublication> DocumentSession::PrepareBi
     publication.inspect_draft.reserve(draft.size());
     for (const auto value : draft)
       publication.inspect_draft.push_back(value <= 0xFFU ? static_cast<char>(value) : '?');
+#if defined(PAE_BUILD_PROTOCOL_LAB_BINARY_PUBLIC_H2)
+    if (prepared_->binary_host_adapter->IsStreamDecode(binding, flow)) {
+      auto projected = ProjectBinaryStreamView(
+          prepared_->binary_host_adapter->MapCurrentStream(binding, flow,
+                                                            binary_active_view_bytes_),
+          InspectResultKey{document_id_, load_revision_, plan_generation_,
+                           pipeline_selection_revision_ + 1U, inspect_input_revision_ + 1U,
+                           inspect_request_revision_, found->pipeline_index, found->id});
+      publication.mapped_view_bytes = projected.accounted_bytes;
+      publication.inspect_result = std::move(projected.result);
+      publication.inspect_failure = std::move(projected.failure);
+      publication.stream_view = std::move(projected.view);
+      publication.diagnostic_id = std::move(projected.diagnostic_id);
+      publication.diagnostic_detail = std::move(projected.diagnostic_detail);
+      return publication;
+    }
+#endif
     auto view = prepared_->binary_host_adapter->MapCurrent(binding, flow,
                                                            binary_active_view_bytes_);
     InspectResultKey key;
@@ -501,6 +593,9 @@ bool DocumentSession::PublishBinaryHostFlow(BinaryFlowPublication publication,
   inspect_draft_utf16_ = std::move(publication.inspect_draft_utf16);
   inspect_result_ = std::move(publication.inspect_result);
   inspect_failure_ = std::move(publication.inspect_failure);
+#if defined(PAE_BUILD_PROTOCOL_LAB_BINARY_PUBLIC_H2)
+  binary_stream_view_ = std::move(publication.stream_view);
+#endif
   binary_active_view_bytes_ = publication.mapped_view_bytes;
   mode_ = publication.mode;
   representation_ = ByteRepresentation::HEX;
@@ -517,10 +612,26 @@ bool DocumentSession::BinaryHasDiscardableState() const noexcept {
   const auto& adapter = *prepared_->binary_host_adapter;
   for (std::size_t binding = 0U; binding < adapter.Bindings().size(); ++binding)
     for (std::size_t flow = 0U; flow < adapter.FlowCount(binding); ++flow)
-      if (!adapter.Draft(binding, flow).empty() || adapter.Current(binding, flow) != nullptr)
+      if (!adapter.Draft(binding, flow).empty() || adapter.Current(binding, flow) != nullptr
+#if defined(PAE_BUILD_PROTOCOL_LAB_BINARY_PUBLIC_H2)
+          || (adapter.ObserveStream(binding, flow).has_value() &&
+              (adapter.ObserveStream(binding, flow)->generation != 0U ||
+               adapter.ObserveStream(binding, flow)->buffered_bytes != 0U ||
+               adapter.ObserveStream(binding, flow)->frozen_input_bytes != 0U ||
+               adapter.ObserveStream(binding, flow)->reset_required))
+#endif
+      )
         return true;
   return false;
 }
+
+#if defined(PAE_BUILD_PROTOCOL_LAB_BINARY_PUBLIC_H2)
+std::optional<StreamPresentationObservation> DocumentSession::BinaryStreamObservation()
+    const noexcept {
+  if (!BinaryHostActive()) return std::nullopt;
+  return prepared_->binary_host_adapter->ObserveStream(binary_host_binding_, binary_host_flow_);
+}
+#endif
 #endif
 
 #if defined(PAE_BUILD_PROTOCOL_LAB_HOST_OBSERVER)
@@ -921,7 +1032,8 @@ bool DocumentSession::ApplyCompileCompletion(std::unique_ptr<CompileCompletion> 
       }
     }
   } else {
-#if defined(PAE_ENABLE_SCHEMA_V10_ASCII_TEXT_CODEC)
+#if defined(PAE_BUILD_PROTOCOL_LAB_ASCII_ADAPTER) || \
+    defined(PAE_PROTOCOL_LAB_STANDALONE_PUBLIC_ONLY)
     if (!protocol_lab::ascii::OfflineAdapter::Supports(artifacts)) {
       SetDiagnostic("UI_ASCII_ADAPTER_UNSUPPORTED", "ASCII adapter rejected the compiled schema");
       state_ = DocumentState::CONFIG_ERROR;
@@ -1416,7 +1528,8 @@ bool DocumentSession::Encode(LabExecutionObserver* observer,
     return true;
   }
 #endif
-#if defined(PAE_ENABLE_SCHEMA_V10_ASCII_TEXT_CODEC)
+#if defined(PAE_BUILD_PROTOCOL_LAB_ASCII_ADAPTER) || \
+    defined(PAE_PROTOCOL_LAB_STANDALONE_PUBLIC_ONLY)
   if (IsAsciiDocument()) {
     if (!AsciiBackendReady()) {
       SetEncodeFailure("UI_ENCODE_NOT_READY", "ASCII adapter is not ready");
@@ -1834,7 +1947,8 @@ bool DocumentSession::Inspect(LabExecutionObserver* observer) {
     }
   }
 #endif
-#if defined(PAE_ENABLE_SCHEMA_V10_ASCII_TEXT_CODEC)
+#if defined(PAE_BUILD_PROTOCOL_LAB_ASCII_ADAPTER) || \
+    defined(PAE_PROTOCOL_LAB_STANDALONE_PUBLIC_ONLY)
   if (IsAsciiDocument()) {
 #if defined(PAE_BUILD_PROTOCOL_LAB_ASCII_STREAM_OBSERVER)
     if (description_->pipelines[*selected_pipeline_index_].stream_ascii_crlf) {
@@ -2181,8 +2295,14 @@ bool DocumentSession::Inspect(LabExecutionObserver* observer) {
 #endif
 }
 
-#if defined(PAE_BUILD_PROTOCOL_LAB_ASCII_STREAM_OBSERVER)
+#if defined(PAE_BUILD_PROTOCOL_LAB_STREAM_UI)
 bool DocumentSession::StreamInspectAvailable() const noexcept {
+#if defined(PAE_BUILD_PROTOCOL_LAB_BINARY_PUBLIC_H2)
+  if (BinaryHostActive())
+    return prepared_->binary_host_adapter->IsStreamDecode(binary_host_binding_,
+                                                           binary_host_flow_);
+#endif
+#if defined(PAE_BUILD_PROTOCOL_LAB_ASCII_STREAM_OBSERVER)
 #if defined(PAE_BUILD_PROTOCOL_LAB_HOST_OBSERVER)
   if (HostActive())
     return prepared_->host_adapter->Observe(host_binding_, host_stream_).has_value();
@@ -2197,8 +2317,12 @@ bool DocumentSession::StreamInspectAvailable() const noexcept {
   return AsciiBackendReady() && description_.has_value() && selected_pipeline_index_.has_value() &&
          *selected_pipeline_index_ < description_->pipelines.size() &&
          description_->pipelines[*selected_pipeline_index_].stream_ascii_crlf;
+#else
+  return false;
+#endif
 }
 
+#if defined(PAE_BUILD_PROTOCOL_LAB_ASCII_STREAM_OBSERVER)
 std::optional<AsciiStreamObservation> DocumentSession::StreamObservation()
     const noexcept {
   if (!StreamInspectAvailable()) return std::nullopt;
@@ -2229,15 +2353,44 @@ std::optional<AsciiStreamObservation> DocumentSession::StreamObservation()
                   : std::nullopt;
 #endif
 }
+#endif
 
 bool DocumentSession::StreamContinueAvailable() const noexcept {
+#if defined(PAE_BUILD_PROTOCOL_LAB_BINARY_PUBLIC_H2)
+  if (BinaryHostActive())
+    return prepared_->binary_host_adapter->StreamContinueAvailable(binary_host_binding_,
+                                                                    binary_host_flow_);
+#endif
+#if defined(PAE_BUILD_PROTOCOL_LAB_ASCII_STREAM_OBSERVER)
   const auto observation = StreamObservation();
   return observation.has_value() && !observation->reset_required &&
          (observation->frozen_cursor < observation->frozen_input_bytes ||
           observation->has_internal_work);
+#else
+  return false;
+#endif
 }
 
 bool DocumentSession::StreamHasDiscardableState() const noexcept {
+#if defined(PAE_BUILD_PROTOCOL_LAB_BINARY_PUBLIC_H2)
+  if (BinaryHostActive()) {
+    const auto& adapter = *prepared_->binary_host_adapter;
+    for (std::size_t binding = 0U; binding < adapter.Bindings().size(); ++binding) {
+      for (std::size_t flow = 0U; flow < adapter.FlowCount(binding); ++flow) {
+        if (!adapter.IsStreamDecode(binding, flow)) continue;
+        const auto observation = adapter.ObserveStream(binding, flow);
+        if (!adapter.Draft(binding, flow).empty() ||
+            (observation &&
+             (observation->buffered_bytes != 0U || observation->has_internal_work ||
+              observation->frozen_input_bytes != 0U || observation->step_sequence != 0U ||
+              observation->reset_required)))
+          return true;
+      }
+    }
+    return false;
+  }
+#endif
+#if defined(PAE_BUILD_PROTOCOL_LAB_ASCII_STREAM_OBSERVER)
 #if defined(PAE_BUILD_PROTOCOL_LAB_HOST_OBSERVER)
   if (HostActive()) return prepared_->host_adapter->HasDiscardableState();
 #endif
@@ -2251,9 +2404,19 @@ bool DocumentSession::StreamHasDiscardableState() const noexcept {
   return StreamInspectAvailable() &&
          prepared_->ascii_adapter->StreamHasDiscardableState(*selected_pipeline_index_);
 #endif
+#else
+  return false;
+#endif
 }
 
 std::size_t DocumentSession::StreamChunkBudget() const noexcept {
+#if defined(PAE_BUILD_PROTOCOL_LAB_BINARY_PUBLIC_H2)
+  if (BinaryHostActive()) {
+    const auto state = BinaryStreamObservation();
+    return state ? state->effective_max_submit_bytes : 0U;
+  }
+#endif
+#if defined(PAE_BUILD_PROTOCOL_LAB_ASCII_STREAM_OBSERVER)
 #if defined(PAE_BUILD_PROTOCOL_LAB_HOST_OBSERVER)
   if (HostActive()) {
     const auto state = StreamObservation();
@@ -2273,8 +2436,12 @@ std::size_t DocumentSession::StreamChunkBudget() const noexcept {
              ? prepared_->ascii_adapter->StreamChunkCapacity(*selected_pipeline_index_)
              : 0U;
 #endif
+#else
+  return 0U;
+#endif
 }
 
+#if defined(PAE_BUILD_PROTOCOL_LAB_ASCII_STREAM_OBSERVER)
 namespace {
 InspectFailure StreamFailureFromAdapter(const AsciiExecutionResult& outcome) {
   InspectFailure failure;
@@ -2298,8 +2465,47 @@ InspectFailure StreamFailureFromAdapter(const AsciiExecutionResult& outcome) {
   return failure;
 }
 }  // namespace
+#endif
 
 bool DocumentSession::SubmitStream() {
+#if defined(PAE_BUILD_PROTOCOL_LAB_BINARY_PUBLIC_H2)
+  if (BinaryHostActive()) {
+    if (!StreamInspectAvailable()) {
+      SetDiagnostic("UI_BINARY_STREAM_NOT_AVAILABLE",
+                    "selected Binary binding is not a stream Decode input");
+      return false;
+    }
+    const auto parsed = ParseInspectHex(inspect_draft_, StreamChunkBudget());
+    if (!parsed.ok() || parsed.bytes.empty()) {
+      SetDiagnostic(parsed.ok() ? "UI_BINARY_STREAM_CHUNK_EMPTY"
+                                : InspectHexDiagnosticId(parsed.error),
+                    parsed.ok() ? "Binary stream chunk is empty"
+                                : InspectFailureDetail(InspectHexErrorDetail(parsed.error),
+                                                       parsed.input_offset));
+      return false;
+    }
+    ++inspect_request_revision_;
+    auto view = prepared_->binary_host_adapter->SubmitStream(
+        binary_host_binding_, binary_host_flow_, parsed.bytes, binary_active_view_bytes_);
+    if (!view.host_called && view.status == BinaryStreamPresentationStatus::PREFLIGHT_REJECTED) {
+      binary_stream_view_ = std::move(view);
+      SetDiagnostic("UI_BINARY_STREAM_PREFLIGHT_REJECTED",
+                    "Binary stream input was rejected before Host execution");
+      return false;
+    }
+    auto projected = ProjectBinaryStreamView(std::move(view), MakeInspectResultKey());
+    ClearInspectOutcome();
+    inspect_result_ = std::move(projected.result);
+    inspect_failure_ = std::move(projected.failure);
+    binary_active_view_bytes_ = projected.accounted_bytes;
+    binary_stream_view_ = std::move(projected.view);
+    diagnostic_id_ = std::move(projected.diagnostic_id);
+    diagnostic_detail_ = std::move(projected.diagnostic_detail);
+    RefreshDocumentState();
+    return true;
+  }
+#endif
+#if defined(PAE_BUILD_PROTOCOL_LAB_ASCII_STREAM_OBSERVER)
   if (!StreamInspectAvailable()) {
     SetDiagnostic("UI_STREAM_INSPECT_NOT_AVAILABLE", "selected Pipeline is not ASCII CRLF stream");
     return false;
@@ -2409,9 +2615,42 @@ bool DocumentSession::SubmitStream() {
   }
   RefreshDocumentState();
   return true;
+#else
+  SetDiagnostic("UI_STREAM_INSPECT_NOT_AVAILABLE", "no stream adapter is ready");
+  return false;
+#endif
 }
 
 bool DocumentSession::ContinueStream() {
+#if defined(PAE_BUILD_PROTOCOL_LAB_BINARY_PUBLIC_H2)
+  if (BinaryHostActive()) {
+    if (!StreamContinueAvailable()) {
+      SetDiagnostic("UI_BINARY_STREAM_CONTINUE_NOT_AVAILABLE",
+                    "no frozen suffix or internal Binary work remains");
+      return false;
+    }
+    ++inspect_request_revision_;
+    auto view = prepared_->binary_host_adapter->ContinueStream(
+        binary_host_binding_, binary_host_flow_, binary_active_view_bytes_);
+    if (!view.host_called && view.status == BinaryStreamPresentationStatus::PREFLIGHT_REJECTED) {
+      binary_stream_view_ = std::move(view);
+      SetDiagnostic("UI_BINARY_STREAM_CONTINUE_REJECTED",
+                    "Binary stream Continue was rejected before Host execution");
+      return false;
+    }
+    auto projected = ProjectBinaryStreamView(std::move(view), MakeInspectResultKey());
+    ClearInspectOutcome();
+    inspect_result_ = std::move(projected.result);
+    inspect_failure_ = std::move(projected.failure);
+    binary_active_view_bytes_ = projected.accounted_bytes;
+    binary_stream_view_ = std::move(projected.view);
+    diagnostic_id_ = std::move(projected.diagnostic_id);
+    diagnostic_detail_ = std::move(projected.diagnostic_detail);
+    RefreshDocumentState();
+    return true;
+  }
+#endif
+#if defined(PAE_BUILD_PROTOCOL_LAB_ASCII_STREAM_OBSERVER)
   if (!StreamContinueAvailable()) {
     SetDiagnostic("UI_STREAM_CONTINUE_NOT_AVAILABLE", "no frozen suffix or internal work remains");
     return false;
@@ -2478,10 +2717,34 @@ bool DocumentSession::ContinueStream() {
   }
   RefreshDocumentState();
   return true;
+#else
+  SetDiagnostic("UI_STREAM_CONTINUE_NOT_AVAILABLE", "no stream adapter is ready");
+  return false;
+#endif
 }
 
 bool DocumentSession::ResetStream() {
   if (!StreamInspectAvailable()) return false;
+#if defined(PAE_BUILD_PROTOCOL_LAB_BINARY_PUBLIC_H2)
+  if (BinaryHostActive()) {
+    const auto status = prepared_->binary_host_adapter->ResetStream(binary_host_binding_,
+                                                                    binary_host_flow_);
+    if (status != pae::HostStatus::OK) {
+      SetDiagnostic("UI_BINARY_STREAM_RESET_FAILED", "Binary stream Reset failed");
+      return false;
+    }
+    inspect_draft_.clear();
+    inspect_draft_utf16_.clear();
+    ++inspect_input_revision_;
+    ClearInspectOutcome();
+    binary_stream_view_.reset();
+    diagnostic_id_.clear();
+    diagnostic_detail_.clear();
+    RefreshDocumentState();
+    return true;
+  }
+#endif
+#if defined(PAE_BUILD_PROTOCOL_LAB_ASCII_STREAM_OBSERVER)
   const auto& pipeline = description_->pipelines[*selected_pipeline_index_];
   std::string error;
   const bool reset =
@@ -2516,6 +2779,9 @@ bool DocumentSession::ResetStream() {
   diagnostic_detail_.clear();
   RefreshDocumentState();
   return true;
+#else
+  return false;
+#endif
 }
 #endif
 

@@ -395,8 +395,32 @@ Preparation Adapter::AdoptCompiled(CompiledProtocol compiled, std::vector<Bindin
         result.status = LocalStatus::INVALID_BINDING;
         return result;
       }
-      specs.push_back({binding.endpoint, binding.action, *pipeline_index,
-                       binding.flow_count, {}});
+      StreamFramerOptions framing_options;
+      if (binding.action == HostAction::DECODE) {
+        const auto framing = QueryPipelineFramingDescription(out->compiled_, *pipeline_index);
+        if (framing.status != PipelineFramingQueryStatus::OK || !framing.value) {
+          result.status = LocalStatus::PREPARATION_FAILED;
+          return result;
+        }
+        if (framing.value->input_kind == PipelineInputKind::STREAM_CHUNK) {
+          const bool binary_strategy =
+              framing.value->strategy == PipelineFramingStrategy::FIXED_LENGTH ||
+              framing.value->strategy == PipelineFramingStrategy::SYNC_FIXED_LENGTH ||
+              framing.value->strategy == PipelineFramingStrategy::SYNC_LENGTH_FIELD;
+          if (!binary_strategy || !framing.value->maximum_candidate_frame_bytes ||
+              *framing.value->maximum_candidate_frame_bytes > limits.max_frame_bytes ||
+              Add(sizeof(Candidate), *framing.value->maximum_candidate_frame_bytes) >
+                  limits.max_result_bytes ||
+              limits.max_stream_chunk_bytes == 0U) {
+            result.status = LocalStatus::RESOURCE_LIMIT;
+            return result;
+          }
+          framing_options.max_submit_bytes = limits.max_stream_chunk_bytes;
+          framing_options.max_work_units = limits.max_stream_work_units;
+        }
+      }
+      specs.push_back(
+          {binding.endpoint, binding.action, *pipeline_index, binding.flow_count, framing_options});
     }
     description = Add(description, Multiply(out->flow_begin_.capacity(), sizeof(std::size_t)));
     description = Add(description, Multiply(out->messages_.capacity(), sizeof(OwnedMessageName)));
@@ -418,14 +442,33 @@ Preparation Adapter::AdoptCompiled(CompiledProtocol compiled, std::vector<Bindin
     out->flows_.resize(channels);
     for (std::size_t b = 0U; b < out->bindings_.size(); ++b) {
       for (std::size_t flow = 0U; flow < out->bindings_[b].flow_count; ++flow) {
-        const auto found = out->host_->Find(out->bindings_[b].endpoint,
-                                            out->bindings_[b].action, flow);
-        if (found.status != HostStatus::OK ||
-            (out->bindings_[b].action == HostAction::DECODE &&
-             out->host_->Observe(found.handle).stream)) return result;
-        out->flows_[out->flow_begin_[b] + flow].handle = found.handle;
+        const auto found =
+            out->host_->Find(out->bindings_[b].endpoint, out->bindings_[b].action, flow);
+        if (found.status != HostStatus::OK) return result;
+        auto& state = out->flows_[out->flow_begin_[b] + flow];
+        state.handle = found.handle;
+        if (out->bindings_[b].action == HostAction::DECODE) {
+          const auto observed = out->host_->Observe(found.handle);
+          if (observed.status != HostStatus::OK) return result;
+          const auto framing =
+              QueryPipelineFramingDescription(out->compiled_, specs[b].pipeline_index);
+          if (framing.status != PipelineFramingQueryStatus::OK || !framing.value ||
+              observed.stream != (framing.value->input_kind == PipelineInputKind::STREAM_CHUNK))
+            return result;
+          if (observed.stream) {
+            state.stream.available = true;
+            state.stream.strategy = framing.value->strategy;
+            state.stream.maximum_candidate_frame_bytes =
+                *framing.value->maximum_candidate_frame_bytes;
+            state.stream.capacity = (std::min)(limits.max_stream_chunk_bytes,
+                                               observed.framing.effective_max_submit_bytes);
+            if (state.stream.capacity == 0U) return result;
+          }
+        }
       }
     }
+    for (auto& flow : out->flows_)
+      if (flow.stream.available) flow.stream.frozen_input.reserve(flow.stream.capacity);
     const auto memory = out->compiled_.MemoryReport();
     auto total = Add(sizeof(Adapter), memory.plan_accounted_bytes);
     total = Add(total, memory.metadata_accounted_bytes);
@@ -437,8 +480,11 @@ Preparation Adapter::AdoptCompiled(CompiledProtocol compiled, std::vector<Bindin
     total = Add(total, Multiply(channels + 1U, limits.max_result_bytes));
     total = Add(total, Add(Multiply(channels + 1U, DraftPeakReserve(limits.max_frame_bytes)),
                            sizeof(std::string)));
+    for (const auto& flow : out->flows_)
+      if (flow.stream.available) total = Add(total, flow.stream.frozen_input.capacity());
     out->instance_bytes_ = total;
-    if (total > limits.instance_bytes || Add(total, previous_instance_bytes) > limits.replacement_bytes) {
+    if (total > limits.instance_bytes ||
+        Add(total, previous_instance_bytes) > limits.replacement_bytes) {
       result.status = LocalStatus::RESOURCE_LIMIT;
       return result;
     }
@@ -568,24 +614,236 @@ const Operation& Adapter::Encode(std::size_t binding, std::size_t message_index,
   return state.current;
 }
 
+std::optional<StreamObservation> Adapter::ObserveStream(std::size_t binding,
+                                                        std::size_t flow) const noexcept {
+  const auto index = FlowIndex(binding, flow);
+  if (index >= flows_.size()) return std::nullopt;
+  const auto& state = flows_[index];
+  if (!state.stream.available) return std::nullopt;
+  const auto observed = host_->Observe(state.handle);
+  if (observed.status != HostStatus::OK || !observed.stream ||
+      observed.framing.status != StreamFramerStatus::OK)
+    return std::nullopt;
+  StreamObservation result;
+  result.strategy = state.stream.strategy;
+  result.phase = observed.framing.phase;
+  result.maximum_candidate_frame_bytes = state.stream.maximum_candidate_frame_bytes;
+  result.effective_max_submit_bytes = observed.framing.effective_max_submit_bytes;
+  result.effective_max_work_units = observed.framing.effective_max_work_units;
+  result.buffered_bytes = observed.framing.buffered_bytes;
+  result.frozen_input_bytes = state.stream.frozen_input.size();
+  result.frozen_cursor = state.stream.cursor;
+  result.has_internal_work = observed.framing.has_internal_work;
+  result.reset_required = state.stream.faulted || observed.reset_required;
+  result.generation = observed.generation;
+  result.step_sequence = state.stream.step_sequence;
+  result.total_candidates = state.stream.total_candidates;
+  result.total_decode_successes = state.stream.total_decode_successes;
+  result.total_decode_failures = state.stream.total_decode_failures;
+  result.total_observer_callbacks = state.stream.total_observer_callbacks;
+  result.total_business_callbacks = state.stream.total_business_callbacks;
+  result.total_discarded_bytes = state.stream.total_discarded_bytes;
+  result.total_malformed_candidates = state.stream.total_malformed_candidates;
+  return result;
+}
+
+bool Adapter::StreamContinueAvailable(std::size_t binding, std::size_t flow) const noexcept {
+  const auto observed = ObserveStream(binding, flow);
+  return observed && !observed->reset_required &&
+         (observed->frozen_cursor < observed->frozen_input_bytes || observed->has_internal_work);
+}
+
+const StreamStep& Adapter::SubmitStreamChunk(std::size_t binding, std::size_t flow,
+                                             const std::vector<std::uint8_t>& chunk) noexcept {
+  rejected_stream_ = {};
+  const auto before = ObserveStream(binding, flow);
+  if (!before) {
+    rejected_stream_.local_status = LocalStatus::INVALID_BINDING;
+    rejected_stream_.diagnostic = StreamDiagnostic::NOT_STREAM;
+    return rejected_stream_;
+  }
+  rejected_stream_.before = *before;
+  rejected_stream_.after = *before;
+  if (before->reset_required) {
+    rejected_stream_.diagnostic = StreamDiagnostic::RESET_REQUIRED;
+    return rejected_stream_;
+  }
+  if (before->frozen_cursor < before->frozen_input_bytes || before->has_internal_work) {
+    rejected_stream_.diagnostic = StreamDiagnostic::CONTINUE_REQUIRED;
+    return rejected_stream_;
+  }
+  const auto index = FlowIndex(binding, flow);
+  auto& stream = flows_[index].stream;
+  if (chunk.empty() || chunk.size() > stream.capacity) {
+    rejected_stream_.local_status = LocalStatus::INVALID_INPUT;
+    rejected_stream_.diagnostic = StreamDiagnostic::INVALID_CHUNK;
+    return rejected_stream_;
+  }
+  try {
+    stream.frozen_input.assign(chunk.begin(), chunk.end());
+    stream.cursor = 0U;
+  } catch (...) {
+    rejected_stream_.local_status = LocalStatus::RESOURCE_LIMIT;
+    rejected_stream_.diagnostic = StreamDiagnostic::INVALID_CHUNK;
+    return rejected_stream_;
+  }
+  return RunStreamStep(binding, flow);
+}
+
+const StreamStep& Adapter::ContinueStream(std::size_t binding, std::size_t flow) noexcept {
+  rejected_stream_ = {};
+  const auto before = ObserveStream(binding, flow);
+  if (!before) {
+    rejected_stream_.local_status = LocalStatus::INVALID_BINDING;
+    rejected_stream_.diagnostic = StreamDiagnostic::NOT_STREAM;
+    return rejected_stream_;
+  }
+  rejected_stream_.before = *before;
+  rejected_stream_.after = *before;
+  if (before->reset_required) {
+    rejected_stream_.diagnostic = StreamDiagnostic::RESET_REQUIRED;
+    return rejected_stream_;
+  }
+  if (before->frozen_cursor == before->frozen_input_bytes && !before->has_internal_work) {
+    rejected_stream_.diagnostic = StreamDiagnostic::NO_WORK;
+    return rejected_stream_;
+  }
+  return RunStreamStep(binding, flow);
+}
+
+const StreamStep& Adapter::RunStreamStep(std::size_t binding, std::size_t flow) noexcept {
+  StreamStep result;
+  const auto before = ObserveStream(binding, flow);
+  if (!before) {
+    rejected_stream_ = {};
+    rejected_stream_.local_status = LocalStatus::INVALID_BINDING;
+    rejected_stream_.diagnostic = StreamDiagnostic::NOT_STREAM;
+    return rejected_stream_;
+  }
+  result.before = *before;
+  result.after = *before;
+  const auto index = FlowIndex(binding, flow);
+  auto& state = flows_[index];
+  auto& stream = state.stream;
+  stream.current = {};
+  const bool has_suffix = stream.cursor < stream.frozen_input.size();
+  const std::size_t submitted = has_suffix ? stream.frozen_input.size() - stream.cursor : 0U;
+  Callback call{compiled_, messages_, limits_, {}};
+  result.host_called = true;
+  result.host = has_suffix ? host_->Push(state.handle,
+                                         {stream.frozen_input.data() + stream.cursor, submitted},
+                                         {Output, &call}, {Observe, &call})
+                           : host_->Continue(state.handle, {Output, &call}, {Observe, &call});
+  const bool consumed_valid = result.host.bytes_consumed <= submitted &&
+                              result.host.bytes_consumed == result.host.framing.bytes_consumed;
+  if (consumed_valid) {
+    stream.cursor += result.host.bytes_consumed;
+    if (stream.cursor == stream.frozen_input.size()) {
+      stream.frozen_input.clear();
+      stream.cursor = 0U;
+    }
+  }
+  const bool callbacks_valid =
+      result.host.candidates <= 1U &&
+      result.host.candidates == result.host.framing.candidates_delivered &&
+      result.host.decode_attempts == result.host.candidates &&
+      result.host.decode_successes + result.host.decode_failures == result.host.candidates &&
+      result.host.observer_callbacks_returned == result.host.candidates &&
+      result.host.business_callbacks_returned == result.host.decode_successes &&
+      ((result.host.candidates == 0U && !call.pending) ||
+       (result.host.candidates == 1U && call.pending.has_value()));
+  const auto fits_u64 = [](std::uint64_t target, std::size_t value) noexcept {
+    return value <= (std::numeric_limits<std::uint64_t>::max)() - target;
+  };
+  const auto fits_size = [](std::size_t target, std::size_t value) noexcept {
+    return value <= (std::numeric_limits<std::size_t>::max)() - target;
+  };
+  const bool counters_valid =
+      fits_u64(stream.step_sequence, 1U) &&
+      fits_u64(stream.total_candidates, result.host.candidates) &&
+      fits_u64(stream.total_decode_successes, result.host.decode_successes) &&
+      fits_u64(stream.total_decode_failures, result.host.decode_failures) &&
+      fits_u64(stream.total_observer_callbacks, result.host.observer_callbacks_returned) &&
+      fits_u64(stream.total_business_callbacks, result.host.business_callbacks_returned) &&
+      fits_size(stream.total_discarded_bytes, result.host.framing.bytes_discarded) &&
+      fits_size(stream.total_malformed_candidates, result.host.framing.malformed_candidates);
+  if (counters_valid) {
+    ++stream.step_sequence;
+    stream.total_candidates += result.host.candidates;
+    stream.total_decode_successes += result.host.decode_successes;
+    stream.total_decode_failures += result.host.decode_failures;
+    stream.total_observer_callbacks += result.host.observer_callbacks_returned;
+    stream.total_business_callbacks += result.host.business_callbacks_returned;
+    stream.total_discarded_bytes += result.host.framing.bytes_discarded;
+    stream.total_malformed_candidates += result.host.framing.malformed_candidates;
+  }
+  const bool accepted_host =
+      result.host.status == HostStatus::OK || result.host.status == HostStatus::CODEC_FAILED;
+  if (call.pending) result.candidate = std::move(call.pending);
+  if (!consumed_valid || !callbacks_valid || !counters_valid || !accepted_host ||
+      result.host.reset_required) {
+    stream.faulted = true;
+  }
+  if (result.host.status == HostStatus::CALLBACK_FAILED) {
+    result.local_status = LocalStatus::MATERIALIZATION_FAILED;
+    result.diagnostic = StreamDiagnostic::COPY_FAILED_RESET_REQUIRED;
+    result.candidate.reset();
+  } else if (stream.faulted) {
+    result.local_status = LocalStatus::MATERIALIZATION_FAILED;
+    result.diagnostic = StreamDiagnostic::CONTRACT_VIOLATION_RESET_REQUIRED;
+    result.candidate.reset();
+  }
+  const auto after = ObserveStream(binding, flow);
+  if (after) result.after = *after;
+  stream.current = std::move(result);
+  return stream.current;
+}
+
 void Adapter::ClearCurrent(std::size_t flow) noexcept {
-  if (flow < flows_.size()) flows_[flow].current = {};
+  if (flow < flows_.size()) {
+    flows_[flow].current = {};
+    flows_[flow].stream.current = {};
+  }
 }
 
 HostStatus Adapter::Reset(std::size_t flow) noexcept {
   if (flow >= flows_.size()) return HostStatus::INVALID_ARGUMENT;
   const auto status = host_->Reset(flows_[flow].handle);
   if (status == HostStatus::OK) {
-    flows_[flow].draft.clear();
-    flows_[flow].current.candidate.reset();
-    flows_[flow].current.host = {};
-    flows_[flow].current.local_status = LocalStatus::OK;
     std::size_t binding = 0U;
     while (binding + 1U < flow_begin_.size() && flow_begin_[binding + 1U] <= flow) ++binding;
     auto found = host_->Find(bindings_[binding].endpoint, bindings_[binding].action,
                              flow - flow_begin_[binding]);
-    if (found.status != HostStatus::OK) return found.status;
+    if (found.status != HostStatus::OK) {
+      flows_[flow].stream.faulted = true;
+      return found.status;
+    }
     flows_[flow].handle = found.handle;
+    flows_[flow].draft.clear();
+    if (flows_[flow].stream.available) {
+      flows_[flow].current = {};
+      const auto observed = host_->Observe(found.handle);
+      if (observed.status != HostStatus::OK || !observed.stream) {
+        flows_[flow].stream.faulted = true;
+        return observed.status;
+      }
+      const auto available = flows_[flow].stream.available;
+      const auto strategy = flows_[flow].stream.strategy;
+      const auto maximum = flows_[flow].stream.maximum_candidate_frame_bytes;
+      const auto capacity = flows_[flow].stream.capacity;
+      auto frozen = std::move(flows_[flow].stream.frozen_input);
+      frozen.clear();
+      flows_[flow].stream = {};
+      flows_[flow].stream.available = available;
+      flows_[flow].stream.strategy = strategy;
+      flows_[flow].stream.maximum_candidate_frame_bytes = maximum;
+      flows_[flow].stream.capacity = capacity;
+      flows_[flow].stream.frozen_input = std::move(frozen);
+    } else {
+      flows_[flow].current.candidate.reset();
+      flows_[flow].current.host = {};
+      flows_[flow].current.local_status = LocalStatus::OK;
+    }
   }
   return status;
 }

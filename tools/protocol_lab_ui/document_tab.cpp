@@ -33,7 +33,7 @@
 #include <QTableView>
 #include <QTabWidget>
 #include <QTemporaryFile>
-#if defined(PAE_BUILD_PROTOCOL_LAB_HOST_OBSERVER)
+#if defined(PAE_BUILD_PROTOCOL_LAB_BINDING_UI)
 #include <QTableWidget>
 #include <QThread>
 #include <QTimer>
@@ -173,6 +173,18 @@ QString FramingIssueName(StreamFramingIssue value) {
       return QStringLiteral("MALFORMED_LENGTH");
     case StreamFramingIssue::RECORD_TOO_LONG:
       return QStringLiteral("RECORD_TOO_LONG");
+  }
+  return QStringLiteral("UNKNOWN");
+}
+#endif
+
+#if defined(PAE_BUILD_PROTOCOL_LAB_BINARY_PUBLIC_H2)
+QString StreamPhaseName(StreamRuntimePhase value) {
+  switch (value) {
+    case StreamRuntimePhase::COLLECTING: return QStringLiteral("COLLECTING");
+    case StreamRuntimePhase::DELIVERY_PENDING: return QStringLiteral("DELIVERY_PENDING");
+    case StreamRuntimePhase::DISCARDING_UNTIL_CRLF:
+      return QStringLiteral("DISCARDING_UNTIL_CRLF");
   }
   return QStringLiteral("UNKNOWN");
 }
@@ -455,7 +467,7 @@ void DocumentTab::AcceptCompletion(std::unique_ptr<CompileCompletion> completion
   if (closed_ || completion == nullptr || completion->document_id != session_.id()) {
     return;
   }
-#if defined(PAE_BUILD_PROTOCOL_LAB_HOST_OBSERVER)
+#if defined(PAE_BUILD_PROTOCOL_LAB_BINDING_UI)
   if (host_pending_revision_ && completion->load_revision == *host_pending_revision_) {
 #if defined(PAE_BUILD_PROTOCOL_LAB_ASCII_SMOKE_DIAGNOSTIC)
     ascii_smoke_diagnostic::Trace("host_completion_before_publish", this);
@@ -472,7 +484,7 @@ void DocumentTab::AcceptCompletion(std::unique_ptr<CompileCompletion> completion
   ResetVisibleDocument();
   if (published) {
     RebuildSelectorsAndModel();
-#if defined(PAE_BUILD_PROTOCOL_LAB_HOST_OBSERVER)
+#if defined(PAE_BUILD_PROTOCOL_LAB_BINDING_UI)
     InitializeHostDraft();
 #endif
   }
@@ -486,13 +498,17 @@ bool DocumentTab::CloseDocument(bool require_confirmation) {
   if (closed_) {
     return true;
   }
-#if defined(PAE_BUILD_PROTOCOL_LAB_ASCII_STREAM_OBSERVER)
-  if (require_confirmation && !ConfirmStreamDiscardOnly(UiText("关闭此文档"))) {
+#if defined(PAE_BUILD_PROTOCOL_LAB_STREAM_UI)
+  const bool stream_discardable = session_.StreamHasDiscardableState();
+  if (require_confirmation && stream_discardable &&
+      !ConfirmStreamDiscardOnly(UiText("关闭此文档"))) {
     return false;
   }
+#else
+  constexpr bool stream_discardable = false;
 #endif
-#if defined(PAE_BUILD_PROTOCOL_LAB_BINARY_UI) && defined(PAE_BUILD_PROTOCOL_LAB_HOST_OBSERVER)
-  if (require_confirmation && (session_.BinaryHasDiscardableState() ||
+#if defined(PAE_BUILD_PROTOCOL_LAB_BINARY_UI) && defined(PAE_BUILD_PROTOCOL_LAB_BINDING_UI)
+  if (require_confirmation && ((!stream_discardable && session_.BinaryHasDiscardableState()) ||
                                (session_.IsBinaryHostDocument() && host_pending_revision_))) {
     const auto answer = AskChineseQuestion(
         this, UiText("关闭 Binary Host 文档"),
@@ -512,11 +528,14 @@ bool DocumentTab::CloseDocument(bool require_confirmation) {
 }
 
 bool DocumentTab::ConfirmClose() {
-#if defined(PAE_BUILD_PROTOCOL_LAB_ASCII_STREAM_OBSERVER)
-  if (!ConfirmStreamDiscardOnly(UiText("关闭应用程序"))) return false;
+#if defined(PAE_BUILD_PROTOCOL_LAB_STREAM_UI)
+  const bool stream_discardable = session_.StreamHasDiscardableState();
+  if (stream_discardable && !ConfirmStreamDiscardOnly(UiText("关闭应用程序"))) return false;
+#else
+  constexpr bool stream_discardable = false;
 #endif
-#if defined(PAE_BUILD_PROTOCOL_LAB_BINARY_UI) && defined(PAE_BUILD_PROTOCOL_LAB_HOST_OBSERVER)
-  if (session_.BinaryHasDiscardableState() ||
+#if defined(PAE_BUILD_PROTOCOL_LAB_BINARY_UI) && defined(PAE_BUILD_PROTOCOL_LAB_BINDING_UI)
+  if ((!stream_discardable && session_.BinaryHasDiscardableState()) ||
       (session_.IsBinaryHostDocument() && host_pending_revision_)) {
     const auto answer = AskChineseQuestion(
         this, UiText("关闭 Binary Host 文档"),
@@ -1465,6 +1484,7 @@ std::uint8_t DocumentTab::HighlightMaskForSmoke(std::size_t frame_byte_index) co
   return hex_view_->HighlightMaskAt(frame_byte_index);
 }
 
+#if defined(PAE_BUILD_PROTOCOL_LAB_BINDING_UI)
 #if defined(PAE_BUILD_PROTOCOL_LAB_HOST_OBSERVER)
 bool DocumentTab::VerifyHostForSmoke(QString& error) {
   if (!session_.IsAsciiDocument()) return true;
@@ -1610,8 +1630,162 @@ bool DocumentTab::VerifyHostForSmoke(QString& error) {
   host_flow_combo_->setCurrentIndex(0);
   return true;
 }
+#endif
 
 #if defined(PAE_BUILD_PROTOCOL_LAB_BINARY_UI)
+#if defined(PAE_BUILD_PROTOCOL_LAB_BINARY_PUBLIC_H2)
+bool DocumentTab::VerifyBinaryStreamForSmoke(QString& error) {
+  if (!session_.IsBinaryHostDocument() || session_.BinaryHostActive() ||
+      host_draft_->rowCount() != 1) {
+    error = QStringLiteral("Binary stream smoke did not start from one unpublished binding");
+    return false;
+  }
+  AddHostDraftRow();
+  AddHostDraftRow();
+  for (int row = 0; row < 3; ++row) {
+    auto* endpoint = qobject_cast<QLineEdit*>(host_draft_->cellWidget(row, 0));
+    auto* action = qobject_cast<QComboBox*>(host_draft_->cellWidget(row, 1));
+    auto* pipeline = qobject_cast<QComboBox*>(host_draft_->cellWidget(row, 2));
+    const int pipeline_item =
+        pipeline == nullptr ? -1 : pipeline->findData(static_cast<qulonglong>(row));
+    if (!endpoint || !action || pipeline_item < 0) {
+      error = QStringLiteral("Binary stream binding draft controls are incomplete");
+      return false;
+    }
+    endpoint->setText(QStringLiteral("stream-%1").arg(row));
+    action->setCurrentIndex(0);
+    pipeline->setCurrentIndex(pipeline_item);
+  }
+  host_apply_->click();
+  QElapsedTimer timer;
+  timer.start();
+  while (host_pending_revision_ && timer.elapsed() < 10000) {
+    for (const auto ticket : worker_.DrainReadyTickets())
+      AcceptCompletion(worker_.TakeResult(ticket));
+    if (host_pending_revision_) QThread::msleep(5);
+  }
+  auto check = [&](bool condition, const char* detail) {
+    if (!condition) error = QString::fromLatin1(detail);
+    return condition;
+  };
+  if (!check(!host_pending_revision_ && session_.BinaryHostActive() &&
+                 host_binding_combo_->count() == 3 && session_.mode() == OperationMode::STREAM_INSPECT &&
+                 inspect_button_->isEnabled() && reset_stream_button_->isEnabled(),
+             "Binary stream binding publication or controls"))
+    return false;
+  auto submit = [&](const QString& text) {
+    inspect_input_->setPlainText(text);
+    inspect_button_->click();
+    QApplication::processEvents();
+  };
+  auto select = [&](int binding, int flow) {
+    host_binding_combo_->setCurrentIndex(binding);
+    QApplication::processEvents();
+    host_flow_combo_->setCurrentIndex(flow);
+    QApplication::processEvents();
+    return host_binding_combo_->currentIndex() == binding &&
+           host_flow_combo_->currentIndex() == flow;
+  };
+  submit(QStringLiteral("AA"));
+  auto observation = session_.BinaryStreamObservation();
+  if (!check(observation && observation->buffered_bytes == 1U && !session_.inspect_result() &&
+                 !session_.inspect_failure(),
+             "fixed split first step"))
+    return false;
+  submit(QStringLiteral("01 02"));
+  if (!check(session_.inspect_result() &&
+                 session_.inspect_result()->fields[0].logical_value == "258",
+             "fixed split completion"))
+    return false;
+  submit(QStringLiteral("AA 03 04 AA 05 06"));
+  if (!check(session_.inspect_result() &&
+                 session_.inspect_result()->fields[0].logical_value == "772" &&
+                 continue_button_->isEnabled(),
+             "fixed glued first candidate"))
+    return false;
+  inspect_input_->setPlainText(QStringLiteral("FF"));
+  continue_button_->click();
+  QApplication::processEvents();
+  if (!check(session_.inspect_result() &&
+                 session_.inspect_result()->fields[0].logical_value == "1286" &&
+                 inspect_input_->toPlainText() == QStringLiteral("FF") &&
+                 !continue_button_->isEnabled(),
+             "Continue did not use frozen suffix"))
+    return false;
+  if (!check(select(0, 1), "select fixed Flow1")) return false;
+  submit(QStringLiteral("AA 07 08"));
+  if (!check(session_.inspect_result() &&
+                 session_.inspect_result()->fields[0].logical_value == "1800",
+             "fixed Flow1 result"))
+    return false;
+  const auto flow_one_generation = session_.BinaryStreamObservation()->generation;
+  if (!check(select(0, 0) && inspect_input_->toPlainText() == QStringLiteral("FF") &&
+                 session_.inspect_result() &&
+                 session_.inspect_result()->fields[0].logical_value == "1286",
+             "fixed Flow0 restore"))
+    return false;
+  reset_stream_button_->click();
+  QApplication::processEvents();
+  if (!check(!session_.inspect_result() && !session_.inspect_failure(),
+             "fixed Flow0 reset"))
+    return false;
+  if (!check(select(0, 1) && session_.inspect_result() &&
+                 session_.inspect_result()->fields[0].logical_value == "1800" &&
+                 session_.BinaryStreamObservation()->generation == flow_one_generation,
+             "Reset changed another flow"))
+    return false;
+  const auto before_tab_sequence = session_.BinaryStreamObservation()->step_sequence;
+  const int control_tab = control_tabs_->currentIndex();
+  const int result_tab = right_tabs_->currentIndex();
+  control_tabs_->setCurrentIndex((control_tab + 1) % control_tabs_->count());
+  right_tabs_->setCurrentIndex((result_tab + 1) % right_tabs_->count());
+  control_tabs_->setCurrentIndex(control_tab);
+  right_tabs_->setCurrentIndex(result_tab);
+  if (!check(session_.BinaryStreamObservation()->step_sequence == before_tab_sequence &&
+                 session_.inspect_result() &&
+                 session_.inspect_result()->fields[0].logical_value == "1800",
+             "workbench Tab switch executed or changed stream state"))
+    return false;
+  if (!check(select(1, 0), "select synchronized fixed binding")) return false;
+  submit(QStringLiteral("00 A5 5A 01 02 A5 5A 03 04"));
+  if (!check(session_.inspect_result() &&
+                 session_.inspect_result()->fields[0].logical_value == "258" &&
+                 session_.BinaryStreamObservation()->total_discarded_bytes == 1U &&
+                 continue_button_->isEnabled(),
+             "synchronized fixed first candidate"))
+    return false;
+  continue_button_->click();
+  QApplication::processEvents();
+  if (!check(session_.inspect_result() &&
+                 session_.inspect_result()->fields[0].logical_value == "772",
+             "synchronized fixed Continue"))
+    return false;
+  if (!check(select(2, 0), "select synchronized length binding")) return false;
+  submit(QStringLiteral("00 C3 3C 06 01 02 55 C3 3C 06 03 04 55"));
+  if (!check(session_.inspect_result() && session_.inspect_result()->fields.size() == 2U &&
+                 session_.inspect_result()->fields[1].logical_value == "258" &&
+                 continue_button_->isEnabled(),
+             "synchronized length first candidate"))
+    return false;
+  continue_button_->click();
+  QApplication::processEvents();
+  if (!check(session_.inspect_result() &&
+                 session_.inspect_result()->fields[1].logical_value == "772",
+             "synchronized length Continue"))
+    return false;
+  submit(QStringLiteral("C3"));
+  if (!check(!session_.inspect_result() && !session_.inspect_failure(),
+             "partial candidate reported failure"))
+    return false;
+  submit(QStringLiteral("C3 3C 06 00 00 00"));
+  if (!check(!session_.inspect_result() && session_.inspect_failure(),
+             "Decode failure retained stale result"))
+    return false;
+  return check(!stream_status_label_->isHidden() && !stream_status_label_->text().isEmpty(),
+               "Binary stream status is not visible");
+}
+#endif
+
 bool DocumentTab::VerifyBinaryHostStage1ForSmoke(QString& error) {
   if (!session_.IsBinaryHostDocument() || session_.BinaryHostActive() ||
       session_.InspectAvailable() || !host_apply_->isEnabled()) {
@@ -2194,6 +2368,7 @@ void DocumentTab::ApplyHostDraft() {
 #else
   const bool binary = false;
 #endif
+#if defined(PAE_BUILD_PROTOCOL_LAB_HOST_OBSERVER)
   if (!binary) {
 #if !defined(PAE_PROTOCOL_LAB_STANDALONE_PUBLIC_ONLY)
     const auto current_bytes =
@@ -2218,12 +2393,17 @@ void DocumentTab::ApplyHostDraft() {
     }
 #endif
   }
+#else
+  if (!binary) return;
+#endif
   const auto high_bit = Revision{1} << 63U;
   if (host_request_sequence_ == high_bit - 1U) {
     host_status_->setText(UiText("绑定请求序号已耗尽，请重新打开文档。"));
     return;
   }
+#if defined(PAE_BUILD_PROTOCOL_LAB_HOST_OBSERVER)
   std::vector<AsciiHostBinding> bindings;
+#endif
 #if defined(PAE_BUILD_PROTOCOL_LAB_BINARY_UI)
   std::vector<BinaryHostBinding> binary_bindings;
 #endif
@@ -2257,12 +2437,21 @@ void DocumentTab::ApplyHostDraft() {
                                  action->currentIndex() == 0 ? 2U : 1U});
     } else
 #endif
+#if defined(PAE_BUILD_PROTOCOL_LAB_HOST_OBSERVER)
       bindings.push_back({Utf8(endpoint->text()),
                           action->currentIndex() == 0 ? AsciiHostAction::DECODE
                                                       : AsciiHostAction::ENCODE,
                           pipeline_index});
+#else
+      return;
+#endif
   }
-  if (bindings.empty()
+  if (
+#if defined(PAE_BUILD_PROTOCOL_LAB_HOST_OBSERVER)
+      bindings.empty()
+#else
+      true
+#endif
 #if defined(PAE_BUILD_PROTOCOL_LAB_BINARY_UI)
       && binary_bindings.empty()
 #endif
@@ -2279,11 +2468,17 @@ void DocumentTab::ApplyHostDraft() {
         *host_pending_revision_, session_.prepared()->config_sha256};
   } else
 #endif
+#if defined(PAE_BUILD_PROTOCOL_LAB_HOST_OBSERVER)
     host_pending_bindings_ = std::move(bindings);
+#else
+    return;
+#endif
   if (worker_.Submit(session_.id(), *host_pending_revision_, host_config_text_) !=
       SubmitStatus::ACCEPTED) {
     host_pending_revision_.reset();
+#if defined(PAE_BUILD_PROTOCOL_LAB_HOST_OBSERVER)
     host_pending_bindings_.clear();
+#endif
 #if defined(PAE_BUILD_PROTOCOL_LAB_BINARY_UI)
     binary_host_pending_bindings_.clear();
     binary_host_pending_identity_.reset();
@@ -2517,6 +2712,7 @@ void DocumentTab::AcceptHostCompletion(std::unique_ptr<CompileCompletion> comple
     return;
   }
 #endif
+#if defined(PAE_BUILD_PROTOCOL_LAB_HOST_OBSERVER)
 #if defined(PAE_BUILD_PROTOCOL_LAB_ASCII_PUBLIC_A2)
   std::unique_ptr<AsciiHostAdapter> candidate;
   if (session_.prepared() && completion->config_sha256 == session_.prepared()->config_sha256) {
@@ -2618,6 +2814,9 @@ void DocumentTab::AcceptHostCompletion(std::unique_ptr<CompileCompletion> comple
   host_flow_combo_->setCurrentIndex(0);
   rebuilding_selectors_ = false;
   SelectHostView();
+#else
+  host_status_->setText(UiText("准备结果不属于当前 Binary Host 请求。"));
+#endif
 }
 void DocumentTab::SelectHostView() {
   if (host_binding_combo_->currentIndex() < 0) return;
@@ -2656,20 +2855,26 @@ void DocumentTab::SelectHostView() {
   } else
 #endif
   {
+#if defined(PAE_BUILD_PROTOCOL_LAB_HOST_OBSERVER)
     if (!session_.HostActive()) return;
     if (!session_.SelectHostFlow(static_cast<std::size_t>(host_binding_combo_->currentIndex()),
                                  static_cast<std::size_t>(host_flow_combo_->currentIndex())))
       return;
+#else
+    return;
+#endif
   }
   rebuilding_selectors_ = true;
   mode_combo_->setCurrentIndex(mode_combo_->findData(static_cast<int>(session_.mode())));
   representation_combo_->setCurrentIndex(
       representation_combo_->findData(static_cast<int>(session_.representation())));
   if (!session_.BinaryHostActive()) {
+#if defined(PAE_BUILD_PROTOCOL_LAB_HOST_OBSERVER)
     const auto& text = session_.inspect_draft_utf16();
     inspect_input_->setPlainText(QString::fromUtf16(reinterpret_cast<const ushort*>(text.data()),
                                                     static_cast<int>(text.size())));
     accepted_inspect_text_ = inspect_input_->toPlainText();
+#endif
   } else {
     pipeline_combo_->setCurrentIndex(
         pipeline_combo_->findData(static_cast<qulonglong>(*session_.selected_pipeline_index())));
@@ -2685,7 +2890,9 @@ void DocumentTab::SelectHostView() {
       field_model_->Reset(CurrentMessage(), {}, {}, false, session_.representation(),
                           FieldPresentationAction::INSPECT);
   } else {
+#if defined(PAE_BUILD_PROTOCOL_LAB_HOST_OBSERVER)
     RebuildSelectorsAndModel();
+#endif
   }
   RefreshInspect();
   RefreshPreview();
@@ -2701,12 +2908,22 @@ void DocumentTab::SelectHostView() {
 #if defined(PAE_BUILD_PROTOCOL_LAB_BINARY_UI)
               session_.BinaryHostActive() ? session_.BinaryHostBindingIndex() :
 #endif
-                                          session_.HostBindingIndex())
+#if defined(PAE_BUILD_PROTOCOL_LAB_HOST_OBSERVER)
+                                          session_.HostBindingIndex()
+#else
+                                          0U
+#endif
+              )
           .arg(
 #if defined(PAE_BUILD_PROTOCOL_LAB_BINARY_UI)
               session_.BinaryHostActive() ? session_.BinaryHostFlowIndex() :
 #endif
-                                          session_.HostStreamIndex()));
+#if defined(PAE_BUILD_PROTOCOL_LAB_HOST_OBSERVER)
+                                          session_.HostStreamIndex()
+#else
+                                          0U
+#endif
+              ));
 }
 #endif
 
@@ -2797,7 +3014,7 @@ bool DocumentTab::VerifyLocalizationAnchorsForSmoke(QString& error) {
     error = QStringLiteral("workbench tab navigation changed execution, draft, result, or selection");
     return false;
   }
-#if defined(PAE_BUILD_PROTOCOL_LAB_HOST_OBSERVER)
+#if defined(PAE_BUILD_PROTOCOL_LAB_BINDING_UI)
   if (!host_panel_->isHidden()) {
     if (qobject_cast<QGroupBox*>(host_panel_) == nullptr || host_content_ == nullptr ||
         host_toggle_ == nullptr) {
@@ -2906,7 +3123,7 @@ void DocumentTab::BuildUi() {
   mode_combo_->setObjectName(QStringLiteral("operationMode"));
   mode_combo_->addItem(UiText("组包"), static_cast<int>(OperationMode::ENCODE));
   mode_combo_->addItem(UiText("解析"), static_cast<int>(OperationMode::INSPECT));
-#if defined(PAE_BUILD_PROTOCOL_LAB_ASCII_STREAM_OBSERVER)
+#if defined(PAE_BUILD_PROTOCOL_LAB_STREAM_UI)
   mode_combo_->addItem(UiText("流式解析"),
                        static_cast<int>(OperationMode::STREAM_INSPECT));
 #endif
@@ -2925,7 +3142,7 @@ void DocumentTab::BuildUi() {
   encode_button_->setObjectName(QStringLiteral("encodeAction"));
   inspect_button_ = new QPushButton(QStringLiteral("解析完整记录（Decode）"), this);
   inspect_button_->setObjectName(QStringLiteral("primaryAction"));
-#if defined(PAE_BUILD_PROTOCOL_LAB_ASCII_STREAM_OBSERVER)
+#if defined(PAE_BUILD_PROTOCOL_LAB_STREAM_UI)
   continue_button_ = new QPushButton(UiText("继续"), this);
   continue_button_->setObjectName(QStringLiteral("continueStream"));
   reset_stream_button_ = new QPushButton(UiText("重置流"), this);
@@ -2939,7 +3156,7 @@ void DocumentTab::BuildUi() {
   auto* action_row = new QHBoxLayout;
   action_row->addWidget(encode_button_);
   action_row->addWidget(inspect_button_);
-#if defined(PAE_BUILD_PROTOCOL_LAB_ASCII_STREAM_OBSERVER)
+#if defined(PAE_BUILD_PROTOCOL_LAB_STREAM_UI)
   action_row->addWidget(continue_button_);
   action_row->addWidget(reset_stream_button_);
 #endif
@@ -2953,7 +3170,7 @@ void DocumentTab::BuildUi() {
   auto* binding_page = new QWidget(binding_scroll);
   auto* binding_layout = new QVBoxLayout(binding_page);
   binding_layout->setContentsMargins(8, 8, 8, 8);
-#if defined(PAE_BUILD_PROTOCOL_LAB_HOST_OBSERVER)
+#if defined(PAE_BUILD_PROTOCOL_LAB_BINDING_UI)
   BuildHostUi(operation_page_layout, binding_layout);
 #else
   binding_layout->addWidget(new QLabel(UiText("当前构建未启用 Host 绑定观察。"), binding_page));
@@ -2983,7 +3200,7 @@ void DocumentTab::BuildUi() {
   result_kind_label_->setObjectName(QStringLiteral("resultStatus"));
   result_kind_label_->setTextInteractionFlags(Qt::TextSelectableByMouse);
   result_layout->addWidget(result_kind_label_);
-#if defined(PAE_BUILD_PROTOCOL_LAB_ASCII_STREAM_OBSERVER)
+#if defined(PAE_BUILD_PROTOCOL_LAB_STREAM_UI)
   stream_status_label_ = new QLabel(result_workspace);
   stream_status_label_->setObjectName(QStringLiteral("streamStatus"));
   stream_status_label_->setWordWrap(true);
@@ -3052,7 +3269,7 @@ void DocumentTab::BuildUi() {
   diagnostic_scroll->setWidget(diagnostic_content);
   diagnostic_tab_index_ = right_tabs_->addTab(diagnostic_scroll, UiText("诊断与计时"));
 
-#if defined(PAE_BUILD_PROTOCOL_LAB_ASCII_STREAM_OBSERVER)
+#if defined(PAE_BUILD_PROTOCOL_LAB_STREAM_UI)
   auto* stream_scroll = new QScrollArea(right_tabs_);
   stream_scroll->setObjectName(QStringLiteral("streamStatusScroll"));
   stream_scroll->setWidgetResizable(true);
@@ -3093,7 +3310,7 @@ void DocumentTab::BuildUi() {
           [this](int index) { SelectMessage(index); });
   connect(encode_button_, &QPushButton::clicked, this, [this] { EncodeCurrent(); });
   connect(inspect_button_, &QPushButton::clicked, this, [this] { InspectCurrent(); });
-#if defined(PAE_BUILD_PROTOCOL_LAB_ASCII_STREAM_OBSERVER)
+#if defined(PAE_BUILD_PROTOCOL_LAB_STREAM_UI)
   connect(continue_button_, &QPushButton::clicked, this, [this] { ContinueStream(); });
   connect(reset_stream_button_, &QPushButton::clicked, this, [this] { ResetStream(); });
 #endif
@@ -3106,7 +3323,7 @@ void DocumentTab::BuildUi() {
     timing_label_->clear();
     const QString text = inspect_input_->toPlainText();
     const auto byte_capacity =
-#if defined(PAE_BUILD_PROTOCOL_LAB_ASCII_STREAM_OBSERVER)
+#if defined(PAE_BUILD_PROTOCOL_LAB_STREAM_UI)
         session_.mode() == OperationMode::STREAM_INSPECT ? session_.StreamChunkBudget() :
 #endif
                                                          session_.InspectFrameBudget();
@@ -3143,11 +3360,11 @@ void DocumentTab::BeginLoadFromPath(bool discard_confirmed) {
   if (closed_) {
     return;
   }
-#if defined(PAE_BUILD_PROTOCOL_LAB_ASCII_STREAM_OBSERVER)
+#if defined(PAE_BUILD_PROTOCOL_LAB_STREAM_UI)
   if (!discard_confirmed && !ConfirmStreamDiscard(UiText("重新加载此配置")))
     return;
 #endif
-#if defined(PAE_BUILD_PROTOCOL_LAB_BINARY_UI) && defined(PAE_BUILD_PROTOCOL_LAB_HOST_OBSERVER)
+#if defined(PAE_BUILD_PROTOCOL_LAB_BINARY_UI) && defined(PAE_BUILD_PROTOCOL_LAB_BINDING_UI)
   if (!discard_confirmed &&
       (session_.BinaryHasDiscardableState() ||
        (session_.IsBinaryHostDocument() && host_pending_revision_)) &&
@@ -3156,9 +3373,11 @@ void DocumentTab::BeginLoadFromPath(bool discard_confirmed) {
           QMessageBox::Yes)
     return;
 #endif
-#if defined(PAE_BUILD_PROTOCOL_LAB_HOST_OBSERVER)
+#if defined(PAE_BUILD_PROTOCOL_LAB_BINDING_UI)
   host_pending_revision_.reset();
+#if defined(PAE_BUILD_PROTOCOL_LAB_HOST_OBSERVER)
   host_pending_bindings_.clear();
+#endif
 #if defined(PAE_BUILD_PROTOCOL_LAB_BINARY_UI)
   binary_host_pending_bindings_.clear();
   binary_host_pending_identity_.reset();
@@ -3189,7 +3408,7 @@ void DocumentTab::BeginLoadFromPath(bool discard_confirmed) {
     AcceptCompletion(std::move(completion));
     return;
   }
-#if defined(PAE_BUILD_PROTOCOL_LAB_HOST_OBSERVER)
+#if defined(PAE_BUILD_PROTOCOL_LAB_BINDING_UI)
   host_config_text_.assign(bytes.constData(), static_cast<std::size_t>(bytes.size()));
 #endif
   const auto status =
@@ -3360,8 +3579,13 @@ void DocumentTab::RefreshState() {
   const bool loading = session_.state() == DocumentState::LOADING;
   pipeline_combo_->setEnabled(description != nullptr && !loading);
   mode_combo_->setEnabled(description != nullptr && !loading);
+#if defined(PAE_BUILD_PROTOCOL_LAB_BINDING_UI)
+  const bool host_document =
 #if defined(PAE_BUILD_PROTOCOL_LAB_HOST_OBSERVER)
-  const bool host_document = session_.IsAsciiDocument()
+      session_.IsAsciiDocument()
+#else
+      false
+#endif
 #if defined(PAE_BUILD_PROTOCOL_LAB_BINARY_UI)
                              || session_.IsBinaryHostDocument()
 #endif
@@ -3372,7 +3596,12 @@ void DocumentTab::RefreshState() {
     control_tabs_->setTabEnabled(1, host_document);
   host_apply_->setEnabled(host_document && !loading && !host_pending_revision_);
   host_draft_->setEnabled(!host_pending_revision_);
-  const bool active_host = session_.HostActive()
+  const bool active_host =
+#if defined(PAE_BUILD_PROTOCOL_LAB_HOST_OBSERVER)
+      session_.HostActive()
+#else
+      false
+#endif
 #if defined(PAE_BUILD_PROTOCOL_LAB_BINARY_UI)
                            || session_.BinaryHostActive()
 #endif
@@ -3389,25 +3618,25 @@ void DocumentTab::RefreshState() {
     }
   }
   host_binding_combo_->setEnabled(active_host);
-  host_flow_combo_->setEnabled(
-      active_host &&
+  bool flow_selection_available = false;
 #if defined(PAE_BUILD_PROTOCOL_LAB_BINARY_UI)
-      (session_.BinaryHostActive() ||
+  flow_selection_available = session_.BinaryHostActive();
 #endif
-       (session_.HostActive() &&
-        IsDecodeHostAction(session_.prepared()
-                               ->host_adapter->Bindings()[session_.HostBindingIndex()]
-                               .action))
-#if defined(PAE_BUILD_PROTOCOL_LAB_BINARY_UI)
-           )
+#if defined(PAE_BUILD_PROTOCOL_LAB_HOST_OBSERVER)
+  flow_selection_available =
+      flow_selection_available ||
+      (session_.HostActive() &&
+       IsDecodeHostAction(session_.prepared()
+                              ->host_adapter->Bindings()[session_.HostBindingIndex()]
+                              .action));
 #endif
-  );
+  host_flow_combo_->setEnabled(active_host && flow_selection_available);
   if (active_host) {
     pipeline_combo_->setEnabled(false);
     mode_combo_->setEnabled(false);
   }
 #endif
-#if defined(PAE_BUILD_PROTOCOL_LAB_ASCII_STREAM_OBSERVER)
+#if defined(PAE_BUILD_PROTOCOL_LAB_STREAM_UI)
   if (auto* model = qobject_cast<QStandardItemModel*>(mode_combo_->model())) {
     const int inspect_index = mode_combo_->findData(static_cast<int>(OperationMode::INSPECT));
     const int stream_index = mode_combo_->findData(static_cast<int>(OperationMode::STREAM_INSPECT));
@@ -3422,7 +3651,7 @@ void DocumentTab::RefreshState() {
   encode_button_->setVisible(true);
   const bool encode_mode = session_.mode() == OperationMode::ENCODE;
   const bool inspect_mode = session_.mode() == OperationMode::INSPECT;
-#if defined(PAE_BUILD_PROTOCOL_LAB_ASCII_STREAM_OBSERVER)
+#if defined(PAE_BUILD_PROTOCOL_LAB_STREAM_UI)
   const bool stream_mode = session_.mode() == OperationMode::STREAM_INSPECT;
 #else
   const bool stream_mode = false;
@@ -3433,18 +3662,18 @@ void DocumentTab::RefreshState() {
   inspect_button_->setEnabled(description != nullptr &&
                               session_.selected_pipeline_index().has_value() &&
                               (inspect_mode ? session_.InspectAvailable()
-#if defined(PAE_BUILD_PROTOCOL_LAB_ASCII_STREAM_OBSERVER)
+#if defined(PAE_BUILD_PROTOCOL_LAB_STREAM_UI)
                                             : session_.StreamInspectAvailable()
 #else
                                             : false
 #endif
                                    ) &&
                               !loading && !encode_mode
-#if defined(PAE_BUILD_PROTOCOL_LAB_ASCII_STREAM_OBSERVER)
+#if defined(PAE_BUILD_PROTOCOL_LAB_STREAM_UI)
                               && !(stream_mode && session_.StreamContinueAvailable())
 #endif
   );
-#if defined(PAE_BUILD_PROTOCOL_LAB_ASCII_STREAM_OBSERVER)
+#if defined(PAE_BUILD_PROTOCOL_LAB_STREAM_UI)
   inspect_button_->setText(stream_mode ? UiText("提交输入块") : UiText("解析完整记录"));
   continue_button_->setVisible(stream_mode);
   reset_stream_button_->setVisible(stream_mode);
@@ -3454,57 +3683,126 @@ void DocumentTab::RefreshState() {
   inspect_input_->setReadOnly(stream_mode && session_.StreamContinueAvailable());
   representation_combo_->setEnabled(session_.IsAsciiDocument() && !loading);
   if (stream_mode) {
-    const auto observation = session_.StreamObservation();
-    if (observation.has_value()) {
-      QString text =
-          UiText("阶段=%1 | 缓冲=%2 | 内部工作=%3 | C=%4 | 工作量=%5 | "
-                 "冻结=%6/%7 | 代次=%8 | 步骤=%9 | 候选=%10 | "
-                 "解析成功=%11 | 已丢弃=%12 | 异常=%13 | 需要重置=%14")
-              .arg(StreamPhaseName(observation->phase))
-              .arg(static_cast<qulonglong>(observation->buffered_bytes))
-              .arg(observation->has_internal_work ? QStringLiteral("true")
-                                                  : QStringLiteral("false"))
-              .arg(static_cast<qulonglong>(session_.StreamChunkBudget()))
-              .arg(static_cast<qulonglong>(observation->effective_max_work_units))
-              .arg(static_cast<qulonglong>(observation->frozen_cursor))
-              .arg(static_cast<qulonglong>(observation->frozen_input_bytes))
-              .arg(static_cast<qulonglong>(observation->generation))
-              .arg(static_cast<qulonglong>(observation->step_sequence))
-              .arg(static_cast<qulonglong>(observation->total_candidates))
-              .arg(static_cast<qulonglong>(observation->total_decode_successes))
-              .arg(static_cast<qulonglong>(observation->total_discarded_bytes))
-              .arg(static_cast<qulonglong>(observation->total_malformed_candidates))
-              .arg(observation->reset_required ? QStringLiteral("true") : QStringLiteral("false"));
-      if (session_.stream_step().has_value()) {
-        const auto& step = *session_.stream_step();
-        text += UiText("\n上一步：API=%1 | 停止原因=%2 | 已消费=%3 | 帧=%4 | "
-                       "已丢弃=%5 | 异常=%6 | 问题=%7 | 工作量=%8")
-                    .arg(SubmitApiStatusName(step.framing.status))
-                    .arg(StopReasonName(step.framing.stop_reason))
-                    .arg(static_cast<qulonglong>(step.framing.bytes_consumed))
-                    .arg(static_cast<qulonglong>(step.framing.candidates_delivered))
-                    .arg(static_cast<qulonglong>(step.framing.bytes_discarded))
-                    .arg(static_cast<qulonglong>(step.framing.malformed_candidates))
-                    .arg(FramingIssueName(step.framing.last_issue))
-                    .arg(static_cast<qulonglong>(step.framing.work_units_used));
+    bool stream_status_updated = false;
+#if defined(PAE_BUILD_PROTOCOL_LAB_BINARY_PUBLIC_H2)
+    if (session_.BinaryHostActive()) {
+      const auto observation = session_.BinaryStreamObservation();
+      if (observation) {
+        QString text =
+            UiText("策略=%1 | M=%2 | 阶段=%3 | 缓冲=%4 | 内部工作=%5 | C=%6 | 工作量=%7 | "
+                   "冻结=%8/%9 | 代次=%10 | 步骤=%11 | 候选=%12 | "
+                   "解析成功=%13 | 解析失败=%14 | 已丢弃=%15 | 异常=%16 | 需要重置=%17")
+                .arg(static_cast<int>(observation->strategy))
+                .arg(static_cast<qulonglong>(observation->maximum_candidate_frame_bytes))
+                .arg(StreamPhaseName(observation->phase))
+                .arg(static_cast<qulonglong>(observation->buffered_bytes))
+                .arg(observation->has_internal_work ? QStringLiteral("true")
+                                                    : QStringLiteral("false"))
+                .arg(static_cast<qulonglong>(session_.StreamChunkBudget()))
+                .arg(static_cast<qulonglong>(observation->effective_max_work_units))
+                .arg(static_cast<qulonglong>(observation->frozen_cursor))
+                .arg(static_cast<qulonglong>(observation->frozen_input_bytes))
+                .arg(static_cast<qulonglong>(observation->generation))
+                .arg(static_cast<qulonglong>(observation->step_sequence))
+                .arg(static_cast<qulonglong>(observation->total_candidates))
+                .arg(static_cast<qulonglong>(observation->total_decode_successes))
+                .arg(static_cast<qulonglong>(observation->total_decode_failures))
+                .arg(static_cast<qulonglong>(observation->total_discarded_bytes))
+                .arg(static_cast<qulonglong>(observation->total_malformed_candidates))
+                .arg(observation->reset_required ? QStringLiteral("true")
+                                                 : QStringLiteral("false"));
+        if (session_.binary_stream_view()) {
+          const auto& step = *session_.binary_stream_view();
+          text += UiText("\n上一步：状态=%1 | Host=%2 | 已消费=%3 | 候选=%4 | "
+                         "解析尝试=%5 | 观察回调=%6 | 业务输出=%7")
+                      .arg(static_cast<int>(step.status))
+                      .arg(static_cast<int>(step.public_host.status))
+                      .arg(static_cast<qulonglong>(step.public_host.bytes_consumed))
+                      .arg(static_cast<qulonglong>(step.public_host.candidates))
+                      .arg(static_cast<qulonglong>(step.public_host.decode_attempts))
+                      .arg(static_cast<qulonglong>(step.public_host.observer_callbacks_returned))
+                      .arg(static_cast<qulonglong>(step.public_host.business_callbacks_returned));
+        }
+        stream_status_label_->setText(text);
+      } else {
+        stream_status_label_->setText(UiText("Binary 流观察器不可用"));
       }
-#if defined(PAE_BUILD_PROTOCOL_LAB_HOST_OBSERVER)
-      if (session_.HostActive())
-        text += UiText(" | 已观察=%1 | 业务输出=%2")
-                    .arg(observation->total_observed_candidates)
-                    .arg(observation->total_business_outputs);
-#endif
-      stream_status_label_->setText(text);
-    } else {
-      stream_status_label_->setText(UiText("流观察器不可用"));
+      stream_status_updated = true;
     }
+#endif
+#if defined(PAE_BUILD_PROTOCOL_LAB_ASCII_STREAM_OBSERVER)
+    if (!stream_status_updated) {
+      const auto observation = session_.StreamObservation();
+      if (observation.has_value()) {
+        QString text =
+            UiText("阶段=%1 | 缓冲=%2 | 内部工作=%3 | C=%4 | 工作量=%5 | "
+                   "冻结=%6/%7 | 代次=%8 | 步骤=%9 | 候选=%10 | "
+                   "解析成功=%11 | 已丢弃=%12 | 异常=%13 | 需要重置=%14")
+                .arg(StreamPhaseName(observation->phase))
+                .arg(static_cast<qulonglong>(observation->buffered_bytes))
+                .arg(observation->has_internal_work ? QStringLiteral("true")
+                                                    : QStringLiteral("false"))
+                .arg(static_cast<qulonglong>(session_.StreamChunkBudget()))
+                .arg(static_cast<qulonglong>(observation->effective_max_work_units))
+                .arg(static_cast<qulonglong>(observation->frozen_cursor))
+                .arg(static_cast<qulonglong>(observation->frozen_input_bytes))
+                .arg(static_cast<qulonglong>(observation->generation))
+                .arg(static_cast<qulonglong>(observation->step_sequence))
+                .arg(static_cast<qulonglong>(observation->total_candidates))
+                .arg(static_cast<qulonglong>(observation->total_decode_successes))
+                .arg(static_cast<qulonglong>(observation->total_discarded_bytes))
+                .arg(static_cast<qulonglong>(observation->total_malformed_candidates))
+                .arg(observation->reset_required ? QStringLiteral("true")
+                                                 : QStringLiteral("false"));
+        if (session_.stream_step().has_value()) {
+          const auto& step = *session_.stream_step();
+          text += UiText("\n上一步：API=%1 | 停止原因=%2 | 已消费=%3 | 帧=%4 | "
+                         "已丢弃=%5 | 异常=%6 | 问题=%7 | 工作量=%8")
+                      .arg(SubmitApiStatusName(step.framing.status))
+                      .arg(StopReasonName(step.framing.stop_reason))
+                      .arg(static_cast<qulonglong>(step.framing.bytes_consumed))
+                      .arg(static_cast<qulonglong>(step.framing.candidates_delivered))
+                      .arg(static_cast<qulonglong>(step.framing.bytes_discarded))
+                      .arg(static_cast<qulonglong>(step.framing.malformed_candidates))
+                      .arg(FramingIssueName(step.framing.last_issue))
+                      .arg(static_cast<qulonglong>(step.framing.work_units_used));
+        }
+#if defined(PAE_BUILD_PROTOCOL_LAB_HOST_OBSERVER)
+        if (session_.HostActive())
+          text += UiText(" | 已观察=%1 | 业务输出=%2")
+                      .arg(observation->total_observed_candidates)
+                      .arg(observation->total_business_outputs);
+#endif
+        stream_status_label_->setText(text);
+      } else {
+        stream_status_label_->setText(UiText("流观察器不可用"));
+      }
+      stream_status_updated = true;
+    }
+#endif
+    if (!stream_status_updated) stream_status_label_->setText(UiText("流观察器不可用"));
   }
   if (right_tabs_ != nullptr && stream_tab_index_ >= 0) {
     right_tabs_->setTabEnabled(stream_tab_index_, stream_mode);
-    if (stream_mode && session_.StreamObservation().has_value()) {
-      const auto observation = *session_.StreamObservation();
+    bool reset_required = false;
+    bool observation_available = false;
+#if defined(PAE_BUILD_PROTOCOL_LAB_BINARY_PUBLIC_H2)
+    if (stream_mode && session_.BinaryHostActive()) {
+      const auto observation = session_.BinaryStreamObservation();
+      observation_available = observation.has_value();
+      reset_required = observation && observation->reset_required;
+    }
+#endif
+#if defined(PAE_BUILD_PROTOCOL_LAB_ASCII_STREAM_OBSERVER)
+    if (stream_mode && !observation_available) {
+      const auto observation = session_.StreamObservation();
+      observation_available = observation.has_value();
+      reset_required = observation && observation->reset_required;
+    }
+#endif
+    if (stream_mode && observation_available) {
       right_tabs_->setTabText(
-          stream_tab_index_, observation.reset_required
+          stream_tab_index_, reset_required
                                  ? UiText("流状态 · 需要重置")
                                  : (session_.StreamContinueAvailable()
                                         ? UiText("流状态 · 可继续处理")
@@ -3531,7 +3829,7 @@ void DocumentTab::RefreshState() {
 
 void DocumentTab::RefreshModePresentation() {
   const bool inspect_mode = session_.mode() != OperationMode::ENCODE;
-#if defined(PAE_BUILD_PROTOCOL_LAB_ASCII_STREAM_OBSERVER)
+#if defined(PAE_BUILD_PROTOCOL_LAB_STREAM_UI)
   const bool stream_mode = session_.mode() == OperationMode::STREAM_INSPECT;
 #else
   const bool stream_mode = false;
@@ -3626,17 +3924,24 @@ void DocumentTab::RefreshInspect() {
       failed_detail_row = static_cast<int>(*failure.failed_field_index);
     }
   } else {
-    result_kind_label_->setText(
+    bool stream_step_observed = false;
+#if defined(PAE_BUILD_PROTOCOL_LAB_BINARY_PUBLIC_H2)
+    stream_step_observed = session_.BinaryHostActive() && session_.binary_stream_view().has_value();
+#endif
 #if defined(PAE_BUILD_PROTOCOL_LAB_ASCII_STREAM_OBSERVER)
-        session_.mode() == OperationMode::STREAM_INSPECT && session_.stream_step().has_value()
+    stream_step_observed = stream_step_observed || session_.stream_step().has_value();
+#endif
+    result_kind_label_->setText(
+#if defined(PAE_BUILD_PROTOCOL_LAB_STREAM_UI)
+        session_.mode() == OperationMode::STREAM_INSPECT && stream_step_observed
             ? UiText("◇ 本步无候选记录")
             :
 #endif
             UiText("○ 待解析 | 尚无有效解析结果"));
     result_kind_label_->setProperty(
         "paeResultState",
-#if defined(PAE_BUILD_PROTOCOL_LAB_ASCII_STREAM_OBSERVER)
-        session_.mode() == OperationMode::STREAM_INSPECT && session_.stream_step().has_value()
+#if defined(PAE_BUILD_PROTOCOL_LAB_STREAM_UI)
+        session_.mode() == OperationMode::STREAM_INSPECT && stream_step_observed
             ? QStringLiteral("candidate_empty")
             :
 #endif
@@ -3881,7 +4186,7 @@ void DocumentTab::SelectPipeline(int combo_index) {
   }
   const auto requested =
       static_cast<std::size_t>(pipeline_combo_->itemData(combo_index).toULongLong());
-#if defined(PAE_BUILD_PROTOCOL_LAB_ASCII_STREAM_OBSERVER)
+#if defined(PAE_BUILD_PROTOCOL_LAB_STREAM_UI)
   if (session_.selected_pipeline_index().has_value() &&
       requested != *session_.selected_pipeline_index() &&
       !ConfirmStreamDiscard(UiText("切换处理管线（Pipeline）"))) {
@@ -3905,7 +4210,7 @@ void DocumentTab::SelectPipeline(int combo_index) {
     inspect_input_->clear();
     rebuilding_selectors_ = false;
     accepted_inspect_text_.clear();
-#if defined(PAE_BUILD_PROTOCOL_LAB_ASCII_STREAM_OBSERVER)
+#if defined(PAE_BUILD_PROTOCOL_LAB_STREAM_UI)
     if (session_.mode() == OperationMode::STREAM_INSPECT && !session_.StreamInspectAvailable()) {
       session_.SetMode(OperationMode::ENCODE);
       rebuilding_selectors_ = true;
@@ -3921,7 +4226,7 @@ void DocumentTab::SelectPipeline(int combo_index) {
 void DocumentTab::SelectMode(int combo_index) {
   if (rebuilding_selectors_ || combo_index < 0) return;
   const auto mode = static_cast<OperationMode>(mode_combo_->itemData(combo_index).toInt());
-#if defined(PAE_BUILD_PROTOCOL_LAB_ASCII_STREAM_OBSERVER)
+#if defined(PAE_BUILD_PROTOCOL_LAB_STREAM_UI)
   if (session_.mode() == OperationMode::STREAM_INSPECT && mode != OperationMode::STREAM_INSPECT &&
       !ConfirmStreamDiscard(UiText("退出流式解析"))) {
     rebuilding_selectors_ = true;
@@ -4043,7 +4348,7 @@ void DocumentTab::InspectCurrent() {
   QApplication::processEvents(QEventLoop::ExcludeUserInputEvents);
   session_.SetInspectDraftUtf16(Utf16(inspect_input_->toPlainText()));
   TimingObserver observer(timing_);
-#if defined(PAE_BUILD_PROTOCOL_LAB_ASCII_STREAM_OBSERVER)
+#if defined(PAE_BUILD_PROTOCOL_LAB_STREAM_UI)
   if (session_.mode() == OperationMode::STREAM_INSPECT) {
     session_.SubmitStream();
   } else
@@ -4075,7 +4380,7 @@ void DocumentTab::InspectCurrent() {
   hex_view_->viewport()->repaint();
 }
 
-#if defined(PAE_BUILD_PROTOCOL_LAB_ASCII_STREAM_OBSERVER)
+#if defined(PAE_BUILD_PROTOCOL_LAB_STREAM_UI)
 void DocumentTab::ContinueStream() {
   timing_label_->clear();
   session_.ContinueStream();
@@ -4164,7 +4469,11 @@ std::optional<std::size_t> DocumentTab::ActualFrameSize() const noexcept {
   if (session_.mode() == OperationMode::ENCODE && session_.preview().has_value()) {
     return session_.preview()->encoded_frame.size();
   }
-  if (session_.mode() == OperationMode::INSPECT && session_.inspect_result().has_value()) {
+  if ((session_.mode() == OperationMode::INSPECT
+#if defined(PAE_BUILD_PROTOCOL_LAB_STREAM_UI)
+       || session_.mode() == OperationMode::STREAM_INSPECT
+#endif
+       ) && session_.inspect_result().has_value()) {
     return session_.inspect_result()->input_frame.size();
   }
   return std::nullopt;

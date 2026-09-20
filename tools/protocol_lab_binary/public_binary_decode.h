@@ -16,6 +16,8 @@ namespace pae::protocol_lab_binary::public_decode {
 
 struct Limits {
   std::size_t max_frame_bytes = 65536U;
+  std::size_t max_stream_chunk_bytes = 65536U;
+  std::size_t max_stream_work_units = 0U;
   std::size_t max_fields = 1024U;
   std::size_t max_field_bytes = 1024U * 1024U;
   std::size_t max_result_bytes = 8U * 1024U * 1024U;
@@ -26,6 +28,17 @@ struct Limits {
 
 enum class LocalStatus { OK, INVALID_INPUT, INVALID_BINDING, RESOURCE_LIMIT, PREPARATION_FAILED,
                          MATERIALIZATION_FAILED };
+
+enum class StreamDiagnostic {
+  NONE,
+  NOT_STREAM,
+  INVALID_CHUNK,
+  CONTINUE_REQUIRED,
+  NO_WORK,
+  RESET_REQUIRED,
+  COPY_FAILED_RESET_REQUIRED,
+  CONTRACT_VIOLATION_RESET_REQUIRED,
+};
 
 struct Field {
   std::size_t flat_index = 0U;
@@ -104,10 +117,62 @@ struct Operation {
   std::optional<Encoded> encoded;
 };
 
+struct StreamObservation {
+  PipelineFramingStrategy strategy = PipelineFramingStrategy::COMPLETE_RECORD;
+  StreamFramingPhase phase = StreamFramingPhase::COLLECTING;
+  std::size_t maximum_candidate_frame_bytes = 0U;
+  std::size_t effective_max_submit_bytes = 0U;
+  std::size_t effective_max_work_units = 0U;
+  std::size_t buffered_bytes = 0U;
+  std::size_t frozen_input_bytes = 0U;
+  std::size_t frozen_cursor = 0U;
+  bool has_internal_work = false;
+  bool reset_required = false;
+  std::uint64_t generation = 0U;
+  std::uint64_t step_sequence = 0U;
+  std::uint64_t total_candidates = 0U;
+  std::uint64_t total_decode_successes = 0U;
+  std::uint64_t total_decode_failures = 0U;
+  std::uint64_t total_observer_callbacks = 0U;
+  std::uint64_t total_business_callbacks = 0U;
+  std::size_t total_discarded_bytes = 0U;
+  std::size_t total_malformed_candidates = 0U;
+};
+
+struct StreamStep {
+  LocalStatus local_status = LocalStatus::OK;
+  StreamDiagnostic diagnostic = StreamDiagnostic::NONE;
+  bool host_called = false;
+  HostOperationResult host;
+  StreamObservation before;
+  StreamObservation after;
+  std::optional<Candidate> candidate;
+};
+
+struct StreamState {
+  bool available = false;
+  PipelineFramingStrategy strategy = PipelineFramingStrategy::COMPLETE_RECORD;
+  std::size_t maximum_candidate_frame_bytes = 0U;
+  std::size_t capacity = 0U;
+  std::vector<std::uint8_t> frozen_input;
+  std::size_t cursor = 0U;
+  bool faulted = false;
+  std::uint64_t step_sequence = 0U;
+  std::uint64_t total_candidates = 0U;
+  std::uint64_t total_decode_successes = 0U;
+  std::uint64_t total_decode_failures = 0U;
+  std::uint64_t total_observer_callbacks = 0U;
+  std::uint64_t total_business_callbacks = 0U;
+  std::size_t total_discarded_bytes = 0U;
+  std::size_t total_malformed_candidates = 0U;
+  StreamStep current;
+};
+
 struct FlowState {
   std::string draft;
   Operation current;
   HostChannelHandle handle;
+  StreamState stream;
 };
 
 struct OwnedMessageName {
@@ -145,6 +210,12 @@ class Adapter final {
   const Operation& Decode(std::size_t flow, ByteView frame);
   const Operation& Encode(std::size_t binding, std::size_t message_index,
                           const std::vector<EncodeInput>& inputs);
+  const StreamStep& SubmitStreamChunk(std::size_t binding, std::size_t flow,
+                                      const std::vector<std::uint8_t>& chunk) noexcept;
+  const StreamStep& ContinueStream(std::size_t binding, std::size_t flow) noexcept;
+  std::optional<StreamObservation> ObserveStream(std::size_t binding,
+                                                 std::size_t flow) const noexcept;
+  bool StreamContinueAvailable(std::size_t binding, std::size_t flow) const noexcept;
   HostStatus Reset(std::size_t flow) noexcept;
   void ClearCurrent(std::size_t flow) noexcept;
   bool SetDraft(std::size_t flow, std::string_view text);
@@ -155,6 +226,7 @@ class Adapter final {
 
  private:
   Adapter() = default;
+  const StreamStep& RunStreamStep(std::size_t binding, std::size_t flow) noexcept;
   CompiledProtocol compiled_;
   std::vector<OwnedMessageName> messages_;
   std::unique_ptr<HostEndpoint> host_;
@@ -162,6 +234,7 @@ class Adapter final {
   std::vector<std::size_t> flow_begin_;
   std::vector<FlowState> flows_;
   Operation rejected_;
+  StreamStep rejected_stream_;
   Limits limits_;
   std::size_t instance_bytes_ = 0U;
 };

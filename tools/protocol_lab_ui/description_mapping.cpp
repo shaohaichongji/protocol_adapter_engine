@@ -341,7 +341,8 @@ bool BuildDocumentDescription(const protocol_plan::PlanBundle& plan,
   return true;
 }
 
-#if defined(PAE_ENABLE_SCHEMA_V10_ASCII_TEXT_CODEC)
+#if defined(PAE_BUILD_PROTOCOL_LAB_ASCII_ADAPTER) || \
+    defined(PAE_PROTOCOL_LAB_STANDALONE_PUBLIC_ONLY)
 bool BuildDocumentDescription(const protocol_lab::ascii::DocumentDescription& source,
                               DocumentDescription& output, std::string& error) {
   DocumentDescription built;

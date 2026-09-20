@@ -5,6 +5,48 @@
 
 ## 顺序与出口
 
+### 最新收口：G2-C Binary 流式 Session/UI（2026-09-20）
+
+用户确认三组短体验全部符合、Lab已关闭，本片限定收口。人工范围为fixed_rx分块、粘包继续、Flow/Reset隔离；继续可用时输入框只读，原“人工改FF”步骤已纠正，不能用程序setPlainText测试宣称人工可编辑。准确范围与未验证见G2-C validation第6节。下一步建议整理G2-A/B/C累积变更的提交候选，尚未授权Stage/Commit/Push，不自动派新功能。
+
+最新限定回收：总控抽查Session Submit/Continue/Reset、Flow发布与结果投影、输入capacity计费、隐藏Qt三策略/隔离断言；结合此前D/R与配置日志，未发现新的阻塞。现场复算13个非根CMake源码哈希匹配交接快照，common部署EXE、3个Qt DLL、qwindows及canonical fixture共6项匹配记录。未重复运行测试，未将抽查称为逐行全审。G2-C自动证据及配置收尾限定通过，待用户最多三组短体验（fixed_rx分块、粘包Continue不读草稿、Flow/Reset隔离）；人工/DPI/真实配置、A2公开路径及SDK包外不在本次证据中。新体验入口为out/build/windows-msvc-lab-g2-c/common/out/protocol_lab_ui/Release/pae_protocol_lab_ui.exe；Lab停止，不覆盖旧部署，无Git写操作或发布授权。
+
+配置门禁收尾复核：总控已核对新增 A2 ON/adapter OFF 明确拒绝条件及命中新诊断的 exit 1 日志，common/Binary-only 配置生成成功；现场根 CMake SHA-256 与独立新记录一致（13ABE4967E23009CC1B54B194E68315411EDCFE6DA76FCE007BB7F8828A1389A），diff检查通过、暂存为空。该配置缺口限定关闭，未重跑构建/测试；既有D/R证据不扩展为A2公开路径验证（common的A2为OFF）。Lab停止写入，G2-C整体源码/部署最终复核及短体验仍待完成，不自动升级整体验收或提交授权。
+
+最新授权：A2 ON/adapter OFF 已实际生成成功且静态路由拒绝0.10，用户授权仅在根CMake明确拒绝该当前不支持组合。Lab独占根CMake/validation，补精确负例与common、Binary-only配置正例；不改运行逻辑、不重复功能矩阵，A2脱离旧adapter另议。总控待回收复核，仍无Git/发布授权。
+
+当前复核：用户允许 schema_dispatch.cpp、description_mapping.h/.cpp 的最小条件修正纳入审查，不自动验收。已读取 Binary-only D/R 各3/3、common 受影响 D/R 各4/4和stream UI缺observer负例日志。继续检查粗门禁移除后的实际ASCII消费者组合（特别是A2 ON/adapter OFF），保留越界修改历史；本轮尚未整体收口，无提交推送。
+
+补充授权：common D/R 各7项通过及部署哈希为 Lab 交接结果，尚待总控完整复核。Binary-only 实际配置被根门禁阻断；用户已授权 Lab 仅收窄根 CMake 相关依赖条件，保留默认开关、Stage1 能力与真实 ASCII 消费依赖检查，补配置正反例和 Binary-only D/R。详见 G2 契约第6节新增授权；不改 API/Schema，不新增 standalone 或重复全仓测试。Lab 独占实施，总控独占文档，其他任务不派新工作；整体尚未收口。
+
+用户授权 G2-C，Lab 独占 Session/DocumentTab、局部中立门禁、专项与 canonical fixture 新部署；必要 adapter 查询辅助限定允许，不改 A owner/PAE/API/Schema。精确范围与验证见 G2 契约第6节。常用组合及 Binary-only（ASCII stream OFF）D/R、新根 windows-msvc-lab-g2-c，明确 v142/仓库 Qt；保持左右中文工作台，不覆盖旧部署。A/B 已收口，G2整体尚未UI验收；完成总控复核后最多一次简短三组体验。PAE/工程整理不派新工作，无Git写操作/发布/删除授权。
+
+### 最新收口：G2-B 公开描述与 Lab 展示适配（2026-09-19）
+
+返修已限定复核：MapCurrentStream 从 owner 已保存的 stream.current 无分配重建物化失败投影，保留真实 Host 状态及已确认消费，不再调用复制 hook 或 Host；测试断言覆盖重读计数不变、另一 Flow 未故障、Reset 后恢复。总控核对返修源码与 D/R 各1/1通过日志，diff --check通过、暂存为空，未重复运行测试。先前 D/R 各3/3中未受影响专项沿用；G2-B本片收口，Lab停止写入。G2-C Session/UI、中立门禁、Binary-only矩阵与新部署尚未启动，无新增人工验收或Git/发布/删除授权。证据见lab-binary-stream-g2-b-validation.md。
+
+限定回收：已核对描述/DTO及 adapter 关键映射、D/R各3/3通过和Release断言配置，未重复构建测试。发现展示复制失败后的 MapCurrentStream 故障分支丢失首次返回的 Host 消费/计数和物化失败分类；已派原任务仅修持久故障投影并补重读/Flow隔离/Reset断言，受影响 H2 D/R 定向验证。尚待返修复核，G2-C未启动。实际成功构建位于 windows-msvc-lab-g2-b/v142，父目录工具集门禁失败缓存保留，未删除。
+
+用户授权下一步，Lab 独占 G2-B：公开 input kind/strategy/M、Lab 自有观察 DTO、Binary stream view 与 adapter 操作/结果映射。沿用 main@04fa429 和未提交 G2-A，不扩大到 Session/UI/部署，不修改 PAE。精确五个源码/测试文件及报告、新构建 windows-msvc-lab-g2-b、D/R 验证停点见 lab-binary-stream-g2-contract.md 第 6 节。PAE/工程整理不派新工作；总控独占计划/契约/外层索引。回收复核后再派 G2-C，不重复整套人工验收，无 Git 写操作/发布/删除授权。
+
+### 最新收口：G2-A 非Qt流式消费（2026-09-19）
+
+分配失败补证已限定复核：总控核对测试内一次性 bad_alloc 注入、D/R 实际命中日志及各 1/1 专项通过记录；准备失败不返回半成品 owner，回调复制失败保留已确认消费 3 字节和 cursor、仅目标 Flow 要求 Reset，Reset 后可重新解析。此前 D/R 各 2/2 主路径证据继续有效；本次未重复构建或完整矩阵。G2-A 本片收口，Lab 已停止写入；证据见 lab-binary-stream-g2-a-validation.md。B/C 的展示 DTO、Session/UI 接线、Binary-only 构建和部署尚未启动，不新增人工验收，无 Stage/Commit/Push/发布/删除。
+
+限定回收：总控读取owner完整差异、新专项和报告，核对D/R各2/2与Release断言负例；suffix/internal分流、候选STOP、Reset/计数主路径已有证据。但实际测试只覆盖预算拒绝，未覆盖契约要求的真实分配失败；已派原任务仅补测试内分配失败注入与D/R专项，禁止加入产品注入接口或扩大UI/SDK范围。G2-A待此补证复核，B/C未启动；本轮总控未重复构建测试。
+
+用户授权，最小契约已落盘lab-binary-stream-g2-contract.md。Lab独占public Binary owner与新增专项，PAE/工程整理不派新写入。新构建windows-msvc-lab-g2-a，证据lab-binary-stream-g2-a；三策略共同支持、每操作一步、冻结后缀Push/内部Continue分流、observer STOP、同步深复制、预算与Reset/Flow隔离。正常idle/零消费不自动fault。精确文件范围和D/R停点见契约；A通过总控复核再串行B/C。无UI接线/API/Schema/SDK/旧部署/Git/发布/删除授权。
+
+### 当前派发：G2 Binary 流式图形入口预检（2026-09-19）
+
+两份报告现已回收，执行任务停止。总控确认一个关键表述冲突并已纠正Lab预检：GUI继续在有冻结后缀时须Push剩余片段，后缀为空且有internal work才调用公开Continue（源码实现为空输入Push）；一次点击最多一步，无自动循环。推荐三种Binary策略共同接入、局部protocol-neutral门禁支持ASCII关闭的Binary-only构建、复用canonical fixture并限定扩部署白名单；这些为下一实施契约候选，本轮尚未实施。无进展判定不得仅依据零消费，正常idle不强制fault；每步至多一个候选须由observer STOP策略显式保证，不是Host固有上限。下一步待确认最小契约与G2-A非Qt实施范围，再串行B/C。
+
+部分回收：PAE公开能力报告已交付并停止；总控通读并抽查Host公开声明及实现定位，修正报告Find参数写法。最小策略/最大候选长度/运行时观察无需扩公开API，算法细节元数据另议；借用回调深复制、逐候选与聚合状态分离、Reset后重新Find是接线重点。Host三策略组合测试仍需实施时补证，本轮未构建测试。Lab消费侧仍在执行，暂不启动实现，待两份报告汇合。
+
+本地检查点04fa429已提交，未Push；派发前工作树干净。用户授权下一步，两执行任务并行只读源码/契约，各自仅写独立报告：Lab写lab-binary-stream-g2-preflight.md，PAE写pae-binary-stream-g2-public-audit.md。Lab核对public owner/Session/UI、冻结suffix、Continue/Reset、Flow隔离与最小接线；PAE核对公开framing/Host能力、回调寿命、候选/业务输出分离、暂停/无进展/错误语义与已有测试支持。不得读取private接口补产品能力或复制旧执行引擎；历史实现仅供静态参考。
+
+本批不改代码/CMake/公共接口/Schema，不构建测试、不启动Lab、不重打SDK、不改部署、不执行Git写操作或删除。总控维护本计划和外层AGENTS，工程整理不派新任务。两报告回收后收敛最小契约，再决定非Qt适配→UI串行实现与相称验证；遇到新公共能力或范围决定停报，不自行扩张。完成各向总控反馈一次并停止。
+
 ### 本地提交检查点授权（2026-09-19）
 
 用户授权将G1 Binary完整组包、U1/U2/U2B工作台与可读性收尾累积变更整理为本地提交；不Push、不正式发布。源码及对应契约/验证报告一同纳入，out生成产物、deliverables、SDK和仓库外AGENTS不纳入。验证沿用各片已复核证据，本次提交检查不冒充重新构建或全矩阵验证。U2B布局已获用户实际体验确认；可读性收尾仅定向自动/隐藏渲染验证。Binary stream和结构化诊断均待后续派发，公共API/Schema本检查点未扩展。

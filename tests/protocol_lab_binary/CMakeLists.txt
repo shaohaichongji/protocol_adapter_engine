@@ -8,6 +8,13 @@ if(PAE_BUILD_PROTOCOL_LAB_BINARY_PUBLIC_H1)
     target_link_libraries(pae_binary_public_h1_tests PRIVATE pae_protocol_lab_binary_public_h1 pae::project_options)
     add_test(NAME pae.protocol_lab_binary.public_h1 COMMAND pae_binary_public_h1_tests ${pae_lab_binary_test_source_root})
     set_tests_properties(pae.protocol_lab_binary.public_h1 PROPERTIES TIMEOUT 60 LABELS "lab_binary;public_h1;offline")
+
+    add_executable(pae_binary_public_stream_tests public_binary_stream_tests.cpp)
+    target_link_libraries(pae_binary_public_stream_tests PRIVATE pae_protocol_lab_binary_public_h1 pae::project_options)
+    add_test(NAME pae.protocol_lab_binary.public_stream COMMAND pae_binary_public_stream_tests
+        ${pae_lab_binary_test_source_root}/examples/config/synthetic_stream_framing_slice.pae.json)
+    set_tests_properties(pae.protocol_lab_binary.public_stream PROPERTIES
+        TIMEOUT 60 LABELS "lab_binary;public_stream;offline")
 endif()
 
 if(PAE_BUILD_PROTOCOL_LAB_BINARY_MATERIALIZER)
