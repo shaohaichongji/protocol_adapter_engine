@@ -4,12 +4,12 @@ ProtocolAdapterEngine（PAE，协议适配引擎）当前工程版本为 `0.1.0`
 
 PAE 的目标是通过严格配置完成工业二进制协议的有方向 Decode（解析）、Encode（组包）、Framing（切帧）、Integrity（完整性校验）和 Receive Gate（接收门禁）。它不拥有串口、Socket、CAN、IPC、线程、设备生命周期、重试恢复、UI 或业务状态机。
 
-## 当前入口（2026-09-19）
+## 当前入口（2026-09-20）
 
 - 直接使用现有 SDK 或 Lab：先打开 [统一本地交付入口](deliverables/README.md)；人类阅读从 [01 项目定位与能力边界](docs/guides/01-项目定位与能力边界.md) 开始，首次体验见 [02 首次运行与 Lab 体验](docs/guides/02-首次运行与Lab体验.md)，源码阅读见 [05 架构与代码阅读](docs/guides/05-架构与代码阅读.md)。交付二进制被 Git 忽略，不随 clone 自动获取。
 - 权威 JSON Schema 当前枚举 `0.1`～`0.11`；各版本增量及工具支持边界见 [Schema 导航](schema/README.md)。
 - PAE 非 Qt 层已有配置编译/冻结 Plan、完整记录 Decode/Encode、Binary/ASCII 有界 Framing、Integrity 以及 Host 绑定等内部切片；具体契约和验证入口见 [仓库文档索引](docs/README.md)。
-- Qt Lab 可观察 ASCII `0.10/0.11` 路径；Binary Host UI 当前只开放 Schema `0.9` 完整记录 Decode。Binary Encode、Submit/Continue 和流式能力已存在于非 Qt 底层，但尚未接入 Binary UI。
+- Qt Lab 已接入 Binary 完整记录 Decode/Encode 及 G2 流式 Submit/Continue/Reset，并提供中文左右工作台。最新本地体验候选为 `deliverables/lab/fa81329/common-release`；该仓库内构建仍使用旧 ASCII/legacy 兼容路径，不等于全部公开路径或 installed-SDK 验证。SDK 及旧 standalone Lab 保持 `98df5e0` 独立身份，详见统一本地交付入口。
 - 当前成果定位为限定内部试用。Windows 自动化、人工 Lab、Loopback、Golden、硬件、现场和生产验收是不同证据层级，不能相互替代。
 - 仓库内开发构建仍以 [`windows-msvc-pae-lab`](#1-开发树构建)为入口；现有 SDK 候选消费和完整 Qt Lab standalone 构建分别见下方第 2、3 条路径。
 - 完整 Qt Lab 已完成基于同一 `98df5e0` clean-checkpoint SDK 的 static/shared Debug/Release 本地仓库外闭包验证；这不是稳定 ABI、Linux、正式分发或人工 UI 验收证据。

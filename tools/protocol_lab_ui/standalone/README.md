@@ -1,5 +1,7 @@
 # Protocol Lab installed-SDK standalone validation
 
+本页既有 clean-checkpoint 验证身份为 `98df5e0`。最新 G1/G2 仓库构建体验另见 [统一交付入口](../../../deliverables/README.md)，不能将其复制归集当作本页 standalone 组合已重新验证。
+
 This entry builds the complete Qt Lab from the copied Lab whitelist, one installed static or shared PAE SDK,
 the fixed Qt 5.13 input and the locked Lab-owned yyjson dependency. It never adds the PAE source
 tree as a subdirectory and links Lab targets only to `PAE::pae`.

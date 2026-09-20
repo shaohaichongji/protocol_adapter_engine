@@ -8,18 +8,18 @@
 
 - Windows x64；
 - 本机仓库位于 `F:\PersonalWorkspace\协议解析拼接工具\protocol_adapter_engine`；
-- `deliverables/lab/98df5e0` 已存在。该目录被 Git 忽略，仅 clone 仓库不会自动获得产物。
+- `deliverables/lab/fa81329/common-release` 已存在。该目录被 Git 忽略，仅 clone 仓库不会自动获得产物。
 
 ## 读完能做什么
 
 读完后可以从正确的完整部署目录启动 Lab、选择合适的公开配置做一次离线观察，并知道哪些结果只是 UI 体验、哪些需要后续 SDK 或真实设备验证。
 
-## 1. 启动已核验的 static Release
+## 1. 启动最新功能体验候选
 
-普通本地体验优先使用 static Release：
+普通本地体验优先使用 G2-C common Release。它是既有仓库内构建的哈希一致复制，并非新一次构建或 installed-SDK 验证；ASCII/legacy 仍用兼容路径。旧 `98df5e0` standalone 对照入口与 SDK 保持不变，见 [统一交付入口](../../deliverables/README.md)。
 
 ```powershell
-$LabRoot = 'F:\PersonalWorkspace\协议解析拼接工具\protocol_adapter_engine\deliverables\lab\98df5e0\static-release'
+$LabRoot = 'F:\PersonalWorkspace\协议解析拼接工具\protocol_adapter_engine\deliverables\lab\fa81329\common-release'
 & "$LabRoot\pae_protocol_lab_ui.exe"
 ```
 
@@ -49,6 +49,7 @@ $LabRoot = 'F:\PersonalWorkspace\协议解析拼接工具\protocol_adapter_engin
 | ASCII 完整记录 | `configs/synthetic_ascii_text_slice.pae.json` | Schema 0.10 Decode/Encode |
 | ASCII CRLF 分块流 | `configs/synthetic_ascii_stream_slice.pae.json` | Schema 0.11 流式路径 |
 | Binary 多类型字段 | `configs/synthetic_binary_ui_stage1.pae.json` | Schema 0.9 完整记录 Decode |
+| Binary 分块流 | `configs/synthetic_stream_framing_slice.pae.json` | G2 Submit/Continue/Reset；继续可用时输入框只读 |
 
 这些配置全部是从零构造的合成协议，不对应真实设备。`synthetic_ui_max.pae.json` 用于资源上界观察，不适合第一次阅读。
 
@@ -56,15 +57,15 @@ $LabRoot = 'F:\PersonalWorkspace\协议解析拼接工具\protocol_adapter_engin
 
 第一次建议只做下面这一条 Binary 完整记录，不需要立即执行全部验收清单：
 
-1. 点击 `Browse...`，选择完整路径 `F:\PersonalWorkspace\协议解析拼接工具\protocol_adapter_engine\deliverables\lab\98df5e0\static-release\configs\synthetic_binary_ui_stage1.pae.json`；如尚未加载，点击 `Load / Reload`。
-2. 确认绑定草稿为 `device / Decode / ui_pipeline`，点击 `Apply binding table`。确认 `Active binding` 出现该绑定，选择 `Flow 0`，模式为 `Inspect`。
-3. 在 `Raw input` 中粘贴下面的 Hex，然后点击 `Inspect complete record`：
+1. 点击“浏览”，选择完整路径 `F:\PersonalWorkspace\协议解析拼接工具\protocol_adapter_engine\deliverables\lab\fa81329\common-release\configs\synthetic_binary_ui_stage1.pae.json`；如尚未加载，点击“加载 / 重新加载”。
+2. 在“绑定设置”中确认草稿为 `device / 解析 / ui_pipeline`，点击“应用绑定表”。返回“操作”，确认当前绑定，选择 `Flow 0`，当前动作为“解析”。
+3. 在“原始输入”中粘贴下面的 Hex，然后点击“解析完整记录”：
 
 ```text
 80 0D 03 00 01 00 CA FE 05 5A
 ```
 
-4. 预期显示 `typed_record`、成功 9 个字段；其中 `count=1`、`payload=CAFE`、`marker=90`。选中 `payload` 行，底部 Hex 中的 `CA FE` 应高亮。这是一次观察，不是生产验收。
+4. 预期显示 `typed_record`、成功 9 个字段；其中 `count=1`、`payload=CAFE`、`marker=90`。选中 `payload` 行，在右下“报文字节”页查看 `CA FE` 高亮。这是一次观察，不是生产验收。
 5. 完成后可以直接关闭程序；若询问是否丢弃本次状态，在不需要保留输入时确认即可。
 
 以下是扩展到其他配置时的阅读要点，不是本次体验必须逐条完成的操作清单：
@@ -72,7 +73,7 @@ $LabRoot = 'F:\PersonalWorkspace\协议解析拼接工具\protocol_adapter_engin
 1. 从 Lab 打开上述配置之一；先看 Compile 结果和配置摘要，不要先接通信设备。
 2. 对 ASCII 0.10 配置，使用配置中定义的完整记录格式观察 Decode，再填写 Encode 所需输入观察输出字节。
 3. 对 ASCII 0.11 配置，区分“输入分块”“形成候选”和“候选 Decode 成功”三个事实。
-4. 对 Binary 0.9 配置，只验证当前 UI 提供的完整记录 Decode；UI 没有 Binary Encode/stream 入口是当前产品边界，不等于非 Qt API 没有这些能力。
+4. Binary 完整组包需选择支持 Encode 的配置及绑定；流式请用上表 framing 配置。输入块形成候选后，“继续”只消费已冻结后缀/内部状态，不读取新编辑草稿；可继续时编辑框只读。首次体验无需重跑专项验收。
 5. 需要保存字段、候选帧或输出字节时，在宿主代码的同步 callback 内复制；不要把 Lab 展示对象的寿命假设带入 SDK。
 
 ```mermaid

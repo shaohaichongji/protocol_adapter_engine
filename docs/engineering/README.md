@@ -4,6 +4,8 @@
 
 ## 1. 先按目的选择入口
 
+2026-09-20：最新体验 Lab 已归集，见 [G2 交付记录](lab-g2-delivery-candidate-20260920.md)；SDK 身份保持不变，见 [仓库/SDK 审计](pae-repository-sdk-audit-20260920.md)。本轮清理范围见 [产物盘点](pae-artifact-cleanup-inventory-20260920.md)。旧 G1 预检和图形覆盖盘点中的“尚未接入”是历史状态，不覆盖已完成的 G1/G2。
+
 | 目的 | 先读 |
 | --- | --- |
 | 理解 PAE/Lab 职责 | [PAE / Lab 职责与独立交付边界](pae-lab-delivery-boundary.md) |

@@ -1,6 +1,10 @@
 # DEC-040 后续推进路线与当前状态
 
-## 当前入口（2026-09-19）
+## 当前入口（2026-09-20）
+
+G1 Binary 组包、G2 Binary 流式及中文左右工作台已完成限定验证，检查点 `fa81329` 已提交推送。最新本地体验候选与 `98df5e0` SDK/standalone 对照包分别维护，见 [交付入口](../../deliverables/README.md)。本轮仅整理入口和执行获批产物清理，不扩展功能；最新进度以综合计划和清理执行报告为准。
+
+### 2026-09-19 历史入口
 
 下方为历史派发过程，不作为当前状态。当前 SDK/Lab 已完成同批 98df5e0 本地消费验证与 deliverables 归集；获批 99 个产物根已清理，六篇中文指南和阅读导航已整理。清理范围见 [执行记录](generated-artifact-cleanup-execution-20260919.md)，使用见 [统一交付入口](../../deliverables/README.md)。后续推进 Lab 公开能力图形入口覆盖；具体实施与授权以 [综合计划](pae-execution-delivery-organization-plan.md) 最上方为准。
 

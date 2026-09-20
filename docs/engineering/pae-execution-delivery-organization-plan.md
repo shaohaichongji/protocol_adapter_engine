@@ -5,6 +5,56 @@
 
 ## 顺序与出口
 
+### 最新限定收口：编辑提交与中文展示 smoke 修复（2026-09-20）
+
+总控已复核实际 document_tab.cpp 差异及 annotations-fix 下 D/R 测试日志：三个过期英文展示期望已同步中文，八项独立固定期望保留，失败提示可定位字段/列；真实 Return/FocusOut 路径保留，未改生产 delegate/model/session 或 EncodeCurrent。Debug 与 Release 两项均 2/2 PASS，本片限定收口；未重跑全量、人工 UI 或 SDK 消费，不升级为整体发布验证。证据见 lab-editor-commit-repair-20260920.md 第 7 节。执行任务停止，无 Stage/Commit/Push 或部署替换。下一步建议汇总累计命名整理、清理入口及 smoke 修复形成提交候选，提交另行授权。
+
+### 当前授权：ASCII 展示断言同步及两项 D/R（2026-09-20）
+
+用户授权限定同步过期中文展示期望并细分失败诊断。Lab 独占 document_tab.cpp 的 VerifyAsciiForSmoke 展示检查及原 repair 报告追加，不改产品逻辑、不削弱语义断言；保留真实 Enter/FocusOut 修复。复用 windows-msvc-lab-editor-commit-repair-20260920 构建根增量构建 D/R，日志新增于同名 validation 根 annotations-fix 子目录，旧日志保留。严格仅运行 qt_smoke_ascii/qt_smoke_v08 两项 D/R；遇到范围外失败停报。其他任务不派工作，无 Stage/Commit/Push、部署替换、删除或人工验收。
+
+### 最新回收：编辑提交修复通过对应 Debug 阶段，后续断言停报（2026-09-20）
+
+总控已核对 document_tab.cpp 差异及 debug-targeted-tests.log：修改仅限两处 smoke 方法，ASCII Return 的 model/session/TX 输出检查通过，v0.8 真实 FocusOut 整项通过。Debug 两项合计 1/2；ASCII 在后续 Inspect annotations 断言失败。静态核对发现该断言仍比较英文 decoded/not referenced，而 field_table_model.cpp 已输出中文“解析结果/未引用”，存在明确的测试期望滞后；其余子条件是否全部通过尚未验证。D/R 应用构建成功，Release 测试按停点未运行。Lab 已停止，不扩修、不提交、不替换部署；证据见 lab-editor-commit-repair-20260920.md。下一步建议只同步该 smoke 的中文展示期望并补精确失败诊断，再补两项 D/R，待授权。
+
+### 当前授权：两处编辑提交 smoke 驱动修复（2026-09-20）
+
+用户授权依据lab-editor-commit-diagnosis-20260920.md的最小修复。Lab独占document_tab.cpp两处smoke方法及必要smoke-only辅助：ASCII实际发送Enter并分开核对model/session/Encode；v0.8建立并断言editor焦点，再真实转移至按钮触发FocusOut。不得直接setModelData绕过事件、改delegate/model/session/Encode生产逻辑或把FocusOut改Enter。新构建windows-msvc-lab-editor-commit-repair-20260920与证据lab-editor-commit-repair-20260920，D/R只跑两项定向smoke；失败停报，不扩修。唯一新报告同名repair，保护旧产物，其他任务停止，无Git写操作/部署替换/额外清理/人工验收。
+
+### 当前执行：两项编辑提交失败的归因（2026-09-20）
+
+用户同意先定位ASCII Enter与v0.8失焦提交，Lab独占只读跟踪源码和隔离最小Qt复现；仅新lab-editor-commit-diagnosis-20260920报告及out诊断/构建根。不改跟踪业务源码/CMake，不重建完整应用，若必须插桩先停报。分别核对隐藏窗口focus、delegate事件、model提交和Encode时序，不以直接setModelData替代真实事件证明。保留现用部署和所有未提交变更，无Git写操作/额外清理/人工验收；其他任务停止，诊断回收再决定修复范围。
+
+### 最新限定收口：Qt smoke 启动与 CRT 诊断（2026-09-20）
+
+总控核对CTest部署闭包、windows平台key、smoke-only诊断与真实CRT断言包装测试：Debug断言子进程退出1且不继续执行，普通Binary smoke再次1/1通过，现存日志可追溯。此前Debug window组6/8通过，ASCII Enter和v0.8失焦提交两项仍未归因，不视为已证实产品缺陷；Release smoke及旧基线对照未运行。断言日志中文路径存在乱码，表达式/失败码可识别，编码完善后置。启动/诊断片限定收口，不等于全UI通过；见protocol-metadata-qt-smoke-repair-20260920.md。所有任务停止，无Stage/Commit/Push或部署替换。
+
+### 当前授权：Qt smoke 启动闭包与诊断修整（2026-09-20）
+
+用户授权限定修复测试入口和诊断，不扩业务功能。《Lab应用推进》独占 tests/protocol_lab_ui/CMakeLists.txt、tools/protocol_lab_ui/main.cpp及必要同目录测试诊断辅助文件，新报告protocol-metadata-qt-smoke-repair-20260920.md。普通启动不变，仅明确--ui-smoke时在QApplication创建前配置进程内CRT/错误输出，保留断言及非零失败状态，不能吞错或跳过断言。CTest使用匹配配置完整Qt部署闭包/qwindows，不使用缺失offscreen，不改系统环境或Qt。新构建/证据根windows-msvc-qt-smoke-repair-20260920与qt-smoke-repair-20260920，保护既有产物。先单例捕获诊断，若暴露业务缺陷停报；无缺陷再定向D/R，不反复跑崩溃。旧产物若无法安全无对话框对照，明确限制并停报，不修改旧部署或自行重建旧基线。其他任务停止，无Git写操作、SDK重打包、部署替换或删除授权。
+
+### 当前执行：命名整理后的 Qt smoke 缺口诊断（2026-09-20）
+
+用户同意继续推进。《Lab应用推进》独占只读源码/产物及限定隐藏测试，先查CTest启动环境、DLL/plugin闭包和两组配置差异，再做最多一轮当前/旧部署D/R对照，完整落盘命令/环境/身份/输出/退出码。新证据根protocol-metadata-qt-smoke-diagnosis-20260920及同名工程报告；PAE/工程整理停止。不同构建同退出码不能证明无回归。不得盲用缺失offscreen插件，不改源码/系统Qt/旧部署，不重建或无限重跑；需要功能修复或新构建先停报。无Git写操作、SDK重打包、部署替换或删除授权。
+
+### 最新限定收口：协议元数据内部命名（2026-09-20）
+
+ui_description已迁移为protocol_metadata，直接调用/CMake/SDK白名单同步；总控核对核心映射、消费者差异和现存D/R各31/31日志，公开头/Schema/根CMake无差异。整文件格式化噪声已返修，不新增人工验收。完整应用qt_smoke_binary_stage1失败及缺失基线对照日志仍是未关闭验证项，不能宣称排除回归；详见 [验证报告](protocol-metadata-naming-validation-20260920.md)。执行任务停止，旧SDK/部署未替换，全部累积变更未Stage/Commit/Push。
+
+### 当前执行：协议元数据内部命名整理（2026-09-20）
+
+用户同意 ui_description 职责纠偏，保留协议元数据而非剔除。精确映射、写入范围与专项验证见 [命名整理计划](protocol-metadata-naming-plan-20260920.md)。《子任务推进》独占实现与直接消费者引用，Lab/工程整理停止；总控维护入口。公开API/Schema、执行语义和既有部署不变，不改测试探针机制、不重打SDK、无Git写操作；保留上一轮全部未提交文档。
+
+### 最新收口：交付入口与精确清理（2026-09-20）
+
+获批9根已删除（含空src/core），删除前逻辑长度5.952 GiB；保留149份最小证据。总控独立核对9根不存在、149份归集文件及501份SDK/Lab保护文件长度/Hash匹配，G2前后元数据JSON一致。见 [清理执行记录](generated-artifact-cleanup-execution-20260920.md)。入口与指南已同步：最新Lab功能体验fa81329/common-release，SDK和旧standalone保持98df5e0；17项候选manifest复算通过。没有重新构建、启动UI或测试，不新增功能或发布声明。各执行任务停止，文档变更未Stage/Commit/Push；下方为历史过程。
+
+### 当前执行：交付入口统一与清理盘点（2026-09-20）
+
+执行更新：用户已授权盘点第6节六个历史产物根在证据归集/Hash校验后删除，以及两个空out根和空src/core，共9根。《PAE工程整理》独占执行与新清理报告，总控独占入口同步；G2、SDK、所有现有deliverables、Qt、私有输入及其他项目保护。最新Lab17项manifest已由总控复算匹配；入口区分fa81329既有common构建与98df5e0 SDK/standalone，不冒充重新构建或新模块运行验证。下段为本轮最初派发记录，删除完成以执行报告为准；无Stage/Commit/Push授权。
+
+用户同意优先统一当前交付并检查外部PAE/out产物及仓库空旧目录。基线fa81329已推送；Lab独占新deliverables/lab/fa81329/common-release归集及lab-g2-delivery-candidate-20260920.md，不覆盖旧包、不冒充SDK消费；工程整理只读PAE外部/out产物，仅写pae-artifact-cleanup-inventory-20260920.md；PAE只读产品差异/源树空旧目录，仅写pae-repository-sdk-audit-20260920.md。三者并行不交叉写，总控回收后串行同步统一入口并给出精确删除清单。清理尚未执行；保护Qt、私有输入、现用包、G2构建证据与其他项目，删除另行确认。无新Git写操作/发布授权，不新增功能或整套测试。
+
 ### 最新收口：G2-C Binary 流式 Session/UI（2026-09-20）
 
 用户确认三组短体验全部符合、Lab已关闭，本片限定收口。人工范围为fixed_rx分块、粘包继续、Flow/Reset隔离；继续可用时输入框只读，原“人工改FF”步骤已纠正，不能用程序setPlainText测试宣称人工可编辑。准确范围与未验证见G2-C validation第6节。下一步建议整理G2-A/B/C累积变更的提交候选，尚未授权Stage/Commit/Push，不自动派新功能。
