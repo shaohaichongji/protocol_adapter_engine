@@ -45,8 +45,8 @@ inline std::unique_ptr<CompileCompletion> CompileFixture(DocumentId document_id,
 #if defined(PAE_BUILD_PROTOCOL_LAB_PUBLIC_LEGACY_COMPLETE)
   auto result = pae::CompileProtocolJson(text);
 #else
-  auto result = config_compiler::CompileJsonToPlanWithUiDescription(
-      text, config_compiler::DerivedUiDescriptionMemoryLimit(
+  auto result = config_compiler::CompileJsonToPlanWithMetadata(
+      text, config_compiler::DerivedProtocolMetadataMemoryLimit(
                 protocol_plan::ResourceProfile::DESKTOP));
 #endif
   auto completion = std::make_unique<CompileCompletion>();
@@ -66,7 +66,7 @@ inline std::unique_ptr<CompileCompletion> CompileFixture(DocumentId document_id,
   }
 #else
   if (result.Succeeded()) {
-    completion->artifacts = std::make_unique<config_compiler::CompiledUiArtifacts>(
+    completion->artifacts = std::make_unique<config_compiler::CompiledProtocolArtifacts>(
         std::move(result).TakeArtifacts());
   } else if (result.Diagnostic() != nullptr) {
     completion->diagnostic = *result.Diagnostic();

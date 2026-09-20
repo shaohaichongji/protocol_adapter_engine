@@ -94,13 +94,11 @@ struct Selection {
 // No mutable Session/Plan escape. Execution bytes are already parsed. Drafts are opaque UTF16.
 class PreparedBinary final {
  public:
-  static std::unique_ptr<PreparedBinary> Create(config_compiler::CompiledUiArtifacts artifacts,
-                                                const host_endpoint::BindingSpec* bindings,
-                                                std::size_t count, Revisions revisions = {},
-                                                const Limits& limits = {},
-                                                const DescriptionLimits& description_limits = {},
-                                                const ResourceLimits& resource_limits = {},
-                                                const PreparedBinary* previous = nullptr);
+  static std::unique_ptr<PreparedBinary> Create(
+      config_compiler::CompiledProtocolArtifacts artifacts,
+      const host_endpoint::BindingSpec* bindings, std::size_t count, Revisions revisions = {},
+      const Limits& limits = {}, const DescriptionLimits& description_limits = {},
+      const ResourceLimits& resource_limits = {}, const PreparedBinary* previous = nullptr);
   const OwnedDescription& Description() const noexcept { return description_; }
   std::uint64_t Instance() const noexcept { return instance_; }
   std::size_t BindingCount() const noexcept { return bindings_.size(); }

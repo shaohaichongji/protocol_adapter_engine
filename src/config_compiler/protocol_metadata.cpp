@@ -5,7 +5,7 @@
 #include <type_traits>
 #include <utility>
 
-#include "ui_description_internal.h"
+#include "protocol_metadata_internal.h"
 
 namespace pae::config_compiler {
 namespace {
@@ -36,7 +36,7 @@ static_assert(std::is_trivially_destructible_v<MessageMetadata>);
 static_assert(std::is_trivially_destructible_v<FieldMetadata>);
 static_assert(std::is_trivially_destructible_v<EnumMetadata>);
 
-thread_local UiDescriptionTestProbe* g_test_probe = nullptr;
+thread_local ProtocolMetadataTestProbe* g_test_probe = nullptr;
 
 bool CheckedAdd(std::size_t left, std::size_t right, std::size_t& result) noexcept {
   if (right > (std::numeric_limits<std::size_t>::max)() - left) {
@@ -80,7 +80,7 @@ bool AddArrayRegion(std::size_t count, std::size_t& cursor, std::size_t& object_
   return true;
 }
 
-bool CalculateLayout(const UiDescriptionLayoutTestInput& input,
+bool CalculateLayout(const ProtocolMetadataLayoutTestInput& input,
                      DescriptionLayout& layout) noexcept {
   layout = {};
   std::size_t cursor = 0U;
@@ -120,15 +120,15 @@ bool CalculateLayout(const UiDescriptionLayoutTestInput& input,
   return true;
 }
 
-bool TouchProbe(std::size_t UiDescriptionTestProbe::* counter) noexcept {
+bool TouchProbe(std::size_t ProtocolMetadataTestProbe::* counter) noexcept {
   if (g_test_probe == nullptr) {
     return true;
   }
   ++(g_test_probe->*counter);
   return !g_test_probe->fail_if_touched &&
          !(g_test_probe->fail_storage_allocation &&
-           counter == &UiDescriptionTestProbe::storage_allocation_count) &&
-         !(g_test_probe->fail_index_audit && counter == &UiDescriptionTestProbe::index_audit_count);
+           counter == &ProtocolMetadataTestProbe::storage_allocation_count) &&
+         !(g_test_probe->fail_index_audit && counter == &ProtocolMetadataTestProbe::index_audit_count);
 }
 
 CompileDiagnostic InternalDiagnostic(std::string detail) {
@@ -140,7 +140,7 @@ bool AddStringSize(const std::string& value, std::size_t& total) noexcept {
   return CheckedAdd(total, value.size(), total);
 }
 
-bool CountSchema(const SchemaIr& schema, UiDescriptionLayoutTestInput& input) noexcept {
+bool CountSchema(const SchemaIr& schema, ProtocolMetadataLayoutTestInput& input) noexcept {
   input = {};
   input.pipeline_count = schema.pipelines.size();
   input.message_count = schema.messages.size();
@@ -230,7 +230,7 @@ bool ReportsEqual(const DescriptionMemoryReport& left,
 
 }  // namespace
 
-void UiDescriptionSidecar::StorageDeleter::operator()(std::byte* storage) const noexcept {
+void ProtocolMetadataStorage::StorageDeleter::operator()(std::byte* storage) const noexcept {
   delete[] storage;
   if (storage == nullptr || test_probe == nullptr) {
     return;
@@ -247,32 +247,32 @@ void UiDescriptionSidecar::StorageDeleter::operator()(std::byte* storage) const 
   test_probe->released_accounted_bytes += accounted_bytes;
 }
 
-const ProtocolMetadata& UiDescriptionSidecar::Protocol() const noexcept {
+const ProtocolMetadata& ProtocolMetadataStorage::Protocol() const noexcept {
   const DescriptionHeader* header = reinterpret_cast<const DescriptionHeader*>(storage_.get());
   return *At<ProtocolMetadata>(storage_.get(), header->protocol_offset);
 }
 
-DescriptionArrayView<PipelineMetadata> UiDescriptionSidecar::Pipelines() const noexcept {
+DescriptionArrayView<PipelineMetadata> ProtocolMetadataStorage::Pipelines() const noexcept {
   const DescriptionHeader* header = reinterpret_cast<const DescriptionHeader*>(storage_.get());
   return {At<PipelineMetadata>(storage_.get(), header->pipeline_offset), header->pipeline_count};
 }
 
-DescriptionArrayView<MessageMetadata> UiDescriptionSidecar::Messages() const noexcept {
+DescriptionArrayView<MessageMetadata> ProtocolMetadataStorage::Messages() const noexcept {
   const DescriptionHeader* header = reinterpret_cast<const DescriptionHeader*>(storage_.get());
   return {At<MessageMetadata>(storage_.get(), header->message_offset), header->message_count};
 }
 
-DescriptionArrayView<FieldMetadata> UiDescriptionSidecar::Fields() const noexcept {
+DescriptionArrayView<FieldMetadata> ProtocolMetadataStorage::Fields() const noexcept {
   const DescriptionHeader* header = reinterpret_cast<const DescriptionHeader*>(storage_.get());
   return {At<FieldMetadata>(storage_.get(), header->field_offset), header->field_count};
 }
 
-DescriptionArrayView<EnumMetadata> UiDescriptionSidecar::Enums() const noexcept {
+DescriptionArrayView<EnumMetadata> ProtocolMetadataStorage::Enums() const noexcept {
   const DescriptionHeader* header = reinterpret_cast<const DescriptionHeader*>(storage_.get());
   return {At<EnumMetadata>(storage_.get(), header->enum_offset), header->enum_count};
 }
 
-std::string_view UiDescriptionSidecar::Resolve(DescriptionStringSpan span) const noexcept {
+std::string_view ProtocolMetadataStorage::Resolve(DescriptionStringSpan span) const noexcept {
   std::size_t end = 0U;
   if (storage_ == nullptr || !CheckedAdd(span.offset, span.size, end) || end > storage_size_) {
     return {};
@@ -280,27 +280,27 @@ std::string_view UiDescriptionSidecar::Resolve(DescriptionStringSpan span) const
   return {reinterpret_cast<const char*>(storage_.get() + span.offset), span.size};
 }
 
-std::size_t DerivedUiDescriptionMemoryLimit(ResourceProfile resource_profile) noexcept {
+std::size_t DerivedProtocolMetadataMemoryLimit(ResourceProfile resource_profile) noexcept {
   const protocol_plan::ResourceProfileLimits* limits =
       protocol_plan::GetResourceProfileLimits(resource_profile);
   if (limits == nullptr) {
     return 0U;
   }
   DescriptionLayout layout;
-  const UiDescriptionLayoutTestInput maximum{
+  const ProtocolMetadataLayoutTestInput maximum{
       limits->max_pipelines, limits->max_messages, limits->max_total_fields,
       limits->max_total_enum_entries, kCompilerDecodedStringHardLimitBytes};
   return CalculateLayout(maximum, layout) ? layout.report.accounted_total_bytes : 0U;
 }
 
-ScopedUiDescriptionTestProbe::ScopedUiDescriptionTestProbe(UiDescriptionTestProbe& probe) noexcept
+ScopedProtocolMetadataTestProbe::ScopedProtocolMetadataTestProbe(ProtocolMetadataTestProbe& probe) noexcept
     : previous_(g_test_probe) {
   g_test_probe = &probe;
 }
 
-ScopedUiDescriptionTestProbe::~ScopedUiDescriptionTestProbe() { g_test_probe = previous_; }
+ScopedProtocolMetadataTestProbe::~ScopedProtocolMetadataTestProbe() { g_test_probe = previous_; }
 
-bool EstimateUiDescriptionLayoutForTest(const UiDescriptionLayoutTestInput& input,
+bool EstimateProtocolMetadataLayoutForTest(const ProtocolMetadataLayoutTestInput& input,
                                         DescriptionMemoryReport& report) noexcept {
   DescriptionLayout layout;
   if (!CalculateLayout(input, layout)) {
@@ -311,7 +311,7 @@ bool EstimateUiDescriptionLayoutForTest(const UiDescriptionLayoutTestInput& inpu
   return true;
 }
 
-bool UiDescriptionPlanFreezeAllowedForTest(CompileDiagnostic& diagnostic) {
+bool ProtocolMetadataPlanFreezeAllowedForTest(CompileDiagnostic& diagnostic) {
   if (g_test_probe == nullptr) {
     return true;
   }
@@ -325,59 +325,59 @@ bool UiDescriptionPlanFreezeAllowedForTest(CompileDiagnostic& diagnostic) {
   return false;
 }
 
-bool UiDescriptionBuilder::Build(const BudgetedSchemaIr& budgeted, std::size_t memory_limit_bytes,
-                                 UiDescriptionSidecar& sidecar, CompileDiagnostic& diagnostic) {
-  sidecar = {};
-  if (!TouchProbe(&UiDescriptionTestProbe::layout_count)) {
-    diagnostic = InternalDiagnostic("test probe rejected UI description layout");
+bool ProtocolMetadataBuilder::Build(const BudgetedSchemaIr& budgeted, std::size_t memory_limit_bytes,
+                                 ProtocolMetadataStorage& metadata, CompileDiagnostic& diagnostic) {
+  metadata = {};
+  if (!TouchProbe(&ProtocolMetadataTestProbe::layout_count)) {
+    diagnostic = InternalDiagnostic("test probe rejected protocol metadata layout");
     return false;
   }
   if (budgeted.validated_ == nullptr || budgeted.validated_->payload_ == nullptr) {
-    diagnostic = InternalDiagnostic("moved-from budgeted schema used for UI description");
+    diagnostic = InternalDiagnostic("moved-from budgeted schema used for protocol metadata");
     return false;
   }
   const SchemaIr& schema = budgeted.validated_->payload_->schema;
-  UiDescriptionLayoutTestInput input;
+  ProtocolMetadataLayoutTestInput input;
   DescriptionLayout layout;
   if (!CountSchema(schema, input) || !CalculateLayout(input, layout)) {
-    diagnostic = InternalDiagnostic("UI description layout overflowed");
+    diagnostic = InternalDiagnostic("protocol metadata layout overflowed");
     return false;
   }
-  const std::size_t derived_limit = DerivedUiDescriptionMemoryLimit(schema.resource_profile);
+  const std::size_t derived_limit = DerivedProtocolMetadataMemoryLimit(schema.resource_profile);
   const std::size_t effective_limit = (std::min)(memory_limit_bytes, derived_limit);
   if (derived_limit == 0U || layout.report.accounted_total_bytes > effective_limit) {
     diagnostic = CompileDiagnostic{CompileStage::RESOURCE_BUDGET,
                                    CompileError::RESOURCE_LIMIT_EXCEEDED,
                                    "",
                                    std::nullopt,
-                                   "accounted UI description memory exceeds the selected limit",
+                                   "accounted protocol metadata memory exceeds the selected limit",
                                    ResourceKind::UI_DESCRIPTION_ACCOUNTED_MEMORY,
                                    layout.report.accounted_total_bytes,
                                    effective_limit,
                                    schema.resource_profile};
     return false;
   }
-  if (!TouchProbe(&UiDescriptionTestProbe::storage_allocation_count)) {
+  if (!TouchProbe(&ProtocolMetadataTestProbe::storage_allocation_count)) {
     diagnostic = CompileDiagnostic{CompileStage::INTERNAL, CompileError::COMPILER_ALLOCATION_FAILED,
                                    "", std::nullopt,
-                                   "test probe injected UI description storage allocation failure"};
+                                   "test probe injected protocol metadata storage allocation failure"};
     return false;
   }
   std::byte* raw_storage = new (std::nothrow) std::byte[layout.report.accounted_total_bytes];
   if (raw_storage == nullptr) {
     diagnostic = CompileDiagnostic{CompileStage::INTERNAL, CompileError::COMPILER_ALLOCATION_FAILED,
-                                   "", std::nullopt, "failed to allocate UI description storage"};
+                                   "", std::nullopt, "failed to allocate protocol metadata storage"};
     return false;
   }
-  UiDescriptionTestProbe* lifetime_probe =
+  ProtocolMetadataTestProbe* lifetime_probe =
       g_test_probe != nullptr && g_test_probe->track_storage_lifetime ? g_test_probe : nullptr;
   if (lifetime_probe != nullptr) {
     ++lifetime_probe->live_storage_count;
     lifetime_probe->live_accounted_bytes += layout.report.accounted_total_bytes;
   }
-  UiDescriptionSidecar::StorageOwner storage{
+  ProtocolMetadataStorage::StorageOwner storage{
       raw_storage,
-      UiDescriptionSidecar::StorageDeleter{lifetime_probe, layout.report.accounted_total_bytes}};
+      ProtocolMetadataStorage::StorageDeleter{lifetime_probe, layout.report.accounted_total_bytes}};
   DescriptionHeader* header = ::new (storage.get()) DescriptionHeader(layout.header);
   auto* protocol =
       ::new (At<ProtocolMetadata>(storage.get(), header->protocol_offset)) ProtocolMetadata{};
@@ -397,8 +397,8 @@ bool UiDescriptionBuilder::Build(const BudgetedSchemaIr& budgeted, std::size_t m
   for (std::size_t index = 0U; index < header->enum_count; ++index) {
     ::new (enums + index) EnumMetadata{};
   }
-  if (!TouchProbe(&UiDescriptionTestProbe::metadata_copy_count)) {
-    diagnostic = InternalDiagnostic("test probe rejected UI description metadata copy");
+  if (!TouchProbe(&ProtocolMetadataTestProbe::metadata_copy_count)) {
+    diagnostic = InternalDiagnostic("test probe rejected protocol metadata copy");
     return false;
   }
   std::size_t string_cursor = header->string_offset;
@@ -439,29 +439,29 @@ bool UiDescriptionBuilder::Build(const BudgetedSchemaIr& budgeted, std::size_t m
   }
   if (string_cursor != layout.report.accounted_total_bytes || field_cursor != header->field_count ||
       enum_cursor != header->enum_count) {
-    diagnostic = InternalDiagnostic("UI description estimate and final write differ");
+    diagnostic = InternalDiagnostic("protocol metadata estimate and final write differ");
     return false;
   }
-  sidecar =
-      UiDescriptionSidecar{std::move(storage), layout.report.accounted_total_bytes, layout.report};
+  metadata =
+      ProtocolMetadataStorage{std::move(storage), layout.report.accounted_total_bytes, layout.report};
   return true;
 }
 
-bool UiDescriptionBuilder::Audit(const protocol_plan::PlanBundle& plan,
-                                 const UiDescriptionSidecar& sidecar,
+bool ProtocolMetadataBuilder::Audit(const protocol_plan::PlanBundle& plan,
+                                 const ProtocolMetadataStorage& metadata,
                                  CompileDiagnostic& diagnostic) {
-  if (!TouchProbe(&UiDescriptionTestProbe::index_audit_count)) {
-    diagnostic = InternalDiagnostic("test probe rejected UI description index audit");
+  if (!TouchProbe(&ProtocolMetadataTestProbe::index_audit_count)) {
+    diagnostic = InternalDiagnostic("test probe rejected protocol metadata index audit");
     return false;
   }
-  if (sidecar.empty()) {
-    diagnostic = InternalDiagnostic("UI description storage is empty during index audit");
+  if (metadata.empty()) {
+    diagnostic = InternalDiagnostic("protocol metadata storage is empty during index audit");
     return false;
   }
   const DescriptionHeader* header =
-      reinterpret_cast<const DescriptionHeader*>(sidecar.storage_.get());
+      reinterpret_cast<const DescriptionHeader*>(metadata.storage_.get());
   DescriptionLayout expected_layout;
-  const UiDescriptionLayoutTestInput expected_input{header->pipeline_count, header->message_count,
+  const ProtocolMetadataLayoutTestInput expected_input{header->pipeline_count, header->message_count,
                                                     header->field_count, header->enum_count,
                                                     header->string_size};
   if (!CalculateLayout(expected_input, expected_layout) ||
@@ -471,48 +471,48 @@ bool UiDescriptionBuilder::Audit(const protocol_plan::PlanBundle& plan,
       header->field_offset != expected_layout.header.field_offset ||
       header->enum_offset != expected_layout.header.enum_offset ||
       header->string_offset != expected_layout.header.string_offset ||
-      sidecar.storage_size_ != expected_layout.report.accounted_total_bytes ||
-      !ReportsEqual(sidecar.memory_report_, expected_layout.report)) {
-    diagnostic = InternalDiagnostic("UI description storage layout differs from its report");
+      metadata.storage_size_ != expected_layout.report.accounted_total_bytes ||
+      !ReportsEqual(metadata.memory_report_, expected_layout.report)) {
+    diagnostic = InternalDiagnostic("protocol metadata storage layout differs from its report");
     return false;
   }
   const std::size_t string_begin = header->string_offset;
-  const std::size_t storage_size = sidecar.storage_size_;
-  if (sidecar.Pipelines().size() != plan.Pipelines().size() ||
-      sidecar.Messages().size() != plan.Messages().size() ||
-      sidecar.Fields().size() != plan.GetResourceRequirements().total_field_count ||
-      sidecar.Enums().size() != plan.GetResourceRequirements().total_enum_entry_count ||
-      !CommonSpansWithin(string_begin, storage_size, sidecar.Protocol())) {
-    diagnostic = InternalDiagnostic("Plan and UI description top-level indexes differ");
+  const std::size_t storage_size = metadata.storage_size_;
+  if (metadata.Pipelines().size() != plan.Pipelines().size() ||
+      metadata.Messages().size() != plan.Messages().size() ||
+      metadata.Fields().size() != plan.GetResourceRequirements().total_field_count ||
+      metadata.Enums().size() != plan.GetResourceRequirements().total_enum_entry_count ||
+      !CommonSpansWithin(string_begin, storage_size, metadata.Protocol())) {
+    diagnostic = InternalDiagnostic("Plan and protocol metadata top-level indexes differ");
     return false;
   }
-  for (const PipelineMetadata& pipeline : sidecar.Pipelines()) {
+  for (const PipelineMetadata& pipeline : metadata.Pipelines()) {
     if (!CommonSpansWithin(string_begin, storage_size, pipeline)) {
-      diagnostic = InternalDiagnostic("UI pipeline metadata span is outside storage");
+      diagnostic = InternalDiagnostic("Pipeline metadata span is outside storage");
       return false;
     }
   }
   std::size_t expected_field_begin = 0U;
   std::size_t expected_enum_begin = 0U;
-  for (std::size_t message_index = 0U; message_index < sidecar.Messages().size(); ++message_index) {
-    const MessageMetadata& message = sidecar.Messages()[message_index];
+  for (std::size_t message_index = 0U; message_index < metadata.Messages().size(); ++message_index) {
+    const MessageMetadata& message = metadata.Messages()[message_index];
     if (!CommonSpansWithin(string_begin, storage_size, message) ||
         message.field_begin != expected_field_begin ||
         message.field_count != plan.Messages()[message_index].fields.size() ||
-        !CheckedRange(message.field_begin, message.field_count, sidecar.Fields().size())) {
-      diagnostic = InternalDiagnostic("Plan and UI description message field indexes differ");
+        !CheckedRange(message.field_begin, message.field_count, metadata.Fields().size())) {
+      diagnostic = InternalDiagnostic("Plan and protocol metadata message field indexes differ");
       return false;
     }
     for (std::size_t field_offset = 0U; field_offset < message.field_count; ++field_offset) {
       const std::size_t field_index = message.field_begin + field_offset;
-      const FieldMetadata& field = sidecar.Fields()[field_index];
+      const FieldMetadata& field = metadata.Fields()[field_index];
       const auto& plan_field = plan.Messages()[message_index].fields[field_offset];
       if (!CommonSpansWithin(string_begin, storage_size, field) ||
           field.enum_begin != expected_enum_begin ||
           field.enum_count != plan_field.enum_entries.size() ||
-          !CheckedRange(field.enum_begin, field.enum_count, sidecar.Enums().size())) {
+          !CheckedRange(field.enum_begin, field.enum_count, metadata.Enums().size())) {
         diagnostic = InternalDiagnostic(
-            "Plan and UI description field enum indexes differ at message " +
+            "Plan and protocol metadata field enum indexes differ at message " +
             std::to_string(message_index) + ", field " + std::to_string(field_offset) +
             ": UI begin/count=" + std::to_string(field.enum_begin) + "/" +
             std::to_string(field.enum_count) +
@@ -522,7 +522,7 @@ bool UiDescriptionBuilder::Audit(const protocol_plan::PlanBundle& plan,
       }
       for (std::size_t enum_offset = 0U; enum_offset < field.enum_count; ++enum_offset) {
         if (!SpanWithin(string_begin, storage_size,
-                        sidecar.Enums()[field.enum_begin + enum_offset].display_name)) {
+                        metadata.Enums()[field.enum_begin + enum_offset].display_name)) {
           diagnostic = InternalDiagnostic("UI enum metadata span is outside storage");
           return false;
         }
@@ -531,9 +531,9 @@ bool UiDescriptionBuilder::Audit(const protocol_plan::PlanBundle& plan,
     }
     expected_field_begin += message.field_count;
   }
-  if (expected_field_begin != sidecar.Fields().size() ||
-      expected_enum_begin != sidecar.Enums().size()) {
-    diagnostic = InternalDiagnostic("UI description flat ranges are not exhaustive");
+  if (expected_field_begin != metadata.Fields().size() ||
+      expected_enum_begin != metadata.Enums().size()) {
+    diagnostic = InternalDiagnostic("protocol metadata flat ranges are not exhaustive");
     return false;
   }
   return true;

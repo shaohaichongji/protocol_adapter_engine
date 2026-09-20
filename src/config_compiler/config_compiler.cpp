@@ -24,8 +24,8 @@
 #include "../protocol_plan/plan_bundle.h"
 #include "../protocol_plan/plan_draft_internal.h"
 #include "../protocol_plan/plan_memory.h"
+#include "protocol_metadata_internal.h"
 #include "schema_ir.h"
-#include "ui_description_internal.h"
 #include "validation_pipeline_internal.h"
 
 namespace pae::config_compiler {
@@ -4461,45 +4461,45 @@ std::size_t JsonParserPoolUpperBoundForTest(std::size_t input_size) noexcept {
   return yyjson_read_max_memory_usage(input_size, kReadFlags);
 }
 
-CompileUiArtifactsResult CompileJsonToPlanWithUiDescription(
+CompileProtocolArtifactsResult CompileJsonToPlanWithMetadata(
     std::string_view json_bytes, std::size_t description_memory_limit_bytes) {
   try {
     ResourceBudgetResult budgeted = CompileJsonToBudgetedSchema(json_bytes, std::nullopt);
     if (!budgeted.Succeeded()) {
-      return CompileUiArtifactsResult::Failure(std::move(budgeted).TakeDiagnostic());
+      return CompileProtocolArtifactsResult::Failure(std::move(budgeted).TakeDiagnostic());
     }
     BudgetedSchemaIr budgeted_capability = std::move(budgeted).TakeCapability();
-    UiDescriptionSidecar sidecar;
+    ProtocolMetadataStorage metadata;
     CompileDiagnostic diagnostic;
-    if (!UiDescriptionBuilder::Build(budgeted_capability, description_memory_limit_bytes, sidecar,
-                                     diagnostic)) {
-      return CompileUiArtifactsResult::Failure(std::move(diagnostic));
+    if (!ProtocolMetadataBuilder::Build(budgeted_capability, description_memory_limit_bytes,
+                                        metadata, diagnostic)) {
+      return CompileProtocolArtifactsResult::Failure(std::move(diagnostic));
     }
     PlanDraftAssemblyResult assembled =
         PlanDraftAssembler::Assemble(std::move(budgeted_capability));
     if (!assembled.Succeeded()) {
-      return CompileUiArtifactsResult::Failure(std::move(assembled).TakeDiagnostic());
+      return CompileProtocolArtifactsResult::Failure(std::move(assembled).TakeDiagnostic());
     }
-    if (!UiDescriptionPlanFreezeAllowedForTest(diagnostic)) {
-      return CompileUiArtifactsResult::Failure(std::move(diagnostic));
+    if (!ProtocolMetadataPlanFreezeAllowedForTest(diagnostic)) {
+      return CompileProtocolArtifactsResult::Failure(std::move(diagnostic));
     }
     CompileResult frozen = FreezeBudgetedPlanDraft(std::move(assembled).TakeCapability());
     if (!frozen.Succeeded()) {
-      return CompileUiArtifactsResult::Failure(*frozen.Diagnostic());
+      return CompileProtocolArtifactsResult::Failure(*frozen.Diagnostic());
     }
     protocol_plan::PlanOwner plan = std::move(frozen).TakePlan();
-    if (!UiDescriptionBuilder::Audit(*plan, sidecar, diagnostic)) {
-      return CompileUiArtifactsResult::Failure(std::move(diagnostic));
+    if (!ProtocolMetadataBuilder::Audit(*plan, metadata, diagnostic)) {
+      return CompileProtocolArtifactsResult::Failure(std::move(diagnostic));
     }
-    return CompileUiArtifactsResult::Success(std::move(plan), std::move(sidecar));
+    return CompileProtocolArtifactsResult::Success(std::move(plan), std::move(metadata));
   } catch (const std::bad_alloc&) {
-    return CompileUiArtifactsResult::Failure(CompileDiagnostic{
+    return CompileProtocolArtifactsResult::Failure(CompileDiagnostic{
         CompileStage::INTERNAL, CompileError::COMPILER_ALLOCATION_FAILED, "", std::nullopt,
-        "memory allocation failed during UI configuration compilation"});
+        "memory allocation failed during protocol metadata compilation"});
   } catch (...) {
-    return CompileUiArtifactsResult::Failure(CompileDiagnostic{
+    return CompileProtocolArtifactsResult::Failure(CompileDiagnostic{
         CompileStage::INTERNAL, CompileError::INTERNAL_CONTRACT_VIOLATION, "", std::nullopt,
-        "unexpected exception escaped an internal UI compiler stage"});
+        "unexpected exception escaped an internal protocol metadata compiler stage"});
   }
 }
 

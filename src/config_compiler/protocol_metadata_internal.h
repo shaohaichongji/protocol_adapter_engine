@@ -8,7 +8,7 @@
 
 namespace pae::config_compiler {
 
-struct UiDescriptionTestProbe {
+struct ProtocolMetadataTestProbe {
   std::size_t layout_count = 0U;
   std::size_t storage_allocation_count = 0U;
   std::size_t metadata_copy_count = 0U;
@@ -22,22 +22,22 @@ struct UiDescriptionTestProbe {
   bool fail_storage_allocation = false;
   bool fail_plan_freeze = false;
   bool fail_index_audit = false;
-  // The scoped probe must outlive every sidecar produced while lifetime tracking is enabled.
+  // The scoped probe must outlive every metadata produced while lifetime tracking is enabled.
   bool track_storage_lifetime = false;
 };
 
-class ScopedUiDescriptionTestProbe final {
+class ScopedProtocolMetadataTestProbe final {
  public:
-  explicit ScopedUiDescriptionTestProbe(UiDescriptionTestProbe& probe) noexcept;
-  ScopedUiDescriptionTestProbe(const ScopedUiDescriptionTestProbe&) = delete;
-  ScopedUiDescriptionTestProbe& operator=(const ScopedUiDescriptionTestProbe&) = delete;
-  ~ScopedUiDescriptionTestProbe();
+  explicit ScopedProtocolMetadataTestProbe(ProtocolMetadataTestProbe& probe) noexcept;
+  ScopedProtocolMetadataTestProbe(const ScopedProtocolMetadataTestProbe&) = delete;
+  ScopedProtocolMetadataTestProbe& operator=(const ScopedProtocolMetadataTestProbe&) = delete;
+  ~ScopedProtocolMetadataTestProbe();
 
  private:
-  UiDescriptionTestProbe* previous_ = nullptr;
+  ProtocolMetadataTestProbe* previous_ = nullptr;
 };
 
-struct UiDescriptionLayoutTestInput {
+struct ProtocolMetadataLayoutTestInput {
   std::size_t pipeline_count = 0U;
   std::size_t message_count = 0U;
   std::size_t field_count = 0U;
@@ -45,18 +45,18 @@ struct UiDescriptionLayoutTestInput {
   std::size_t string_bytes = 0U;
 };
 
-bool EstimateUiDescriptionLayoutForTest(const UiDescriptionLayoutTestInput& input,
+bool EstimateProtocolMetadataLayoutForTest(const ProtocolMetadataLayoutTestInput& input,
                                         DescriptionMemoryReport& report) noexcept;
 
-// Test-only injection at the UI compile call boundary immediately before Plan Freeze.
-bool UiDescriptionPlanFreezeAllowedForTest(CompileDiagnostic& diagnostic);
+// Test-only injection at the protocol metadata compile boundary immediately before Plan Freeze.
+bool ProtocolMetadataPlanFreezeAllowedForTest(CompileDiagnostic& diagnostic);
 
-class UiDescriptionBuilder final {
+class ProtocolMetadataBuilder final {
  public:
-  UiDescriptionBuilder() = delete;
+  ProtocolMetadataBuilder() = delete;
   static bool Build(const BudgetedSchemaIr& budgeted, std::size_t memory_limit_bytes,
-                    UiDescriptionSidecar& sidecar, CompileDiagnostic& diagnostic);
-  static bool Audit(const protocol_plan::PlanBundle& plan, const UiDescriptionSidecar& sidecar,
+                    ProtocolMetadataStorage& metadata, CompileDiagnostic& diagnostic);
+  static bool Audit(const protocol_plan::PlanBundle& plan, const ProtocolMetadataStorage& metadata,
                     CompileDiagnostic& diagnostic);
 };
 

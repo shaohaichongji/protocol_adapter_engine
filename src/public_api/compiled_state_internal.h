@@ -11,7 +11,7 @@ namespace pae::public_api_internal {
 
 class CompiledState final {
  public:
-  explicit CompiledState(config_compiler::CompiledUiArtifacts artifacts) noexcept
+  explicit CompiledState(config_compiler::CompiledProtocolArtifacts artifacts) noexcept
       : artifacts_(std::move(artifacts)) {}
 
   CompiledState(const CompiledState&) = delete;
@@ -25,7 +25,7 @@ class CompiledState final {
     }
   }
 
-  [[nodiscard]] const config_compiler::CompiledUiArtifacts& Artifacts() const noexcept {
+  [[nodiscard]] const config_compiler::CompiledProtocolArtifacts& Artifacts() const noexcept {
     return artifacts_;
   }
 
@@ -37,7 +37,7 @@ class CompiledState final {
   ~CompiledState() = default;
 
   std::atomic<std::size_t> references_{1U};
-  config_compiler::CompiledUiArtifacts artifacts_;
+  config_compiler::CompiledProtocolArtifacts artifacts_;
 };
 
 class CompiledStateRef final {
@@ -93,7 +93,7 @@ class CompiledStateRef final {
 namespace pae {
 
 struct CompiledProtocol::Impl final {
-  explicit Impl(config_compiler::CompiledUiArtifacts artifacts)
+  explicit Impl(config_compiler::CompiledProtocolArtifacts artifacts)
       : state(public_api_internal::CompiledStateRef::Adopt(
             new public_api_internal::CompiledState(std::move(artifacts)))) {}
 

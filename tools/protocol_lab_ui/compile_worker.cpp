@@ -51,24 +51,24 @@ std::unique_ptr<CompileCompletion> CompileRequest(CompileWorker::Request request
 #endif
 #if !defined(PAE_PROTOCOL_LAB_STANDALONE_PUBLIC_ONLY)
   const std::size_t desktop_limit =
-      config_compiler::DerivedUiDescriptionMemoryLimit(protocol_plan::ResourceProfile::DESKTOP);
+      config_compiler::DerivedProtocolMetadataMemoryLimit(protocol_plan::ResourceProfile::DESKTOP);
   ++completion->compiler_attempt_count;
   auto result =
-      config_compiler::CompileJsonToPlanWithUiDescription(request.config_text, desktop_limit);
+      config_compiler::CompileJsonToPlanWithMetadata(request.config_text, desktop_limit);
   if (!result.Succeeded()) {
     if (result.Diagnostic() != nullptr) completion->diagnostic = *result.Diagnostic();
     return completion;
   }
   auto artifacts =
-      std::make_unique<config_compiler::CompiledUiArtifacts>(std::move(result).TakeArtifacts());
+      std::make_unique<config_compiler::CompiledProtocolArtifacts>(std::move(result).TakeArtifacts());
   const auto* plan = artifacts->Plan();
   if (plan == nullptr ||
       artifacts->DescriptionMemory().accounted_total_bytes >
-          config_compiler::DerivedUiDescriptionMemoryLimit(plan->GetResourceProfile())) {
+          config_compiler::DerivedProtocolMetadataMemoryLimit(plan->GetResourceProfile())) {
     completion->diagnostic = config_compiler::CompileDiagnostic{
         config_compiler::CompileStage::INTERNAL,
         config_compiler::CompileError::INTERNAL_CONTRACT_VIOLATION, "", std::nullopt,
-        "UI description exceeds the derived limit for its Plan resource profile"};
+        "protocol metadata exceeds the derived limit for its Plan resource profile"};
     return completion;
   }
   completion->artifacts = std::move(artifacts);

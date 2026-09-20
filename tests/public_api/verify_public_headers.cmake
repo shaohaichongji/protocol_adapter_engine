@@ -10,7 +10,7 @@ set(public_headers
 
 foreach(header IN LISTS public_headers)
     file(READ "${header}" content)
-    foreach(forbidden IN ITEMS "../" "src/" "config_compiler" "protocol_plan" "ui_description" "PAE_ENABLE_SCHEMA_" "Qt")
+    foreach(forbidden IN ITEMS "../" "src/" "config_compiler" "protocol_plan" "protocol_metadata" "PAE_ENABLE_SCHEMA_" "Qt")
         string(FIND "${content}" "${forbidden}" position)
         if(NOT position EQUAL -1)
             message(FATAL_ERROR "Public header ${header} contains forbidden token: ${forbidden}")

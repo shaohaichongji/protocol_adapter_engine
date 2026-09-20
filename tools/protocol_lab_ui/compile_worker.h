@@ -42,7 +42,7 @@ struct CompileCompletion {
     Diagnostic(const Source& source) : detail(source.detail) {}
   };
 #if !defined(PAE_PROTOCOL_LAB_STANDALONE_PUBLIC_ONLY)
-  std::unique_ptr<config_compiler::CompiledUiArtifacts> artifacts;
+  std::unique_ptr<config_compiler::CompiledProtocolArtifacts> artifacts;
 #else
   // Keeps existing negative ownership assertions source-compatible without importing the
   // private compiler DTO into the installed-SDK build.

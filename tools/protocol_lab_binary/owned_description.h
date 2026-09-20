@@ -77,7 +77,8 @@ struct OwnedDescription {
 // Schema 0.9 only. A single compiler artifact supplies both Plan and sidecar; no borrowed
 // data survives this call. Preflight precedes copies; final capacity accounting precedes return.
 [[nodiscard]] OwnedDescription BuildOwnedDescription(
-    const config_compiler::CompiledUiArtifacts& artifacts, const DescriptionLimits& limits = {});
+    const config_compiler::CompiledProtocolArtifacts& artifacts,
+    const DescriptionLimits& limits = {});
 // Allocation-free frame-length prerequisite for consuming frozen physical_bits. Does not prove
 // Core success or Candidate/description identity; the caller must establish both separately.
 [[nodiscard]] bool IsActualFrameValid(const MessageDescriptor& message,

@@ -141,7 +141,7 @@ CompileDiagnostic MapDiagnostic(const internal::CompileDiagnostic& source) {
   return output;
 }
 
-std::string_view Resolve(const internal::UiDescriptionSidecar& metadata,
+std::string_view Resolve(const internal::ProtocolMetadataStorage& metadata,
                          internal::DescriptionStringSpan span) noexcept {
   return metadata.Resolve(span);
 }
@@ -1183,10 +1183,10 @@ CompiledProtocol CompileResult::TakeCompiled() && noexcept {
 CompileResult CompileProtocolJson(std::string_view json_bytes, const CompileOptions& options) {
   const std::size_t metadata_limit =
       options.metadata_memory_limit_bytes == kUseDefaultMetadataMemoryLimit
-          ? internal::DerivedUiDescriptionMemoryLimit(plan::ResourceProfile::DESKTOP)
+          ? internal::DerivedProtocolMetadataMemoryLimit(plan::ResourceProfile::DESKTOP)
           : options.metadata_memory_limit_bytes;
-  internal::CompileUiArtifactsResult result =
-      internal::CompileJsonToPlanWithUiDescription(json_bytes, metadata_limit);
+  internal::CompileProtocolArtifactsResult result =
+      internal::CompileJsonToPlanWithMetadata(json_bytes, metadata_limit);
   if (!result.Succeeded()) {
     const internal::CompileDiagnostic* diagnostic = result.Diagnostic();
     if (diagnostic == nullptr) {

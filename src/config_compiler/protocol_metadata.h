@@ -74,17 +74,17 @@ class DescriptionArrayView final {
   std::size_t size_ = 0U;
 };
 
-class UiDescriptionBuilder;
-struct UiDescriptionTestProbe;
+class ProtocolMetadataBuilder;
+struct ProtocolMetadataTestProbe;
 
-class UiDescriptionSidecar final {
+class ProtocolMetadataStorage final {
  public:
-  UiDescriptionSidecar() = default;
-  UiDescriptionSidecar(const UiDescriptionSidecar&) = delete;
-  UiDescriptionSidecar& operator=(const UiDescriptionSidecar&) = delete;
-  UiDescriptionSidecar(UiDescriptionSidecar&&) noexcept = default;
-  UiDescriptionSidecar& operator=(UiDescriptionSidecar&&) noexcept = default;
-  ~UiDescriptionSidecar() = default;
+  ProtocolMetadataStorage() = default;
+  ProtocolMetadataStorage(const ProtocolMetadataStorage&) = delete;
+  ProtocolMetadataStorage& operator=(const ProtocolMetadataStorage&) = delete;
+  ProtocolMetadataStorage(ProtocolMetadataStorage&&) noexcept = default;
+  ProtocolMetadataStorage& operator=(ProtocolMetadataStorage&&) noexcept = default;
+  ~ProtocolMetadataStorage() = default;
 
   bool empty() const noexcept { return storage_ == nullptr; }
   const ProtocolMetadata& Protocol() const noexcept;
@@ -96,17 +96,17 @@ class UiDescriptionSidecar final {
   const DescriptionMemoryReport& MemoryReport() const noexcept { return memory_report_; }
 
  private:
-  friend class UiDescriptionBuilder;
+  friend class ProtocolMetadataBuilder;
 
   struct StorageDeleter final {
     void operator()(std::byte* storage) const noexcept;
 
-    UiDescriptionTestProbe* test_probe = nullptr;
+    ProtocolMetadataTestProbe* test_probe = nullptr;
     std::size_t accounted_bytes = 0U;
   };
   using StorageOwner = std::unique_ptr<std::byte[], StorageDeleter>;
 
-  UiDescriptionSidecar(StorageOwner storage, std::size_t storage_size,
+  ProtocolMetadataStorage(StorageOwner storage, std::size_t storage_size,
                        DescriptionMemoryReport memory_report) noexcept
       : storage_(std::move(storage)), storage_size_(storage_size), memory_report_(memory_report) {}
 
@@ -116,7 +116,7 @@ class UiDescriptionSidecar final {
 };
 
 // ABI-specific upper bound derived from the shared Compiler string budget and profile limits.
-std::size_t DerivedUiDescriptionMemoryLimit(
+std::size_t DerivedProtocolMetadataMemoryLimit(
     protocol_plan::ResourceProfile resource_profile) noexcept;
 
 }  // namespace pae::config_compiler

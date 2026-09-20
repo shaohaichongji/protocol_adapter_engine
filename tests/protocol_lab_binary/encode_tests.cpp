@@ -26,7 +26,7 @@ std::string Replace(std::string json, const std::string& from, const std::string
   return json;
 }
 auto Prepare(const std::string& json, std::string_view pipeline, b::Limits limits = {}) {
-  auto result = pae::config_compiler::CompileJsonToPlanWithUiDescription(json, 4U * 1024U * 1024U);
+  auto result = pae::config_compiler::CompileJsonToPlanWithMetadata(json, 4U * 1024U * 1024U);
   if (!result.Succeeded() && result.Diagnostic()) std::cerr << result.Diagnostic()->detail << '\n';
   Check(result.Succeeded(), "compile");
   const h::BindingSpec bindings[] = {{"device", h::Action::DECODE, pipeline, 2U},

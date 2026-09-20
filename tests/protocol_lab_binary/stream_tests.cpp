@@ -11,8 +11,7 @@ void Check(bool ok, const char* detail) {
   if (!ok) throw std::runtime_error(detail);
 }
 auto Prepare(const std::string& json, std::size_t work = 0U, const b::Limits& limits = {}) {
-  auto compiled =
-      pae::config_compiler::CompileJsonToPlanWithUiDescription(json, 4U * 1024U * 1024U);
+  auto compiled = pae::config_compiler::CompileJsonToPlanWithMetadata(json, 4U * 1024U * 1024U);
   Check(compiled.Succeeded(), "compile");
   h::BindingSpec specs[] = {{"fixed", h::Action::DECODE, "fixed_rx", 2U},
                             {"sync", h::Action::DECODE, "sync_fixed_rx", 2U},

@@ -82,7 +82,7 @@ struct BinaryUiCopyControls {
 class BinaryHostAdapter final {
  public:
   static std::unique_ptr<BinaryHostAdapter> Create(
-      config_compiler::CompiledUiArtifacts artifacts, std::vector<BinaryHostBinding> bindings,
+      config_compiler::CompiledProtocolArtifacts artifacts, std::vector<BinaryHostBinding> bindings,
       BinaryPreparationIdentity identity, const BinaryHostAdapter* previous,
       std::size_t externally_retained_bytes, std::size_t preparation_coexisting_bytes,
       std::string& error, const protocol_lab_binary::ResourceLimits& resource_limits = {},

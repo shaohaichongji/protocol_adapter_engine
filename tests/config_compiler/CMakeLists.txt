@@ -7,7 +7,7 @@ add_executable(
 
 add_executable(
     pae_config_compiler_ui_description_tests
-    ui_description_tests.cpp
+    protocol_metadata_tests.cpp
 )
 
 target_include_directories(
@@ -197,13 +197,13 @@ configure_file(
     ${pae_config_compiler_test_data_dir}/minimal_complete_record.pae.json
     COPYONLY
 )
-foreach(pae_ui_description_example
+foreach(pae_protocol_metadata_example
         synthetic_crc_slice.pae.json
         synthetic_length_slice.pae.json
         synthetic_bounded_variable_record.pae.json)
     configure_file(
-        ${PROJECT_SOURCE_DIR}/examples/config/${pae_ui_description_example}
-        ${pae_config_compiler_test_data_dir}/${pae_ui_description_example}
+        ${PROJECT_SOURCE_DIR}/examples/config/${pae_protocol_metadata_example}
+        ${pae_config_compiler_test_data_dir}/${pae_protocol_metadata_example}
         COPYONLY
     )
 endforeach()

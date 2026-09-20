@@ -10,7 +10,7 @@ namespace {
 constexpr std::size_t kInvalidIndex = (std::numeric_limits<std::size_t>::max)();
 
 template <typename Span>
-std::string CopyResolved(const config_compiler::UiDescriptionSidecar& sidecar, Span span) {
+std::string CopyResolved(const config_compiler::ProtocolMetadataStorage& sidecar, Span span) {
   return std::string{sidecar.Resolve(span)};
 }
 
@@ -72,7 +72,7 @@ bool BuildActionDescription(const protocol_plan::TextActionExecutionPlan& action
 }
 
 bool BuildDescription(const protocol_plan::PlanBundle& plan,
-                      const config_compiler::UiDescriptionSidecar& sidecar,
+                      const config_compiler::ProtocolMetadataStorage& sidecar,
                       DocumentDescription& output, std::string& error) {
   error.clear();
   const bool supported_schema = plan.SchemaVersion() == "0.10"
@@ -91,7 +91,7 @@ bool BuildDescription(const protocol_plan::PlanBundle& plan,
       message_metadata.size() != plan.Messages().size() ||
       plan.MessageExecutionPlans().size() != plan.Messages().size() ||
       plan.PipelineExecutionPlans().size() != plan.Pipelines().size()) {
-    error = "Plan and UI description top-level counts differ";
+    error = "Plan and protocol metadata top-level counts differ";
     return false;
   }
 
@@ -297,7 +297,7 @@ struct OfflineAdapter::StreamContext {
 #endif
 
 OfflineAdapter::OfflineAdapter(protocol_plan::PlanOwner plan,
-                               config_compiler::UiDescriptionSidecar sidecar,
+                               config_compiler::ProtocolMetadataStorage sidecar,
                                DocumentDescription description)
     : plan_(std::move(plan)),
       sidecar_(std::move(sidecar)),
@@ -339,14 +339,14 @@ std::size_t OfflineAdapter::HostTransitionAdmissionBytes() const noexcept {
   return total;
 }
 
-bool OfflineAdapter::Describe(const config_compiler::CompiledUiArtifacts& artifacts,
+bool OfflineAdapter::Describe(const config_compiler::CompiledProtocolArtifacts& artifacts,
                               DocumentDescription& description, std::string& error) {
   return Supports(artifacts) &&
          BuildDescription(*artifacts.Plan(), artifacts.Description(), description, error);
 }
 #endif
 
-bool OfflineAdapter::Supports(const config_compiler::CompiledUiArtifacts& artifacts) noexcept {
+bool OfflineAdapter::Supports(const config_compiler::CompiledProtocolArtifacts& artifacts) noexcept {
   if (artifacts.Plan() == nullptr) return false;
   if (artifacts.Plan()->SchemaVersion() == "0.10") return true;
 #if defined(PAE_BUILD_PROTOCOL_LAB_ASCII_STREAM_OBSERVER)
@@ -357,7 +357,7 @@ bool OfflineAdapter::Supports(const config_compiler::CompiledUiArtifacts& artifa
 }
 
 std::unique_ptr<OfflineAdapter> OfflineAdapter::AdoptCompiledArtifacts(
-    config_compiler::CompiledUiArtifacts artifacts, std::string& error
+    config_compiler::CompiledProtocolArtifacts artifacts, std::string& error
 #if defined(PAE_BUILD_PROTOCOL_LAB_ASCII_STREAM_OBSERVER)
     ,
     const protocol_framing::FramingLimitOverrides& stream_overrides

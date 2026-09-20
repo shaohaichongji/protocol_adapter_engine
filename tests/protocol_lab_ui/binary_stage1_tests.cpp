@@ -15,8 +15,8 @@ namespace binary = pae::protocol_lab_binary;
 int main() {
   std::ifstream input(std::filesystem::path{PAE_BINARY_UI_CONFIG}, std::ios::binary);
   const std::string json{std::istreambuf_iterator<char>{input}, {}};
-  auto compiled = pae::config_compiler::CompileJsonToPlanWithUiDescription(
-      json, pae::config_compiler::DerivedUiDescriptionMemoryLimit(
+  auto compiled = pae::config_compiler::CompileJsonToPlanWithMetadata(
+      json, pae::config_compiler::DerivedProtocolMetadataMemoryLimit(
                 pae::protocol_plan::ResourceProfile::DESKTOP));
   assert(compiled.Succeeded());
 
@@ -42,8 +42,8 @@ int main() {
   description_reject_controls.before_description_copy =
       +[](void* context) { ++*static_cast<int*>(context); };
   description_reject_controls.context = &description_copy_calls;
-  auto description_reject_compile = pae::config_compiler::CompileJsonToPlanWithUiDescription(
-      json, pae::config_compiler::DerivedUiDescriptionMemoryLimit(
+  auto description_reject_compile = pae::config_compiler::CompileJsonToPlanWithMetadata(
+      json, pae::config_compiler::DerivedProtocolMetadataMemoryLimit(
                 pae::protocol_plan::ResourceProfile::DESKTOP));
   assert(description_reject_compile.Succeeded());
   std::string description_reject_error;
@@ -57,8 +57,8 @@ int main() {
          description_reject_error == "Binary UI description copy preflight exceeded");
   ui::BinaryUiCopyControls description_exact_controls = description_reject_controls;
   description_exact_controls.description_copy_limit = description_copy_upper;
-  auto description_exact_compile = pae::config_compiler::CompileJsonToPlanWithUiDescription(
-      json, pae::config_compiler::DerivedUiDescriptionMemoryLimit(
+  auto description_exact_compile = pae::config_compiler::CompileJsonToPlanWithMetadata(
+      json, pae::config_compiler::DerivedProtocolMetadataMemoryLimit(
                 pae::protocol_plan::ResourceProfile::DESKTOP));
   assert(description_exact_compile.Succeeded());
   std::string description_exact_error;
@@ -78,8 +78,8 @@ int main() {
                                  adapter->DescriptionCopyUpperBoundBytes() - description_actual;
   binary::ResourceLimits exact_first_limits;
   exact_first_limits.instance_bytes = exact_first_bytes;
-  auto exact_first_compiled = pae::config_compiler::CompileJsonToPlanWithUiDescription(
-      json, pae::config_compiler::DerivedUiDescriptionMemoryLimit(
+  auto exact_first_compiled = pae::config_compiler::CompileJsonToPlanWithMetadata(
+      json, pae::config_compiler::DerivedProtocolMetadataMemoryLimit(
                 pae::protocol_plan::ResourceProfile::DESKTOP));
   assert(exact_first_compiled.Succeeded());
   std::string exact_first_error;
@@ -90,8 +90,8 @@ int main() {
                                     ui::BinaryPreparationIdentity{81U, 1U, 1U, 1U, "exact-first"},
                                     nullptr, 0U, 0U, exact_first_error, exact_first_limits);
   assert(exact_first && exact_first_error.empty());
-  auto minus_first_compiled = pae::config_compiler::CompileJsonToPlanWithUiDescription(
-      json, pae::config_compiler::DerivedUiDescriptionMemoryLimit(
+  auto minus_first_compiled = pae::config_compiler::CompileJsonToPlanWithMetadata(
+      json, pae::config_compiler::DerivedProtocolMetadataMemoryLimit(
                 pae::protocol_plan::ResourceProfile::DESKTOP));
   assert(minus_first_compiled.Succeeded() && exact_first_bytes > 0U);
   exact_first_limits.instance_bytes = exact_first_bytes - 1U;
@@ -126,8 +126,8 @@ int main() {
   result_reject_controls.result_copy_limit = result_copy_upper - 1U;
   result_reject_controls.before_result_copy = +[](void* context) { ++*static_cast<int*>(context); };
   result_reject_controls.context = &result_copy_calls;
-  auto result_reject_compile = pae::config_compiler::CompileJsonToPlanWithUiDescription(
-      json, pae::config_compiler::DerivedUiDescriptionMemoryLimit(
+  auto result_reject_compile = pae::config_compiler::CompileJsonToPlanWithMetadata(
+      json, pae::config_compiler::DerivedProtocolMetadataMemoryLimit(
                 pae::protocol_plan::ResourceProfile::DESKTOP));
   assert(result_reject_compile.Succeeded());
   std::string result_reject_error;
@@ -147,8 +147,8 @@ int main() {
          result_reject_adapter->Current(0U, 0U) != nullptr);
   ui::BinaryUiCopyControls result_exact_controls = result_reject_controls;
   result_exact_controls.result_copy_limit = result_copy_upper;
-  auto result_exact_compile = pae::config_compiler::CompileJsonToPlanWithUiDescription(
-      json, pae::config_compiler::DerivedUiDescriptionMemoryLimit(
+  auto result_exact_compile = pae::config_compiler::CompileJsonToPlanWithMetadata(
+      json, pae::config_compiler::DerivedProtocolMetadataMemoryLimit(
                 pae::protocol_plan::ResourceProfile::DESKTOP));
   assert(result_exact_compile.Succeeded());
   std::string result_exact_error;
@@ -166,8 +166,8 @@ int main() {
   ui::BinaryUiCopyControls combined_controls;
   combined_controls.before_result_copy = +[](void* context) { ++*static_cast<int*>(context); };
   combined_controls.context = &combined_copy_calls;
-  auto combined_compile = pae::config_compiler::CompileJsonToPlanWithUiDescription(
-      json, pae::config_compiler::DerivedUiDescriptionMemoryLimit(
+  auto combined_compile = pae::config_compiler::CompileJsonToPlanWithMetadata(
+      json, pae::config_compiler::DerivedProtocolMetadataMemoryLimit(
                 pae::protocol_plan::ResourceProfile::DESKTOP));
   assert(combined_compile.Succeeded());
   std::string combined_error;
@@ -214,8 +214,8 @@ int main() {
   assert(adapter->Current(0U, 0U) != nullptr);
 
   auto compile = [&] {
-    return pae::config_compiler::CompileJsonToPlanWithUiDescription(
-        json, pae::config_compiler::DerivedUiDescriptionMemoryLimit(
+    return pae::config_compiler::CompileJsonToPlanWithMetadata(
+        json, pae::config_compiler::DerivedProtocolMetadataMemoryLimit(
                   pae::protocol_plan::ResourceProfile::DESKTOP));
   };
   ui::DocumentSession session{71U};
@@ -226,7 +226,7 @@ int main() {
   completion->document_id = session.id();
   completion->load_revision = load;
   completion->config_sha256 = "stage1-hash";
-  completion->artifacts = std::make_unique<pae::config_compiler::CompiledUiArtifacts>(
+  completion->artifacts = std::make_unique<pae::config_compiler::CompiledProtocolArtifacts>(
       std::move(initial).TakeArtifacts());
   assert(session.ApplyCompileCompletion(std::move(completion)));
   assert(session.IsBinaryHostDocument() && !session.BinaryHostActive());
@@ -396,8 +396,8 @@ int main() {
 
   std::ifstream stream_input(std::filesystem::path{PAE_BINARY_STREAM_CONFIG}, std::ios::binary);
   const std::string stream_json{std::istreambuf_iterator<char>{stream_input}, {}};
-  auto stream_compiled = pae::config_compiler::CompileJsonToPlanWithUiDescription(
-      stream_json, pae::config_compiler::DerivedUiDescriptionMemoryLimit(
+  auto stream_compiled = pae::config_compiler::CompileJsonToPlanWithMetadata(
+      stream_json, pae::config_compiler::DerivedProtocolMetadataMemoryLimit(
                        pae::protocol_plan::ResourceProfile::DESKTOP));
   assert(stream_compiled.Succeeded());
   std::string stream_error;

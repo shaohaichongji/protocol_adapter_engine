@@ -170,7 +170,7 @@ int main(int argc, char** argv) {
   ok &= Expect(plan->GetResourceRequirements().max_framing_buffer_bytes == 8U,
                "maximum per-Pipeline framing buffer is budgeted without claiming object bytes");
 
-  auto with_sidecar = pae::config_compiler::CompileJsonToPlanWithUiDescription(json, 1024U * 1024U);
+  auto with_sidecar = pae::config_compiler::CompileJsonToPlanWithMetadata(json, 1024U * 1024U);
   ok &= Expect(with_sidecar.Succeeded() && with_sidecar.Artifacts() != nullptr &&
                    with_sidecar.Artifacts()->Plan()->SchemaVersion() == "0.9",
                "Schema 0.9 Plan and existing description sidecar publish atomically");

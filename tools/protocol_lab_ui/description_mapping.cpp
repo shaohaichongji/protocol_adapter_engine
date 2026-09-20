@@ -18,7 +18,7 @@ bool ToSize(std::uint64_t value, std::size_t& output) noexcept {
 }
 
 template <typename Span>
-std::string CopyResolved(const config_compiler::UiDescriptionSidecar& sidecar, Span span) {
+std::string CopyResolved(const config_compiler::ProtocolMetadataStorage& sidecar, Span span) {
   return std::string{sidecar.Resolve(span)};
 }
 
@@ -147,7 +147,7 @@ bool BuildPhysicalMapping(const protocol_plan::FrozenFieldPlan& field,
 
 #if !defined(PAE_PROTOCOL_LAB_STANDALONE_PUBLIC_ONLY)
 bool BuildDocumentDescription(const protocol_plan::PlanBundle& plan,
-                              const config_compiler::UiDescriptionSidecar& sidecar,
+                              const config_compiler::ProtocolMetadataStorage& sidecar,
                               DocumentDescription& output, std::string& error) {
   error.clear();
   DocumentDescription built;
@@ -157,7 +157,7 @@ bool BuildDocumentDescription(const protocol_plan::PlanBundle& plan,
   const auto enum_metadata = sidecar.Enums();
   if (pipeline_metadata.size() != plan.Pipelines().size() ||
       message_metadata.size() != plan.Messages().size()) {
-    error = "Plan and UI description top-level counts differ";
+    error = "Plan and protocol metadata top-level counts differ";
     return false;
   }
 

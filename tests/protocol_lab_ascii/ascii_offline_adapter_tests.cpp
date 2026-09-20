@@ -12,7 +12,7 @@
 
 namespace {
 
-using pae::config_compiler::CompileJsonToPlanWithUiDescription;
+using pae::config_compiler::CompileJsonToPlanWithMetadata;
 using pae::protocol_core::CodecStatus;
 using pae::protocol_lab::ascii::AdapterStatus;
 using pae::protocol_lab::ascii::ExecutionIdentity;
@@ -43,8 +43,8 @@ std::string_view AsText(const std::vector<std::uint8_t>& value) {
 
 std::unique_ptr<OfflineAdapter> Prepare(std::string_view config, std::string& error) {
   const std::size_t limit =
-      pae::config_compiler::DerivedUiDescriptionMemoryLimit(ResourceProfile::DESKTOP);
-  auto compiled = CompileJsonToPlanWithUiDescription(config, limit);
+      pae::config_compiler::DerivedProtocolMetadataMemoryLimit(ResourceProfile::DESKTOP);
+  auto compiled = CompileJsonToPlanWithMetadata(config, limit);
   if (!compiled.Succeeded()) {
     error = compiled.Diagnostic() == nullptr ? "compile failed without diagnostic"
                                              : compiled.Diagnostic()->detail;
@@ -63,8 +63,8 @@ std::unique_ptr<OfflineAdapter> PrepareWithLimits(
     std::string_view config, const pae::protocol_framing::FramingLimitOverrides& limits,
     std::string& error) {
   const std::size_t limit =
-      pae::config_compiler::DerivedUiDescriptionMemoryLimit(ResourceProfile::DESKTOP);
-  auto compiled = CompileJsonToPlanWithUiDescription(config, limit);
+      pae::config_compiler::DerivedProtocolMetadataMemoryLimit(ResourceProfile::DESKTOP);
+  auto compiled = CompileJsonToPlanWithMetadata(config, limit);
   if (!compiled.Succeeded()) {
     error = compiled.Diagnostic() == nullptr ? "compile failed without diagnostic"
                                              : compiled.Diagnostic()->detail;
@@ -295,8 +295,8 @@ bool CheckFailureStatusAndOwnership() {
 
 bool CheckLegacyIsolation(const char* config_path) {
   const std::size_t limit =
-      pae::config_compiler::DerivedUiDescriptionMemoryLimit(ResourceProfile::DESKTOP);
-  auto compiled = CompileJsonToPlanWithUiDescription(ReadFile(config_path), limit);
+      pae::config_compiler::DerivedProtocolMetadataMemoryLimit(ResourceProfile::DESKTOP);
+  auto compiled = CompileJsonToPlanWithMetadata(ReadFile(config_path), limit);
   if (!Expect(compiled.Succeeded(), "legacy Binary UI artifacts still compile")) return false;
   if (!Expect(compiled.Artifacts() != nullptr && !OfflineAdapter::Supports(*compiled.Artifacts()),
               "schema dispatch leaves legacy Binary artifacts on the old path")) {

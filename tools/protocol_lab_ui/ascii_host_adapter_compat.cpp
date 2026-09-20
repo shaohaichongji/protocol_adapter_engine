@@ -140,7 +140,7 @@ class PrivateBackend final : public AsciiHostBackend {
 }  // namespace
 
 std::unique_ptr<AsciiHostAdapter> CreatePrivateAsciiHostAdapter(
-    config_compiler::CompiledUiArtifacts artifacts, std::vector<AsciiHostBinding> bindings,
+    config_compiler::CompiledProtocolArtifacts artifacts, std::vector<AsciiHostBinding> bindings,
     std::string& error) {
   std::vector<protocol_lab::ascii::HostBinding> private_bindings;
   private_bindings.reserve(bindings.size());

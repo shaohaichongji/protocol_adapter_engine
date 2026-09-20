@@ -11,9 +11,9 @@ void Check(bool condition, const char* why) {
   if (!condition) throw std::runtime_error(why);
 }
 std::vector<std::uint8_t> Bytes(std::string_view value) { return {value.begin(), value.end()}; }
-pae::config_compiler::CompiledUiArtifacts Compile(const std::string& json) {
-  auto result = pae::config_compiler::CompileJsonToPlanWithUiDescription(
-      json, pae::config_compiler::DerivedUiDescriptionMemoryLimit(
+pae::config_compiler::CompiledProtocolArtifacts Compile(const std::string& json) {
+  auto result = pae::config_compiler::CompileJsonToPlanWithMetadata(
+      json, pae::config_compiler::DerivedProtocolMetadataMemoryLimit(
                 pae::protocol_plan::ResourceProfile::DESKTOP));
   Check(result.Succeeded(), "compile");
   return std::move(result).TakeArtifacts();

@@ -19,8 +19,8 @@ std::unique_ptr<pae::protocol_lab_ui::CompileCompletion> Compile(
 #if defined(PAE_BUILD_PROTOCOL_LAB_ASCII_PUBLIC_STREAM_UI)
   auto compiled = pae::CompileProtocolJson(Read(PAE_ASCII_STREAM_CONFIG));
 #else
-  auto compiled = pae::config_compiler::CompileJsonToPlanWithUiDescription(
-      Read(PAE_ASCII_STREAM_CONFIG), pae::config_compiler::DerivedUiDescriptionMemoryLimit(
+  auto compiled = pae::config_compiler::CompileJsonToPlanWithMetadata(
+      Read(PAE_ASCII_STREAM_CONFIG), pae::config_compiler::DerivedProtocolMetadataMemoryLimit(
                                          pae::protocol_plan::ResourceProfile::DESKTOP));
 #endif
   auto completion = std::make_unique<pae::protocol_lab_ui::CompileCompletion>();
@@ -34,7 +34,7 @@ std::unique_ptr<pae::protocol_lab_ui::CompileCompletion> Compile(
   completion->public_compiled =
       std::make_unique<pae::CompiledProtocol>(std::move(compiled).TakeCompiled());
 #else
-  completion->artifacts = std::make_unique<pae::config_compiler::CompiledUiArtifacts>(
+  completion->artifacts = std::make_unique<pae::config_compiler::CompiledProtocolArtifacts>(
       std::move(compiled).TakeArtifacts());
 #endif
   return completion;

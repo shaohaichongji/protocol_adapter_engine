@@ -19,7 +19,7 @@ struct HostBinding {
 class HostObserverAdapter final {
  public:
   static std::unique_ptr<HostObserverAdapter> Create(
-      config_compiler::CompiledUiArtifacts artifacts, std::vector<HostBinding> bindings,
+      config_compiler::CompiledProtocolArtifacts artifacts, std::vector<HostBinding> bindings,
       std::string& error, const protocol_framing::FramingLimitOverrides& overrides = {});
   const DocumentDescription& Description() const noexcept { return description_; }
   const std::vector<HostBinding>& Bindings() const noexcept { return bindings_; }

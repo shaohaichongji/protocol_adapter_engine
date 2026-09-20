@@ -24,7 +24,7 @@ std::string Promote(std::string json, unsigned version) {
   return json;
 }
 auto Compile(const std::string& json) {
-  auto result = pae::config_compiler::CompileJsonToPlanWithUiDescription(json, 4U * 1024U * 1024U);
+  auto result = pae::config_compiler::CompileJsonToPlanWithMetadata(json, 4U * 1024U * 1024U);
   Check(result.Succeeded(), "compile failed");
   return std::move(result).TakeArtifacts();
 }

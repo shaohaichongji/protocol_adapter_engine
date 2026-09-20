@@ -33,7 +33,7 @@ std::uint64_t NewInstance() {
 }  // namespace
 
 std::unique_ptr<PreparedBinary> PreparedBinary::Create(
-    config_compiler::CompiledUiArtifacts artifacts, const host::BindingSpec* bindings,
+    config_compiler::CompiledProtocolArtifacts artifacts, const host::BindingSpec* bindings,
     std::size_t count, Revisions revisions, const Limits& limits,
     const DescriptionLimits& description_limits, const ResourceLimits& resource_limits,
     const PreparedBinary* previous) {

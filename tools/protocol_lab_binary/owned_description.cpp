@@ -49,7 +49,7 @@ struct Accounting {
   }
 };
 template <class Meta, class Descriptor>
-void Metadata(const config_compiler::UiDescriptionSidecar& sidecar, const Meta& metadata,
+void Metadata(const config_compiler::ProtocolMetadataStorage& sidecar, const Meta& metadata,
               Descriptor* item, Accounting& a) {
   const auto copy = [&](auto span, std::string* target) {
     const auto value = sidecar.Resolve(span);
@@ -61,7 +61,7 @@ void Metadata(const config_compiler::UiDescriptionSidecar& sidecar, const Meta& 
   copy(metadata.source_ref, item ? &item->source_ref : nullptr);
 }
 
-void Walk(const plan::PlanBundle& p, const config_compiler::UiDescriptionSidecar& s,
+void Walk(const plan::PlanBundle& p, const config_compiler::ProtocolMetadataStorage& s,
           const DescriptionLimits& limits, OwnedDescription* out) {
   Accounting a{sizeof(OwnedDescription), limits.max_description_bytes};
   a.Charge(0U);
@@ -308,7 +308,7 @@ std::size_t ActualBytes(const OwnedDescription& out, std::size_t limit) {
 }
 }  // namespace
 
-OwnedDescription BuildOwnedDescription(const config_compiler::CompiledUiArtifacts& artifacts,
+OwnedDescription BuildOwnedDescription(const config_compiler::CompiledProtocolArtifacts& artifacts,
                                        const DescriptionLimits& limits) {
   Require(limits.max_description_bytes <= 4U * 1024U * 1024U && limits.max_fields <= 1024U &&
               limits.max_frame_bytes <= 65536U && limits.max_identity_bytes <= 256U,

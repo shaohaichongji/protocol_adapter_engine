@@ -154,7 +154,7 @@ struct PreparedDocument {
   // Declaration order is intentional: destruction is reverse, so the bridge (and its workspaces
   // and Plan) dies before the sidecar storage.
 #if !defined(PAE_PROTOCOL_LAB_STANDALONE_PUBLIC_ONLY)
-  config_compiler::UiDescriptionSidecar description;
+  config_compiler::ProtocolMetadataStorage description;
   std::unique_ptr<protocol_lab::v06::ExecutionBridge> bridge;
 #endif
   std::string config_sha256;

@@ -200,13 +200,13 @@ struct StreamStepResult {
 class OfflineAdapter final {
  public:
 #if defined(PAE_BUILD_PROTOCOL_LAB_HOST_OBSERVER)
-  static bool Describe(const config_compiler::CompiledUiArtifacts& artifacts,
+  static bool Describe(const config_compiler::CompiledProtocolArtifacts& artifacts,
                        DocumentDescription& description, std::string& error);
   std::size_t HostTransitionAdmissionBytes() const noexcept;
 #endif
-  static bool Supports(const config_compiler::CompiledUiArtifacts& artifacts) noexcept;
+  static bool Supports(const config_compiler::CompiledProtocolArtifacts& artifacts) noexcept;
   static std::unique_ptr<OfflineAdapter> AdoptCompiledArtifacts(
-      config_compiler::CompiledUiArtifacts artifacts, std::string& error
+      config_compiler::CompiledProtocolArtifacts artifacts, std::string& error
 #if defined(PAE_BUILD_PROTOCOL_LAB_ASCII_STREAM_OBSERVER)
       ,
       const protocol_framing::FramingLimitOverrides& stream_overrides = {}
@@ -239,13 +239,13 @@ class OfflineAdapter final {
 #endif
 
  private:
-  OfflineAdapter(protocol_plan::PlanOwner plan, config_compiler::UiDescriptionSidecar sidecar,
+  OfflineAdapter(protocol_plan::PlanOwner plan, config_compiler::ProtocolMetadataStorage sidecar,
                  DocumentDescription description);
 
   // Declaration order is intentional: destruction is reverse, so the borrowing Workspace dies
   // before the copied description, Sidecar storage, and owned Plan.
   protocol_plan::PlanOwner plan_;
-  config_compiler::UiDescriptionSidecar sidecar_;
+  config_compiler::ProtocolMetadataStorage sidecar_;
   DocumentDescription description_;
   protocol_core::ExecutionWorkspace workspace_;
 #if defined(PAE_BUILD_PROTOCOL_LAB_ASCII_STREAM_OBSERVER)

@@ -15,7 +15,7 @@ bool Add(std::size_t& value, std::size_t increment) {
 }  // namespace
 
 std::unique_ptr<HostObserverAdapter> HostObserverAdapter::Create(
-    config_compiler::CompiledUiArtifacts artifacts, std::vector<HostBinding> bindings,
+    config_compiler::CompiledProtocolArtifacts artifacts, std::vector<HostBinding> bindings,
     std::string& error, const protocol_framing::FramingLimitOverrides& overrides) {
   error.clear();
   try {

@@ -24,7 +24,7 @@ void Reject(F call) {
 auto Prepare(const std::string& json, b::Limits limits = {},
              const b::PreparedBinary* previous = nullptr, b::ResourceLimits resources = {}) {
   auto compiled =
-      pae::config_compiler::CompileJsonToPlanWithUiDescription(json, 4U * 1024U * 1024U);
+      pae::config_compiler::CompileJsonToPlanWithMetadata(json, 4U * 1024U * 1024U);
   Check(compiled.Succeeded(), "compile");
   const h::BindingSpec specs[] = {{"fixed", h::Action::DECODE, "fixed_rx", 2U, {32U}},
                                   {"sync", h::Action::DECODE, "sync_fixed_rx", 2U, {32U}}};

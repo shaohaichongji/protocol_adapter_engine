@@ -28,9 +28,9 @@ std::string Text() {
   return {std::istreambuf_iterator<char>{input}, {}};
 }
 #if !defined(PAE_PROTOCOL_LAB_STANDALONE_PUBLIC_ONLY)
-pae::config_compiler::CompiledUiArtifacts Artifacts() {
-  auto result = pae::config_compiler::CompileJsonToPlanWithUiDescription(
-      Text(), pae::config_compiler::DerivedUiDescriptionMemoryLimit(
+pae::config_compiler::CompiledProtocolArtifacts Artifacts() {
+  auto result = pae::config_compiler::CompileJsonToPlanWithMetadata(
+      Text(), pae::config_compiler::DerivedProtocolMetadataMemoryLimit(
                   pae::protocol_plan::ResourceProfile::DESKTOP));
   Check(result.Succeeded());
   return std::move(result).TakeArtifacts();
@@ -48,7 +48,7 @@ void Load(ui::DocumentSession& session) {
   completion->public_compiled =
       std::make_unique<pae::CompiledProtocol>(std::move(compiled).TakeCompiled());
 #else
-  completion->artifacts = std::make_unique<pae::config_compiler::CompiledUiArtifacts>(Artifacts());
+  completion->artifacts = std::make_unique<pae::config_compiler::CompiledProtocolArtifacts>(Artifacts());
 #endif
   Check(session.ApplyCompileCompletion(std::move(completion)));
 }

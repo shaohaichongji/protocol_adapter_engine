@@ -9,35 +9,35 @@
 #include <vector>
 
 #include "config_compiler.h"
-#include "ui_description_internal.h"
+#include "protocol_metadata_internal.h"
 #include "validation_pipeline_internal.h"
 
 namespace {
 
-using pae::config_compiler::CompiledUiArtifacts;
+using pae::config_compiler::CompiledProtocolArtifacts;
 using pae::config_compiler::CompileError;
 using pae::config_compiler::CompileJsonToPlan;
-using pae::config_compiler::CompileJsonToPlanWithUiDescription;
+using pae::config_compiler::CompileJsonToPlanWithMetadata;
 using pae::config_compiler::CompileStage;
-using pae::config_compiler::CompileUiArtifactsResult;
-using pae::config_compiler::DerivedUiDescriptionMemoryLimit;
+using pae::config_compiler::CompileProtocolArtifactsResult;
+using pae::config_compiler::DerivedProtocolMetadataMemoryLimit;
 using pae::config_compiler::DescriptionMemoryReport;
-using pae::config_compiler::EstimateUiDescriptionLayoutForTest;
+using pae::config_compiler::EstimateProtocolMetadataLayoutForTest;
 using pae::config_compiler::JsonParserPoolUpperBoundForTest;
 using pae::config_compiler::kCompilerDecodedStringHardLimitBytes;
 using pae::config_compiler::ResourceKind;
-using pae::config_compiler::ScopedUiDescriptionTestProbe;
-using pae::config_compiler::UiDescriptionLayoutTestInput;
-using pae::config_compiler::UiDescriptionSidecar;
-using pae::config_compiler::UiDescriptionTestProbe;
+using pae::config_compiler::ScopedProtocolMetadataTestProbe;
+using pae::config_compiler::ProtocolMetadataLayoutTestInput;
+using pae::config_compiler::ProtocolMetadataStorage;
+using pae::config_compiler::ProtocolMetadataTestProbe;
 using pae::protocol_plan::GetResourceProfileLimits;
 using pae::protocol_plan::ResourceProfile;
 
-static_assert(!std::is_copy_constructible_v<UiDescriptionSidecar>);
-static_assert(std::is_nothrow_move_constructible_v<UiDescriptionSidecar>);
-static_assert(!std::is_copy_constructible_v<CompiledUiArtifacts>);
-static_assert(std::is_nothrow_move_constructible_v<CompiledUiArtifacts>);
-static_assert(!std::is_copy_constructible_v<CompileUiArtifactsResult>);
+static_assert(!std::is_copy_constructible_v<ProtocolMetadataStorage>);
+static_assert(std::is_nothrow_move_constructible_v<ProtocolMetadataStorage>);
+static_assert(!std::is_copy_constructible_v<CompiledProtocolArtifacts>);
+static_assert(std::is_nothrow_move_constructible_v<CompiledProtocolArtifacts>);
+static_assert(!std::is_copy_constructible_v<CompileProtocolArtifactsResult>);
 
 class Runner final {
  public:
@@ -88,9 +88,9 @@ bool ReportsEqual(const DescriptionMemoryReport& left, const DescriptionMemoryRe
 
 void CheckSuccessfulArtifact(Runner& runner, std::string_view case_prefix, const std::string& json,
                              std::string_view schema_version) {
-  const std::size_t limit = DerivedUiDescriptionMemoryLimit(ResourceProfile::DESKTOP);
-  CompileUiArtifactsResult result = CompileJsonToPlanWithUiDescription(json, limit);
-  const CompiledUiArtifacts* artifacts = result.Artifacts();
+  const std::size_t limit = DerivedProtocolMetadataMemoryLimit(ResourceProfile::DESKTOP);
+  CompileProtocolArtifactsResult result = CompileJsonToPlanWithMetadata(json, limit);
+  const CompiledProtocolArtifacts* artifacts = result.Artifacts();
   const std::string compile_detail = result.Diagnostic() == nullptr
                                          ? "sidecar compile failed"
                                          : "sidecar compile failed: " + result.Diagnostic()->detail;
@@ -136,8 +136,8 @@ void CheckSuccessfulArtifact(Runner& runner, std::string_view case_prefix, const
         enum_metadata_present && !sidecar.Resolve(metadata.display_name).empty();
   }
   DescriptionMemoryReport estimated;
-  const bool estimated_ok = EstimateUiDescriptionLayoutForTest(
-      UiDescriptionLayoutTestInput{sidecar.Pipelines().size(), sidecar.Messages().size(),
+  const bool estimated_ok = EstimateProtocolMetadataLayoutForTest(
+      ProtocolMetadataLayoutTestInput{sidecar.Pipelines().size(), sidecar.Messages().size(),
                                    sidecar.Fields().size(), sidecar.Enums().size(), string_bytes},
       estimated);
   runner.Check(estimated_ok && ReportsEqual(estimated, artifacts->DescriptionMemory()),
@@ -185,9 +185,9 @@ int main(int argc, char** argv) {
   }
 
   {
-    UiDescriptionTestProbe probe;
+    ProtocolMetadataTestProbe probe;
     probe.fail_if_touched = true;
-    ScopedUiDescriptionTestProbe scoped{probe};
+    ScopedProtocolMetadataTestProbe scoped{probe};
     const auto valid = CompileJsonToPlan(minimal);
     const auto invalid = CompileJsonToPlan("{");
     runner.Check(valid.Succeeded() && !invalid.Succeeded() && probe.layout_count == 0U &&
@@ -197,13 +197,13 @@ int main(int argc, char** argv) {
                  "plan_only_zero_sidecar_work", "legacy entry touched a sidecar-only stage");
   }
 
-  UiDescriptionTestProbe allocation_failure_probe;
+  ProtocolMetadataTestProbe allocation_failure_probe;
   allocation_failure_probe.fail_storage_allocation = true;
   allocation_failure_probe.track_storage_lifetime = true;
   {
-    ScopedUiDescriptionTestProbe scoped{allocation_failure_probe};
-    const auto result = CompileJsonToPlanWithUiDescription(
-        minimal, DerivedUiDescriptionMemoryLimit(ResourceProfile::DESKTOP));
+    ScopedProtocolMetadataTestProbe scoped{allocation_failure_probe};
+    const auto result = CompileJsonToPlanWithMetadata(
+        minimal, DerivedProtocolMetadataMemoryLimit(ResourceProfile::DESKTOP));
     runner.Check(!result.Succeeded() && result.Artifacts() == nullptr &&
                      result.Diagnostic() != nullptr &&
                      result.Diagnostic()->code == CompileError::COMPILER_ALLOCATION_FAILED,
@@ -221,12 +221,12 @@ int main(int argc, char** argv) {
                "storage_allocation_failure_accounting",
                "allocation failure retained storage or crossed a later stage");
 
-  UiDescriptionTestProbe success_probe;
+  ProtocolMetadataTestProbe success_probe;
   success_probe.track_storage_lifetime = true;
   {
-    ScopedUiDescriptionTestProbe scoped{success_probe};
-    const auto result = CompileJsonToPlanWithUiDescription(
-        minimal, DerivedUiDescriptionMemoryLimit(ResourceProfile::DESKTOP));
+    ScopedProtocolMetadataTestProbe scoped{success_probe};
+    const auto result = CompileJsonToPlanWithMetadata(
+        minimal, DerivedProtocolMetadataMemoryLimit(ResourceProfile::DESKTOP));
     const std::string detail = result.Diagnostic() == nullptr
                                    ? "valid UI compilation failed"
                                    : "valid UI compilation failed: " + result.Diagnostic()->detail;
@@ -240,13 +240,13 @@ int main(int argc, char** argv) {
           success_probe.released_accounted_bytes > 0U,
       "probe_stages_once", "sidecar stages did not each execute exactly once");
 
-  UiDescriptionTestProbe freeze_failure_probe;
+  ProtocolMetadataTestProbe freeze_failure_probe;
   freeze_failure_probe.fail_plan_freeze = true;
   freeze_failure_probe.track_storage_lifetime = true;
   {
-    ScopedUiDescriptionTestProbe scoped{freeze_failure_probe};
-    const auto result = CompileJsonToPlanWithUiDescription(
-        minimal, DerivedUiDescriptionMemoryLimit(ResourceProfile::DESKTOP));
+    ScopedProtocolMetadataTestProbe scoped{freeze_failure_probe};
+    const auto result = CompileJsonToPlanWithMetadata(
+        minimal, DerivedProtocolMetadataMemoryLimit(ResourceProfile::DESKTOP));
     runner.Check(!result.Succeeded() && result.Artifacts() == nullptr &&
                      result.Diagnostic() != nullptr &&
                      result.Diagnostic()->code == CompileError::COMPILER_ALLOCATION_FAILED,
@@ -266,13 +266,13 @@ int main(int argc, char** argv) {
       "plan_freeze_failure_releases_sidecar",
       "Plan Freeze failure did not release accounted sidecar storage");
 
-  UiDescriptionTestProbe audit_failure_probe;
+  ProtocolMetadataTestProbe audit_failure_probe;
   audit_failure_probe.fail_index_audit = true;
   audit_failure_probe.track_storage_lifetime = true;
   {
-    ScopedUiDescriptionTestProbe scoped{audit_failure_probe};
-    const auto result = CompileJsonToPlanWithUiDescription(
-        minimal, DerivedUiDescriptionMemoryLimit(ResourceProfile::DESKTOP));
+    ScopedProtocolMetadataTestProbe scoped{audit_failure_probe};
+    const auto result = CompileJsonToPlanWithMetadata(
+        minimal, DerivedProtocolMetadataMemoryLimit(ResourceProfile::DESKTOP));
     runner.Check(!result.Succeeded() && result.Artifacts() == nullptr &&
                      result.Diagnostic() != nullptr &&
                      result.Diagnostic()->stage == CompileStage::INTERNAL,
@@ -291,8 +291,8 @@ int main(int argc, char** argv) {
       "audit_failure_reached_final_gate",
       "audit failure injection did not reach the final publication gate");
 
-  auto first = CompileJsonToPlanWithUiDescription(
-      minimal, DerivedUiDescriptionMemoryLimit(ResourceProfile::DESKTOP));
+  auto first = CompileJsonToPlanWithMetadata(
+      minimal, DerivedProtocolMetadataMemoryLimit(ResourceProfile::DESKTOP));
   runner.Check(first.Succeeded(), "measure_actual", "initial sidecar compilation failed");
   if (first.Artifacts() != nullptr) {
     const auto& sidecar_memory = first.Artifacts()->DescriptionMemory();
@@ -310,8 +310,8 @@ int main(int argc, char** argv) {
               << " parser_pool_upper_bound_bytes=" << parser_pool
               << " plan_accounted_total_bytes=" << plan_storage << '\n';
     const std::size_t exact = first.Artifacts()->DescriptionMemory().accounted_total_bytes;
-    auto exact_result = CompileJsonToPlanWithUiDescription(minimal, exact);
-    auto below_result = CompileJsonToPlanWithUiDescription(minimal, exact - 1U);
+    auto exact_result = CompileJsonToPlanWithMetadata(minimal, exact);
+    auto below_result = CompileJsonToPlanWithMetadata(minimal, exact - 1U);
     const auto* below = below_result.Diagnostic();
     runner.Check(exact_result.Succeeded(), "limit_exact", "exact required limit failed");
     runner.Check(!below_result.Succeeded() && below != nullptr &&
@@ -325,8 +325,8 @@ int main(int argc, char** argv) {
 
   DescriptionMemoryReport overflow_report;
   runner.Check(
-      !EstimateUiDescriptionLayoutForTest(
-          UiDescriptionLayoutTestInput{0U, 0U, 0U, (std::numeric_limits<std::size_t>::max)(), 0U},
+      !EstimateProtocolMetadataLayoutForTest(
+          ProtocolMetadataLayoutTestInput{0U, 0U, 0U, (std::numeric_limits<std::size_t>::max)(), 0U},
           overflow_report),
       "layout_overflow", "checked layout accepted overflowing descriptor count");
   const auto* desktop_limits = GetResourceProfileLimits(ResourceProfile::DESKTOP);
@@ -335,25 +335,25 @@ int main(int argc, char** argv) {
   DescriptionMemoryReport constrained_maximum;
   const bool desktop_derived =
       desktop_limits != nullptr &&
-      EstimateUiDescriptionLayoutForTest(
-          UiDescriptionLayoutTestInput{desktop_limits->max_pipelines, desktop_limits->max_messages,
+      EstimateProtocolMetadataLayoutForTest(
+          ProtocolMetadataLayoutTestInput{desktop_limits->max_pipelines, desktop_limits->max_messages,
                                        desktop_limits->max_total_fields,
                                        desktop_limits->max_total_enum_entries,
                                        kCompilerDecodedStringHardLimitBytes},
           desktop_maximum);
   const bool constrained_derived =
       constrained_limits != nullptr &&
-      EstimateUiDescriptionLayoutForTest(
-          UiDescriptionLayoutTestInput{
+      EstimateProtocolMetadataLayoutForTest(
+          ProtocolMetadataLayoutTestInput{
               constrained_limits->max_pipelines, constrained_limits->max_messages,
               constrained_limits->max_total_fields, constrained_limits->max_total_enum_entries,
               kCompilerDecodedStringHardLimitBytes},
           constrained_maximum);
   runner.Check(
       desktop_derived && constrained_derived &&
-          DerivedUiDescriptionMemoryLimit(ResourceProfile::DESKTOP) ==
+          DerivedProtocolMetadataMemoryLimit(ResourceProfile::DESKTOP) ==
               desktop_maximum.accounted_total_bytes &&
-          DerivedUiDescriptionMemoryLimit(ResourceProfile::CONSTRAINED) ==
+          DerivedProtocolMetadataMemoryLimit(ResourceProfile::CONSTRAINED) ==
               constrained_maximum.accounted_total_bytes &&
           desktop_maximum.accounted_total_bytes > constrained_maximum.accounted_total_bytes,
       "derived_profile_limits", "profile-derived limits are not ordered and nonzero");
@@ -368,9 +368,9 @@ int main(int argc, char** argv) {
             << " alignment_bytes=" << constrained_maximum.alignment_bytes
             << " total_bytes=" << constrained_maximum.accounted_total_bytes << '\n';
 
-  auto invalid_ui = CompileJsonToPlanWithUiDescription(
-      "{", DerivedUiDescriptionMemoryLimit(ResourceProfile::DESKTOP));
-  runner.Check(!invalid_ui.Succeeded() && invalid_ui.Artifacts() == nullptr,
+  auto invalid_metadata = CompileJsonToPlanWithMetadata(
+      "{", DerivedProtocolMetadataMemoryLimit(ResourceProfile::DESKTOP));
+  runner.Check(!invalid_metadata.Succeeded() && invalid_metadata.Artifacts() == nullptr,
                "invalid_no_partial_publish", "invalid input published partial artifacts");
 
   CheckSuccessfulArtifact(runner, "schema_0_1", minimal, "0.1");

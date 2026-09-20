@@ -31,15 +31,15 @@ std::unique_ptr<pae::protocol_lab_ui::CompileCompletion> Compile(
     completion->public_diagnostic = *compiled.Diagnostic();
   return completion;
 #else
-  auto compiled = pae::config_compiler::CompileJsonToPlanWithUiDescription(
-      text, pae::config_compiler::DerivedUiDescriptionMemoryLimit(
+  auto compiled = pae::config_compiler::CompileJsonToPlanWithMetadata(
+      text, pae::config_compiler::DerivedProtocolMetadataMemoryLimit(
                 pae::protocol_plan::ResourceProfile::DESKTOP));
   auto completion = std::make_unique<pae::protocol_lab_ui::CompileCompletion>();
   completion->document_id = session.id();
   completion->load_revision = session.load_revision();
   completion->config_sha256 = "ascii-session-test";
   if (compiled.Succeeded()) {
-    completion->artifacts = std::make_unique<pae::config_compiler::CompiledUiArtifacts>(
+    completion->artifacts = std::make_unique<pae::config_compiler::CompiledProtocolArtifacts>(
         std::move(compiled).TakeArtifacts());
   } else if (compiled.Diagnostic() != nullptr) {
     completion->diagnostic = *compiled.Diagnostic();

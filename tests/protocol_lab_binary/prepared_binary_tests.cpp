@@ -25,7 +25,7 @@ std::string Replace(std::string json, const std::string& old, const std::string&
   return json;
 }
 auto Compile(const std::string& json) {
-  auto result = pae::config_compiler::CompileJsonToPlanWithUiDescription(json, 4U * 1024U * 1024U);
+  auto result = pae::config_compiler::CompileJsonToPlanWithMetadata(json, 4U * 1024U * 1024U);
   if (!result.Succeeded() && result.Diagnostic()) std::cerr << result.Diagnostic()->detail << '\n';
   Check(result.Succeeded(), "fixture compile failed");
   return std::move(result).TakeArtifacts();

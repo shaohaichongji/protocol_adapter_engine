@@ -11,7 +11,7 @@
 namespace pae::protocol_lab_ui {
 
 std::unique_ptr<AsciiHostAdapter> CreatePrivateAsciiHostAdapter(
-    config_compiler::CompiledUiArtifacts artifacts, std::vector<AsciiHostBinding> bindings,
+    config_compiler::CompiledProtocolArtifacts artifacts, std::vector<AsciiHostBinding> bindings,
     std::string& error);
 
 }  // namespace pae::protocol_lab_ui
