@@ -448,6 +448,12 @@ DocumentTab::DocumentTab(DocumentId document_id, CompileWorker& worker, QWidget*
 
 DocumentTab::~DocumentTab() { CloseDocument(false); }
 
+QString DocumentTab::DiagnosticTextForSmoke() const { return diagnostic_label_->text(); }
+
+bool DocumentTab::DiagnosticUsesPlainTextForSmoke() const noexcept {
+  return diagnostic_label_->textFormat() == Qt::PlainText;
+}
+
 QString DocumentTab::ConfigPath() const { return path_edit_->text(); }
 
 QString DocumentTab::Title() const {
@@ -3317,6 +3323,7 @@ void DocumentTab::BuildUi() {
   auto* diagnostic_layout = new QVBoxLayout(diagnostic_content);
   diagnostic_label_ = new QLabel(diagnostic_content);
   diagnostic_label_->setObjectName(QStringLiteral("diagnosticView"));
+  diagnostic_label_->setTextFormat(Qt::PlainText);
   diagnostic_label_->setWordWrap(true);
   diagnostic_label_->setTextInteractionFlags(Qt::TextSelectableByMouse);
   diagnostic_label_->setAlignment(Qt::AlignLeft | Qt::AlignTop);
@@ -3876,6 +3883,11 @@ void DocumentTab::RefreshState() {
 #endif
   if (session_.diagnostic_id().empty() && session_.diagnostic_detail().empty()) {
     diagnostic_label_->clear();
+  } else if (session_.compile_diagnostic()) {
+    diagnostic_label_->setText(
+        UiText("配置编译失败（%1）\n%2")
+            .arg(FromUtf8(session_.diagnostic_id()),
+                 FromUtf8(FormatCompileDiagnostic(*session_.compile_diagnostic()))));
   } else {
     diagnostic_label_->setText(UiText("操作失败（%1）\n%2")
                                    .arg(FromUtf8(session_.diagnostic_id()),

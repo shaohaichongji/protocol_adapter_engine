@@ -808,6 +808,7 @@ Revision DocumentSession::BeginLoad() {
   ClearInspectOutcome();
   diagnostic_id_.clear();
   diagnostic_detail_.clear();
+  compile_diagnostic_.reset();
   state_ = DocumentState::LOADING;
   return load_revision_;
 }
@@ -817,6 +818,7 @@ bool DocumentSession::ApplyCompileCompletion(std::unique_ptr<CompileCompletion> 
       completion->document_id != document_id_ || completion->load_revision != load_revision_) {
     return false;
   }
+  compile_diagnostic_.reset();
 #if defined(PAE_BUILD_PROTOCOL_LAB_BINARY_PUBLIC_H2) || \
     defined(PAE_BUILD_PROTOCOL_LAB_ASCII_PUBLIC_A2) || \
     defined(PAE_BUILD_PROTOCOL_LAB_ASCII_PUBLIC_STREAM_UI) || \
@@ -829,9 +831,10 @@ bool DocumentSession::ApplyCompileCompletion(std::unique_ptr<CompileCompletion> 
 #if defined(PAE_BUILD_PROTOCOL_LAB_PUBLIC_LEGACY_COMPLETE)
   if (completion->route == SchemaDispatchStatus::LEGACY_PUBLIC) {
     if (!completion->public_compiled || completion->public_diagnostic) {
-      SetDiagnostic("UI_PUBLIC_LEGACY_COMPILE_FAILED",
-                    completion->public_diagnostic ? completion->public_diagnostic->detail
-                                                  : "public compiler returned no owner");
+      SetCompileDiagnostic("UI_PUBLIC_LEGACY_COMPILE_FAILED",
+                           completion->structured_compile_diagnostic,
+                           completion->public_diagnostic ? completion->public_diagnostic->detail
+                                                         : "public compiler returned no owner");
       state_ = DocumentState::CONFIG_ERROR;
       return false;
     }
@@ -866,9 +869,10 @@ bool DocumentSession::ApplyCompileCompletion(std::unique_ptr<CompileCompletion> 
 #if defined(PAE_BUILD_PROTOCOL_LAB_BINARY_PUBLIC_H2)
   if (completion->route == SchemaDispatchStatus::BINARY_PUBLIC) {
     if (!completion->public_compiled || completion->public_diagnostic) {
-      SetDiagnostic("UI_PUBLIC_BINARY_COMPILE_FAILED", completion->public_diagnostic
-                                                           ? completion->public_diagnostic->detail
-                                                           : "public compiler returned no owner");
+      SetCompileDiagnostic("UI_PUBLIC_BINARY_COMPILE_FAILED",
+                           completion->structured_compile_diagnostic,
+                           completion->public_diagnostic ? completion->public_diagnostic->detail
+                                                         : "public compiler returned no owner");
       state_ = DocumentState::CONFIG_ERROR;
       return false;
     }
@@ -900,9 +904,10 @@ bool DocumentSession::ApplyCompileCompletion(std::unique_ptr<CompileCompletion> 
 #if defined(PAE_BUILD_PROTOCOL_LAB_ASCII_PUBLIC_A2)
   if (completion->route == SchemaDispatchStatus::ASCII_PUBLIC) {
     if (!completion->public_compiled || completion->public_diagnostic) {
-      SetDiagnostic("UI_PUBLIC_ASCII_COMPILE_FAILED", completion->public_diagnostic
-                                                          ? completion->public_diagnostic->detail
-                                                          : "public compiler returned no owner");
+      SetCompileDiagnostic("UI_PUBLIC_ASCII_COMPILE_FAILED",
+                           completion->structured_compile_diagnostic,
+                           completion->public_diagnostic ? completion->public_diagnostic->detail
+                                                         : "public compiler returned no owner");
       state_ = DocumentState::CONFIG_ERROR;
       return false;
     }
@@ -971,7 +976,8 @@ bool DocumentSession::ApplyCompileCompletion(std::unique_ptr<CompileCompletion> 
 #if !defined(PAE_PROTOCOL_LAB_STANDALONE_PUBLIC_ONLY)
   if (completion->artifacts == nullptr || completion->diagnostic.has_value()) {
     if (completion->diagnostic.has_value()) {
-      SetDiagnostic("UI_CONFIG_COMPILE_FAILED", completion->diagnostic->detail);
+      SetCompileDiagnostic("UI_CONFIG_COMPILE_FAILED", completion->structured_compile_diagnostic,
+                           completion->diagnostic->detail);
     } else {
       SetDiagnostic("UI_CONFIG_COMPILE_FAILED", "compile result contained no complete artifacts");
     }
@@ -2803,6 +2809,7 @@ void DocumentSession::Close() {
   prepared_.reset();
   diagnostic_id_.clear();
   diagnostic_detail_.clear();
+  compile_diagnostic_.reset();
   state_ = DocumentState::CLOSED;
 }
 
@@ -2958,8 +2965,16 @@ void DocumentSession::RefreshDocumentState() {
 }
 
 void DocumentSession::SetDiagnostic(std::string id, std::string detail) {
+  compile_diagnostic_.reset();
   diagnostic_id_ = std::move(id);
   diagnostic_detail_ = std::move(detail);
+}
+
+void DocumentSession::SetCompileDiagnostic(
+    std::string id, const std::optional<CompileDiagnosticView>& diagnostic,
+    std::string fallback_detail) {
+  SetDiagnostic(std::move(id), diagnostic ? diagnostic->detail : std::move(fallback_detail));
+  compile_diagnostic_ = diagnostic;
 }
 
 void DocumentSession::ClearEncodeFailure() { encode_failure_.reset(); }

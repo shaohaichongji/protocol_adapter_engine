@@ -28,6 +28,31 @@ using ResultTicket = std::uint64_t;
 
 inline constexpr std::size_t kMaximumConfigBytes = 4U * 1024U * 1024U;
 
+struct CompileDiagnosticView {
+  std::string stage;
+  std::string code;
+  std::string json_pointer;
+  std::optional<std::size_t> byte_offset;
+  std::string resource_kind;
+  bool has_resource_budget = false;
+  std::uint64_t required_bytes = 0U;
+  std::uint64_t limit_bytes = 0U;
+  std::string resource_profile;
+  std::string detail;
+};
+
+#if !defined(PAE_PROTOCOL_LAB_STANDALONE_PUBLIC_ONLY)
+CompileDiagnosticView ProjectCompileDiagnostic(
+    const config_compiler::CompileDiagnostic& diagnostic);
+#endif
+#if defined(PAE_BUILD_PROTOCOL_LAB_BINARY_PUBLIC_H2) ||       \
+    defined(PAE_BUILD_PROTOCOL_LAB_ASCII_PUBLIC_A2) ||        \
+    defined(PAE_BUILD_PROTOCOL_LAB_ASCII_PUBLIC_STREAM_UI) || \
+    defined(PAE_BUILD_PROTOCOL_LAB_PUBLIC_LEGACY_COMPLETE)
+CompileDiagnosticView ProjectCompileDiagnostic(const pae::CompileDiagnostic& diagnostic);
+#endif
+std::string FormatCompileDiagnostic(const CompileDiagnosticView& diagnostic);
+
 struct CompileCompletion {
   DocumentId document_id = 0U;
   Revision load_revision = 0U;
@@ -49,6 +74,7 @@ struct CompileCompletion {
   std::nullptr_t artifacts = nullptr;
 #endif
   std::optional<Diagnostic> diagnostic;
+  std::optional<CompileDiagnosticView> structured_compile_diagnostic;
   SchemaDispatchStatus route = SchemaDispatchStatus::PRIVATE_LEGACY;
   std::string classification_error;
   std::size_t compiler_attempt_count = 0U;

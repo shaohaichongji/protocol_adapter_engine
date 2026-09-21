@@ -93,6 +93,9 @@ class DocumentTab final : public QWidget {
   const std::vector<std::uint8_t>& PreviewFrameForSmoke() const noexcept;
   std::size_t HighlightedCellCountForSmoke() const noexcept;
   std::uint8_t HighlightMaskForSmoke(std::size_t frame_byte_index) const noexcept;
+  Revision LoadRevisionForSmoke() const noexcept { return session_.load_revision(); }
+  QString DiagnosticTextForSmoke() const;
+  bool DiagnosticUsesPlainTextForSmoke() const noexcept;
   const EncodeTimingSnapshot& LastTiming() const noexcept { return timing_; }
 
  private:

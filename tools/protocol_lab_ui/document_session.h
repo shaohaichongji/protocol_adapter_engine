@@ -330,6 +330,9 @@ class DocumentSession final {
   std::size_t InspectFrameBudget() const noexcept;
   const std::string& diagnostic_id() const noexcept { return diagnostic_id_; }
   const std::string& diagnostic_detail() const noexcept { return diagnostic_detail_; }
+  const std::optional<CompileDiagnosticView>& compile_diagnostic() const noexcept {
+    return compile_diagnostic_;
+  }
 
  private:
   bool AsciiBackendReady() const noexcept;
@@ -389,6 +392,8 @@ class DocumentSession final {
   void ClearEncodeFailure();
   void SetEncodeFailure(std::string id, std::string detail);
   void SetDiagnostic(std::string id, std::string detail);
+  void SetCompileDiagnostic(std::string id, const std::optional<CompileDiagnosticView>& diagnostic,
+                            std::string fallback_detail);
 
   const DocumentId document_id_;
   DocumentState state_ = DocumentState::EMPTY;
@@ -419,6 +424,7 @@ class DocumentSession final {
 #endif
   std::string diagnostic_id_;
   std::string diagnostic_detail_;
+  std::optional<CompileDiagnosticView> compile_diagnostic_;
 };
 
 }  // namespace pae::protocol_lab_ui
