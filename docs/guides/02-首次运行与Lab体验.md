@@ -8,7 +8,7 @@
 
 - Windows x64；
 - 本机仓库位于 `F:\PersonalWorkspace\协议解析拼接工具\protocol_adapter_engine`；
-- `deliverables/lab/fa81329/common-release` 已存在。该目录被 Git 忽略，仅 clone 仓库不会自动获得产物。
+- `F:\PersonalWorkspace\pae-trial-7b4205e-20260920\lab-compile-diagnostics\static-verified\deploy\release-product\Release` 已存在；仅 clone 仓库不会自动获得本地产物。
 
 ## 读完能做什么
 
@@ -16,10 +16,10 @@
 
 ## 1. 启动最新功能体验候选
 
-普通本地体验优先使用 G2-C common Release。它是既有仓库内构建的哈希一致复制，并非新一次构建或 installed-SDK 验证；ASCII/legacy 仍用兼容路径。旧 `98df5e0` standalone 对照入口与 SDK 保持不变，见 [统一交付入口](../../deliverables/README.md)。
+普通本地体验优先使用含结构化编译诊断的 installed-SDK static Release，包含 Binary G1/G2 及 ASCII/legacy 公开路径。SDK 身份为 clean 7b4205e；Lab 为 fe1683c 加诊断和打包修补，并非干净提交重建。旧入口保持不变，完整身份与证据见 [统一交付入口](../../deliverables/README.md)。
 
 ```powershell
-$LabRoot = 'F:\PersonalWorkspace\协议解析拼接工具\protocol_adapter_engine\deliverables\lab\fa81329\common-release'
+$LabRoot = 'F:\PersonalWorkspace\pae-trial-7b4205e-20260920\lab-compile-diagnostics\static-verified\deploy\release-product\Release'
 & "$LabRoot\pae_protocol_lab_ui.exe"
 ```
 
@@ -49,15 +49,17 @@ $LabRoot = 'F:\PersonalWorkspace\协议解析拼接工具\protocol_adapter_engin
 | ASCII 完整记录 | `configs/synthetic_ascii_text_slice.pae.json` | Schema 0.10 Decode/Encode |
 | ASCII CRLF 分块流 | `configs/synthetic_ascii_stream_slice.pae.json` | Schema 0.11 流式路径 |
 | Binary 多类型字段 | `configs/synthetic_binary_ui_stage1.pae.json` | Schema 0.9 完整记录 Decode |
-| Binary 分块流 | `configs/synthetic_stream_framing_slice.pae.json` | G2 Submit/Continue/Reset；继续可用时输入框只读 |
+| Binary 分块流 | `configs/synthetic_stream_framing_slice.pae.json` | G2 Submit/Continue/Reset，继续可用时输入框只读 |
 
 这些配置全部是从零构造的合成协议，不对应真实设备。`synthetic_ui_max.pae.json` 用于资源上界观察，不适合第一次阅读。
+
+Binary 分块流示例完整路径：`F:\PersonalWorkspace\pae-trial-7b4205e-20260920\lab-compile-diagnostics\static-verified\deploy\release-product\Release\configs\synthetic_stream_framing_slice.pae.json`。该文件已按限定修补补入部署，不需要回读开发仓库。
 
 ## 3. 一次有边界的 Lab 体验
 
 第一次建议只做下面这一条 Binary 完整记录，不需要立即执行全部验收清单：
 
-1. 点击“浏览”，选择完整路径 `F:\PersonalWorkspace\协议解析拼接工具\protocol_adapter_engine\deliverables\lab\fa81329\common-release\configs\synthetic_binary_ui_stage1.pae.json`；如尚未加载，点击“加载 / 重新加载”。
+1. 点击“浏览”，选择完整路径 `F:\PersonalWorkspace\pae-trial-7b4205e-20260920\lab-compile-diagnostics\static-verified\deploy\release-product\Release\configs\synthetic_binary_ui_stage1.pae.json`；如尚未加载，点击“加载 / 重新加载”。
 2. 在“绑定设置”中确认草稿为 `device / 解析 / ui_pipeline`，点击“应用绑定表”。返回“操作”，确认当前绑定，选择 `Flow 0`，当前动作为“解析”。
 3. 在“原始输入”中粘贴下面的 Hex，然后点击“解析完整记录”：
 
@@ -97,7 +99,7 @@ flowchart TD
 
 ```powershell
 Set-Location 'F:\PersonalWorkspace\协议解析拼接工具\protocol_adapter_engine'
-$PackageRoot = (Resolve-Path '.\deliverables\sdk\98df5e0\pae-sdk-static-release').Path
+$PackageRoot = (Resolve-Path 'F:\PersonalWorkspace\pae-trial-7b4205e-20260920\sdk\pae-sdk-static-release').Path
 $BuildRoot = 'F:\PersonalWorkspace\pae-first-use-sdk-consumer'
 
 cmake -S "$PackageRoot\examples\sdk_consumer" -B $BuildRoot `

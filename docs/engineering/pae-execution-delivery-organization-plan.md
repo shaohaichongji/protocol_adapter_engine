@@ -5,6 +5,20 @@
 
 ## 顺序与出口
 
+### 最新限定收口：诊断页人工短体验完成（2026-09-21）
+
+用户反馈操作完成、Lab已关闭。截图确认STRUCTURAL/MISSING_PROPERTY、/protocol_id、未提供offset及NONE资源信息分项正确显示，故本片人工短体验限定收口，不再追加复杂验收。复制/长文本交互及真实协议不由截图推定。详细记录见lab-structured-compile-diagnostics-validation-20260921.md第6节。后续只做统一入口、文档状态和提交候选整理，不扩功能；尚无新的Stage/Commit/Push授权。
+
+### 最新限定回收：结构化编译诊断（2026-09-21）
+
+Lab已交接并停止。总控抽查worker投影、session revision拒绝/清理、PlainText诊断显示及新增测试，读取common与standalone static/shared共六组D/R最终定向日志，均3/3通过；未自行重跑构建测试。新static Release产品位于F:/PersonalWorkspace/pae-trial-7b4205e-20260920/lab-compile-diagnostics/static-verified/deploy/release-product/Release。Binary流式配置现场hash与canonical相同；交接5F6B开头hash实际对应ASCII流式文件，并非Binary文件变化。人工可见体验尚未完成，准备独立manual-compile-error.pae.json用于一组短体验，不修改产品配置或旧部署。SDK保持7b4205e，Lab为fe1683c加未提交本片及打包修补；未提交推送，不代表正式发布。细节见lab-structured-compile-diagnostics-validation-20260921.md。
+
+### 当前实施：结构化编译诊断界面（2026-09-21）
+
+用户明确要求先完成诊断界面、再统一收尾。已派《Lab应用推进》独占Lab DTO/worker/completion/session/tab及相关定向测试；依据lab-trial-sdk-diagnostics-plan-20260920.md第4节。中文标签与原始稳定token并存，严格区分root pointer、offset缺失/0、NONE资源与真实零预算，不解析detail或引入Qt到PAE。保留既有错误决策，覆盖revision、清理、快照取消恢复及文档隔离。允许必要局部CMake/standalone白名单接线，不改PAE/API/Schema/根CMake/默认开关。
+
+基线fe1683c，保留三入口及示例打包修补全部未提交变更。仓内新验证根out/build/windows-msvc-lab-compile-diagnostics-20260921；完成后串行在F:/PersonalWorkspace/pae-trial-7b4205e-20260920/lab-compile-diagnostics消费既有只读SDK，做static/shared D/R定向验证与新部署，不覆盖现用产物或系统Qt。报告lab-structured-compile-diagnostics-validation-20260921.md；总控维护计划和入口，其他任务停止。范围外缺口停报，无Git写操作、删除、SDK重打或正式发布授权。回收复核后最多一组短体验，再统一收尾。
+
 ### 最新限定回收：试用 Lab 独立消费矩阵（2026-09-20）
 
 Lab已停止并交接。总控复核CRT注册差异及其文件hash，读取四组CTest成功汇总：static/shared各Debug33/33、Release32/32；现场重算四组模块记录的18个模块输入/部署/加载文件hash，均匹配。子任务报告四组Testing-off新构建及既定负例通过；总控未重跑构建测试、未逐份复核全部负例日志。最终static Debug Testing-on补同前缀增量build日志时，部署脚本拒绝覆盖非空既有部署，日志已核对；这是重复部署停点，不抹去此前实际测试通过，也不写成最后构建成功。不为日志前缀整齐而清空部署或重跑完整矩阵。本轮限定回收，后续建议整理累计补丁提交候选和试用入口，Git写操作与交付归集另行授权。SDK仍clean7b4205e，Lab仍为该基线加明确未提交补丁；人工真实协议、稳定ABI、Linux及正式发布未验证。详见lab-trial-sdk-7b4205e-validation.md第9节。

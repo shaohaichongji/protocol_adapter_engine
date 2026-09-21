@@ -9,7 +9,7 @@
 - 已理解 [01 项目定位与能力边界](01-项目定位与能力边界.md)；
 - 使用 Visual Studio 18 2026 x64 与已验证的 MSVC `v142,version=14.29.30133`；
 - 明确 consumer 要使用 Debug 还是 Release；
-- 当前本机存在 `deliverables/sdk/98df5e0`。这是候选，不是正式发布。
+- 当前本机存在 `F:\PersonalWorkspace\pae-trial-7b4205e-20260920\sdk`。这是候选，不是正式发布；统一导航见 [交付入口](../../deliverables/README.md)。
 
 ## 读完能做什么
 
@@ -19,13 +19,13 @@
 
 | 形态 | 路径 | 可用配置 |
 | --- | --- | --- |
-| Source | `deliverables/sdk/98df5e0/pae-sdk-source` | Debug、Release |
-| Static Debug | `deliverables/sdk/98df5e0/pae-sdk-static-debug` | Debug |
-| Static Release | `deliverables/sdk/98df5e0/pae-sdk-static-release` | Release |
-| Shared Debug | `deliverables/sdk/98df5e0/pae-sdk-shared-debug` | Debug |
-| Shared Release | `deliverables/sdk/98df5e0/pae-sdk-shared-release` | Release |
+| Source | `F:\PersonalWorkspace\pae-trial-7b4205e-20260920\sdk\pae-sdk-source` | Debug、Release |
+| Static Debug | `F:\PersonalWorkspace\pae-trial-7b4205e-20260920\sdk\pae-sdk-static-debug` | Debug |
+| Static Release | `F:\PersonalWorkspace\pae-trial-7b4205e-20260920\sdk\pae-sdk-static-release` | Release |
+| Shared Debug | `F:\PersonalWorkspace\pae-trial-7b4205e-20260920\sdk\pae-sdk-shared-debug` | Debug |
+| Shared Release | `F:\PersonalWorkspace\pae-trial-7b4205e-20260920\sdk\pae-sdk-shared-release` | Release |
 
-进入包后先读 `PAE-SDK-README.md`。五包 `PROVENANCE.json` 记录相同 `source_head=98df5e0d844413fb6ad16a75dfceedcf17f2f1d6` 与 `source_worktree_dirty=false`；这只说明独立打包源树身份。
+进入包后先读 `PAE-SDK-README.md`。五包 `PROVENANCE.json` 记录相同 `source_head=7b4205ea899cf16b9c73ba6ebc4c64382b71dc63` 与 `source_worktree_dirty=false`；这只说明独立打包源树身份，不随仓库后续提交改变。旧 `deliverables/sdk/98df5e0` 保留作历史对照。
 
 ## 2. Source 包接入
 

@@ -8,6 +8,7 @@ function(pae_lab_configure_deployment target)
     synthetic_binary_ui_stage1.pae.json synthetic_ascii_decode_only.pae.json
     synthetic_ascii_encode_only.pae.json synthetic_ascii_text_slice.pae.json
     synthetic_ascii_literal_only.pae.json synthetic_ascii_stream_slice.pae.json
+    synthetic_stream_framing_slice.pae.json
     synthetic_ui_max.pae.json)
   set(config_files)
   foreach(name IN LISTS config_names)
