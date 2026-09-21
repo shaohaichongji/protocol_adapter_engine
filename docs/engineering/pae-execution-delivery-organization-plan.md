@@ -5,6 +5,21 @@
 
 ## 顺序与出口
 
+### 当前收尾：整理检查点候选（2026-09-22）
+
+入口与教学包整理、30历史文档迁移已限定复核。用户手动执行七根清理成功，总控确认七根不存在、
+148份保留证据长度/Hash匹配，清除逻辑长度约4.265 GiB。见[收口记录](organization-closeout-20260921.md)。
+source/static Release教学候选保持e2527ca+dirty身份；未验证新Debug/shared，不替换旧五包。
+当前只整理提交范围/信息，尚未Stage/Commit/Push；下方为历史派发状态。
+
+### 当前执行：用户入口、示例与产物整理（2026-09-21）
+
+诊断与打包补项已提交推送 b6ea7a8/e2527ca，开始时 main@e2527ca 干净。用户同意整理方案，
+先并行派工程整理精简/修正入口及精确清理盘点，PAE 任务实现公开 API 最小教学示例与四级阅读路线；
+Lab 暂不派新工作。写入所有权、后续串行包装及删除停点见
+[本轮执行计划](onboarding-organization-20260921.md)。本轮不新增执行能力，不修改旧部署/SDK/Qt，
+不 Stage/Commit/Push；清理清单复核后再请用户确认，下方为历史记录。
+
 ### 最新限定收口：诊断页人工短体验完成（2026-09-21）
 
 用户反馈操作完成、Lab已关闭。截图确认STRUCTURAL/MISSING_PROPERTY、/protocol_id、未提供offset及NONE资源信息分项正确显示，故本片人工短体验限定收口，不再追加复杂验收。复制/长文本交互及真实协议不由截图推定。详细记录见lab-structured-compile-diagnostics-validation-20260921.md第6节。后续只做统一入口、文档状态和提交候选整理，不扩功能；尚无新的Stage/Commit/Push授权。
@@ -81,7 +96,7 @@ ui_description已迁移为protocol_metadata，直接调用/CMake/SDK白名单同
 
 ### 当前执行：协议元数据内部命名整理（2026-09-20）
 
-用户同意 ui_description 职责纠偏，保留协议元数据而非剔除。精确映射、写入范围与专项验证见 [命名整理计划](protocol-metadata-naming-plan-20260920.md)。《子任务推进》独占实现与直接消费者引用，Lab/工程整理停止；总控维护入口。公开API/Schema、执行语义和既有部署不变，不改测试探针机制、不重打SDK、无Git写操作；保留上一轮全部未提交文档。
+用户同意 ui_description 职责纠偏，保留协议元数据而非剔除。精确映射、写入范围与专项验证见 [命名整理计划](../archive/engineering-20260921/protocol-metadata-naming-plan-20260920.md)。《子任务推进》独占实现与直接消费者引用，Lab/工程整理停止；总控维护入口。公开API/Schema、执行语义和既有部署不变，不改测试探针机制、不重打SDK、无Git写操作；保留上一轮全部未提交文档。
 
 ### 最新收口：交付入口与精确清理（2026-09-20）
 
@@ -181,7 +196,7 @@ U1仅常用固定文案、稳定控件objectName/枚举定位及相应测试，�
 
 G1初次交付已回收，尚未收口：总控源码复核发现Session本地输入拒绝未清owner成功缓存、以及多Encode消息往返时固定首消息selection与缓存结果身份可能不一致，已派Lab在原范围先断言复现再定向返修。初次D/R与四组installed-SDK专项通过为执行任务报告，不能替代上述状态组合验证；终态证据待修后更新。U1仍等待G1复核，不新增人工步骤，不执行Git写操作或覆盖用户部署。
 
-UI方案已回收并完成总控文档复核：[可用性与中文化方案](lab-ui-usability-localization-plan.md)。工程整理已停止写入；G1仍在实施，不同时派发修改UI的任务。后续顺序为G1功能复核 → U1固定文案中文化及稳定测试定位 → U2布局/状态/长诊断分区；结构化诊断增强再按公开能力单独收敛。总控采用“处理管线（Pipeline）”与“流编号（Flow）”区分概念，替代方案中的“执行流”译法。保留配置提供的名称/描述、标识符、稳定错误码及原始技术数据，不做全仓字符串替换或新增多语言平台。参考工具的设计原则不等于本机Qt版本验证；本次仅方案复核，尚无中文化UI实现、DPI或人工显示验证。
+UI方案已回收并完成总控文档复核：[可用性与中文化方案](../archive/engineering-20260921/lab-ui-usability-localization-plan.md)。工程整理已停止写入；G1仍在实施，不同时派发修改UI的任务。后续顺序为G1功能复核 → U1固定文案中文化及稳定测试定位 → U2布局/状态/长诊断分区；结构化诊断增强再按公开能力单独收敛。总控采用“处理管线（Pipeline）”与“流编号（Flow）”区分概念，替代方案中的“执行流”译法。保留配置提供的名称/描述、标识符、稳定错误码及原始技术数据，不做全仓字符串替换或新增多语言平台。参考工具的设计原则不等于本机Qt版本验证；本次仅方案复核，尚无中文化UI实现、DPI或人工显示验证。
 
 用户采纳受限成功展示方案并授权后续UI优化/中文化。首片契约见[Binary Encode G1](lab-binary-encode-g1-contract.md)：Lab独占功能与定向D/R，工程整理并行只读界面/官方工具参考，仅写lab-ui-usability-localization-plan.md；PAE任务停止。公共API/Schema不扩展，不覆盖用户使用的98df5e0部署和私有输入。具体文件、构建/验证根、展示边界和停点以首片契约为准；无新Git/发布授权。两任务不得同时写UI。
 
@@ -342,7 +357,7 @@ Lab/PAE停止，总控维护本计划及外层AGENTS。完成向总控01a04601-7
 
 两份报告已交付，执行任务均停止写入。总控已阅读并交叉核对 Qt target 的私有链接、schema dispatch 的 yyjson 依赖、0.9 Encode availability 和共享 DTO/数字解析引用；本批仅静态复核，未构建或运行测试。
 
-- 功能报告：[剩余公开消费边界](lab-public-consumption-residual-audit.md)；构建报告：[包外构建预检](lab-sdk-external-build-preflight.md)。
+- 功能报告：[剩余公开消费边界](../archive/engineering-20260921/lab-public-consumption-residual-audit.md)；构建报告：[包外构建预检](../archive/engineering-20260921/lab-sdk-external-build-preflight.md)。
 - 0.9 complete Decode、0.10 complete Decode/Encode、0.11 complete/stream 的已迁移配置走公开执行，但共享 DTO 和兼容分支仍引入私有类型；0.5–0.8 仍有实际私有编译/Core 执行。整个 Qt Lab 尚非包外 public-only。
 - 建议顺序：先限定 Lab-owned 展示 DTO/utility（执行 owner 不变），再迁移 0.5–0.8 complete 执行，再隔离 ASCII 私有兼容闭包，最后独立构建入口及 static/shared D/R 包外验证。首片仍需按精确文件/行为清单收敛，不能把所有状态类型一次性重构。
 - 建议本轮范围仅 Qt Lab；CLI/Evidence/Replay/UDP 保持原状，仓内私有兼容 targets 保留，包外目标不包含它们。0.9 保持当前 Qt Decode-only，不顺带新增 Binary Encode/stream；当前展示保持，不新增 conversion 公式展示或 PAE 接口。上述范围待用户确认后再派实现。
@@ -595,7 +610,7 @@ Encode 暂缓：两报告对后续 Encode 观察的必需程度表述不同。�
 
 用户授权规划并推进。本轮为本地工程交付与验证，不是正式发布；阶段 2B 已限定收口。保留共享工作树全部既有变更，不 Stage/Commit/Push，不迁移 Lab，不清理目录或修改本机 Qt/全局环境。
 
-并行回收：《PAE工程整理》已交付 [SDK 内容与许可证盘点](pae-sdk-stage3-content-review.md) 并停止写入；总控已阅读报告，作为最终 manifest/依赖闭包核对输入，不视作包验证通过。PAE 实施仍在运行，Lab 尚未启动。报告反映盘点时构建状态，最终以实施后的代码与包验证为准；源码必需的 test_support 声明头与启用产品测试 hooks 应分别判断，能力文档不得仅凭 Schema 版本范围泛化支持承诺。
+并行回收：《PAE工程整理》已交付 [SDK 内容与许可证盘点](../archive/engineering-20260921/pae-sdk-stage3-content-review.md) 并停止写入；总控已阅读报告，作为最终 manifest/依赖闭包核对输入，不视作包验证通过。PAE 实施仍在运行，Lab 尚未启动。报告反映盘点时构建状态，最终以实施后的代码与包验证为准；源码必需的 test_support 声明头与启用产品测试 hooks 应分别判断，能力文档不得仅凭 Schema 版本范围泛化支持承诺。
 
 ### 范围与交付标准
 
@@ -655,7 +670,7 @@ final3 补齐回收：PAE 已停止，三类包统一附 `examples/sdk_consumer`
 
 后置回收：工程 README 与 Lab 消费复核均已交付并停止。Lab 未发现确定状态安全阻断，但确认 A→B→A 嵌套回调被安全拒绝为 BUSY，与约定 REENTRANT 分类不一致。总控已派 PAE 限定修正：保持原契约，以无热路径分配的活动回调链识别回环，先复现再做 D/R 定向验证；更正 bytes_consumed 注释和验证证据表述。修正前不最终收口，不启动 Host 2B；不重开 UI 人工验收。37/37 为修正前证据，后续新日志单独记录。
 
-两份设计与消费者报告已交付并停止写入。总控合并结论：先公开独立 Framer，再处理 Host；设计交付不等于代码验证。依据为 [PAE 设计](pae-public-framer-host-slice-design.md)和 [Lab 消费需求](lab-public-framer-host-consumer-review.md)。以下补充优先于两报告中的可选建议。
+两份设计与消费者报告已交付并停止写入。总控合并结论：先公开独立 Framer，再处理 Host；设计交付不等于代码验证。依据为 [PAE 设计](pae-public-framer-host-slice-design.md)和 [Lab 消费需求](../archive/engineering-20260921/lab-public-framer-host-consumer-review.md)。以下补充优先于两报告中的可选建议。
 
 - 2A 只包装既有切帧能力，持有冻结 compiled state；一个实例对应一个 pipeline/逻辑流。提供公开流式能力查询、Create、Push、Continue、Reset、MemoryReport 和只读 Observe（phase、buffered_bytes、has_internal_work、有效提交/工作上限），不得由消费者解析私有 Plan 或猜测 Schema。能力查询不承诺创建预算一定充足。
 - 空 Push 与 Continue 等价，沿用内部零输入推进语义，不刷新/丢弃半帧。每次仅推进一次内部调用；精确保留 consumed 前缀事实，未消费后缀由调用者持有，不隐式缓存或循环排空。STOP 已交付当前候选、不重放、不预读后缀；候选不等于 Decode 成功。

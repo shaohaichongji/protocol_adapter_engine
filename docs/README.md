@@ -23,6 +23,8 @@
 
 ## 当前交付身份
 
-本机统一入口为 [`deliverables/README.md`](../deliverables/README.md)。最新功能体验是 `fa81329/common-release` 仓库构建 Lab，包含 Binary G1/G2 和中文工作台；不是 installed-SDK，也不代表 ASCII 全公开路径。SDK 五包及已验证的 static/shared standalone Lab 保持 `98df5e0` 身份。两类交付不能互相替代来源证据；均不表示稳定 ABI、Linux、正式分发、许可闭合、真实协议或现场验收。
+本机统一入口为 [`deliverables/README.md`](../deliverables/README.md)。当前推荐 SDK 五包来自 clean `7b4205ea899cf16b9c73ba6ebc4c64382b71dc63`；首选 Lab 来自 `fe1683c` 加结构化编译诊断与 Binary 流式示例打包的未提交修补。Lab 使用上述 installed SDK，但 Lab 二进制不能据此冒充 clean `e2527ca` 重建。
+
+旧 `98df5e0` SDK/standalone 与 `fa81329/common-release` 继续作为历史对照。各身份不能互换来源证据；均不表示稳定 ABI、Linux、正式分发、许可闭合、真实协议或现场验收。
 
 文档改名和拆分见 [迁移映射](engineering/document-migration-map.md)。验证记录只证明正文列明的范围；历史文档中的“当前”“下一步”不自动代表今天的状态或授权。

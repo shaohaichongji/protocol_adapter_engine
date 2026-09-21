@@ -2,7 +2,7 @@
 
 ## 1. 结论
 
-依据 [生成产物清理盘点](generated-artifact-cleanup-inventory-20260919.md) 第 5、7 节的固定候选清单，已完成“dry-run → 证据归集与逐文件校验 → 链接对象先移除 → 精确根删除 → 保护项复核”。
+依据 [生成产物清理盘点](../archive/engineering-20260921/generated-artifact-cleanup-inventory-20260919.md) 第 5、7 节的固定候选清单，已完成“dry-run → 证据归集与逐文件校验 → 链接对象先移除 → 精确根删除 → 保护项复核”。
 
 - 删除目录根：**99 个**；跳过 0 个，目录删除失败 0 个；
 - 删除获批根内 SymbolicLink 对象：**26 个**；

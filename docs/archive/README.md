@@ -4,6 +4,7 @@
 
 ## 历史推进与阶段记录
 
+- [2026-09-21 工程历史归档](engineering-20260921/README.md)：30 份 preflight、review、plan、diagnosis 与 inventory，按能力链组织。
 - [旧检查点交付计划](checkpoint-delivery-plan.md)：已被后续路线、契约和实际交付记录替代。
 - [Lab ASCII 内部适配 Stage 1 验证](lab-ascii-adapter-stage1-validation.md)：已由后续 UI Stage 2 与完整观察验证继续推进。
 

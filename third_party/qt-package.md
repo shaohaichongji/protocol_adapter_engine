@@ -13,7 +13,7 @@ CMake 的 `PAE_QT_ROOT` 新配置默认指向该副本；已有缓存中的显�
 来源证据采用本地既有包快照，不声称整个包是未经修改的官方归档。
 此前核验所见 Core DLL 安装前缀及部分头文件文本格式差异保留原状。
 许可附件、原始构建记录和最终分发审查尚未闭合；用户决定复用现有包不被表述为法律合规证明。
-官方重新组包路线停止，相关历史检查记录保留于 docs/engineering/lab-qt-dependency-audit-plan.md。
+官方重新组包路线停止，相关历史检查记录保留于 docs/archive/engineering-20260921/lab-qt-dependency-audit-plan.md。
 
 更新时须单独明确版本与范围，重新生成清单、比较原包和副本，再做 Windows Debug/Release 定向验证。
 Git 对 qt/** 禁用文本换行转换，避免入库改变原始头文件字节。当前未 Stage、Commit 或 Push。

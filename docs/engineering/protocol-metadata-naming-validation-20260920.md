@@ -4,7 +4,7 @@
 
 - 仓库：`F:\PersonalWorkspace\协议解析拼接工具\protocol_adapter_engine`
 - 分支与基线：`main@fa81329563dd3aea9bb167ef9bd34526a2606161`
-- 授权依据：`docs/engineering/protocol-metadata-naming-plan-20260920.md`
+- 授权依据：`docs/archive/engineering-20260921/protocol-metadata-naming-plan-20260920.md`
 - 本次仅整理 config compiler 内部协议元数据命名及其直接引用；公开 API、Schema、布局、预算、所有权和执行顺序未改变。
 - 接管时已有入口、清理和 G2 交付相关 Markdown 修改均保留。本报告是本任务唯一新增 Markdown。
 - 未执行 Stage、Commit、Push、SDK 重打包、部署覆盖、网络收发或人工 UI 验收。

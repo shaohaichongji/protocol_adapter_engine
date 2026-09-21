@@ -55,6 +55,21 @@ install(
     DESTINATION "examples/sdk_consumer"
 )
 install(
+    FILES
+        "${PROJECT_SOURCE_DIR}/examples/getting_started/CMakeLists.txt"
+        "${PROJECT_SOURCE_DIR}/examples/getting_started/main.cpp"
+        "${PROJECT_SOURCE_DIR}/examples/getting_started/README.md"
+    DESTINATION "examples/getting_started"
+)
+install(
+    FILES "${PROJECT_SOURCE_DIR}/examples/config/synthetic_stream_framing_slice.pae.json"
+    DESTINATION "examples/config"
+)
+install(
+    FILES "${PROJECT_SOURCE_DIR}/docs/sdk/README.md"
+    DESTINATION "docs/sdk"
+)
+install(
     FILES "${PROJECT_SOURCE_DIR}/third_party/yyjson/LICENSE"
     DESTINATION "LICENSES"
     RENAME yyjson-LICENSE.txt

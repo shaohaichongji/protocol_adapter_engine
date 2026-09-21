@@ -2,7 +2,7 @@
 
 ## 1. 结论
 
-依据用户对 [2026-09-20 清理盘点](pae-artifact-cleanup-inventory-20260920.md) 第 6 节精确路径的授权，已完成：
+依据用户对 [2026-09-20 清理盘点](../archive/engineering-20260921/pae-artifact-cleanup-inventory-20260920.md) 第 6 节精确路径的授权，已完成：
 
 1. 六个历史 G1/UI 根的最小证据归集、逐文件 Hash 校验和删除；
 2. 两个空生成根及现场仍为空的 `src\core` 删除；

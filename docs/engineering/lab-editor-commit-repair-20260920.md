@@ -18,7 +18,7 @@ Debug 定向结果证明两处授权修复均到达预期阶段：
 
 - 仓库：`F:\PersonalWorkspace\协议解析拼接工具\protocol_adapter_engine`
 - 分支与 HEAD：`main@fa81329563dd3aea9bb167ef9bd34526a2606161`
-- 输入诊断：`docs/engineering/lab-editor-commit-diagnosis-20260920.md`
+- 输入诊断：`docs/archive/engineering-20260921/lab-editor-commit-diagnosis-20260920.md`
 - 实际修改：`tools/protocol_lab_ui/document_tab.cpp`
 - 唯一新增报告：本文件
 - 新构建根：`out/build/windows-msvc-lab-editor-commit-repair-20260920`

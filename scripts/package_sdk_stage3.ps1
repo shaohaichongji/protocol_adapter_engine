@@ -48,6 +48,7 @@ if ($Kind -eq "source") {
         "cmake/PaeSdkInstall.cmake",
         "cmake/PaeYyjson.cmake",
         "cmake/VerifyYyjsonVendor.cmake",
+        "docs/sdk/README.md",
         "docs/engineering/pae-sdk-stage3-contract.md",
         "schema/README.md",
         "schema/pae.schema.json",
@@ -100,7 +101,8 @@ if ($Kind -eq "source") {
         "examples/public_api_compile",
         "examples/public_api_codec",
         "examples/public_api_framer",
-        "examples/public_api_host"
+        "examples/public_api_host",
+        "examples/public_api_sdk_consumer"
     )) {
         $sourceFiles += Get-ChildItem -LiteralPath (Join-Path $sourceRootPath $exampleDirectory) -File -Recurse |
             ForEach-Object {
@@ -108,6 +110,9 @@ if ($Kind -eq "source") {
             }
     }
     $sourceFiles += @(
+        "examples/getting_started/CMakeLists.txt",
+        "examples/getting_started/main.cpp",
+        "examples/getting_started/README.md",
         "examples/config/synthetic_lab_exchange_slice.pae.json",
         "examples/config/synthetic_stream_framing_slice.pae.json",
         "examples/config/synthetic_ascii_text_slice.pae.json",
@@ -137,6 +142,11 @@ if ($Kind -eq "source") {
         "include/pae/host_endpoint.h",
         "lib/cmake/PAE/PAEConfig.cmake",
         "lib/cmake/PAE/PAEConfigVersion.cmake",
+        "docs/sdk/README.md",
+        "examples/getting_started/CMakeLists.txt",
+        "examples/getting_started/main.cpp",
+        "examples/getting_started/README.md",
+        "examples/config/synthetic_stream_framing_slice.pae.json",
         "examples/sdk_consumer/CMakeLists.txt",
         "examples/sdk_consumer/main.cpp",
         "LICENSES/yyjson-LICENSE.txt"
@@ -178,9 +188,9 @@ $readmeLines = @(
     "- Status: local review artifact, not a formal release",
     "",
     "The package exposes the current experimental public Compiler/metadata, Codec,",
-    "StreamFramer and Host APIs. Use the packaged examples/sdk_consumer as the primary",
-    "reproducible entry point. Other source-package examples are historical focused",
-    "examples and are not substitutes for this complete package check.",
+    "StreamFramer and Host APIs. Start with the Chinese docs/sdk/README.md and",
+    "examples/getting_started. Keep examples/sdk_consumer as the comprehensive",
+    "reproducible package check; the two entry points have different responsibilities.",
     "",
     "## Configure, build, and run",
     "",

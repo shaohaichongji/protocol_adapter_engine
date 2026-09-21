@@ -48,7 +48,7 @@ SDK 五包/六组包外消费、诊断改动前Lab static/shared Debug各33项�
 & 'F:\PersonalWorkspace\协议解析拼接工具\protocol_adapter_engine\deliverables\lab\fa81329\common-release\pae_protocol_lab_ui.exe'
 ```
 
-这是 G2-C 既有仓库内构建的完整复制，不是从干净 `fa81329` 重新构建，也不是 installed-SDK standalone。17 个运行文件已做源/目标哈希核对；本次归集未重新启动或测试。ASCII 0.10/0.11 与旧版本走既有兼容路径，public A1/A2/stream 和 public legacy 开关为 OFF。请保留完整目录，不只复制 EXE。来源、功能和验证边界见 [G2 归集记录](../docs/engineering/lab-g2-delivery-candidate-20260920.md)。
+这是 G2-C 既有仓库内构建的完整复制，不是从干净 `fa81329` 重新构建，也不是 installed-SDK standalone。17 个运行文件已做源/目标哈希核对；本次归集未重新启动或测试。ASCII 0.10/0.11 与旧版本走既有兼容路径，public A1/A2/stream 和 public legacy 开关为 OFF。请保留完整目录，不只复制 EXE。来源、功能和验证边界见 [G2 归集记录](../docs/archive/engineering-20260921/lab-g2-delivery-candidate-20260920.md)。
 
 ### 既有 installed-SDK 对照入口（98df5e0）
 

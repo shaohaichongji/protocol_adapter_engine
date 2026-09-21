@@ -4,6 +4,9 @@
 
 ## 阅读入口与职责
 
+- [`getting_started`](getting_started/README.md)：建议第一个运行的最小 installed-SDK consumer；只用公开
+  Compiler/Codec API，把手写 Binary 字节 `AA 00 07` Decode 为 `fixed_payload=7`，再从类型化输入
+  Encode 回同一独立预期。它不是综合能力或发布验证程序。
 - [`public_api_codec`](public_api_codec/README.md)：当前 Stage 1/1B 推荐的公开消费示例，只 include
   `pae/*` 并链接 `PAE::pae`；先用 metadata 查询动作、逻辑类型、Encode 来源和输出容量，再执行
   Binary Encode/Decode 与 ASCII Encode。
@@ -18,7 +21,8 @@
 - `ascii_text/`、`ascii_stream_framing/`、`stream_framing/`、`host_endpoint/` 和
   `business_embedding/` 是内部能力或消费侧的工程示例，不是推荐给外部消费者的稳定 SDK 接入面。
 - 配置样例集中在 `config/`。先读 [`../include/README.md`](../include/README.md)理解公开边界；
-  需要内部实现或 Lab 示例时，再进入相应目录。
+  建议按 [`协议配置入门`](../docs/guides/04-协议配置入门.md) 的“固定 Binary → ASCII → 长度/校验
+  → 流式”顺序学习；需要内部实现或 Lab 示例时，再进入相应目录。
 
 - [`config/synthetic_lab_exchange_slice.pae.json`](config/synthetic_lab_exchange_slice.pae.json)：从零设计的人工实验台双向配置切片；状态为`V0.1 DRAFT SLICE / INCOMPLETE`。
 - [`config/synthetic_sum8_slice.pae.json`](config/synthetic_sum8_slice.pae.json)：从零设计的Schema 0.3

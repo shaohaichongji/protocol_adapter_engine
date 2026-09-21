@@ -22,7 +22,7 @@ PAE V0.1 将使用 JSON Schema Draft 2020-12 描述基础结构，并使用独�
 - [ProtocolPlan Execution Semantics V0.1 — Draft Slice](protocol_plan_execution_semantics_v0.1.md)：首切片跨引用、布局、Matcher、Encode Source和Plan语义；
 - [PAE Strict JSON Profile V0.1](strict_json_profile_v0.1.md)：定义`*.pae.json`输入字节、严格词法、Unicode、Number Token、重复 key 和资源边界。
 
-不同宿主和工具并不自动支持全部版本：旧 Protocol Lab CLI/Evidence 链最高执行到 0.8；Qt Lab 的 ASCII 路径覆盖 0.10/0.11；Binary Host UI 当前只开放 0.9 完整记录 Decode，Binary Encode 与流式 UI 尚未接入。非 Qt 底层能力、UI 可见能力和人工验收必须分别判断。
+不同宿主和工具并不自动支持全部版本：旧 Protocol Lab CLI/Evidence 链最高执行到 0.8；当前首选 Qt Lab 覆盖 Binary 完整记录 Decode/Encode、Binary 0.9 G2 流式观察，以及 ASCII 0.10/0.11 完整记录与 CRLF 流式路径。具体构建开关和 installed-SDK 来源仍须看对应交付记录，不能仅由 Schema 版本号推断。非 Qt 底层能力、UI 可见能力、自动验证和人工验收必须分别判断。
 
 JSON Parser Spike只验证候选Parser和Strict JSON Loader Profile，不构成正式Schema或协议正确性证据。当前仍未形成稳定公共 API、正式协议 Golden Vector、完整 Receive Gate/Mapping 产品闭环、Linux/目标板/硬件/现场或生产验收。
 

@@ -1,12 +1,18 @@
 # DEC-040 后续推进路线与当前状态
 
-## 当前入口（2026-09-20）
+## 当前入口（2026-09-22）
 
-G1 Binary 组包、G2 Binary 流式及中文左右工作台已完成限定验证，检查点 `fa81329` 已提交推送。最新本地体验候选与 `98df5e0` SDK/standalone 对照包分别维护，见 [交付入口](../../deliverables/README.md)。本轮仅整理入口和执行获批产物清理，不扩展功能；最新进度以综合计划和清理执行报告为准。
+诊断界面及示例打包补项已提交推送至 `e2527ca`。当前推荐 SDK 为 clean `7b4205e` 五包；
+新 Lab 为 `fe1683c` 加诊断与打包修补的构建，不因后续提交而改变其构建身份。
+具体路径与验证边界见 [交付入口](../../deliverables/README.md)。本轮整理用户入口与教学示例，
+已完成30文档归档及source/static Release教学候选验证，未新增执行能力。用户已手动删除七根，
+总控核对不存在及保留证据Hash通过；当前整理提交候选，尚未提交推送。任务分工和验证边界见
+[本轮计划](onboarding-organization-20260921.md)。
 
 ### 2026-09-19 历史入口
 
-下方为历史派发过程，不作为当前状态。当前 SDK/Lab 已完成同批 98df5e0 本地消费验证与 deliverables 归集；获批 99 个产物根已清理，六篇中文指南和阅读导航已整理。清理范围见 [执行记录](generated-artifact-cleanup-execution-20260919.md)，使用见 [统一交付入口](../../deliverables/README.md)。后续推进 Lab 公开能力图形入口覆盖；具体实施与授权以 [综合计划](pae-execution-delivery-organization-plan.md) 最上方为准。
+下方为历史派发过程，不作为当前状态。旧 `98df5e0` 交付及历史清理记录保留原身份；
+具体实施与授权以 [综合计划](pae-execution-delivery-organization-plan.md) 最上方为准。
 
 ## 2026-09-18 当前派发
 
@@ -150,7 +156,7 @@ UX已随`84644338b06be378e542b72f5eed03f48a2e2bd5`提交推送，验收时未提
 [Binary Host六项契约](lab-binary-host-observer-contract.md)：限定0.9，先补候选raw整数读取，
 再接非Qt类型化DTO和UI；用户已确认六项，随后分阶段独立授权，当前进展见下文。
 
-随后获准先完成[Qt依赖只读核验与随仓方案](lab-qt-dependency-audit-plan.md)。
+随后获准先完成[Qt依赖只读核验与随仓方案](../archive/engineering-20260921/lab-qt-dependency-audit-plan.md)。
 用户随后明确决定完整复制DEI现有Qt并长期使用：2440文件已复制至third_party/qt，逐文件Hash一致；
 新配置默认采用仓库副本，Windows Debug/Release UI构建和各7/7窗口烟测通过。
 原始来源及分发材料仍有未闭合项；官方重组路线停止，用户手动删除审计目录后已核对不存在。

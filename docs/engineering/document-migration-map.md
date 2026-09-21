@@ -40,3 +40,42 @@
 | `docs/guides/manual-dec042b-c3-offline-acceptance.md` | `docs/guides/专项验收/DEC-042B-C3-人工离线验收.md` | 移出主线；保留 `NOT_EVALUATED` 和历史证据边界 |
 
 `docs/guides/README.md` 保留惯例英文文件名，正文提供 01～06 的唯一推荐顺序。旧文件名不保留重定向副本，仓库内版本化 Markdown 引用已机械更新到新路径。
+
+## 2026-09-21 工程历史归档
+
+以下 30 份文档从 `docs/engineering/` 迁入 `docs/archive/engineering-20260921/`。迁移保持原文件名和历史正文，只增加统一归档说明并按新位置校正相对链接。
+
+| 原路径 | 新路径 |
+| --- | --- |
+| `docs/engineering/lab-binary-stream-g2-preflight.md` | `docs/archive/engineering-20260921/lab-binary-stream-g2-preflight.md` |
+| `docs/engineering/lab-public-api-stage4-ascii-migration-review.md` | `docs/archive/engineering-20260921/lab-public-api-stage4-ascii-migration-review.md` |
+| `docs/engineering/lab-public-api-stage4-binary-migration-plan.md` | `docs/archive/engineering-20260921/lab-public-api-stage4-binary-migration-plan.md` |
+| `docs/engineering/lab-public-ascii-stream-preflight.md` | `docs/archive/engineering-20260921/lab-public-ascii-stream-preflight.md` |
+| `docs/engineering/lab-public-codec-consumer-review.md` | `docs/archive/engineering-20260921/lab-public-codec-consumer-review.md` |
+| `docs/engineering/lab-public-consumer-metadata-review.md` | `docs/archive/engineering-20260921/lab-public-consumer-metadata-review.md` |
+| `docs/engineering/lab-public-consumption-residual-audit.md` | `docs/archive/engineering-20260921/lab-public-consumption-residual-audit.md` |
+| `docs/engineering/lab-public-framer-host-consumer-review.md` | `docs/archive/engineering-20260921/lab-public-framer-host-consumer-review.md` |
+| `docs/engineering/lab-public-framer-stage2a-consumer-review.md` | `docs/archive/engineering-20260921/lab-public-framer-stage2a-consumer-review.md` |
+| `docs/engineering/lab-public-host-stage2b-consumer-review.md` | `docs/archive/engineering-20260921/lab-public-host-stage2b-consumer-review.md` |
+| `docs/engineering/lab-qt-dependency-audit-plan.md` | `docs/archive/engineering-20260921/lab-qt-dependency-audit-plan.md` |
+| `docs/engineering/lab-sdk-external-build-preflight.md` | `docs/archive/engineering-20260921/lab-sdk-external-build-preflight.md` |
+| `docs/engineering/lab-sdk-stage3-consumer-review.md` | `docs/archive/engineering-20260921/lab-sdk-stage3-consumer-review.md` |
+| `docs/engineering/lab-sdk-standalone-implementation-scope.md` | `docs/archive/engineering-20260921/lab-sdk-standalone-implementation-scope.md` |
+| `docs/engineering/lab-trial-sdk-diagnostics-plan-20260920.md` | `docs/archive/engineering-20260921/lab-trial-sdk-diagnostics-plan-20260920.md` |
+| `docs/engineering/lab-ui-usability-localization-plan.md` | `docs/archive/engineering-20260921/lab-ui-usability-localization-plan.md` |
+| `docs/engineering/pae-binary-stream-g2-public-audit.md` | `docs/archive/engineering-20260921/pae-binary-stream-g2-public-audit.md` |
+| `docs/engineering/pae-gui-consumption-capability-audit.md` | `docs/archive/engineering-20260921/pae-gui-consumption-capability-audit.md` |
+| `docs/engineering/pae-public-api-stage4-ascii-gap-review.md` | `docs/archive/engineering-20260921/pae-public-api-stage4-ascii-gap-review.md` |
+| `docs/engineering/pae-public-api-stage4-observation-gap-design.md` | `docs/archive/engineering-20260921/pae-public-api-stage4-observation-gap-design.md` |
+| `docs/engineering/pae-public-stream-framing-preflight.md` | `docs/archive/engineering-20260921/pae-public-stream-framing-preflight.md` |
+| `docs/engineering/pae-sdk-clean-checkpoint-preflight.md` | `docs/archive/engineering-20260921/pae-sdk-clean-checkpoint-preflight.md` |
+| `docs/engineering/pae-sdk-stage3-content-review.md` | `docs/archive/engineering-20260921/pae-sdk-stage3-content-review.md` |
+| `docs/engineering/protocol-metadata-naming-plan-20260920.md` | `docs/archive/engineering-20260921/protocol-metadata-naming-plan-20260920.md` |
+| `docs/engineering/protocol-metadata-qt-smoke-diagnosis-20260920.md` | `docs/archive/engineering-20260921/protocol-metadata-qt-smoke-diagnosis-20260920.md` |
+| `docs/engineering/repository-organization-inventory.md` | `docs/archive/engineering-20260921/repository-organization-inventory.md` |
+| `docs/engineering/generated-artifact-cleanup-inventory-20260919.md` | `docs/archive/engineering-20260921/generated-artifact-cleanup-inventory-20260919.md` |
+| `docs/engineering/pae-artifact-cleanup-inventory-20260920.md` | `docs/archive/engineering-20260921/pae-artifact-cleanup-inventory-20260920.md` |
+| `docs/engineering/lab-editor-commit-diagnosis-20260920.md` | `docs/archive/engineering-20260921/lab-editor-commit-diagnosis-20260920.md` |
+| `docs/engineering/lab-g2-delivery-candidate-20260920.md` | `docs/archive/engineering-20260921/lab-g2-delivery-candidate-20260920.md` |
+
+能力链索引见[归档目录 README](../archive/engineering-20260921/README.md)。总控维护的 `onboarding-organization-20260921.md` 与 `pae-execution-delivery-organization-plan.md` 未在本任务中修改，其中旧引用待总控回收时统一修正。

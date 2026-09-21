@@ -8,7 +8,7 @@
 
 ## 1. 依据、取舍与范围
 
-现场为 `main@dfb08f351cdb22a9b50c9e64e688e3b666e669bc`，共享工作树已有大量变更，暂存为空。依据两份独立静态报告：[PAE 覆盖核对](pae-public-api-stage4-ascii-gap-review.md)、[Lab 消费需求](lab-public-api-stage4-ascii-migration-review.md)。它们是调研输入；关于实际范围、控制字符列表和切片顺序的不同建议以本文合并决定为准，不回改历史报告。
+现场为 `main@dfb08f351cdb22a9b50c9e64e688e3b666e669bc`，共享工作树已有大量变更，暂存为空。依据两份独立静态报告：[PAE 覆盖核对](../archive/engineering-20260921/pae-public-api-stage4-ascii-gap-review.md)、[Lab 消费需求](../archive/engineering-20260921/lab-public-api-stage4-ascii-migration-review.md)。它们是调研输入；关于实际范围、控制字符列表和切片顺序的不同建议以本文合并决定为准，不回改历史报告。
 
 沿用 [ASCII 引擎契约](ascii-text-codec-minimal-contract.md)、[Lab 离线契约](lab-ascii-offline-integration-contract.md)、[公开 Codec 设计](pae-public-codec-slice-design.md)和[公开 Host 契约](pae-public-host-stage2b-contract.md)的执行语义。本片不改变 Schema、冻结 Plan 接受域、匹配/编解码算法、指纹或默认能力开关。
 

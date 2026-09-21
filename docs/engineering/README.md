@@ -4,7 +4,7 @@
 
 ## 1. 先按目的选择入口
 
-2026-09-20：最新体验 Lab 已归集，见 [G2 交付记录](lab-g2-delivery-candidate-20260920.md)；SDK 身份保持不变，见 [仓库/SDK 审计](pae-repository-sdk-audit-20260920.md)。本轮清理范围见 [产物盘点](pae-artifact-cleanup-inventory-20260920.md)。旧 G1 预检和图形覆盖盘点中的“尚未接入”是历史状态，不覆盖已完成的 G1/G2。
+2026-09-20：最新体验 Lab 已归集，见 [G2 交付记录](../archive/engineering-20260921/lab-g2-delivery-candidate-20260920.md)；SDK 身份保持不变，见 [仓库/SDK 审计](pae-repository-sdk-audit-20260920.md)。本轮清理范围见 [产物盘点](../archive/engineering-20260921/pae-artifact-cleanup-inventory-20260920.md)。旧 G1 预检和图形覆盖盘点中的“尚未接入”是历史状态，不覆盖已完成的 G1/G2。
 
 | 目的 | 先读 |
 | --- | --- |
@@ -34,14 +34,14 @@
 ### Compiler、metadata 与 Codec
 
 - [公开编译与 metadata 实施范围](pae-public-compile-metadata-slice.md)、[验证](pae-public-compile-metadata-validation.md)
-- [消费准备 metadata 契约](pae-public-consumer-metadata-slice.md)、[验证](pae-public-consumer-metadata-validation.md)、[Lab 消费复核](lab-public-consumer-metadata-review.md)
+- [消费准备 metadata 契约](pae-public-consumer-metadata-slice.md)、[验证](pae-public-consumer-metadata-validation.md)、[Lab 消费复核](../archive/engineering-20260921/lab-public-consumer-metadata-review.md)
 - [完整记录 Codec 设计](pae-public-codec-slice-design.md)、[验证与移动视图修复](pae-public-codec-slice-validation.md)、[Lab 消费复核](lab-public-codec-stage1-consumer-validation.md)
 
 ### Framer 与 Host
 
-- [公开 Framer/Host 分片设计](pae-public-framer-host-slice-design.md)、[Lab 需求复核](lab-public-framer-host-consumer-review.md)
-- [StreamFramer 2A Windows 验证](pae-public-framer-stage2a-validation.md)、[Lab 消费复核](lab-public-framer-stage2a-consumer-review.md)
-- [公开 Host 2B 契约](pae-public-host-stage2b-contract.md)、[Windows 验证](pae-public-host-stage2b-validation.md)、[Lab 消费复核](lab-public-host-stage2b-consumer-review.md)
+- [公开 Framer/Host 分片设计](pae-public-framer-host-slice-design.md)、[Lab 需求复核](../archive/engineering-20260921/lab-public-framer-host-consumer-review.md)
+- [StreamFramer 2A Windows 验证](pae-public-framer-stage2a-validation.md)、[Lab 消费复核](../archive/engineering-20260921/lab-public-framer-stage2a-consumer-review.md)
+- [公开 Host 2B 契约](pae-public-host-stage2b-contract.md)、[Windows 验证](pae-public-host-stage2b-validation.md)、[Lab 消费复核](../archive/engineering-20260921/lab-public-host-stage2b-consumer-review.md)
 - [宿主端点绑定契约](host-endpoint-binding-contract.md)、[实施验证](host-endpoint-binding-validation.md)、[raw 候选观察验证](host-raw-candidate-validation.md)
 - [最小业务嵌入契约](business-embedding-minimal-contract.md)、[Windows 验证](windows-msvc-2026-business-embedding-minimal.md)
 
@@ -50,7 +50,7 @@
 - [ASCII 公开消费最小契约](pae-public-ascii-consumption-contract.md)
 - [公开 ASCII facts 验证](pae-public-ascii-facts-validation.md)、[SDK 消费验证](pae-public-ascii-sdk-validation.md)
 - [A1 非 Qt 适配](lab-public-ascii-offline-a1-validation.md)、[A2 UI/显式 Host](lab-public-ascii-ui-a2-validation.md)
-- [0.11 Framing 预检](pae-public-stream-framing-preflight.md)、[实现验证](pae-public-stream-framing-validation.md)、[SDK 验证](pae-public-stream-sdk-validation.md)
+- [0.11 Framing 预检](../archive/engineering-20260921/pae-public-stream-framing-preflight.md)、[实现验证](pae-public-stream-framing-validation.md)、[SDK 验证](pae-public-stream-sdk-validation.md)
 - [Lab 非 Qt stream](lab-public-ascii-stream-validation.md)、[Qt 接线](lab-public-ascii-stream-ui-validation.md)
 
 ## 4. Schema 与协议能力切片
@@ -80,7 +80,7 @@
 
 ### Qt 接入与展示
 
-- [Qt 依赖核验](lab-qt-dependency-audit-plan.md)
+- [Qt 依赖核验](../archive/engineering-20260921/lab-qt-dependency-audit-plan.md)
 - [ASCII 离线接入契约](lab-ascii-offline-integration-contract.md)、[UI Stage 2 验证](lab-ascii-ui-stage2-validation.md)
 - [ASCII Stream Observer 契约](lab-ascii-stream-observer-contract.md)、[观察验证](lab-ascii-stream-observation-stage1-validation.md)、[完整验证](lab-ascii-stream-observer-validation.md)
 - [Host Observer 契约](lab-host-endpoint-observer-contract.md)、[验证](lab-host-endpoint-observer-validation.md)
@@ -91,20 +91,22 @@
 
 ## 6. SDK、独立消费与本机交付
 
-- [Windows x64 SDK 阶段 3 契约](pae-sdk-stage3-contract.md)、[验证](pae-sdk-stage3-windows-validation.md)、[内容盘点](pae-sdk-stage3-content-review.md)、[Lab 消费复核](lab-sdk-stage3-consumer-review.md)：`final6` 是历史交付身份。
-- [clean-checkpoint SDK 预检](pae-sdk-clean-checkpoint-preflight.md)、[五包与包外消费验证](pae-sdk-clean-checkpoint-validation.md)：当前候选打包输入为 clean `98df5e0`。
+- [Windows x64 SDK 阶段 3 契约](pae-sdk-stage3-contract.md)、[验证](pae-sdk-stage3-windows-validation.md)、[内容盘点](../archive/engineering-20260921/pae-sdk-stage3-content-review.md)、[Lab 消费复核](../archive/engineering-20260921/lab-sdk-stage3-consumer-review.md)：`final6` 是历史交付身份。
+- [clean-checkpoint SDK 预检](../archive/engineering-20260921/pae-sdk-clean-checkpoint-preflight.md)、[五包与包外消费验证](pae-sdk-clean-checkpoint-validation.md)：当前候选打包输入为 clean `98df5e0`。
 - [Lab 同批 SDK 消费验证](lab-clean-sdk-consumption-validation.md)：static/shared Debug/Release 本地 standalone 闭包。
-- [installed SDK 范围预检](lab-sdk-standalone-implementation-scope.md)、[static 验证](lab-sdk-standalone-validation.md)、[shared 验证](lab-sdk-standalone-shared-validation.md)：记录旧 dirty-provenance 路线，不替代当前 clean 候选。
+- [installed SDK 范围预检](../archive/engineering-20260921/lab-sdk-standalone-implementation-scope.md)、[static 验证](lab-sdk-standalone-validation.md)、[shared 验证](lab-sdk-standalone-shared-validation.md)：记录旧 dirty-provenance 路线，不替代当前 clean 候选。
 - [SDK 本机归集](local-deliverables-sdk-validation-20260919.md)、[Lab 本机归集](local-deliverables-lab-validation-20260919.md)：统一入口位于 `deliverables/`。
 
 面向使用者的当前命令见 [03 Windows SDK 集成](../guides/03-Windows-SDK集成.md)，不要直接从历史验证报告复制旧候选路径。
 
 ## 7. 仓库、文档与生成物整理
 
+- [2026-09-21 历史文档迁移与构建根清理准备](organization-closeout-20260921.md)
+- [2026-09-21 工程历史归档索引](../archive/engineering-20260921/README.md)
 - [仓库结构审查](repository-organization-audit-20260919.md)
-- [生成产物清理盘点](generated-artifact-cleanup-inventory-20260919.md)、[执行记录](generated-artifact-cleanup-execution-20260919.md)
+- [生成产物清理盘点](../archive/engineering-20260921/generated-artifact-cleanup-inventory-20260919.md)、[执行记录](generated-artifact-cleanup-execution-20260919.md)
 - [文档迁移映射](document-migration-map.md)
-- [仓库历史结构盘点](repository-organization-inventory.md)
+- [仓库历史结构盘点](../archive/engineering-20260921/repository-organization-inventory.md)
 
 2026-09-19 已按授权删除 99 个精确生成根，必要证据归集到被 Git 忽略的 `deliverables/evidence/cleanup-20260919`。这不改变任何历史验证报告的原始结论。
 
