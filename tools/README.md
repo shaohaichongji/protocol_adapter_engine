@@ -23,11 +23,12 @@
 - `protocol_lab_ui/`：Qt Lab 应用及交互展示层；Qt 依赖必须停留在 Lab 侧，不得进入 PAE Core
   或 `PAE::pae` 的依赖链。
 
-## 仍在服役的旧桥
+## 公开消费与兼容路径
 
-`protocol_lab/v06_execution.*` 仍被现有 CLI、Qt UI 和相关测试消费，是当前真实依赖，不是可以按
-目录年代直接删除的废弃文件。公开 Codec 及消费准备 metadata 已实现并完成限定 Windows 验证，
-1B Lab 消费侧只读复核已完成，但并未实际迁移。阶段 2A 公开 `StreamFramer` 也已实现并具备限定
-Windows 证据并完成限定收口。阶段 2B 公开 Host 已实现并完成 selector 修正后的限定 Windows 验证，
-Lab 消费侧针对复核及总控限定收口已完成；必须在实际迁移、回归和验收完成后才能处理旧桥替换。
-现阶段不能把公开 Host 可用解释为 Lab 已完成迁移，也不能把 Host callback 输出解释为网络发送。
+当前推荐 Qt Lab 已有 installed-SDK public-only 消费路径，覆盖 Binary 完整记录、流式观察及
+ASCII/legacy 公开路径；具体构建身份和验证边界见 [`交付入口`](../deliverables/README.md)。
+这不表示仓库内所有历史 CLI、兼容构建和测试均已退役。
+
+`protocol_lab/v06_execution.*` 等旧桥仍须按当前 CMake、调用者及测试引用判断，不能因文件名
+包含旧版本号就删除。Qt UI 的当前公开路径与可选兼容路径也不能混为同一构建。
+Host callback 输出不是网络发送，PAE 仍不负责 Transport。

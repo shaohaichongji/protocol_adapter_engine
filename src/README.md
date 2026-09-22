@@ -17,7 +17,6 @@
   CMake target `PAE::pae` 承载。当前已实现配置编译、通用及消费准备 metadata、
   `COMPLETE_RECORD` Decode/Encode、有界 `STREAM_CHUNK` Framing，以及应用无关的同步 Host 组合层；
   内部 Plan、映射和 workspace 不暴露给消费者。
-- `core/`：当前为空的历史占位目录，不承担现行构建职责。
 
 内部主要依赖方向为：
 
@@ -44,7 +43,8 @@ include/pae/* ←── public_api（公开适配层）──→ 已纳入公开
 阶段 1/1B 实现已完成限定收口，并按
 [`公开 Codec 验证报告`](../docs/engineering/pae-public-codec-slice-validation.md)和
 [`消费准备 metadata 验证报告`](../docs/engineering/pae-public-consumer-metadata-validation.md)
-完成限定 Windows x64 Debug/Release 验证。阶段 2A 公开 `StreamFramer` 已实现，并有
+完成限定 Windows x64 Debug/Release 验证。以下阶段记录是历史专项证据，不作为当前 SDK/Lab 交付总状态；最新身份和范围见
+[`交付入口`](../deliverables/README.md)。阶段 2A 公开 `StreamFramer` 已实现，并有
 [`2A Windows 验证报告`](../docs/engineering/pae-public-framer-stage2a-validation.md)记录专项与独立
 consumer 结果；后置 Lab 只读复核及嵌套重入修正已完成限定总控收口。
 阶段 2B 公开 Host 已按 selector 修正后的最终契约实现，并有

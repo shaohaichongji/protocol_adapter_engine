@@ -42,7 +42,7 @@ ctest --preset windows-msvc-pae-lab-release
 以 [本地交付入口](deliverables/README.md) 为准：
 
 - SDK 五包来自 clean `7b4205ea899cf16b9c73ba6ebc4c64382b71dc63`；
-- 首选 Lab 来自 `fe1683c` 加结构化诊断与流式示例打包的未提交修补，不是把当前仓库 HEAD 套到旧二进制上；
+- 首选 Lab 来自 `fe1683c` 加构建时尚未提交的结构化诊断与流式示例打包修补；修补现已提交，但旧二进制未重建，不能标为当前 HEAD 产物；
 - 旧 `98df5e0` SDK/Lab 和 `fa81329/common-release` 仅作历史对照。
 
 这些都是本机限定试用产物，不代表稳定 ABI、Linux、正式发布、许可闭合、真实协议 Golden、硬件或现场验收。交付二进制被 Git 忽略，普通 clone 不会自动取得。

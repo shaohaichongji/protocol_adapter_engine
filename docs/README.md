@@ -23,7 +23,7 @@
 
 ## 当前交付身份
 
-本机统一入口为 [`deliverables/README.md`](../deliverables/README.md)。当前推荐 SDK 五包来自 clean `7b4205ea899cf16b9c73ba6ebc4c64382b71dc63`；首选 Lab 来自 `fe1683c` 加结构化编译诊断与 Binary 流式示例打包的未提交修补。Lab 使用上述 installed SDK，但 Lab 二进制不能据此冒充 clean `e2527ca` 重建。
+本机统一入口为 [`deliverables/README.md`](../deliverables/README.md)。当前推荐 SDK 五包来自 clean `7b4205ea899cf16b9c73ba6ebc4c64382b71dc63`；首选 Lab 来自 `fe1683c` 加构建时尚未提交的结构化编译诊断与 Binary 流式示例打包修补。修补现已提交，但二进制未重建；Lab 使用上述 installed SDK，不能标为当前 HEAD 的干净构建。
 
 旧 `98df5e0` SDK/standalone 与 `fa81329/common-release` 继续作为历史对照。各身份不能互换来源证据；均不表示稳定 ABI、Linux、正式分发、许可闭合、真实协议或现场验收。
 

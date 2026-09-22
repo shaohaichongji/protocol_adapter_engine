@@ -20,7 +20,7 @@
 
 Binary 流式示例打包遗漏已限定修复：新归集 Lab 已包含 `configs/synthetic_stream_framing_slice.pae.json`，与仓库 canonical 哈希一致，原有运行文件未改变。这是 post-fe1683c 配置补充，不是重建或新的功能验收；旧身份记录保持原样。见 [修复记录](../docs/engineering/lab-stream-fixture-packaging-repair-20260920.md)。
 
-身份分开记录：SDK 来自 clean `7b4205ea899cf16b9c73ba6ebc4c64382b71dc63`；新首选 Lab 来自 `fe1683c` 加诊断与示例打包未提交修补，不是干净提交重建。旧 shared 对照来自7b4205e加后来提交为fe1683c的包装/测试修补。后续提交不会改变这些既有构建身份，不修改原 provenance/hash。
+身份分开记录：SDK 来自 clean `7b4205ea899cf16b9c73ba6ebc4c64382b71dc63`；新首选 Lab 来自 `fe1683c` 加构建时尚未提交的诊断与示例打包修补。修补现已提交，但该二进制未重建，不是当前 HEAD 的干净构建。旧 shared 对照来自7b4205e加后来提交为fe1683c的包装/测试修补。后续提交不会改变这些既有构建身份，不修改原 provenance/hash。
 
 新诊断片在common及standalone static/shared的Debug/Release六组定向测试各3/3通过；新static Release产品构建完成，2026-09-21用户已完成配置失败诊断短体验并关闭Lab。2026-09-22 归集后仅新增一次隐藏、离线 `--ui-smoke`，退出码 0；未重跑新版本全量测试或实际加载模块来源矩阵，不复用旧版模块证据冒充新版本验证。见 [诊断验证及人工记录](../docs/engineering/lab-structured-compile-diagnostics-validation-20260921.md)及[归集验证记录](../docs/engineering/portable-delivery-validation-20260922.md)。
 
