@@ -1,5 +1,7 @@
 # PAE 生成产物清理盘点（2026-09-20）
 
+> 路径可移植性说明（2026-09-22）：本文中的尖括号路径是语义别名。替换前逐字版本及其 SHA-256 保存在 Git 忽略的原始证据目录；别名用于描述历史或本地位置，不是可直接复制执行的当前命令。当前命令模板以 `docs/guides/06-构建测试与问题定位.md` 及对应构建指南为准。
+
 > 归档状态（2026-09-21）：本页是已被后续契约或验证承接的历史工程依据；正文中的现场、当前与下一步仅代表原记录时点。
 
 > 后续已获用户精确授权并完成第 6 节九个目录的证据归集与删除；实际结果、保护项复核和可恢复性边界见 [2026-09-20 清理执行记录](../../engineering/generated-artifact-cleanup-execution-20260920.md)。
@@ -8,8 +10,8 @@
 
 本轮在 `main@fa81329563dd3aea9bb167ef9bd34526a2606161` 上只读盘点了：
 
-- 仓库 `F:\PersonalWorkspace\协议解析拼接工具\protocol_adapter_engine\out`；
-- `F:\PersonalWorkspace` 直属、当前仍存在的两套明确 PAE clean SDK Lab 根。
+- 仓库 `<REPO_ROOT>\out`；
+- `<LOCAL_WORK_ROOT>` 直属、当前仍存在的两套明确 PAE clean SDK Lab 根。
 
 未递归检查 `DEI`、`NexForgeVisionHost` 等无关项目，未跟随 reparse point，未删除、移动、复制、压缩或构建任何内容。`deliverables`、`local_private`、本机 Qt、源码/Schema，以及全部 G2 构建和验证根均排除在删除候选之外。
 
@@ -19,8 +21,8 @@
 2. 历史 G1/UI 的 5 个构建根和 G1 大型独立消费根合计 37,519 个文件、6,390,488,445 bytes（5.952 GiB），是本轮主要可回收对象；但其中仍有输入身份、配置、CTest 与执行日志，必须先归集最小证据，因此归为“2：归集最小证据后再删”。
 3. 4 个 UI 小型验证根合计仅 1,016,076 bytes，包含文档直接引用的日志和截图；原地保留比再搬移更稳妥。
 4. 两个空的历史生成根可直接进入后续删除申请，但本轮未删除：
-   - `F:\PersonalWorkspace\协议解析拼接工具\protocol_adapter_engine\out\embedding-boundary-host`
-   - `F:\PersonalWorkspace\协议解析拼接工具\protocol_adapter_engine\out\host-dec032`
+   - `<REPO_ROOT>\out\embedding-boundary-host`
+   - `<REPO_ROOT>\out\host-dec032`
 5. G2 仍是当前回收、交付与复核链的一部分；其 3 个构建根和 3 个验证根本轮一律保留，不用“已提交/已推送”替代当前证据与复核需要。
 6. 两套外部 clean SDK Lab 根已在 2026-09-19 清理中收缩为 `deploy`、`logs` 和根清单，当前分别为 140,413,180 bytes 与 142,209,314 bytes；它们只做盘点，继续保留。
 
@@ -35,7 +37,7 @@
 
 - 计量使用普通文件逻辑长度；`1 GiB = 2^30 bytes`，不代表实际占用簇或可释放空间。
 - 遍历时遇到 reparse point 只记录对象，不进入目标。两套外部根、`out\build` 和 `out\validation` 的根及祖先均不是 reparse point。
-- `git worktree list --porcelain` 只登记主工作树 `F:/PersonalWorkspace/协议解析拼接工具/protocol_adapter_engine`；下述候选均不在其他 worktree 中。
+- `git worktree list --porcelain` 只登记主工作树 `<REPO_ROOT>`；下述候选均不在其他 worktree 中。
 - 盘点时未发现 `pae_protocol_lab_ui`、CMake、CTest、MSBuild、Ninja、`cl`、`link`、JOM 或 qmake 进程。该进程快照不能证明不存在任意第三方句柄；真正删除前必须重查进程、路径、reparse point 和工作树。
 - `out` 被仓库根 `.gitignore` 忽略，但“被忽略”不等于“无独有证据”。本报告的分类同时核对了验证报告引用、文件内容类别和复建来源。
 - 本轮没有创建可选的 `out\validation\cleanup-inventory-20260920`，避免清单任务本身再制造待清理产物。
@@ -46,8 +48,8 @@
 
 | 绝对路径 | 文件 / bytes | 用途与复建来源 | 当前引用 / 独有证据 | 安全状态 |
 | --- | ---: | --- | --- | --- |
-| `F:\PersonalWorkspace\协议解析拼接工具\protocol_adapter_engine\out\embedding-boundary-host` | 0 / 0 | 历史 Host 嵌入边界生成根；当前为空 | 未检出跟踪文档或脚本的精确路径引用；无文件可构成独有证据 | 非 reparse、非 worktree、无运行占用 |
-| `F:\PersonalWorkspace\协议解析拼接工具\protocol_adapter_engine\out\host-dec032` | 0 / 0 | 历史 DEC-032 Host 生成根；当前为空 | 未检出跟踪文档或脚本的精确路径引用；无文件可构成独有证据 | 非 reparse、非 worktree、无运行占用 |
+| `<REPO_ROOT>\out\embedding-boundary-host` | 0 / 0 | 历史 Host 嵌入边界生成根；当前为空 | 未检出跟踪文档或脚本的精确路径引用；无文件可构成独有证据 | 非 reparse、非 worktree、无运行占用 |
+| `<REPO_ROOT>\out\host-dec032` | 0 / 0 | 历史 DEC-032 Host 生成根；当前为空 | 未检出跟踪文档或脚本的精确路径引用；无文件可构成独有证据 | 非 reparse、非 worktree、无运行占用 |
 
 这两项只是后续删除申请候选，不是本报告授予删除权限。
 
@@ -55,12 +57,12 @@
 
 | 绝对路径 | 文件 | bytes | 用途 / 复建来源 | 当前引用与独有证据 |
 | --- | ---: | ---: | --- | --- |
-| `F:\PersonalWorkspace\协议解析拼接工具\protocol_adapter_engine\out\build\windows-msvc-lab-gui-g1` | 1,044 | 380,012,313 | G1 Binary Encode D/R 构建树；可由 `fa81329` 源码、CMake、v142 与现有 Qt 重建 | G1 契约/验证报告引用；根内仍有 CMake 配置与 CTest 状态 |
-| `F:\PersonalWorkspace\协议解析拼接工具\protocol_adapter_engine\out\build\windows-msvc-lab-ui-u1` | 1,124 | 450,287,941 | U1 中文界面构建树；含一次失败的外层配置和有效 `v142` 子构建 | U1 验证报告引用；两套 CMake 配置记录与 CTest 状态仍在根内 |
-| `F:\PersonalWorkspace\协议解析拼接工具\protocol_adapter_engine\out\build\windows-msvc-lab-ui-u2` | 1,079 | 455,957,881 | U2 布局构建树；可由当前源码重建 | U2/U2B 报告引用；根内仍有配置与 CTest 状态 |
-| `F:\PersonalWorkspace\协议解析拼接工具\protocol_adapter_engine\out\build\windows-msvc-lab-ui-u2b` | 1,079 | 461,014,382 | U2B 左右工作台构建树；其历史体验入口已被后续源码/交付候选取代 | U2B 报告与综合计划引用；根内仍有配置与 CTest 状态 |
-| `F:\PersonalWorkspace\协议解析拼接工具\protocol_adapter_engine\out\build\windows-msvc-lab-ui-polish` | 1,042 | 383,785,947 | UI 可读性收尾构建树；可由当前源码重建 | 可读性验证报告与综合计划引用；根内仍有配置与 CTest 状态 |
-| `F:\PersonalWorkspace\协议解析拼接工具\protocol_adapter_engine\out\validation\lab-gui-g1` | 32,151 | 4,259,429,981 | G1 static/shared 多轮包外消费、部署与构建副本；源码已进入 `fa81329`，生成树可重建 | G1 报告直接引用 `refinement-logs` 与 `static/shared-atomic2-final`；各轮 `logs`、`INPUT_PROVENANCE.json`、`INPUT_SHA256.json` 是独有原始证据 |
+| `<REPO_ROOT>\out\build\windows-msvc-lab-gui-g1` | 1,044 | 380,012,313 | G1 Binary Encode D/R 构建树；可由 `fa81329` 源码、CMake、v142 与现有 Qt 重建 | G1 契约/验证报告引用；根内仍有 CMake 配置与 CTest 状态 |
+| `<REPO_ROOT>\out\build\windows-msvc-lab-ui-u1` | 1,124 | 450,287,941 | U1 中文界面构建树；含一次失败的外层配置和有效 `v142` 子构建 | U1 验证报告引用；两套 CMake 配置记录与 CTest 状态仍在根内 |
+| `<REPO_ROOT>\out\build\windows-msvc-lab-ui-u2` | 1,079 | 455,957,881 | U2 布局构建树；可由当前源码重建 | U2/U2B 报告引用；根内仍有配置与 CTest 状态 |
+| `<REPO_ROOT>\out\build\windows-msvc-lab-ui-u2b` | 1,079 | 461,014,382 | U2B 左右工作台构建树；其历史体验入口已被后续源码/交付候选取代 | U2B 报告与综合计划引用；根内仍有配置与 CTest 状态 |
+| `<REPO_ROOT>\out\build\windows-msvc-lab-ui-polish` | 1,042 | 383,785,947 | UI 可读性收尾构建树；可由当前源码重建 | 可读性验证报告与综合计划引用；根内仍有配置与 CTest 状态 |
+| `<REPO_ROOT>\out\validation\lab-gui-g1` | 32,151 | 4,259,429,981 | G1 static/shared 多轮包外消费、部署与构建副本；源码已进入 `fa81329`，生成树可重建 | G1 报告直接引用 `refinement-logs` 与 `static/shared-atomic2-final`；各轮 `logs`、`INPUT_PROVENANCE.json`、`INPUT_SHA256.json` 是独有原始证据 |
 
 六根合计 37,519 个文件、6,390,488,445 bytes（5.952 GiB）。它们及其祖先均非 reparse point，不属于其他 worktree，盘点时未发现相关运行进程。
 
@@ -87,12 +89,12 @@
 
 | 绝对路径 | 文件 / bytes | 用途 / 复建来源 | 当前引用 / 独有证据 | 分类 |
 | --- | ---: | --- | --- | ---: |
-| `F:\PersonalWorkspace\协议解析拼接工具\protocol_adapter_engine\out\build\windows-msvc-lab-g2-a` | 641 / 117,586,939 | G2-A 非 Qt owner 构建根 | G2 契约和 A 验证报告引用 | 3 |
-| `F:\PersonalWorkspace\协议解析拼接工具\protocol_adapter_engine\out\build\windows-msvc-lab-g2-b` | 1,036 / 207,922,854 | G2-B DTO/adapter D/R 构建根 | G2 契约和 B 验证报告引用 | 3 |
-| `F:\PersonalWorkspace\协议解析拼接工具\protocol_adapter_engine\out\build\windows-msvc-lab-g2-c` | 3,803 / 1,630,155,872 | G2-C Session/UI/common/Binary-only 与配置门禁构建根 | G2-C 报告、契约、综合计划及当前交付回收均在使用 | 3 |
-| `F:\PersonalWorkspace\协议解析拼接工具\protocol_adapter_engine\out\validation\lab-binary-stream-g2-a` | 14 / 21,658 | G2-A 原始专项日志 | 契约和 A 报告直接引用 | 3 |
-| `F:\PersonalWorkspace\协议解析拼接工具\protocol_adapter_engine\out\validation\lab-binary-stream-g2-b` | 10 / 36,457 | G2-B D/R 与故障重读日志 | 契约和 B 报告直接引用 | 3 |
-| `F:\PersonalWorkspace\协议解析拼接工具\protocol_adapter_engine\out\validation\lab-binary-stream-g2-c` | 40 / 163,781 | G2-C D/R、配置门禁、部署与体验依据 | G2-C 报告及当前交付候选报告直接引用 | 3 |
+| `<REPO_ROOT>\out\build\windows-msvc-lab-g2-a` | 641 / 117,586,939 | G2-A 非 Qt owner 构建根 | G2 契约和 A 验证报告引用 | 3 |
+| `<REPO_ROOT>\out\build\windows-msvc-lab-g2-b` | 1,036 / 207,922,854 | G2-B DTO/adapter D/R 构建根 | G2 契约和 B 验证报告引用 | 3 |
+| `<REPO_ROOT>\out\build\windows-msvc-lab-g2-c` | 3,803 / 1,630,155,872 | G2-C Session/UI/common/Binary-only 与配置门禁构建根 | G2-C 报告、契约、综合计划及当前交付回收均在使用 | 3 |
+| `<REPO_ROOT>\out\validation\lab-binary-stream-g2-a` | 14 / 21,658 | G2-A 原始专项日志 | 契约和 A 报告直接引用 | 3 |
+| `<REPO_ROOT>\out\validation\lab-binary-stream-g2-b` | 10 / 36,457 | G2-B D/R 与故障重读日志 | 契约和 B 报告直接引用 | 3 |
+| `<REPO_ROOT>\out\validation\lab-binary-stream-g2-c` | 40 / 163,781 | G2-C D/R、配置门禁、部署与体验依据 | G2-C 报告及当前交付候选报告直接引用 | 3 |
 
 以上六根全部非 reparse、非其他 worktree；“源码已提交并推送”不等于这些当前复核证据可以删除。
 
@@ -100,10 +102,10 @@
 
 | 绝对路径 | 文件 / bytes | 当前引用 / 独有证据 | 分类 |
 | --- | ---: | --- | ---: |
-| `F:\PersonalWorkspace\协议解析拼接工具\protocol_adapter_engine\out\validation\lab-ui-localization-u1` | 40 / 137,018 | U1 报告直接引用 D/R build、headless 和 Binary/stream 日志 | 3 |
-| `F:\PersonalWorkspace\协议解析拼接工具\protocol_adapter_engine\out\validation\lab-ui-layout-u2` | 61 / 69,782 | U2 报告直接引用前后修复与 D/R 烟测日志 | 3 |
-| `F:\PersonalWorkspace\协议解析拼接工具\protocol_adapter_engine\out\validation\lab-ui-workbench-u2b` | 53 / 483,451 | U2B 报告直接引用日志及四张布局截图 | 3 |
-| `F:\PersonalWorkspace\协议解析拼接工具\protocol_adapter_engine\out\validation\lab-ui-readability-polish` | 18 / 325,825 | 可读性报告直接引用 D/R 日志及两张截图 | 3 |
+| `<REPO_ROOT>\out\validation\lab-ui-localization-u1` | 40 / 137,018 | U1 报告直接引用 D/R build、headless 和 Binary/stream 日志 | 3 |
+| `<REPO_ROOT>\out\validation\lab-ui-layout-u2` | 61 / 69,782 | U2 报告直接引用前后修复与 D/R 烟测日志 | 3 |
+| `<REPO_ROOT>\out\validation\lab-ui-workbench-u2b` | 53 / 483,451 | U2B 报告直接引用日志及四张布局截图 | 3 |
+| `<REPO_ROOT>\out\validation\lab-ui-readability-polish` | 18 / 325,825 | 可读性报告直接引用 D/R 日志及两张截图 | 3 |
 
 这四根体积合计不足 1 MiB，原地保留可避免文档引用失效；不建议为节省这部分空间另做搬移或删除。
 
@@ -111,13 +113,13 @@
 
 | 绝对路径 | 文件 / bytes | 用途 / 复建来源 | 当前引用 / 独有证据 | 分类 |
 | --- | ---: | --- | --- | ---: |
-| `F:\PersonalWorkspace\协议解析拼接工具\protocol_adapter_engine\out\sdk-clean-checkpoint` | 189 / 29,946,570 | `98df5e0` 五套 clean SDK 原始候选 | SDK/Lab/G1 报告与交付归集报告引用；包内 provenance/manifest/hash 必须保留 | 3 |
-| `F:\PersonalWorkspace\协议解析拼接工具\protocol_adapter_engine\out\sdk-clean-checkpoint-validation` | 63 / 122,473 | clean SDK 六组包外消费原始摘要 | clean SDK 报告直接引用 | 3 |
-| `F:\PersonalWorkspace\pae-lab-clean-sdk-static-20260919` | 92 / 140,413,180 | static SDK Lab 已验证 D/R 部署；当前只剩 `deploy`、`logs` 与根清单 | `deploy` 68 文件、139,880,508 bytes；`logs` 22 文件；两份输入身份清单 | 3 |
-| `F:\PersonalWorkspace\pae-lab-clean-sdk-shared-20260919` | 98 / 142,209,314 | shared SDK Lab 已验证 D/R 部署；当前只剩 `deploy`、`logs` 与根清单 | `deploy` 72 文件、141,248,572 bytes；`logs` 24 文件；两份输入身份清单 | 3 |
-| `F:\PersonalWorkspace\协议解析拼接工具\protocol_adapter_engine\deliverables` | 本轮不计量 | 本机统一交付与历史清理证据根 | 保护 `sdk\98df5e0`、`lab\98df5e0`、`evidence\cleanup-20260919`，以及已完成限定归集的 `lab\fa81329`；后者共 19 文件、21,485,398 bytes，身份见 G2 交付候选报告 | 3 |
+| `<REPO_ROOT>\out\sdk-clean-checkpoint` | 189 / 29,946,570 | `98df5e0` 五套 clean SDK 原始候选 | SDK/Lab/G1 报告与交付归集报告引用；包内 provenance/manifest/hash 必须保留 | 3 |
+| `<REPO_ROOT>\out\sdk-clean-checkpoint-validation` | 63 / 122,473 | clean SDK 六组包外消费原始摘要 | clean SDK 报告直接引用 | 3 |
+| `<LOCAL_WORK_ROOT>\pae-lab-clean-sdk-static-20260919` | 92 / 140,413,180 | static SDK Lab 已验证 D/R 部署；当前只剩 `deploy`、`logs` 与根清单 | `deploy` 68 文件、139,880,508 bytes；`logs` 22 文件；两份输入身份清单 | 3 |
+| `<LOCAL_WORK_ROOT>\pae-lab-clean-sdk-shared-20260919` | 98 / 142,209,314 | shared SDK Lab 已验证 D/R 部署；当前只剩 `deploy`、`logs` 与根清单 | `deploy` 72 文件、141,248,572 bytes；`logs` 24 文件；两份输入身份清单 | 3 |
+| `<REPO_ROOT>\deliverables` | 本轮不计量 | 本机统一交付与历史清理证据根 | 保护 `sdk\98df5e0`、`lab\98df5e0`、`evidence\cleanup-20260919`，以及已完成限定归集的 `lab\fa81329`；后者共 19 文件、21,485,398 bytes，身份见 G2 交付候选报告 | 3 |
 
-`deliverables` 本轮明确排除在清理范围之外，不能因为存在其他副本而删除。`local_private`（如存在）、`src`、`schema`/Schema 相关源码和配置、`tests`、`third_party` 以及 `D:\develop_env\Qt\Qt5.11.3\5.11.3` 同样不进入任何候选。
+`deliverables` 本轮明确排除在清理范围之外，不能因为存在其他副本而删除。`local_private`（如存在）、`src`、`schema`/Schema 相关源码和配置、`tests`、`third_party` 以及 `<TOOLCHAIN_ROOT>\Qt\Qt5.11.3\5.11.3` 同样不进入任何候选。
 
 ## 5. 其余 `out` 根的保守分类
 
@@ -126,7 +128,7 @@
 ### 5.1 分类 3：原始验证/诊断证据继续保留
 
 下表的路径均以
-`F:\PersonalWorkspace\协议解析拼接工具\protocol_adapter_engine\out\`
+`<REPO_ROOT>\out\`
 为基准；均非 reparse、非其他 worktree，盘点时无相关运行占用。
 
 | 相对根 | 文件 / MiB | 当前引用状态 / 用途 |
@@ -191,11 +193,11 @@
 
 | 绝对路径或范围 | 文件 / bytes | 不确定点与当前处理 |
 | --- | ---: | --- |
-| `F:\PersonalWorkspace\协议解析拼接工具\protocol_adapter_engine\out\downloads` | 3 / 12,322,603 | 早期依赖下载缓存；删除会影响离线复现能力，继续保留 |
-| `F:\PersonalWorkspace\协议解析拼接工具\protocol_adapter_engine\out\sources` | 2,356 / 26,094,751 | yyjson 等依赖源码缓存；文档有引用，是否由包管理重新获取未形成统一策略 |
-| `F:\PersonalWorkspace\协议解析拼接工具\protocol_adapter_engine\out\qt-checkpoint-closeout` | 12 / 6,772 | `third_party/qt-package.md` 引用的 Qt 关账证据；与本机 Qt 不同，不能按 Qt 缓存直接删除 |
-| `F:\PersonalWorkspace\协议解析拼接工具\protocol_adapter_engine\out\symlink-capability-check` | 1 普通文件 / 4 bytes，另 1 个 SymbolicLink | 唯一 reparse point；能力检查用途已历史化，但删除必须先精确处理 link object，暂不列候选 |
-| `F:\PersonalWorkspace\协议解析拼接工具\protocol_adapter_engine\out` 根直属 605 个普通文件 | 16,047,535 bytes | 来源混合，不能用根级通配符处理；本轮未逐文件建立删除白名单 |
+| `<REPO_ROOT>\out\downloads` | 3 / 12,322,603 | 早期依赖下载缓存；删除会影响离线复现能力，继续保留 |
+| `<REPO_ROOT>\out\sources` | 2,356 / 26,094,751 | yyjson 等依赖源码缓存；文档有引用，是否由包管理重新获取未形成统一策略 |
+| `<REPO_ROOT>\out\qt-checkpoint-closeout` | 12 / 6,772 | `third_party/qt-package.md` 引用的 Qt 关账证据；与本机 Qt 不同，不能按 Qt 缓存直接删除 |
+| `<REPO_ROOT>\out\symlink-capability-check` | 1 普通文件 / 4 bytes，另 1 个 SymbolicLink | 唯一 reparse point；能力检查用途已历史化，但删除必须先精确处理 link object，暂不列候选 |
+| `<REPO_ROOT>\out` 根直属 605 个普通文件 | 16,047,535 bytes | 来源混合，不能用根级通配符处理；本轮未逐文件建立删除白名单 |
 
 ## 6. 后续删除申请清单
 
@@ -204,19 +206,19 @@
 ### 批次 A：空根
 
 ```text
-F:\PersonalWorkspace\协议解析拼接工具\protocol_adapter_engine\out\embedding-boundary-host
-F:\PersonalWorkspace\协议解析拼接工具\protocol_adapter_engine\out\host-dec032
+<REPO_ROOT>\out\embedding-boundary-host
+<REPO_ROOT>\out\host-dec032
 ```
 
 ### 批次 B：完成第 3.2 节证据归集与 Hash 复核后
 
 ```text
-F:\PersonalWorkspace\协议解析拼接工具\protocol_adapter_engine\out\build\windows-msvc-lab-gui-g1
-F:\PersonalWorkspace\协议解析拼接工具\protocol_adapter_engine\out\build\windows-msvc-lab-ui-u1
-F:\PersonalWorkspace\协议解析拼接工具\protocol_adapter_engine\out\build\windows-msvc-lab-ui-u2
-F:\PersonalWorkspace\协议解析拼接工具\protocol_adapter_engine\out\build\windows-msvc-lab-ui-u2b
-F:\PersonalWorkspace\协议解析拼接工具\protocol_adapter_engine\out\build\windows-msvc-lab-ui-polish
-F:\PersonalWorkspace\协议解析拼接工具\protocol_adapter_engine\out\validation\lab-gui-g1
+<REPO_ROOT>\out\build\windows-msvc-lab-gui-g1
+<REPO_ROOT>\out\build\windows-msvc-lab-ui-u1
+<REPO_ROOT>\out\build\windows-msvc-lab-ui-u2
+<REPO_ROOT>\out\build\windows-msvc-lab-ui-u2b
+<REPO_ROOT>\out\build\windows-msvc-lab-ui-polish
+<REPO_ROOT>\out\validation\lab-gui-g1
 ```
 
 不得把上述清单简写成 `out\build\windows-msvc-lab-*`、`out\validation\lab-*` 或其他通配符；这些模式会误包含必须保留的 G2 和 UI 小型证据根。

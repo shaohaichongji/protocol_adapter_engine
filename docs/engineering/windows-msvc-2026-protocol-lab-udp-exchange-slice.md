@@ -1,5 +1,7 @@
 # Protocol Lab Windows UDP Exchange验证报告
 
+> 路径可移植性说明（2026-09-22）：本文中的尖括号路径是语义别名。替换前逐字版本及其 SHA-256 保存在 Git 忽略的原始证据目录；别名用于描述历史或本地位置，不是可直接复制执行的当前命令。当前命令模板以 `docs/guides/06-构建测试与问题定位.md` 及对应构建指南为准。
+
 ## 1. 结论
 
 `PAE-DEC-039`的Protocol Lab Windows UDP（User Datagram Protocol，用户数据报协议）单次
@@ -26,7 +28,7 @@ Exchange（交换）切片已实现，并在Windows x64、MSVC Debug/Release下�
 | 项目 | 实际证据 |
 | --- | --- |
 | 日期 | 2026-09-05初始实现；2026-09-06补充拍板复核 |
-| CMake | `4.4.3`，路径`D:\develop_env\cmake-4.4.3` |
+| CMake | `4.4.3`，路径`<TOOLCHAIN_ROOT>\cmake-4.4.3` |
 | Generator（生成器） | `Visual Studio 18 2026`，x64 |
 | MSVC | `19.51.36256.0` |
 | Windows SDK | `10.0.22621.0` |

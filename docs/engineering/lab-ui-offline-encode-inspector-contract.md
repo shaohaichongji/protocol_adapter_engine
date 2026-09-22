@@ -1,5 +1,7 @@
 # Protocol Lab 离线 Encode Inspector 首检查点契约
 
+> 路径可移植性说明（2026-09-22）：本文中的尖括号路径是语义别名。替换前逐字版本及其 SHA-256 保存在 Git 忽略的原始证据目录；别名用于描述历史或本地位置，不是可直接复制执行的当前命令。当前命令模板以 `docs/guides/06-构建测试与问题定位.md` 及对应构建指南为准。
+
 状态：独立工作区已限定实现并完成Windows自动验证及Release基础人工离线操作核对，待提交收口；完整验收边界见验证报告。
 
 历史设计参考基线：`7d2ef4f343b1924df3eb052f4a8a128525d7dc37`
@@ -800,7 +802,7 @@ Qt 路径通过 cache 变量或环境输入，例如：
 PAE_QT_ROOT=<external Qt 5.13 root>
 ```
 
-版本库不得记录本机 `F:\...` 绝对路径。CMake 必须校验 Qt header、Debug/Release import library、DLL 和 platform plugin 的版本与存在性。
+版本库不得记录本机 `<LOCAL_PATH>` 绝对路径。CMake 必须校验 Qt header、Debug/Release import library、DLL 和 platform plugin 的版本与存在性。
 
 UI target 只链接：
 

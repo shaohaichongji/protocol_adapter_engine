@@ -1,5 +1,7 @@
 # PAE Validated/Budgeted能力链 Windows验证报告
 
+> 路径可移植性说明（2026-09-22）：本文中的尖括号路径是语义别名。替换前逐字版本及其 SHA-256 保存在 Git 忽略的原始证据目录；别名用于描述历史或本地位置，不是可直接复制执行的当前命令。当前命令模板以 `docs/guides/06-构建测试与问题定位.md` 及对应构建指南为准。
+
 ## 1. 结论
 
 截至2026-09-02，`PAE-DEC-032`在当前内部切片范围内完成实现并通过Windows x64、MSVC（Microsoft Visual C++，微软C/C++编译器）Release/Debug门禁，可标记为`CONFIRMED / VERIFIED（已确认 / 已验证）`。
@@ -96,7 +98,7 @@ cmake --build out/build/windows-msvc-all-slices-dec032 --config Debug --parallel
 ctest --test-dir out/build/windows-msvc-all-slices-dec032 -C Debug --output-on-failure
 ```
 
-实际执行使用`D:\develop_env\cmake-4.4.3\bin`下的`cmake.exe`和`ctest.exe`；上面以短命令展示便于复用。
+实际执行使用`<TOOLCHAIN_ROOT>\cmake-4.4.3\bin`下的`cmake.exe`和`ctest.exe`；上面以短命令展示便于复用。
 
 ## 6. 未验证边界
 

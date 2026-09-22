@@ -1,5 +1,7 @@
 # PAE SDK clean-checkpoint 打包前静态核对
 
+> 路径可移植性说明（2026-09-22）：本文中的尖括号路径是语义别名。替换前逐字版本及其 SHA-256 保存在 Git 忽略的原始证据目录；别名用于描述历史或本地位置，不是可直接复制执行的当前命令。当前命令模板以 `docs/guides/06-构建测试与问题定位.md` 及对应构建指南为准。
+
 > 归档状态（2026-09-21）：本页是已被后续契约或验证承接的历史工程依据；正文中的现场、当前与下一步仅代表原记录时点。
 
 ## 1. 结论与本轮边界
@@ -108,12 +110,12 @@ public API facade、Compiler/Plan/Core/Framer 所需内部实现、vendored yyjs
 
 以下均为建议路径，本轮没有创建：
 
-- 干净源码根：`F:\PersonalWorkspace\pae-clean-checkpoint-98df5e0-source`
+- 干净源码根：`<LOCAL_WORK_ROOT>\pae-clean-checkpoint-98df5e0-source`
 - 五包根：`out/sdk-clean-checkpoint/candidate1-20260919/`
 - static 构建：`out/build/windows-msvc-sdk-clean-checkpoint-static`
 - shared 构建：`out/build/windows-msvc-sdk-clean-checkpoint-shared`
 - SDK 证据：`out/sdk-clean-checkpoint-validation/candidate1-20260919/`
-- 仓库外 consumer 根：`F:\PersonalWorkspace\pae-sdk-clean-checkpoint-validation-candidate1-20260919`
+- 仓库外 consumer 根：`<LOCAL_WORK_ROOT>\pae-sdk-clean-checkpoint-validation-candidate1-20260919`
 - 后续 Lab 快照使用新的唯一根，不覆盖既有 r7/r8/r2 证据目录。
 
 执行前应逐一确认路径不存在；若存在则使用唯一后缀，禁止覆盖旧候选、旧 consumer 和旧 Lab 快照。
@@ -126,11 +128,11 @@ CMake version 和实际编译器路径写入新证据，不只在 provenance 中
 
 ```powershell
 $Revision = '98df5e0d844413fb6ad16a75dfceedcf17f2f1d6'
-$CleanSource = 'F:\PersonalWorkspace\pae-clean-checkpoint-98df5e0-source'
-$Candidate = 'F:\PersonalWorkspace\协议解析拼接工具\protocol_adapter_engine\out\sdk-clean-checkpoint\candidate1-20260919'
+$CleanSource = '<LOCAL_WORK_ROOT>\pae-clean-checkpoint-98df5e0-source'
+$Candidate = '<REPO_ROOT>\out\sdk-clean-checkpoint\candidate1-20260919'
 
 # 需另行授权；创建后必须验证 detached revision 与空 status。
-git clone --no-checkout 'F:\PersonalWorkspace\协议解析拼接工具\protocol_adapter_engine' $CleanSource
+git clone --no-checkout '<REPO_ROOT>' $CleanSource
 git -C $CleanSource checkout --detach $Revision
 git -C $CleanSource rev-parse HEAD
 git -C $CleanSource status --porcelain=v1 --untracked-files=all

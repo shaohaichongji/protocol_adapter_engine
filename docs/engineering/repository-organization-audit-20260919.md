@@ -1,5 +1,7 @@
 # 仓库结构、冗余与本地交付归集审查（2026-09-19）
 
+> 路径可移植性说明（2026-09-22）：本文中的尖括号路径是语义别名。替换前逐字版本及其 SHA-256 保存在 Git 忽略的原始证据目录；别名用于描述历史或本地位置，不是可直接复制执行的当前命令。当前命令模板以 `docs/guides/06-构建测试与问题定位.md` 及对应构建指南为准。
+
 ## 1. Findings
 
 ### 1.1 没有确认可直接删除的已跟踪源码或测试
@@ -115,11 +117,11 @@ Linux spike 仍是未在本机复核的入口，文档必须继续保持“未�
 
 已验证来源存在于：
 
-`F:/PersonalWorkspace/协议解析拼接工具/protocol_adapter_engine/out/sdk-clean-checkpoint/candidate1-20260919/`
+`<REPO_ROOT>/out/sdk-clean-checkpoint/candidate1-20260919/`
 
 建议目标为仓库工作树内、由 `.gitignore` 明确排除的本地交付目录：
 
-`F:/PersonalWorkspace/协议解析拼接工具/protocol_adapter_engine/deliverables/sdk/98df5e0/`
+`<REPO_ROOT>/deliverables/sdk/98df5e0/`
 
 静态审查时目标不存在；后续经总控单独授权，已按本节门禁原样复制并完成逐文件核验，实际证据见
 [`本地 SDK 归集验证`](local-deliverables-sdk-validation-20260919.md)。没有重打包。最小归集只包含以下五个

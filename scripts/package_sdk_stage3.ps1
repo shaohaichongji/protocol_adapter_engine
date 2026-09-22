@@ -199,7 +199,7 @@ $readmeLines = @(
     "-G Visual Studio 18 2026, -A x64, and -T v142,version=14.29.30133.",
     "",
     '    $PackageRoot = (Resolve-Path .).Path',
-    '    $BuildRoot = "C:\path\to\fresh\pae-sdk-consumer-build"'
+    '    $BuildRoot = Join-Path (Split-Path -Parent $PackageRoot) "pae-sdk-consumer-build"'
 )
 if ($Kind -eq "source") {
     $readmeLines += @(

@@ -1,5 +1,7 @@
 # Lab Binary UI Stage 1 Validation
 
+> 路径可移植性说明（2026-09-22）：本文中的尖括号路径是语义别名。替换前逐字版本及其 SHA-256 保存在 Git 忽略的原始证据目录；别名用于描述历史或本地位置，不是可直接复制执行的当前命令。当前命令模板以 `docs/guides/06-构建测试与问题定位.md` 及对应构建指南为准。
+
 ## Scope and dependency boundary
 
 This record covers the first Qt Lab slice for Schema 0.9 Binary Host observation. It does not
@@ -71,8 +73,8 @@ entered the copy hook and failed its zero-copy assertion; the captured output is
 Repository and build directory:
 
 ```text
-F:\PersonalWorkspace\协议解析拼接工具\protocol_adapter_engine
-F:\PersonalWorkspace\协议解析拼接工具\protocol_adapter_engine\out\build\windows-msvc-binary-ui-stage1
+<REPO_ROOT>
+<REPO_ROOT>\out\build\windows-msvc-binary-ui-stage1
 ```
 
 ```powershell
@@ -154,13 +156,13 @@ cmake --build out/build/windows-msvc-binary-ui-stage1/gate-pae-testing-off `
 ## Manual UI acceptance checklist (execution status below)
 
 Executable:
-`F:\PersonalWorkspace\协议解析拼接工具\protocol_adapter_engine\out\build\windows-msvc-binary-ui-stage1\out\protocol_lab_ui\Release\pae_protocol_lab_ui.exe`
+`<REPO_ROOT>\out\build\windows-msvc-binary-ui-stage1\out\protocol_lab_ui\Release\pae_protocol_lab_ui.exe`
 
 Launch from this deployed directory, which contains Qt5Core/Gui/Widgets DLLs and
 `platforms/qwindows.dll`. The `bin/Release` EXE alone is not a standalone launch package.
 
 Configuration:
-`F:\PersonalWorkspace\协议解析拼接工具\protocol_adapter_engine\tests\protocol_lab_ui\fixtures\synthetic_binary_ui_stage1.pae.json`
+`<REPO_ROOT>\tests\protocol_lab_ui\fixtures\synthetic_binary_ui_stage1.pae.json`
 
 1. Open the JSON and verify Schema 0.9 starts unbound: Inspect disabled and Encode unavailable.
 2. In Host binding draft, keep `device / Decode / ui_pipeline`, click Apply, and verify Session

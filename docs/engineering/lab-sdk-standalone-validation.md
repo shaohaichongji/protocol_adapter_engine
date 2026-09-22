@@ -1,12 +1,14 @@
 # Qt Lab installed-SDK static 独立构建验证
 
+> 路径可移植性说明（2026-09-22）：本文中的尖括号路径是语义别名。替换前逐字版本及其 SHA-256 保存在 Git 忽略的原始证据目录；别名用于描述历史或本地位置，不是可直接复制执行的当前命令。当前命令模板以 `docs/guides/06-构建测试与问题定位.md` 及对应构建指南为准。
+
 ## 1. 结论与边界
 
 2026-09-19 在 `main@c5b369298c79f27cf71dd2f73be9fbb4a4203a31` 加既有未提交 Lab/SDK 切片上，完成整个 Qt Lab 的 installed-SDK static Debug/Release 首片闭包：
 
 - standalone 是仓库外顶层 CMake project；PAE 仅通过单个安装包根的 `find_package(PAE CONFIG REQUIRED ... NO_DEFAULT_PATH)` 和 `PAE::pae` 消费。
 - Qt 仅来自仓库固定 Qt 5.13.0 副本的受控快照；yyjson 采用已批准方案 A，仅复制锁定的 0.12.0 source/license/lock，由一个 Lab-owned vendor target 编译。
-- 最终源码快照 `F:/PersonalWorkspace/pae-lab-sdk-static-20260919-r8/` 的 static Debug/Release Testing-on 均 Configure、Build、32/32 Test 通过。
+- 最终源码快照 `<LOCAL_WORK_ROOT>/pae-lab-sdk-static-20260919-r8/` 的 static Debug/Release Testing-on 均 Configure、Build、32/32 Test 通过。
 - 产品源码及 standalone CMake 相同的 r7 快照完成 static Debug/Release Testing-off、产品闭包检查、受控 Qt smoke 与 PAE/Qt/yyjson no-fallback 负向门禁。
 
 这是本地 dirty-provenance static closure validation，不是 clean SDK、stable ABI、shared、Linux、正式发布或人工 UI 验收证据；本片未重打 SDK 五包。
@@ -38,8 +40,8 @@
 
 - 仓库基线：`c5b369298c79f27cf71dd2f73be9fbb4a4203a31`，工作树保留既有未提交变更。
 - SDK 输入：`out/sdk-public-stream-description/candidate1-20260918/pae-sdk-static-{debug,release}`；包内 provenance 为 `source_head=dbf4798...`、`source_worktree_dirty=true`。
-- 最终源码证据根：`F:/PersonalWorkspace/pae-lab-sdk-static-20260919-r8/`。
-- 产品/负向证据根：`F:/PersonalWorkspace/pae-lab-sdk-static-20260919-r7/`。
+- 最终源码证据根：`<LOCAL_WORK_ROOT>/pae-lab-sdk-static-20260919-r8/`。
+- 产品/负向证据根：`<LOCAL_WORK_ROOT>/pae-lab-sdk-static-20260919-r7/`。
 - r7/r8 的 `inputs/lab` 逐文件 SHA-256 比较仅 `tests/protocol_lab_ui/description_mapping_tests.cpp` 不同；产品源、standalone CMake、SDK、Qt、yyjson 与配置输入相同。因此 r7 Testing-off/产品门禁只作为未变化产品闭包证据，最终测试源码的 Testing-on 结论仅取 r8。
 - 交付前重新从仓库当前文件计算哈希，与 r8 中 97 个可直接映射回仓库路径的白名单文件比较，`mismatch_count=0`；证据为 `r8/logs/current-repository-whitelist-comparison.json`。`standalone-configs` 是生成文件或重复配置副本，不纳入直接路径比较。
 - 当前 standalone 目录比 r8 快照多 `CapturePaeLabModules.ps1`、`CompareStandaloneSnapshot.ps1` 两个本轮补证脚本；它们不进入产品 target，也不改变 r8 已构建的产品源码/CMake 身份。除此以外，r8 白名单与仓库当前对应文件一致。

@@ -20,27 +20,30 @@ validate the imported library and `pae.dll` against the exact SDK root and packa
 the matching runtime, and place the same validated DLL beside shared test executables without using
 the development tree or global PATH.
 
-The current verified SDK root is
-`F:\PersonalWorkspace\协议解析拼接工具\protocol_adapter_engine\deliverables\sdk\98df5e0`.
-All five packages identify `98df5e0d844413fb6ad16a75dfceedcf17f2f1d6` with
+The historical verified SDK root is recorded as `<historical-sdk-root>`.
+All five historical packages identify `98df5e0d844413fb6ad16a75dfceedcf17f2f1d6` with
 `source_worktree_dirty=false`. That identity applies to the detached packaging source, not to the
 shared working tree that may contain documentation changes. This entry is still a local validation
 route, not a release packager or distribution statement.
 
+The current local SDK candidates are retained under the repository-relative
+`deliverables/sdk/7b4205e/` root. Their newer location does not retroactively change the historical
+standalone validation identity above.
+
 ## Current verified local products
 
-For ordinary local use, prefer the static Release product:
+For ordinary local use from the repository root, prefer the current static Release product:
 
 ```powershell
-& 'F:\PersonalWorkspace\协议解析拼接工具\protocol_adapter_engine\deliverables\lab\98df5e0\static-release\pae_protocol_lab_ui.exe'
+$RepoRoot = (git rev-parse --show-toplevel)
+& (Join-Path $RepoRoot 'deliverables/lab/fe1683c-plus-patches/static-release/pae_protocol_lab_ui.exe')
 ```
 
-Its configuration directory is
-`F:\PersonalWorkspace\协议解析拼接工具\protocol_adapter_engine\deliverables\lab\98df5e0\static-release\configs`.
-The shared comparison product is
-`F:\PersonalWorkspace\协议解析拼接工具\protocol_adapter_engine\deliverables\lab\98df5e0\shared-release\pae_protocol_lab_ui.exe`;
-keep its sibling `pae.dll`, Qt DLLs, `platforms` and `configs` in place. These are bounded local
-validation deployments and do not replace any earlier deployment.
+Its configuration directory is `deliverables/lab/fe1683c-plus-patches/static-release/configs/`.
+This candidate is a `fe1683c` baseline plus recorded patches, not a clean `657d085` build and not a
+formal release. The previously validated static/shared products remain historical evidence under
+`<historical-lab-root>`; their old paths are not current executable commands. Keep each retained
+deployment's EXE, Qt DLLs, `platforms` and `configs` together.
 
 The matching evidence is [clean-checkpoint SDK validation](../../../docs/engineering/pae-sdk-clean-checkpoint-validation.md)
 and [same-batch Lab consumption validation](../../../docs/engineering/lab-clean-sdk-consumption-validation.md).

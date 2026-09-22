@@ -1,6 +1,6 @@
 # Lab Qt 5.13.0 固定副本
 
-2026-09-13 用户决定完整复制 `F:/PersonalWorkspace/DEI/third_party/windows/qt`，长期供 Lab 使用。
+2026-09-13 用户决定完整复制此前登记的本地 Qt 5.13.0 二进制快照，长期供 Lab 使用；原始本机来源路径保存在 Git 忽略的原始证据中。
 副本位置为本目录下 `qt/`，2440 个文件、296552738 字节；复制后逐文件 SHA-256 与原目录一致。
 全部原始模块、工具、头文件、库、运行文件和调试资产原样保留，没有裁剪或修改包内字节。
 `qt-files.json` 记录复制时的完整相对路径、大小和 SHA-256，不包含本文或清单自身。
@@ -31,7 +31,7 @@ Git 对 qt/** 禁用文本换行转换，避免入库改变原始头文件字节
 - 清单与磁盘均为2440文件，逐项SHA-256复核无差异；2440项Git text属性均为unset，
   没有文件被忽略。最大文件Qt5Guid.pdb为41578496字节，无单文件达到100MiB。
 - UI OFF隔离：新目录out/build/windows-msvc-qt-ui-off，关闭UI、启用COMPLETE_RECORD切片，
-  显式指定不存在的Z:/intentionally-missing-qt；配置成功，生成vcxproj/props未检出Qt库、
+  显式指定语义上的“故意不存在 Qt 根”；配置成功，生成vcxproj/props未检出Qt库、
   仓库Qt路径或moc/uic引用。本项为配置及生成文件检查，不是该配置的新构建/运行验证。
 - 独立工具：清除子进程Qt/QML变量，PATH仅为仓库qt/bin/release及Windows目录；
   moc/rcc/uic的-v全部报告5.13.0并退出0。uic另成功把最小QWidget .ui生成Ui_CheckpointWidget头文件。

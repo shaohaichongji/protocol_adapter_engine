@@ -1,5 +1,7 @@
 # Lab 同批干净 SDK 独立消费验证
 
+> 路径可移植性说明（2026-09-22）：本文中的尖括号路径是语义别名。替换前逐字版本及其 SHA-256 保存在 Git 忽略的原始证据目录；别名用于描述历史或本地位置，不是可直接复制执行的当前命令。当前命令模板以 `docs/guides/06-构建测试与问题定位.md` 及对应构建指南为准。
+
 ## 1. 结论与边界
 
 本轮在 `main@98df5e0d844413fb6ad16a75dfceedcf17f2f1d6` 上，使用同一干净检查点生成的 Windows x64 static/shared Debug/Release SDK，完成 Qt Lab standalone 包外消费验证：
@@ -14,11 +16,11 @@
 
 ## 2. 基线与消费输入
 
-- 仓库：`F:/PersonalWorkspace/协议解析拼接工具/protocol_adapter_engine`
+- 仓库：`<REPO_ROOT>`
 - 分支/HEAD：`main@98df5e0d844413fb6ad16a75dfceedcf17f2f1d6`
 - SDK 候选：`out/sdk-clean-checkpoint/candidate1-20260919/`
-- static 独立根：`F:/PersonalWorkspace/pae-lab-clean-sdk-static-20260919/`
-- shared 独立根：`F:/PersonalWorkspace/pae-lab-clean-sdk-shared-20260919/`
+- static 独立根：`<LOCAL_WORK_ROOT>/pae-lab-clean-sdk-static-20260919/`
+- shared 独立根：`<LOCAL_WORK_ROOT>/pae-lab-clean-sdk-shared-20260919/`
 
 五个 SDK 包的 `PROVENANCE.json` 均记录 `source_head=98df5e0...`、`source_worktree_dirty=false`；重算 `SHA256SUMS.txt` 的结果为：source 80 项、static D/R 各 28 项、shared D/R 各 24 项，全部为 `0` 失败。static D/R 与 shared D/R 各自的 manifest 相对路径集一致。
 

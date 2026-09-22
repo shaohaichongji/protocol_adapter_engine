@@ -1,5 +1,7 @@
 # Lab ASCII 0.10 UI / 显式 Host 公开接线 A2 验证记录
 
+> 路径可移植性说明（2026-09-22）：本文中的尖括号路径是语义别名。替换前逐字版本及其 SHA-256 保存在 Git 忽略的原始证据目录；别名用于描述历史或本地位置，不是可直接复制执行的当前命令。当前命令模板以 `docs/guides/06-构建测试与问题定位.md` 及对应构建指南为准。
+
 日期：2026-09-18。状态：**A2 限定收口，用户三组人工烟测通过**。本记录仅覆盖 Schema 0.10 完整记录 ASCII 的首次打开、直接 Decode/Encode、显式 Host Apply 与 Qt UI 生命周期公开接线；不表示 Schema 0.11 stream 已迁移、Binary H2 被替换、整个 Qt Lab 已包外 public-only 消费，或历史 Qt 访问违例已经解决。未 Stage、Commit、Push、发布或删除。
 
 ### 总控复核与用户人工反馈
@@ -31,7 +33,7 @@
 
 ## 1. 基线、边界与实现
 
-- 仓库：`F:\PersonalWorkspace\协议解析拼接工具\protocol_adapter_engine`；基线为 `main@481d51ae2d62e2e28754fd84e5df4bb64309a1e2`。共享工作树中的总控文档、SDK、A1 及其他既有修改全部保留，暂存区保持为空。
+- 仓库：`<REPO_ROOT>`；基线为 `main@481d51ae2d62e2e28754fd84e5df4bb64309a1e2`。共享工作树中的总控文档、SDK、A1 及其他既有修改全部保留，暂存区保持为空。
 - 根 CMake 新增默认 OFF 的 `PAE_BUILD_PROTOCOL_LAB_ASCII_PUBLIC_A2`，显式要求 UI、A1、public API Stage 1 和 Host endpoint。缺少 Host endpoint 的独立 Configure 按预期以 `ASCII public A2 requires UI, public A1, public API Stage 1 and Host endpoint.` 拒绝，没有静默回退私有实现。
 - `schema_dispatch` 对顶层 `schema_version=0.10` 严格路由 `ASCII_PUBLIC`；0.11 仍走 `PRIVATE_ASCII`。`CompileWorker` 每个请求只调用所选目标编译器一次，保留原有 document/revision ticket、取消与过期结果拒绝语义。
 - 首次打开将一次公开编译所得 `CompiledProtocol` 交给 A1 `Adapter`，同一 owner 提供描述、直接 Decode/Encode 和结果 DTO；不重解析 Schema、不额外 Decode 获取展示事实。
@@ -60,7 +62,7 @@
 
 主构建目录：
 
-`F:\PersonalWorkspace\协议解析拼接工具\protocol_adapter_engine\out\build\windows-msvc-stage4-ascii-public-a2`
+`<REPO_ROOT>\out\build\windows-msvc-stage4-ascii-public-a2`
 
 现场 Cache：Visual Studio 18 2026、x64、MSVC v142 `14.29.30133`、随仓 Qt `5.13.0`；A2、A1、Binary H2、ASCII 0.11 stream observer 和 Testing 均为 ON。Release 编译记录显示 `/UNDEBUG` 覆盖 `/DNDEBUG`，专项断言未被关闭。
 
@@ -84,9 +86,9 @@ Testing-off 构建目录 `out/build/windows-msvc-stage4-ascii-public-a2-testing-
 
 本片仅在 A2 独立构建目录生成候选，没有覆盖已验收 H2 目录：
 
-- 构建 EXE：`F:\PersonalWorkspace\协议解析拼接工具\protocol_adapter_engine\out\build\windows-msvc-stage4-ascii-public-a2\bin\Release\pae_protocol_lab_ui.exe`
-- 可运行部署 EXE：`F:\PersonalWorkspace\协议解析拼接工具\protocol_adapter_engine\out\build\windows-msvc-stage4-ascii-public-a2\out\protocol_lab_ui\Release\pae_protocol_lab_ui.exe`
-- 配置目录：`F:\PersonalWorkspace\协议解析拼接工具\protocol_adapter_engine\out\build\windows-msvc-stage4-ascii-public-a2\out\protocol_lab_ui\Release\configs`
+- 构建 EXE：`<REPO_ROOT>\out\build\windows-msvc-stage4-ascii-public-a2\bin\Release\pae_protocol_lab_ui.exe`
+- 可运行部署 EXE：`<REPO_ROOT>\out\build\windows-msvc-stage4-ascii-public-a2\out\protocol_lab_ui\Release\pae_protocol_lab_ui.exe`
+- 配置目录：`<REPO_ROOT>\out\build\windows-msvc-stage4-ascii-public-a2\out\protocol_lab_ui\Release\configs`
 - 两个 EXE 均为 1,390,080 bytes，SHA-256 均为 `D38F25BD634D01011EB785CDCD59D76E5C98470A31F3CC0633C914923DEA3803`。
 
 总控复核后如需人工烟测，建议最多三组：

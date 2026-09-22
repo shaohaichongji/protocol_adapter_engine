@@ -1,5 +1,7 @@
 # Stage 4 Binary Lab 公开 API 迁移首片范围核对
 
+> 路径可移植性说明（2026-09-22）：本文中的尖括号路径是语义别名。替换前逐字版本及其 SHA-256 保存在 Git 忽略的原始证据目录；别名用于描述历史或本地位置，不是可直接复制执行的当前命令。当前命令模板以 `docs/guides/06-构建测试与问题定位.md` 及对应构建指南为准。
+
 > 归档状态（2026-09-21）：本页是已被后续契约或验证承接的历史工程依据；正文中的现场、当前与下一步仅代表原记录时点。
 
 日期：2026-09-15。状态：已完成派发范围，待总控复核。本报告只做现场源码与既有证据的消费侧分析，
@@ -34,7 +36,7 @@ Decode 等价前不替换现有 UI backend；随后再切换 Binary UI。这样�
 
 ## 2. 现场、既有能力与证据边界
 
-- 现场仓库为 `F:\PersonalWorkspace\协议解析拼接工具\protocol_adapter_engine`，基线
+- 现场仓库为 `<REPO_ROOT>`，基线
   `main@dfb08f351cdb22a9b50c9e64e688e3b666e669bc`；接管时暂存区为空，完整保留共享工作树既有修改。
 - 现有 Binary 非 Qt backend 位于 `tools/protocol_lab_binary/`；Qt 适配位于
   `tools/protocol_lab_ui/binary_host_adapter.*`，状态/Tab/窗口接线位于 `document_session.*`、

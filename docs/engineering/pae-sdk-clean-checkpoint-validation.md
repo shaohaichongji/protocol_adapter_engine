@@ -1,5 +1,7 @@
 # PAE SDK clean-checkpoint 五包与包外消费验证
 
+> 路径可移植性说明（2026-09-22）：本文中的尖括号路径是语义别名。替换前逐字版本及其 SHA-256 保存在 Git 忽略的原始证据目录；别名用于描述历史或本地位置，不是可直接复制执行的当前命令。当前命令模板以 `docs/guides/06-构建测试与问题定位.md` 及对应构建指南为准。
+
 ## 1. 结论与证据边界
 
 2026-09-19 基于精确提交 `98df5e0d844413fb6ad16a75dfceedcf17f2f1d6` 的全新 detached
@@ -15,8 +17,8 @@ SDK 是后续独立派发，本轮未执行。
 
 ## 2. 输入身份与路径
 
-- 共享仓库：`F:/PersonalWorkspace/协议解析拼接工具/protocol_adapter_engine`
-- 输入源码根：`F:/PersonalWorkspace/pae-clean-checkpoint-98df5e0-source`
+- 共享仓库：`<REPO_ROOT>`
+- 输入源码根：`<LOCAL_WORK_ROOT>/pae-clean-checkpoint-98df5e0-source`
 - 输入状态：detached `98df5e0d844413fb6ad16a75dfceedcf17f2f1d6`，创建后和全部验证结束后
   `git status --porcelain=v1 --untracked-files=all` 均为 0 行
 - clone 方式：从本地仓库 `git clone --no-hardlinks --no-checkout`，随后精确 detached checkout；没有复制
@@ -24,7 +26,7 @@ SDK 是后续独立派发，本轮未执行。
 - 候选根：`out/sdk-clean-checkpoint/candidate1-20260919/`
 - static/shared 构建根：`out/build/windows-msvc-sdk-clean-checkpoint-{static,shared}`
 - 证据根：`out/sdk-clean-checkpoint-validation/candidate1-20260919/`
-- 仓库外包及 consumer 根：`F:/PersonalWorkspace/pae-sdk-clean-checkpoint-validation-candidate1-20260919/`
+- 仓库外包及 consumer 根：`<LOCAL_WORK_ROOT>/pae-sdk-clean-checkpoint-validation-candidate1-20260919/`
 - 工具链：Visual Studio 18 2026、x64、`v142,version=14.29.30133`，MSVC
   `19.29.30159.0`，Windows SDK `10.0.22621.0`，VS bundled CMake `4.3.1-msvc1`
 
@@ -58,11 +60,11 @@ source 包入口：
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass `
-  -File F:\PersonalWorkspace\pae-clean-checkpoint-98df5e0-source\scripts\package_sdk_stage3.ps1 `
+  -File <LOCAL_WORK_ROOT>\pae-clean-checkpoint-98df5e0-source\scripts\package_sdk_stage3.ps1 `
   -Kind source `
   -PackageRoot <candidate>\pae-sdk-source `
   -Configuration Debug+Release `
-  -SourceRoot F:\PersonalWorkspace\pae-clean-checkpoint-98df5e0-source `
+  -SourceRoot <LOCAL_WORK_ROOT>\pae-clean-checkpoint-98df5e0-source `
   -Toolchain 'Visual Studio 18 2026 x64 v142 14.29.30133'
 ```
 

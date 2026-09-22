@@ -1,5 +1,7 @@
 # Qt Lab installed-SDK shared Debug/Release 验证
 
+> 路径可移植性说明（2026-09-22）：本文中的尖括号路径是语义别名。替换前逐字版本及其 SHA-256 保存在 Git 忽略的原始证据目录；别名用于描述历史或本地位置，不是可直接复制执行的当前命令。当前命令模板以 `docs/guides/06-构建测试与问题定位.md` 及对应构建指南为准。
+
 ## 1. 结论与证据边界
 
 2026-09-19 在 `main@c5b369298c79f27cf71dd2f73be9fbb4a4203a31` 加全部既有未提交实现上，完成 Qt Lab installed-SDK shared Debug/Release 的本地包外闭包验证：
@@ -38,8 +40,8 @@
 
 - SDK 候选：`out/sdk-public-stream-description/candidate1-20260918/pae-sdk-shared-{debug,release}`。
 - 两包 provenance：`source_head=dbf4798f96a45b8d36a4754ad5a01e274680337e`、`source_worktree_dirty=true`，Debug `/MDd`、Release `/MD`。
-- 最终证据根：`F:/PersonalWorkspace/pae-lab-sdk-shared-20260919-r2/`。
-- 首次根 `F:/PersonalWorkspace/pae-lab-sdk-shared-20260919/` 保留一次 Configure 失败证据：尝试从父目录给子目录测试设置属性违反 CMake 测试目录作用域；未进入 Build。最终实现改为同源 DLL 邻接测试可执行文件，未覆盖失败根。
+- 最终证据根：`<LOCAL_WORK_ROOT>/pae-lab-sdk-shared-20260919-r2/`。
+- 首次根 `<LOCAL_WORK_ROOT>/pae-lab-sdk-shared-20260919/` 保留一次 Configure 失败证据：尝试从父目录给子目录测试设置属性违反 CMake 测试目录作用域；未进入 Build。最终实现改为同源 DLL 邻接测试可执行文件，未覆盖失败根。
 - `r2/INPUT_PROVENANCE.json`、`INPUT_SHA256.json` 记录输入身份与哈希。
 - 交付前从当前仓库重新计算 99 个可直接映射白名单文件的 SHA-256，与 r2 快照比较，`mismatch_count=0`、无额外 standalone 文件；见 `logs/current-repository-whitelist-comparison.json`。`standalone-configs` 为生成/重复配置副本，按脚本说明不作直接路径比较。
 
@@ -108,7 +110,7 @@ Qt/yyjson 检查逻辑未变，沿用 static 首片的错版本、缺 binary、�
 
 ## 8. static 最小回归
 
-因 standalone CMake/部署共享逻辑发生变化，在新根 `F:/PersonalWorkspace/pae-lab-sdk-static-regression-20260919/` 执行 static Debug Testing-off 最小回归：
+因 standalone CMake/部署共享逻辑发生变化，在新根 `<LOCAL_WORK_ROOT>/pae-lab-sdk-static-regression-20260919/` 执行 static Debug Testing-off 最小回归：
 
 - Configure/Build PASS：`logs/debug-testing-off-configure.log`、`debug-testing-off-build.log`。
 - Qt 模块来源/哈希捕获 PASS：`logs/debug-testing-off-module-origin.json`。

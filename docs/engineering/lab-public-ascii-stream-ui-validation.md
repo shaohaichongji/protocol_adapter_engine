@@ -1,5 +1,7 @@
 # Lab 0.11 Qt 流式公开接线验证
 
+> 路径可移植性说明（2026-09-22）：本文中的尖括号路径是语义别名。替换前逐字版本及其 SHA-256 保存在 Git 忽略的原始证据目录；别名用于描述历史或本地位置，不是可直接复制执行的当前命令。当前命令模板以 `docs/guides/06-构建测试与问题定位.md` 及对应构建指南为准。
+
 ## 1. 结论与边界
 
 - 基线：`main@dbf4798f96a45b8d36a4754ad5a01e274680337e`；实施前工作树已存在总控、PAE public stream、SDK 消费验证及非 Qt Lab stream 的未提交变更，本批保留且未回退、未覆盖。
@@ -36,7 +38,7 @@
 
 ## 4. Release 部署候选
 
-- 可运行目录：`F:\PersonalWorkspace\协议解析拼接工具\protocol_adapter_engine\out\build\windows-msvc-lab-public-ascii-stream-ui-r1\out\protocol_lab_ui\Release`
+- 可运行目录：`<REPO_ROOT>\out\build\windows-msvc-lab-public-ascii-stream-ui-r1\out\protocol_lab_ui\Release`
 - EXE：`pae_protocol_lab_ui.exe`
 - SHA-256：`F2A39850FD947C29E8ADDBA4265A7750D9DCC3AEA6888EE40C9E8B972D97CF5E`
 - 目录已包含仓库 Qt DLL/platform plugin，以及 `configs/synthetic_ascii_stream_slice.pae.json`。验证见 `deployment-stream-config-check-2.log` 和 `mixed-pipeline-fix-deployment-sha256.txt`。

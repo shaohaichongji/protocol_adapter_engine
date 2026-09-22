@@ -27,7 +27,7 @@ ABI 边界。不要混用 Debug consumer 与 Release 二进制包，也不要把
 
 ```powershell
 $PackageRoot = (Resolve-Path .).Path
-$BuildRoot = 'C:\path\to\fresh\pae-getting-started-build'
+$BuildRoot = Join-Path (Split-Path $PackageRoot -Parent) 'pae-getting-started-build'
 $Config = "$PackageRoot\examples\config\synthetic_stream_framing_slice.pae.json"
 ```
 

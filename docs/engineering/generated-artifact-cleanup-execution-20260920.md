@@ -1,5 +1,7 @@
 # PAE 生成产物清理执行记录（2026-09-20）
 
+> 路径可移植性说明（2026-09-22）：本文中的尖括号路径是语义别名。替换前逐字版本及其 SHA-256 保存在 Git 忽略的原始证据目录；别名用于描述历史或本地位置，不是可直接复制执行的当前命令。当前命令模板以 `docs/guides/06-构建测试与问题定位.md` 及对应构建指南为准。
+
 ## 1. 结论
 
 依据用户对 [2026-09-20 清理盘点](../archive/engineering-20260921/pae-artifact-cleanup-inventory-20260920.md) 第 6 节精确路径的授权，已完成：
@@ -39,13 +41,13 @@
 dry-run 命令：
 
 ```powershell
-& 'F:\PersonalWorkspace\协议解析拼接工具\protocol_adapter_engine\deliverables\evidence\cleanup-20260920\cleanup-generated-artifacts-20260920.ps1'
+& '<REPO_ROOT>\deliverables\evidence\cleanup-20260920\cleanup-generated-artifacts-20260920.ps1'
 ```
 
 正式执行命令：
 
 ```powershell
-& 'F:\PersonalWorkspace\协议解析拼接工具\protocol_adapter_engine\deliverables\evidence\cleanup-20260920\cleanup-generated-artifacts-20260920.ps1' -Execute
+& '<REPO_ROOT>\deliverables\evidence\cleanup-20260920\cleanup-generated-artifacts-20260920.ps1' -Execute
 ```
 
 脚本使用 PowerShell `-LiteralPath` 对每个候选逐项处理；未使用通配符或跨 shell 拼接删除。
@@ -54,7 +56,7 @@ dry-run 命令：
 
 证据根：
 
-`F:\PersonalWorkspace\协议解析拼接工具\protocol_adapter_engine\deliverables\evidence\cleanup-20260920`
+`<REPO_ROOT>\deliverables\evidence\cleanup-20260920`
 
 归集规则：
 
@@ -86,15 +88,15 @@ dry-run 命令：
 
 | 绝对路径 | 文件 | 目录 | 逻辑 bytes | 结果 |
 | --- | ---: | ---: | ---: | --- |
-| `F:\PersonalWorkspace\协议解析拼接工具\protocol_adapter_engine\out\embedding-boundary-host` | 0 | 1 | 0 | 已删除，不存在 |
-| `F:\PersonalWorkspace\协议解析拼接工具\protocol_adapter_engine\out\host-dec032` | 0 | 1 | 0 | 已删除，不存在 |
-| `F:\PersonalWorkspace\协议解析拼接工具\protocol_adapter_engine\src\core` | 0 | 1 | 0 | 已删除，不存在 |
-| `F:\PersonalWorkspace\协议解析拼接工具\protocol_adapter_engine\out\build\windows-msvc-lab-gui-g1` | 1,044 | 813 | 380,012,313 | 已删除，不存在 |
-| `F:\PersonalWorkspace\协议解析拼接工具\protocol_adapter_engine\out\build\windows-msvc-lab-ui-u1` | 1,124 | 833 | 450,287,941 | 已删除，不存在 |
-| `F:\PersonalWorkspace\协议解析拼接工具\protocol_adapter_engine\out\build\windows-msvc-lab-ui-u2` | 1,079 | 815 | 455,957,881 | 已删除，不存在 |
-| `F:\PersonalWorkspace\协议解析拼接工具\protocol_adapter_engine\out\build\windows-msvc-lab-ui-u2b` | 1,079 | 815 | 461,014,382 | 已删除，不存在 |
-| `F:\PersonalWorkspace\协议解析拼接工具\protocol_adapter_engine\out\build\windows-msvc-lab-ui-polish` | 1,042 | 811 | 383,785,947 | 已删除，不存在 |
-| `F:\PersonalWorkspace\协议解析拼接工具\protocol_adapter_engine\out\validation\lab-gui-g1` | 32,151 | 5,812 | 4,259,429,981 | 已删除，不存在 |
+| `<REPO_ROOT>\out\embedding-boundary-host` | 0 | 1 | 0 | 已删除，不存在 |
+| `<REPO_ROOT>\out\host-dec032` | 0 | 1 | 0 | 已删除，不存在 |
+| `<REPO_ROOT>\src\core` | 0 | 1 | 0 | 已删除，不存在 |
+| `<REPO_ROOT>\out\build\windows-msvc-lab-gui-g1` | 1,044 | 813 | 380,012,313 | 已删除，不存在 |
+| `<REPO_ROOT>\out\build\windows-msvc-lab-ui-u1` | 1,124 | 833 | 450,287,941 | 已删除，不存在 |
+| `<REPO_ROOT>\out\build\windows-msvc-lab-ui-u2` | 1,079 | 815 | 455,957,881 | 已删除，不存在 |
+| `<REPO_ROOT>\out\build\windows-msvc-lab-ui-u2b` | 1,079 | 815 | 461,014,382 | 已删除，不存在 |
+| `<REPO_ROOT>\out\build\windows-msvc-lab-ui-polish` | 1,042 | 811 | 383,785,947 | 已删除，不存在 |
+| `<REPO_ROOT>\out\validation\lab-gui-g1` | 32,151 | 5,812 | 4,259,429,981 | 已删除，不存在 |
 
 删除前、证据复制后和每个根删除前均重新核对树元数据签名；执行中未发现候选变化。没有删除清单外路径。
 
@@ -132,9 +134,9 @@ dry-run 命令：
 
 删除后仍确认存在：
 
-- `F:\PersonalWorkspace\pae-lab-clean-sdk-static-20260919`；
-- `F:\PersonalWorkspace\pae-lab-clean-sdk-shared-20260919`；
-- `D:\develop_env\Qt\Qt5.11.3\5.11.3`；
+- `<LOCAL_WORK_ROOT>\pae-lab-clean-sdk-static-20260919`；
+- `<LOCAL_WORK_ROOT>\pae-lab-clean-sdk-shared-20260919`；
+- `<TOOLCHAIN_ROOT>\Qt\Qt5.11.3\5.11.3`；
 - `deliverables\evidence\cleanup-20260919` 与本次新证据根；
 - 其他源码、Schema、`local_private`（若存在）、测试、第三方依赖及未列入白名单的 `out` 内容。
 

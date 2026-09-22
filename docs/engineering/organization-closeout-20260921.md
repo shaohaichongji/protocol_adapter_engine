@@ -1,5 +1,7 @@
 # PAE 历史文档迁移与构建根清理准备收口（2026-09-21）
 
+> 路径可移植性说明（2026-09-22）：本文中的尖括号路径是语义别名。替换前逐字版本及其 SHA-256 保存在 Git 忽略的原始证据目录；别名用于描述历史或本地位置，不是可直接复制执行的当前命令。当前命令模板以 `docs/guides/06-构建测试与问题定位.md` 及对应构建指南为准。
+
 最新状态（2026-09-22）：用户已手动删除七根，总控核对不存在及归集证据Hash通过，见第6节。第1至5节保留准备和受阻时点事实。
 
 ## 1. 结论与边界
@@ -78,7 +80,7 @@ NonLinkContentMismatches=0
 
 以下对象未读取私有输入、未复制、未修改、未移动或删除：
 
-- `F:\PersonalWorkspace\pae-trial-7b4205e-20260920`
+- `<TRIAL_ROOT>`
 - `deliverables/sdk/`、`deliverables/lab/` 和本机 Qt
 - `out/build/windows-msvc-lab-compile-diagnostics-20260921`
 - `out/onboarding-20260921`
@@ -89,13 +91,13 @@ NonLinkContentMismatches=0
 
 以下七条绝对路径仍然存在，本轮没有删除授权：
 
-1. `F:\PersonalWorkspace\协议解析拼接工具\protocol_adapter_engine\out\build\windows-msvc-lab-editor-commit-diagnosis-20260920`
-2. `F:\PersonalWorkspace\协议解析拼接工具\protocol_adapter_engine\out\build\windows-msvc-lab-editor-commit-repair-20260920`
-3. `F:\PersonalWorkspace\协议解析拼接工具\protocol_adapter_engine\out\build\windows-msvc-lab-g2-a`
-4. `F:\PersonalWorkspace\协议解析拼接工具\protocol_adapter_engine\out\build\windows-msvc-lab-g2-b`
-5. `F:\PersonalWorkspace\协议解析拼接工具\protocol_adapter_engine\out\build\windows-msvc-lab-g2-c`
-6. `F:\PersonalWorkspace\协议解析拼接工具\protocol_adapter_engine\out\build\windows-msvc-protocol-metadata-20260920`
-7. `F:\PersonalWorkspace\协议解析拼接工具\protocol_adapter_engine\out\build\windows-msvc-qt-smoke-repair-20260920`
+1. `<REPO_ROOT>\out\build\windows-msvc-lab-editor-commit-diagnosis-20260920`
+2. `<REPO_ROOT>\out\build\windows-msvc-lab-editor-commit-repair-20260920`
+3. `<REPO_ROOT>\out\build\windows-msvc-lab-g2-a`
+4. `<REPO_ROOT>\out\build\windows-msvc-lab-g2-b`
+5. `<REPO_ROOT>\out\build\windows-msvc-lab-g2-c`
+6. `<REPO_ROOT>\out\build\windows-msvc-protocol-metadata-20260920`
+7. `<REPO_ROOT>\out\build\windows-msvc-qt-smoke-repair-20260920`
 
 真正删除前须重新检查进程、绝对路径范围、reparse point、文件数/bytes、保护集合和 manifest Hash；必须逐根使用精确路径，不得使用 `out/build/windows-msvc-*` 通配符。
 

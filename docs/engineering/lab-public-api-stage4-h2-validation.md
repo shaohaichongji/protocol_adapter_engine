@@ -1,5 +1,7 @@
 # Stage 4 H2：Binary 0.9 UI 切换验证
 
+> 路径可移植性说明（2026-09-22）：本文中的尖括号路径是语义别名。替换前逐字版本及其 SHA-256 保存在 Git 忽略的原始证据目录；别名用于描述历史或本地位置，不是可直接复制执行的当前命令。当前命令模板以 `docs/guides/06-构建测试与问题定位.md` 及对应构建指南为准。
+
 最新人工反馈（2026-09-15）：用户明确确认“Flow 复验通过，Lab 已关闭”。本次确认覆盖返修版 Flow0=count1、Flow1=count2 的输入草稿/结果往返隔离，关闭该人工失败项；不扩展为完整 UI、ASCII、Golden 或包外 Qt 消费验收。结合总控限定代码/自动证据复核，H2 Binary 0.9 complete Decode 切换本片限定收口。ASCII 自动烟测崩溃根因仍未确认、独立保留；无 Stage/Commit/Push 或发布。本段覆盖下文历史待验状态。
 
 日期：2026-09-15。状态：已完成派发范围，待总控复核。本记录只覆盖 Windows x64、随仓 Qt 的本地构建、自动测试与静态 SDK 消费侧；不等于人工 UI、Golden、硬件、Linux 或正式发布验收。契约见 `lab-public-api-stage4-h2-contract.md`。
@@ -16,7 +18,7 @@
 | --- | --- | --- |
 | H2 Debug/Release | `cmake --build out/build/windows-msvc-stage4-h2 --config <Debug\|Release> --target pae_protocol_lab_ui pae_protocol_lab_ui_binary_public_h2_tests pae_protocol_lab_ui_binary_public_header_tests pae_binary_public_h1_tests`；`ctest --test-dir out/build/windows-msvc-stage4-h2 -C <Debug\|Release> -R 'pae\.protocol_lab_binary\.public_h1\|pae\.tools\.protocol_lab_ui\.' --output-on-failure` | 两配置分别 23/23；`out/stage4-h2-validation/focused-debug-ctest.log`、`focused-release-ctest.log`。一次 Debug ASCII 重开编辑器窗口烟测失败，单独复跑通过，随后全套复跑 23/23；暂记时序波动，未宣称修复。 |
 | 旧 Binary backend | H2 OFF/materializer ON 的独立 `out/build/windows-msvc-stage4-h2-legacy`，Debug/Release 旧 Binary headless 与 Qt smoke | 两配置各 2/2；`out/stage4-h2-validation/legacy-debug-ctest.log`、`legacy-release-ctest.log`。H2 末尾的动态高亮补丁在宏分支内，旧支路未重新构建。 |
-| H1 静态 SDK 包外消费 | 临时源码 `C:\Users\Administrator\AppData\Local\Temp\pae-stage4-h2-h1-consumer-20260915` 含与当前 H1 `.cpp` 同 SHA256 的副本；对候选 2 静态 SDK 分别构建 `out/build/windows-msvc-stage4-h2-static-debug/-release`，运行 `h1_consumer.exe tests/protocol_lab_ui/fixtures/synthetic_binary_ui_stage1.pae.json` | Debug/Release 均 `PUBLIC_BINARY_H1_STATIC_CONSUMER_PASS`；`out/stage4-h2-validation/h1-static-debug-run.log`、`h1-static-release-run.log`。只证明静态包消费者，不证明 H2 Qt UI 作为包外消费。 |
+| H1 静态 SDK 包外消费 | 临时源码 `<USER_PROFILE>\AppData\Local\Temp\pae-stage4-h2-h1-consumer-20260915` 含与当前 H1 `.cpp` 同 SHA256 的副本；对候选 2 静态 SDK 分别构建 `out/build/windows-msvc-stage4-h2-static-debug/-release`，运行 `h1_consumer.exe tests/protocol_lab_ui/fixtures/synthetic_binary_ui_stage1.pae.json` | Debug/Release 均 `PUBLIC_BINARY_H1_STATIC_CONSUMER_PASS`；`out/stage4-h2-validation/h1-static-debug-run.log`、`h1-static-release-run.log`。只证明静态包消费者，不证明 H2 Qt UI 作为包外消费。 |
 | 开关/缺依赖 | H2 推荐缓存：H2 ON/materializer OFF；独立旧缓存：H2 OFF/materializer ON；Testing-off 缓存 `BUILD_TESTING=OFF`、`PAE_BUILD_TESTING=OFF`，两配置 UI 构建；缺 H1 配置尝试 | Testing-off `ctest -N` 为 0 test，见 `out/stage4-h2-validation/testing-off-ctest-n.log`；H2 ON/H1 OFF 配置拒绝，报 `Binary public H2 requires UI, Binary UI, public H1 and public API Stage 1.`；默认 H2 OFF。无外部发布动作。 |
 
 ## 3. Release 本地部署与待用户人工烟测

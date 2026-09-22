@@ -1,5 +1,7 @@
 # ProtocolAdapterEngine 根 README 历史快照（截至 2026-09-21）
 
+> 路径可移植性说明（2026-09-22）：本文中的尖括号路径是语义别名。替换前逐字版本及其 SHA-256 保存在 Git 忽略的原始证据目录；别名用于描述历史或本地位置，不是可直接复制执行的当前命令。当前命令模板以 `docs/guides/06-构建测试与问题定位.md` 及对应构建指南为准。
+
 > 本页完整保留根 README 在入口降噪前的正文，用于追溯阶段状态、旧构建方式和历史验证叙述。正文中的“当前”“最新”“下一轮”等词仅代表原记录时点；今天的入口请回到[仓库根 README](../../README.md)。相对链接已按本归档位置修正。
 
 ProtocolAdapterEngine（PAE，协议适配引擎）当前工程版本为 `0.1.0`，仓库内已形成多组可执行的内部能力切片；这不等于完整 V0.1、稳定 SDK/API 或生产可用版本。
@@ -181,11 +183,11 @@ Configure 时至少指定 `PAE_SDK_ROOT`、`PAE_QT_ROOT`、`PAE_LAB_DEPENDENCY_R
 当前普通本地使用优先启动 static Release 闭包：
 
 ```powershell
-& 'F:\PersonalWorkspace\协议解析拼接工具\protocol_adapter_engine\deliverables\lab\98df5e0\static-release\pae_protocol_lab_ui.exe'
+& '<REPO_ROOT>\deliverables\lab\98df5e0\static-release\pae_protocol_lab_ui.exe'
 ```
 
 配置文件位于同一目录的 `configs\`。shared Release 作为 DLL 消费对照入口，位于
-`F:\PersonalWorkspace\协议解析拼接工具\protocol_adapter_engine\deliverables\lab\98df5e0\shared-release\pae_protocol_lab_ui.exe`，
+`<REPO_ROOT>\deliverables\lab\98df5e0\shared-release\pae_protocol_lab_ui.exe`，
 其同目录必须保留本批验证过的 `pae.dll`、Qt DLL、`platforms\` 和 `configs\`。这两个目录是本地验证产物，不替换旧部署也不构成正式分发。
 
 ## 构建 JSON Parser Spike

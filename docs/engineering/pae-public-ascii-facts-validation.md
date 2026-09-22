@@ -1,5 +1,7 @@
 # ASCII 公开事实首片 Windows 验证
 
+> 路径可移植性说明（2026-09-22）：本文中的尖括号路径是语义别名。替换前逐字版本及其 SHA-256 保存在 Git 忽略的原始证据目录；别名用于描述历史或本地位置，不是可直接复制执行的当前命令。当前命令模板以 `docs/guides/06-构建测试与问题定位.md` 及对应构建指南为准。
+
 总控限定复核（2026-09-15）：已读取公开查询、切片注释、Codec 匹配身份校验、Host 同源透传、新专项测试及外部 consumer，并核对 final D/R 专项与 CTest 日志、shared 运行/导出日志；本片在上述范围完成限定技术复核。总控未重复构建测试，未验证新 SDK 安装包或 Lab 迁移。查询使用冻结数据与固定栈临时空间，不新增持有缓存；重复查询无分配证据不等于整体性能或 RSS 证明。下文“待总控复核”为任务交付时点。执行任务停止；下一片候选是新 SDK 消费验证，尚未派发，不覆盖历史候选或扩大本片结论。
 
 日期：2026-09-15。状态：已完成派发范围的本地实现和定向验证，**待总控复核**；未 Stage、Commit、Push，未发布或覆盖既有 SDK 候选。依据：[ASCII 公开消费契约](pae-public-ascii-consumption-contract.md)第 2、3、5、7 节。本记录只描述本次落盘及执行证据，不回写该契约制定时的历史状态。
@@ -31,7 +33,7 @@ ctest --test-dir out/build/windows-msvc-stage4-ascii-facts -C Release -L public_
 将 `examples/public_api_sdk_consumer` 作为独立顶层 CMake 项目，以 `PAE_SOURCE_DIR` 链接本工作树 public target，`BUILD_SHARED_LIBS=ON`，Testing-off，不用旧 final6/candidate2 包冒充含新 API 的 SDK。实际命令：
 
 ```powershell
-cmake -S examples/public_api_sdk_consumer -B out/build/windows-msvc-stage4-ascii-facts-shared -G "Visual Studio 18 2026" -A x64 -T "v142,version=14.29.30133" -DPAE_SOURCE_DIR="F:\PersonalWorkspace\协议解析拼接工具\protocol_adapter_engine" -DBUILD_SHARED_LIBS=ON -DPAE_BUILD_PUBLIC_API_STAGE1=ON -DPAE_BUILD_JSON_PARSER_SPIKE=OFF
+cmake -S examples/public_api_sdk_consumer -B out/build/windows-msvc-stage4-ascii-facts-shared -G "Visual Studio 18 2026" -A x64 -T "v142,version=14.29.30133" -DPAE_SOURCE_DIR="<REPO_ROOT>" -DBUILD_SHARED_LIBS=ON -DPAE_BUILD_PUBLIC_API_STAGE1=ON -DPAE_BUILD_JSON_PARSER_SPIKE=OFF
 cmake --build out/build/windows-msvc-stage4-ascii-facts-shared --config Debug --target pae_sdk_stage3_consumer --parallel 4
 cmake --build out/build/windows-msvc-stage4-ascii-facts-shared --config Release --target pae_sdk_stage3_consumer --parallel 4
 ```

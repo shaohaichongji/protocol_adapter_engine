@@ -1,5 +1,7 @@
 # Lab Binary 流式配置打包修复记录（2026-09-20）
 
+> 路径可移植性说明（2026-09-22）：本文中的尖括号路径是语义别名。替换前逐字版本及其 SHA-256 保存在 Git 忽略的原始证据目录；别名用于描述历史或本地位置，不是可直接复制执行的当前命令。当前命令模板以 `docs/guides/06-构建测试与问题定位.md` 及对应构建指南为准。
+
 ## 1. 结论
 
 本片已在 `main@fe1683c9d540d7f5180cad1d0368cef4ccf1136d` 上完成限定修复：standalone Lab 的真实部署函数现在会把 `synthetic_stream_framing_slice.pae.json` 纳入 `PAE_CONFIG_FILES`，缺少该文件时配置阶段会明确失败，文件存在时可随部署复制且内容哈希与仓库 canonical 一致。
@@ -10,7 +12,7 @@
 
 ## 2. 基线与范围
 
-- 仓库：`F:\PersonalWorkspace\协议解析拼接工具\protocol_adapter_engine`
+- 仓库：`<REPO_ROOT>`
 - 分支与 HEAD：`main@fe1683c9d540d7f5180cad1d0368cef4ccf1136d`
 - canonical 配置：`examples/config/synthetic_stream_framing_slice.pae.json`
 - canonical 长度：5868 bytes
@@ -34,7 +36,7 @@ synthetic_stream_framing_slice.pae.json
 
 验证根：
 
-`F:\PersonalWorkspace\pae-trial-7b4205e-20260920\lab\evidence\stream-fixture-packaging-repair-fe1683c`
+`<TRIAL_ROOT>\lab\evidence\stream-fixture-packaging-repair-fe1683c`
 
 小型外部 CMake harness 直接 `include` 仓库中修改后的 `DeployPaeLab.cmake` 并调用 `pae_lab_configure_deployment`，未复制或重写被测函数。
 
@@ -87,7 +89,7 @@ Missing standalone Lab config:
 - `lab/shared/deploy/debug-testing-off/Debug`
 - `lab/shared/deploy/release-testing-off/Release`
 
-上述相对路径均位于 `F:\PersonalWorkspace\pae-trial-7b4205e-20260920`。详细补充前/后清单和差异汇总：
+上述相对路径均位于 `<TRIAL_ROOT>`。详细补充前/后清单和差异汇总：
 
 - `actual-deploy-before/*.json`
 - `actual-deploy-after/*.json`

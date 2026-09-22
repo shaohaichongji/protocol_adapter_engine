@@ -3,14 +3,14 @@
   "generatedAt": "2026-09-14T13:16:27.6800533+08:00",
   "authority": "authorized deletion allowlist; only exact paths in deleteAllowlist may be removed",
   "repository": {
-    "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine",
+    "path": "<REPO_ROOT>",
     "branch": "main",
     "head": "dfb08f351cdb22a9b50c9e64e688e3b666e669bc",
     "stagedEmpty": true
   },
   "archive": {
-    "root": "F:\\PersonalWorkspace\\协议解析拼接工具\\工程整理归档\\2026-09-14",
-    "resultManifest": "F:\\PersonalWorkspace\\协议解析拼接工具\\工程整理归档\\2026-09-14\\archive-copy-result.json",
+    "root": "<PROJECT_WORKSPACE_ROOT>\\工程整理归档\\2026-09-14",
+    "resultManifest": "<PROJECT_WORKSPACE_ROOT>\\工程整理归档\\2026-09-14\\archive-copy-result.json",
     "resultManifestSha256": "7DE178820FEF94EA30C10C205A937F1B41B23CEA6A90876555C6E6640C0A9102",
     "entryCount": 346,
     "verifiedCount": 346,
@@ -18,7 +18,7 @@
     "logicalBytes": 5911057
   },
   "preflight": {
-    "buildRoot": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out\\build",
+    "buildRoot": "<REPO_ROOT>\\out\\build",
     "candidateCount": 114,
     "activeBuildProcessCount": 0,
     "allAllowlistedPathsAreDirectChildren": true,
@@ -29,151 +29,151 @@
   },
   "deleteAllowlist": [
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out\\build\\binary-materializer-default-off",
+      "path": "<REPO_ROOT>\\out\\build\\binary-materializer-default-off",
       "fileCount": 71,
       "logicalBytes": 960226,
-      "cmakeSource": "F:/PersonalWorkspace/协议解析拼接工具/protocol_adapter_engine",
+      "cmakeSource": "<REPO_ROOT>",
       "archivedEvidenceCount": 0,
       "rationale": "historical CMake build tree; repository source exists; ignored and untracked; no reparse point or active build process"
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out\\build\\binary-materializer-missing-dependencies",
+      "path": "<REPO_ROOT>\\out\\build\\binary-materializer-missing-dependencies",
       "fileCount": 41,
       "logicalBytes": 366893,
-      "cmakeSource": "F:/PersonalWorkspace/协议解析拼接工具/protocol_adapter_engine",
+      "cmakeSource": "<REPO_ROOT>",
       "archivedEvidenceCount": 0,
       "rationale": "historical CMake build tree; repository source exists; ignored and untracked; no reparse point or active build process"
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out\\build\\clean-measure-final-nlohmann",
+      "path": "<REPO_ROOT>\\out\\build\\clean-measure-final-nlohmann",
       "fileCount": 1260,
       "logicalBytes": 29726876,
-      "cmakeSource": "F:/PersonalWorkspace/协议解析拼接工具/protocol_adapter_engine",
+      "cmakeSource": "<REPO_ROOT>",
       "archivedEvidenceCount": 0,
       "rationale": "historical CMake build tree; repository source exists; ignored and untracked; no reparse point or active build process"
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out\\build\\clean-measure-final-rapidjson",
+      "path": "<REPO_ROOT>\\out\\build\\clean-measure-final-rapidjson",
       "fileCount": 387,
       "logicalBytes": 5516280,
-      "cmakeSource": "F:/PersonalWorkspace/协议解析拼接工具/protocol_adapter_engine",
+      "cmakeSource": "<REPO_ROOT>",
       "archivedEvidenceCount": 0,
       "rationale": "historical CMake build tree; repository source exists; ignored and untracked; no reparse point or active build process"
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out\\build\\clean-measure-final-yyjson",
+      "path": "<REPO_ROOT>\\out\\build\\clean-measure-final-yyjson",
       "fileCount": 1016,
       "logicalBytes": 10648033,
-      "cmakeSource": "F:/PersonalWorkspace/协议解析拼接工具/protocol_adapter_engine",
+      "cmakeSource": "<REPO_ROOT>",
       "archivedEvidenceCount": 0,
       "rationale": "historical CMake build tree; repository source exists; ignored and untracked; no reparse point or active build process"
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out\\build\\clean-measure-yyjson",
+      "path": "<REPO_ROOT>\\out\\build\\clean-measure-yyjson",
       "fileCount": 41,
       "logicalBytes": 358643,
-      "cmakeSource": "F:/PersonalWorkspace/协议解析拼接工具/protocol_adapter_engine",
+      "cmakeSource": "<REPO_ROOT>",
       "archivedEvidenceCount": 0,
       "rationale": "historical CMake build tree; repository source exists; ignored and untracked; no reparse point or active build process"
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out\\build\\host-dec018-audit",
+      "path": "<REPO_ROOT>\\out\\build\\host-dec018-audit",
       "fileCount": 156,
       "logicalBytes": 4110036,
-      "cmakeSource": "F:/PersonalWorkspace/协议解析拼接工具/protocol_adapter_engine/out/host-dec033a",
+      "cmakeSource": "<REPO_ROOT>/out/host-dec033a",
       "archivedEvidenceCount": 0,
       "rationale": "historical CMake build tree; declared source directory exists and is retained; ignored and untracked; no reparse point or active build process"
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out\\build\\lab-ascii-stream-observer-default-off",
+      "path": "<REPO_ROOT>\\out\\build\\lab-ascii-stream-observer-default-off",
       "fileCount": 59,
       "logicalBytes": 485550,
-      "cmakeSource": "F:/PersonalWorkspace/协议解析拼接工具/protocol_adapter_engine",
+      "cmakeSource": "<REPO_ROOT>",
       "archivedEvidenceCount": 0,
       "rationale": "historical CMake build tree; repository source exists; ignored and untracked; no reparse point or active build process"
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out\\build\\lab-ascii-stream-observer-gate-adapter-without-observer",
+      "path": "<REPO_ROOT>\\out\\build\\lab-ascii-stream-observer-gate-adapter-without-observer",
       "fileCount": 37,
       "logicalBytes": 363833,
-      "cmakeSource": "F:/PersonalWorkspace/协议解析拼接工具/protocol_adapter_engine",
+      "cmakeSource": "<REPO_ROOT>",
       "archivedEvidenceCount": 0,
       "rationale": "historical CMake build tree; repository source exists; ignored and untracked; no reparse point or active build process"
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out\\build\\lab-ascii-stream-observer-gate-cli",
+      "path": "<REPO_ROOT>\\out\\build\\lab-ascii-stream-observer-gate-cli",
       "fileCount": 37,
       "logicalBytes": 362155,
-      "cmakeSource": "F:/PersonalWorkspace/协议解析拼接工具/protocol_adapter_engine",
+      "cmakeSource": "<REPO_ROOT>",
       "archivedEvidenceCount": 0,
       "rationale": "historical CMake build tree; repository source exists; ignored and untracked; no reparse point or active build process"
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out\\build\\lab-ascii-stream-observer-gate-missing",
+      "path": "<REPO_ROOT>\\out\\build\\lab-ascii-stream-observer-gate-missing",
       "fileCount": 37,
       "logicalBytes": 362476,
-      "cmakeSource": "F:/PersonalWorkspace/协议解析拼接工具/protocol_adapter_engine",
+      "cmakeSource": "<REPO_ROOT>",
       "archivedEvidenceCount": 0,
       "rationale": "historical CMake build tree; repository source exists; ignored and untracked; no reparse point or active build process"
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out\\build\\lab-ascii-stream-observer-no-tests",
+      "path": "<REPO_ROOT>\\out\\build\\lab-ascii-stream-observer-no-tests",
       "fileCount": 249,
       "logicalBytes": 50853408,
-      "cmakeSource": "F:/PersonalWorkspace/协议解析拼接工具/protocol_adapter_engine",
+      "cmakeSource": "<REPO_ROOT>",
       "archivedEvidenceCount": 0,
       "rationale": "historical CMake build tree; repository source exists; ignored and untracked; no reparse point or active build process"
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out\\build\\lab-host-observer-missing-dependencies",
+      "path": "<REPO_ROOT>\\out\\build\\lab-host-observer-missing-dependencies",
       "fileCount": 41,
       "logicalBytes": 367126,
-      "cmakeSource": "F:/PersonalWorkspace/协议解析拼接工具/protocol_adapter_engine",
+      "cmakeSource": "<REPO_ROOT>",
       "archivedEvidenceCount": 0,
       "rationale": "historical CMake build tree; repository source exists; ignored and untracked; no reparse point or active build process"
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out\\build\\lab-stream-gate-cli",
+      "path": "<REPO_ROOT>\\out\\build\\lab-stream-gate-cli",
       "fileCount": 41,
       "logicalBytes": 364631,
-      "cmakeSource": "F:/PersonalWorkspace/协议解析拼接工具/protocol_adapter_engine",
+      "cmakeSource": "<REPO_ROOT>",
       "archivedEvidenceCount": 0,
       "rationale": "historical CMake build tree; repository source exists; ignored and untracked; no reparse point or active build process"
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out\\build\\lab-stream-gate-missing",
+      "path": "<REPO_ROOT>\\out\\build\\lab-stream-gate-missing",
       "fileCount": 41,
       "logicalBytes": 365670,
-      "cmakeSource": "F:/PersonalWorkspace/协议解析拼接工具/protocol_adapter_engine",
+      "cmakeSource": "<REPO_ROOT>",
       "archivedEvidenceCount": 0,
       "rationale": "historical CMake build tree; repository source exists; ignored and untracked; no reparse point or active build process"
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out\\build\\scaffold-default",
+      "path": "<REPO_ROOT>\\out\\build\\scaffold-default",
       "fileCount": 83,
       "logicalBytes": 662616,
-      "cmakeSource": "F:/PersonalWorkspace/协议解析拼接工具/protocol_adapter_engine",
+      "cmakeSource": "<REPO_ROOT>",
       "archivedEvidenceCount": 0,
       "rationale": "historical CMake build tree; repository source exists; ignored and untracked; no reparse point or active build process"
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out\\build\\v06-a",
+      "path": "<REPO_ROOT>\\out\\build\\v06-a",
       "fileCount": 1102,
       "logicalBytes": 25893683,
-      "cmakeSource": "F:/PersonalWorkspace/协议解析拼接工具/protocol_adapter_engine",
+      "cmakeSource": "<REPO_ROOT>",
       "archivedEvidenceCount": 7,
       "rationale": "historical CMake build tree; repository source exists; ignored and untracked; no reparse point or active build process"
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out\\build\\v06-default",
+      "path": "<REPO_ROOT>\\out\\build\\v06-default",
       "fileCount": 72,
       "logicalBytes": 1085348,
-      "cmakeSource": "F:/PersonalWorkspace/协议解析拼接工具/protocol_adapter_engine",
+      "cmakeSource": "<REPO_ROOT>",
       "archivedEvidenceCount": 0,
       "rationale": "historical CMake build tree; repository source exists; ignored and untracked; no reparse point or active build process"
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out\\build\\v06-gates",
+      "path": "<REPO_ROOT>\\out\\build\\v06-gates",
       "fileCount": 8,
       "logicalBytes": 16968,
       "cmakeSource": null,
@@ -181,754 +181,754 @@
       "rationale": "historical evidence-only build subdirectory; complete eight-log set archived and verified"
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out\\build\\v06-schema-lab-reject",
+      "path": "<REPO_ROOT>\\out\\build\\v06-schema-lab-reject",
       "fileCount": 41,
       "logicalBytes": 363283,
-      "cmakeSource": "F:/PersonalWorkspace/协议解析拼接工具/protocol_adapter_engine",
+      "cmakeSource": "<REPO_ROOT>",
       "archivedEvidenceCount": 0,
       "rationale": "historical CMake build tree; repository source exists; ignored and untracked; no reparse point or active build process"
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out\\build\\v06-testing-off",
+      "path": "<REPO_ROOT>\\out\\build\\v06-testing-off",
       "fileCount": 41,
       "logicalBytes": 362940,
-      "cmakeSource": "F:/PersonalWorkspace/协议解析拼接工具/protocol_adapter_engine",
+      "cmakeSource": "<REPO_ROOT>",
       "archivedEvidenceCount": 0,
       "rationale": "historical CMake build tree; repository source exists; ignored and untracked; no reparse point or active build process"
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out\\build\\v08-business",
+      "path": "<REPO_ROOT>\\out\\build\\v08-business",
       "fileCount": 941,
       "logicalBytes": 455447763,
-      "cmakeSource": "F:/PersonalWorkspace/协议解析拼接工具/protocol_adapter_engine",
+      "cmakeSource": "<REPO_ROOT>",
       "archivedEvidenceCount": 0,
       "rationale": "historical CMake build tree; repository source exists; ignored and untracked; no reparse point or active build process"
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out\\build\\v08-dev",
+      "path": "<REPO_ROOT>\\out\\build\\v08-dev",
       "fileCount": 690,
       "logicalBytes": 384212699,
-      "cmakeSource": "F:/PersonalWorkspace/协议解析拼接工具/protocol_adapter_engine",
+      "cmakeSource": "<REPO_ROOT>",
       "archivedEvidenceCount": 0,
       "rationale": "historical CMake build tree; repository source exists; ignored and untracked; no reparse point or active build process"
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out\\build\\v08-invalid-compiler",
+      "path": "<REPO_ROOT>\\out\\build\\v08-invalid-compiler",
       "fileCount": 41,
       "logicalBytes": 363473,
-      "cmakeSource": "F:/PersonalWorkspace/协议解析拼接工具/protocol_adapter_engine",
+      "cmakeSource": "<REPO_ROOT>",
       "archivedEvidenceCount": 0,
       "rationale": "historical CMake build tree; repository source exists; ignored and untracked; no reparse point or active build process"
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out\\build\\v08-invalid-lab",
+      "path": "<REPO_ROOT>\\out\\build\\v08-invalid-lab",
       "fileCount": 41,
       "logicalBytes": 363045,
-      "cmakeSource": "F:/PersonalWorkspace/协议解析拼接工具/protocol_adapter_engine",
+      "cmakeSource": "<REPO_ROOT>",
       "archivedEvidenceCount": 0,
       "rationale": "historical CMake build tree; repository source exists; ignored and untracked; no reparse point or active build process"
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out\\build\\v08-lab",
+      "path": "<REPO_ROOT>\\out\\build\\v08-lab",
       "fileCount": 6124,
       "logicalBytes": 812073448,
-      "cmakeSource": "F:/PersonalWorkspace/协议解析拼接工具/protocol_adapter_engine",
+      "cmakeSource": "<REPO_ROOT>",
       "archivedEvidenceCount": 0,
       "rationale": "historical CMake build tree; repository source exists; ignored and untracked; no reparse point or active build process"
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out\\build\\v08-lab-no-tests",
+      "path": "<REPO_ROOT>\\out\\build\\v08-lab-no-tests",
       "fileCount": 314,
       "logicalBytes": 154699290,
-      "cmakeSource": "F:/PersonalWorkspace/协议解析拼接工具/protocol_adapter_engine",
+      "cmakeSource": "<REPO_ROOT>",
       "archivedEvidenceCount": 0,
       "rationale": "historical CMake build tree; repository source exists; ignored and untracked; no reparse point or active build process"
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out\\build\\v08-product-only",
+      "path": "<REPO_ROOT>\\out\\build\\v08-product-only",
       "fileCount": 217,
       "logicalBytes": 36597108,
-      "cmakeSource": "F:/PersonalWorkspace/协议解析拼接工具/protocol_adapter_engine",
+      "cmakeSource": "<REPO_ROOT>",
       "archivedEvidenceCount": 0,
       "rationale": "historical CMake build tree; repository source exists; ignored and untracked; no reparse point or active build process"
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out\\build\\windows-msvc-all-slices",
+      "path": "<REPO_ROOT>\\out\\build\\windows-msvc-all-slices",
       "fileCount": 5489,
       "logicalBytes": 433993765,
-      "cmakeSource": "F:/PersonalWorkspace/协议解析拼接工具/protocol_adapter_engine",
+      "cmakeSource": "<REPO_ROOT>",
       "archivedEvidenceCount": 0,
       "rationale": "historical CMake build tree; repository source exists; ignored and untracked; no reparse point or active build process"
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out\\build\\windows-msvc-all-slices-dec018-audit",
+      "path": "<REPO_ROOT>\\out\\build\\windows-msvc-all-slices-dec018-audit",
       "fileCount": 3113,
       "logicalBytes": 236932482,
-      "cmakeSource": "F:/PersonalWorkspace/协议解析拼接工具/protocol_adapter_engine",
+      "cmakeSource": "<REPO_ROOT>",
       "archivedEvidenceCount": 0,
       "rationale": "historical CMake build tree; repository source exists; ignored and untracked; no reparse point or active build process"
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out\\build\\windows-msvc-all-slices-dec032",
+      "path": "<REPO_ROOT>\\out\\build\\windows-msvc-all-slices-dec032",
       "fileCount": 3112,
       "logicalBytes": 257989074,
-      "cmakeSource": "F:/PersonalWorkspace/协议解析拼接工具/protocol_adapter_engine",
+      "cmakeSource": "<REPO_ROOT>",
       "archivedEvidenceCount": 0,
       "rationale": "historical CMake build tree; repository source exists; ignored and untracked; no reparse point or active build process"
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out\\build\\windows-msvc-all-slices-dec033a",
+      "path": "<REPO_ROOT>\\out\\build\\windows-msvc-all-slices-dec033a",
       "fileCount": 3113,
       "logicalBytes": 237207561,
-      "cmakeSource": "F:/PersonalWorkspace/协议解析拼接工具/protocol_adapter_engine",
+      "cmakeSource": "<REPO_ROOT>",
       "archivedEvidenceCount": 0,
       "rationale": "historical CMake build tree; repository source exists; ignored and untracked; no reparse point or active build process"
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out\\build\\windows-msvc-all-slices-dec034",
+      "path": "<REPO_ROOT>\\out\\build\\windows-msvc-all-slices-dec034",
       "fileCount": 3225,
       "logicalBytes": 264959894,
-      "cmakeSource": "F:/PersonalWorkspace/协议解析拼接工具/protocol_adapter_engine",
+      "cmakeSource": "<REPO_ROOT>",
       "archivedEvidenceCount": 0,
       "rationale": "historical CMake build tree; repository source exists; ignored and untracked; no reparse point or active build process"
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out\\build\\windows-msvc-all-slices-dec039",
+      "path": "<REPO_ROOT>\\out\\build\\windows-msvc-all-slices-dec039",
       "fileCount": 4312,
       "logicalBytes": 391942985,
-      "cmakeSource": "F:/PersonalWorkspace/协议解析拼接工具/protocol_adapter_engine",
+      "cmakeSource": "<REPO_ROOT>",
       "archivedEvidenceCount": 4,
       "rationale": "historical CMake build tree; repository source exists; ignored and untracked; no reparse point or active build process"
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out\\build\\windows-msvc-all-slices-dec040",
+      "path": "<REPO_ROOT>\\out\\build\\windows-msvc-all-slices-dec040",
       "fileCount": 4723,
       "logicalBytes": 477393820,
-      "cmakeSource": "F:/PersonalWorkspace/协议解析拼接工具/protocol_adapter_engine",
+      "cmakeSource": "<REPO_ROOT>",
       "archivedEvidenceCount": 0,
       "rationale": "historical CMake build tree; repository source exists; ignored and untracked; no reparse point or active build process"
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out\\build\\windows-msvc-all-slices-dec041",
+      "path": "<REPO_ROOT>\\out\\build\\windows-msvc-all-slices-dec041",
       "fileCount": 5100,
       "logicalBytes": 532288616,
-      "cmakeSource": "F:/PersonalWorkspace/协议解析拼接工具/protocol_adapter_engine",
+      "cmakeSource": "<REPO_ROOT>",
       "archivedEvidenceCount": 0,
       "rationale": "historical CMake build tree; repository source exists; ignored and untracked; no reparse point or active build process"
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out\\build\\windows-msvc-all-slices-dec042a",
+      "path": "<REPO_ROOT>\\out\\build\\windows-msvc-all-slices-dec042a",
       "fileCount": 5560,
       "logicalBytes": 541928534,
-      "cmakeSource": "F:/PersonalWorkspace/协议解析拼接工具/protocol_adapter_engine",
+      "cmakeSource": "<REPO_ROOT>",
       "archivedEvidenceCount": 0,
       "rationale": "historical CMake build tree; repository source exists; ignored and untracked; no reparse point or active build process"
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out\\build\\windows-msvc-all-slices-dec042b-compiler",
+      "path": "<REPO_ROOT>\\out\\build\\windows-msvc-all-slices-dec042b-compiler",
       "fileCount": 3022,
       "logicalBytes": 339637729,
-      "cmakeSource": "F:/PersonalWorkspace/协议解析拼接工具/protocol_adapter_engine",
+      "cmakeSource": "<REPO_ROOT>",
       "archivedEvidenceCount": 0,
       "rationale": "historical CMake build tree; repository source exists; ignored and untracked; no reparse point or active build process"
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out\\build\\windows-msvc-all-slices-frozen",
+      "path": "<REPO_ROOT>\\out\\build\\windows-msvc-all-slices-frozen",
       "fileCount": 2821,
       "logicalBytes": 62050448,
-      "cmakeSource": "F:/PersonalWorkspace/协议解析拼接工具/protocol_adapter_engine",
+      "cmakeSource": "<REPO_ROOT>",
       "archivedEvidenceCount": 0,
       "rationale": "historical CMake build tree; repository source exists; ignored and untracked; no reparse point or active build process"
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out\\build\\windows-msvc-all-slices-protocol-lab-review",
+      "path": "<REPO_ROOT>\\out\\build\\windows-msvc-all-slices-protocol-lab-review",
       "fileCount": 3444,
       "logicalBytes": 345454070,
-      "cmakeSource": "F:/PersonalWorkspace/协议解析拼接工具/protocol_adapter_engine",
+      "cmakeSource": "<REPO_ROOT>",
       "archivedEvidenceCount": 0,
       "rationale": "historical CMake build tree; repository source exists; ignored and untracked; no reparse point or active build process"
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out\\build\\windows-msvc-ascii",
+      "path": "<REPO_ROOT>\\out\\build\\windows-msvc-ascii",
       "fileCount": 954,
       "logicalBytes": 484753814,
-      "cmakeSource": "F:/PersonalWorkspace/协议解析拼接工具/protocol_adapter_engine",
+      "cmakeSource": "<REPO_ROOT>",
       "archivedEvidenceCount": 0,
       "rationale": "historical CMake build tree; repository source exists; ignored and untracked; no reparse point or active build process"
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out\\build\\windows-msvc-ascii-all-slices",
+      "path": "<REPO_ROOT>\\out\\build\\windows-msvc-ascii-all-slices",
       "fileCount": 1190,
       "logicalBytes": 655385735,
-      "cmakeSource": "F:/PersonalWorkspace/协议解析拼接工具/protocol_adapter_engine",
+      "cmakeSource": "<REPO_ROOT>",
       "archivedEvidenceCount": 0,
       "rationale": "historical CMake build tree; repository source exists; ignored and untracked; no reparse point or active build process"
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out\\build\\windows-msvc-ascii-lab-no-tests",
+      "path": "<REPO_ROOT>\\out\\build\\windows-msvc-ascii-lab-no-tests",
       "fileCount": 349,
       "logicalBytes": 153641922,
-      "cmakeSource": "F:/PersonalWorkspace/协议解析拼接工具/protocol_adapter_engine",
+      "cmakeSource": "<REPO_ROOT>",
       "archivedEvidenceCount": 0,
       "rationale": "historical CMake build tree; repository source exists; ignored and untracked; no reparse point or active build process"
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out\\build\\windows-msvc-ascii-lab-no-tests-v08",
+      "path": "<REPO_ROOT>\\out\\build\\windows-msvc-ascii-lab-no-tests-v08",
       "fileCount": 349,
       "logicalBytes": 154139290,
-      "cmakeSource": "F:/PersonalWorkspace/协议解析拼接工具/protocol_adapter_engine",
+      "cmakeSource": "<REPO_ROOT>",
       "archivedEvidenceCount": 0,
       "rationale": "historical CMake build tree; repository source exists; ignored and untracked; no reparse point or active build process"
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out\\build\\windows-msvc-ascii-product",
+      "path": "<REPO_ROOT>\\out\\build\\windows-msvc-ascii-product",
       "fileCount": 257,
       "logicalBytes": 60494845,
-      "cmakeSource": "F:/PersonalWorkspace/协议解析拼接工具/protocol_adapter_engine",
+      "cmakeSource": "<REPO_ROOT>",
       "archivedEvidenceCount": 0,
       "rationale": "historical CMake build tree; repository source exists; ignored and untracked; no reparse point or active build process"
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out\\build\\windows-msvc-ascii-stream",
+      "path": "<REPO_ROOT>\\out\\build\\windows-msvc-ascii-stream",
       "fileCount": 1069,
       "logicalBytes": 592551995,
-      "cmakeSource": "F:/PersonalWorkspace/协议解析拼接工具/protocol_adapter_engine",
+      "cmakeSource": "<REPO_ROOT>",
       "archivedEvidenceCount": 0,
       "rationale": "historical CMake build tree; repository source exists; ignored and untracked; no reparse point or active build process"
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out\\build\\windows-msvc-ascii-stream-default-off",
+      "path": "<REPO_ROOT>\\out\\build\\windows-msvc-ascii-stream-default-off",
       "fileCount": 71,
       "logicalBytes": 1095949,
-      "cmakeSource": "F:/PersonalWorkspace/协议解析拼接工具/protocol_adapter_engine",
+      "cmakeSource": "<REPO_ROOT>",
       "archivedEvidenceCount": 0,
       "rationale": "historical CMake build tree; repository source exists; ignored and untracked; no reparse point or active build process"
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out\\build\\windows-msvc-ascii-stream-default-off-final",
+      "path": "<REPO_ROOT>\\out\\build\\windows-msvc-ascii-stream-default-off-final",
       "fileCount": 299,
       "logicalBytes": 67983535,
-      "cmakeSource": "F:/PersonalWorkspace/协议解析拼接工具/protocol_adapter_engine",
+      "cmakeSource": "<REPO_ROOT>",
       "archivedEvidenceCount": 0,
       "rationale": "historical CMake build tree; repository source exists; ignored and untracked; no reparse point or active build process"
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out\\build\\windows-msvc-ascii-stream-lab-gate",
+      "path": "<REPO_ROOT>\\out\\build\\windows-msvc-ascii-stream-lab-gate",
       "fileCount": 71,
       "logicalBytes": 1095001,
-      "cmakeSource": "F:/PersonalWorkspace/协议解析拼接工具/protocol_adapter_engine",
+      "cmakeSource": "<REPO_ROOT>",
       "archivedEvidenceCount": 0,
       "rationale": "historical CMake build tree; repository source exists; ignored and untracked; no reparse point or active build process"
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out\\build\\windows-msvc-ascii-stream-lab-gate-final",
+      "path": "<REPO_ROOT>\\out\\build\\windows-msvc-ascii-stream-lab-gate-final",
       "fileCount": 41,
       "logicalBytes": 366962,
-      "cmakeSource": "F:/PersonalWorkspace/协议解析拼接工具/protocol_adapter_engine",
+      "cmakeSource": "<REPO_ROOT>",
       "archivedEvidenceCount": 0,
       "rationale": "historical CMake build tree; repository source exists; ignored and untracked; no reparse point or active build process"
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out\\build\\windows-msvc-ascii-stream-lab-gate-recovery",
+      "path": "<REPO_ROOT>\\out\\build\\windows-msvc-ascii-stream-lab-gate-recovery",
       "fileCount": 41,
       "logicalBytes": 367230,
-      "cmakeSource": "F:/PersonalWorkspace/协议解析拼接工具/protocol_adapter_engine",
+      "cmakeSource": "<REPO_ROOT>",
       "archivedEvidenceCount": 0,
       "rationale": "historical CMake build tree; repository source exists; ignored and untracked; no reparse point or active build process"
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out\\build\\windows-msvc-ascii-stream-missing-deps",
+      "path": "<REPO_ROOT>\\out\\build\\windows-msvc-ascii-stream-missing-deps",
       "fileCount": 71,
       "logicalBytes": 1096273,
-      "cmakeSource": "F:/PersonalWorkspace/协议解析拼接工具/protocol_adapter_engine",
+      "cmakeSource": "<REPO_ROOT>",
       "archivedEvidenceCount": 0,
       "rationale": "historical CMake build tree; repository source exists; ignored and untracked; no reparse point or active build process"
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out\\build\\windows-msvc-ascii-stream-missing-deps-final",
+      "path": "<REPO_ROOT>\\out\\build\\windows-msvc-ascii-stream-missing-deps-final",
       "fileCount": 41,
       "logicalBytes": 367315,
-      "cmakeSource": "F:/PersonalWorkspace/协议解析拼接工具/protocol_adapter_engine",
+      "cmakeSource": "<REPO_ROOT>",
       "archivedEvidenceCount": 0,
       "rationale": "historical CMake build tree; repository source exists; ignored and untracked; no reparse point or active build process"
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out\\build\\windows-msvc-ascii-stream-missing-deps-recovery",
+      "path": "<REPO_ROOT>\\out\\build\\windows-msvc-ascii-stream-missing-deps-recovery",
       "fileCount": 41,
       "logicalBytes": 367575,
-      "cmakeSource": "F:/PersonalWorkspace/协议解析拼接工具/protocol_adapter_engine",
+      "cmakeSource": "<REPO_ROOT>",
       "archivedEvidenceCount": 0,
       "rationale": "historical CMake build tree; repository source exists; ignored and untracked; no reparse point or active build process"
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out\\build\\windows-msvc-ascii-stream-product-only",
+      "path": "<REPO_ROOT>\\out\\build\\windows-msvc-ascii-stream-product-only",
       "fileCount": 81,
       "logicalBytes": 1140686,
-      "cmakeSource": "F:/PersonalWorkspace/协议解析拼接工具/protocol_adapter_engine",
+      "cmakeSource": "<REPO_ROOT>",
       "archivedEvidenceCount": 0,
       "rationale": "historical CMake build tree; repository source exists; ignored and untracked; no reparse point or active build process"
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out\\build\\windows-msvc-ascii-stream-product-only-final",
+      "path": "<REPO_ROOT>\\out\\build\\windows-msvc-ascii-stream-product-only-final",
       "fileCount": 162,
       "logicalBytes": 13208438,
-      "cmakeSource": "F:/PersonalWorkspace/协议解析拼接工具/protocol_adapter_engine",
+      "cmakeSource": "<REPO_ROOT>",
       "archivedEvidenceCount": 0,
       "rationale": "historical CMake build tree; repository source exists; ignored and untracked; no reparse point or active build process"
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out\\build\\windows-msvc-ascii-v10-lab-forbidden",
+      "path": "<REPO_ROOT>\\out\\build\\windows-msvc-ascii-v10-lab-forbidden",
       "fileCount": 41,
       "logicalBytes": 366440,
-      "cmakeSource": "F:/PersonalWorkspace/协议解析拼接工具/protocol_adapter_engine",
+      "cmakeSource": "<REPO_ROOT>",
       "archivedEvidenceCount": 0,
       "rationale": "historical CMake build tree; repository source exists; ignored and untracked; no reparse point or active build process"
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out\\build\\windows-msvc-binary-materializer-noqt",
+      "path": "<REPO_ROOT>\\out\\build\\windows-msvc-binary-materializer-noqt",
       "fileCount": 836,
       "logicalBytes": 320204346,
-      "cmakeSource": "F:/PersonalWorkspace/协议解析拼接工具/protocol_adapter_engine",
+      "cmakeSource": "<REPO_ROOT>",
       "archivedEvidenceCount": 0,
       "rationale": "historical CMake build tree; repository source exists; ignored and untracked; no reparse point or active build process"
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out\\build\\windows-msvc-binary-materializer-production",
+      "path": "<REPO_ROOT>\\out\\build\\windows-msvc-binary-materializer-production",
       "fileCount": 239,
       "logicalBytes": 17294036,
-      "cmakeSource": "F:/PersonalWorkspace/协议解析拼接工具/protocol_adapter_engine",
+      "cmakeSource": "<REPO_ROOT>",
       "archivedEvidenceCount": 0,
       "rationale": "historical CMake build tree; repository source exists; ignored and untracked; no reparse point or active build process"
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out\\build\\windows-msvc-codec-compile-check",
+      "path": "<REPO_ROOT>\\out\\build\\windows-msvc-codec-compile-check",
       "fileCount": 107,
       "logicalBytes": 843454,
-      "cmakeSource": "F:/PersonalWorkspace/协议解析拼接工具/protocol_adapter_engine",
+      "cmakeSource": "<REPO_ROOT>",
       "archivedEvidenceCount": 0,
       "rationale": "historical CMake build tree; repository source exists; ignored and untracked; no reparse point or active build process"
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out\\build\\windows-msvc-codec-product-only",
+      "path": "<REPO_ROOT>\\out\\build\\windows-msvc-codec-product-only",
       "fileCount": 97,
       "logicalBytes": 3251572,
-      "cmakeSource": "F:/PersonalWorkspace/协议解析拼接工具/protocol_adapter_engine",
+      "cmakeSource": "<REPO_ROOT>",
       "archivedEvidenceCount": 0,
       "rationale": "historical CMake build tree; repository source exists; ignored and untracked; no reparse point or active build process"
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out\\build\\windows-msvc-codec-product-only-dec018-audit",
+      "path": "<REPO_ROOT>\\out\\build\\windows-msvc-codec-product-only-dec018-audit",
       "fileCount": 103,
       "logicalBytes": 3611206,
-      "cmakeSource": "F:/PersonalWorkspace/协议解析拼接工具/protocol_adapter_engine",
+      "cmakeSource": "<REPO_ROOT>",
       "archivedEvidenceCount": 0,
       "rationale": "historical CMake build tree; repository source exists; ignored and untracked; no reparse point or active build process"
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out\\build\\windows-msvc-codec-product-only-dec032",
+      "path": "<REPO_ROOT>\\out\\build\\windows-msvc-codec-product-only-dec032",
       "fileCount": 102,
       "logicalBytes": 3302690,
-      "cmakeSource": "F:/PersonalWorkspace/协议解析拼接工具/protocol_adapter_engine",
+      "cmakeSource": "<REPO_ROOT>",
       "archivedEvidenceCount": 0,
       "rationale": "historical CMake build tree; repository source exists; ignored and untracked; no reparse point or active build process"
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out\\build\\windows-msvc-codec-product-only-dec033a",
+      "path": "<REPO_ROOT>\\out\\build\\windows-msvc-codec-product-only-dec033a",
       "fileCount": 103,
       "logicalBytes": 3606461,
-      "cmakeSource": "F:/PersonalWorkspace/协议解析拼接工具/protocol_adapter_engine",
+      "cmakeSource": "<REPO_ROOT>",
       "archivedEvidenceCount": 0,
       "rationale": "historical CMake build tree; repository source exists; ignored and untracked; no reparse point or active build process"
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out\\build\\windows-msvc-codec-product-only-dec040",
+      "path": "<REPO_ROOT>\\out\\build\\windows-msvc-codec-product-only-dec040",
       "fileCount": 146,
       "logicalBytes": 12700547,
-      "cmakeSource": "F:/PersonalWorkspace/协议解析拼接工具/protocol_adapter_engine",
+      "cmakeSource": "<REPO_ROOT>",
       "archivedEvidenceCount": 0,
       "rationale": "historical CMake build tree; repository source exists; ignored and untracked; no reparse point or active build process"
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out\\build\\windows-msvc-codec-slice",
+      "path": "<REPO_ROOT>\\out\\build\\windows-msvc-codec-slice",
       "fileCount": 1493,
       "logicalBytes": 158683662,
-      "cmakeSource": "F:/PersonalWorkspace/协议解析拼接工具/protocol_adapter_engine",
+      "cmakeSource": "<REPO_ROOT>",
       "archivedEvidenceCount": 0,
       "rationale": "historical CMake build tree; repository source exists; ignored and untracked; no reparse point or active build process"
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out\\build\\windows-msvc-crc-gate-no-compiler",
+      "path": "<REPO_ROOT>\\out\\build\\windows-msvc-crc-gate-no-compiler",
       "fileCount": 41,
       "logicalBytes": 364708,
-      "cmakeSource": "F:/PersonalWorkspace/协议解析拼接工具/protocol_adapter_engine",
+      "cmakeSource": "<REPO_ROOT>",
       "archivedEvidenceCount": 0,
       "rationale": "historical CMake build tree; repository source exists; ignored and untracked; no reparse point or active build process"
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out\\build\\windows-msvc-crc-gate-no-lab-flag",
+      "path": "<REPO_ROOT>\\out\\build\\windows-msvc-crc-gate-no-lab-flag",
       "fileCount": 41,
       "logicalBytes": 364708,
-      "cmakeSource": "F:/PersonalWorkspace/协议解析拼接工具/protocol_adapter_engine",
+      "cmakeSource": "<REPO_ROOT>",
       "archivedEvidenceCount": 0,
       "rationale": "historical CMake build tree; repository source exists; ignored and untracked; no reparse point or active build process"
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out\\build\\windows-msvc-crc-gate-no-v05",
+      "path": "<REPO_ROOT>\\out\\build\\windows-msvc-crc-gate-no-v05",
       "fileCount": 41,
       "logicalBytes": 364283,
-      "cmakeSource": "F:/PersonalWorkspace/协议解析拼接工具/protocol_adapter_engine",
+      "cmakeSource": "<REPO_ROOT>",
       "archivedEvidenceCount": 0,
       "rationale": "historical CMake build tree; repository source exists; ignored and untracked; no reparse point or active build process"
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out\\build\\windows-msvc-crc-lab-no-tests",
+      "path": "<REPO_ROOT>\\out\\build\\windows-msvc-crc-lab-no-tests",
       "fileCount": 314,
       "logicalBytes": 143288646,
-      "cmakeSource": "F:/PersonalWorkspace/协议解析拼接工具/protocol_adapter_engine",
+      "cmakeSource": "<REPO_ROOT>",
       "archivedEvidenceCount": 0,
       "rationale": "historical CMake build tree; repository source exists; ignored and untracked; no reparse point or active build process"
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out\\build\\windows-msvc-crc-product-only",
+      "path": "<REPO_ROOT>\\out\\build\\windows-msvc-crc-product-only",
       "fileCount": 150,
       "logicalBytes": 13208022,
-      "cmakeSource": "F:/PersonalWorkspace/协议解析拼接工具/protocol_adapter_engine",
+      "cmakeSource": "<REPO_ROOT>",
       "archivedEvidenceCount": 0,
       "rationale": "historical CMake build tree; repository source exists; ignored and untracked; no reparse point or active build process"
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out\\build\\windows-msvc-dec034",
+      "path": "<REPO_ROOT>\\out\\build\\windows-msvc-dec034",
       "fileCount": 1296,
       "logicalBytes": 29376622,
-      "cmakeSource": "F:/PersonalWorkspace/协议解析拼接工具/protocol_adapter_engine",
+      "cmakeSource": "<REPO_ROOT>",
       "archivedEvidenceCount": 0,
       "rationale": "historical CMake build tree; repository source exists; ignored and untracked; no reparse point or active build process"
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out\\build\\windows-msvc-dec042b-compiler",
+      "path": "<REPO_ROOT>\\out\\build\\windows-msvc-dec042b-compiler",
       "fileCount": 1185,
       "logicalBytes": 74456857,
-      "cmakeSource": "F:/PersonalWorkspace/协议解析拼接工具/protocol_adapter_engine",
+      "cmakeSource": "<REPO_ROOT>",
       "archivedEvidenceCount": 0,
       "rationale": "historical CMake build tree; repository source exists; ignored and untracked; no reparse point or active build process"
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out\\build\\windows-msvc-dec042b-core-resume",
+      "path": "<REPO_ROOT>\\out\\build\\windows-msvc-dec042b-core-resume",
       "fileCount": 1638,
       "logicalBytes": 298677098,
-      "cmakeSource": "F:/PersonalWorkspace/协议解析拼接工具/protocol_adapter_engine",
+      "cmakeSource": "<REPO_ROOT>",
       "archivedEvidenceCount": 0,
       "rationale": "historical CMake build tree; repository source exists; ignored and untracked; no reparse point or active build process"
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out\\build\\windows-msvc-dec042b-default",
+      "path": "<REPO_ROOT>\\out\\build\\windows-msvc-dec042b-default",
       "fileCount": 1184,
       "logicalBytes": 70803858,
-      "cmakeSource": "F:/PersonalWorkspace/协议解析拼接工具/protocol_adapter_engine",
+      "cmakeSource": "<REPO_ROOT>",
       "archivedEvidenceCount": 0,
       "rationale": "historical CMake build tree; repository source exists; ignored and untracked; no reparse point or active build process"
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out\\build\\windows-msvc-dec042b-gate-core",
+      "path": "<REPO_ROOT>\\out\\build\\windows-msvc-dec042b-gate-core",
       "fileCount": 41,
       "logicalBytes": 364145,
-      "cmakeSource": "F:/PersonalWorkspace/协议解析拼接工具/protocol_adapter_engine",
+      "cmakeSource": "<REPO_ROOT>",
       "archivedEvidenceCount": 0,
       "rationale": "historical CMake build tree; repository source exists; ignored and untracked; no reparse point or active build process"
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out\\build\\windows-msvc-dec042b-gate-lab",
+      "path": "<REPO_ROOT>\\out\\build\\windows-msvc-dec042b-gate-lab",
       "fileCount": 41,
       "logicalBytes": 364053,
-      "cmakeSource": "F:/PersonalWorkspace/协议解析拼接工具/protocol_adapter_engine",
+      "cmakeSource": "<REPO_ROOT>",
       "archivedEvidenceCount": 0,
       "rationale": "historical CMake build tree; repository source exists; ignored and untracked; no reparse point or active build process"
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out\\build\\windows-msvc-decimal-arithmetic",
+      "path": "<REPO_ROOT>\\out\\build\\windows-msvc-decimal-arithmetic",
       "fileCount": 98,
       "logicalBytes": 2827777,
-      "cmakeSource": "F:/PersonalWorkspace/协议解析拼接工具/protocol_adapter_engine/spikes/decimal_arithmetic",
+      "cmakeSource": "<REPO_ROOT>/spikes/decimal_arithmetic",
       "archivedEvidenceCount": 0,
       "rationale": "historical CMake build tree; declared source directory exists and is retained; ignored and untracked; no reparse point or active build process"
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out\\build\\windows-msvc-embedded-boundary",
+      "path": "<REPO_ROOT>\\out\\build\\windows-msvc-embedded-boundary",
       "fileCount": 133,
       "logicalBytes": 3801856,
-      "cmakeSource": "F:/PersonalWorkspace/协议解析拼接工具/protocol_adapter_engine/out/embedding-boundary-host",
+      "cmakeSource": "<REPO_ROOT>/out/embedding-boundary-host",
       "archivedEvidenceCount": 0,
       "rationale": "historical CMake build tree; declared source directory exists and is retained; ignored and untracked; no reparse point or active build process"
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out\\build\\windows-msvc-host-add-subdirectory-dec032",
+      "path": "<REPO_ROOT>\\out\\build\\windows-msvc-host-add-subdirectory-dec032",
       "fileCount": 138,
       "logicalBytes": 3592300,
-      "cmakeSource": "F:/PersonalWorkspace/协议解析拼接工具/protocol_adapter_engine/out/host-dec032",
+      "cmakeSource": "<REPO_ROOT>/out/host-dec032",
       "archivedEvidenceCount": 0,
       "rationale": "historical CMake build tree; declared source directory exists and is retained; ignored and untracked; no reparse point or active build process"
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out\\build\\windows-msvc-host-add-subdirectory-dec033a",
+      "path": "<REPO_ROOT>\\out\\build\\windows-msvc-host-add-subdirectory-dec033a",
       "fileCount": 156,
       "logicalBytes": 4119240,
-      "cmakeSource": "F:/PersonalWorkspace/协议解析拼接工具/protocol_adapter_engine/out/host-dec033a",
+      "cmakeSource": "<REPO_ROOT>/out/host-dec033a",
       "archivedEvidenceCount": 0,
       "rationale": "historical CMake build tree; declared source directory exists and is retained; ignored and untracked; no reparse point or active build process"
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out\\build\\windows-msvc-host-endpoint",
+      "path": "<REPO_ROOT>\\out\\build\\windows-msvc-host-endpoint",
       "fileCount": 1233,
       "logicalBytes": 544328289,
-      "cmakeSource": "F:/PersonalWorkspace/协议解析拼接工具/protocol_adapter_engine",
+      "cmakeSource": "<REPO_ROOT>",
       "archivedEvidenceCount": 0,
       "rationale": "historical CMake build tree; repository source exists; ignored and untracked; no reparse point or active build process"
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out\\build\\windows-msvc-lab-ascii-adapter",
+      "path": "<REPO_ROOT>\\out\\build\\windows-msvc-lab-ascii-adapter",
       "fileCount": 411,
       "logicalBytes": 77562607,
-      "cmakeSource": "F:/PersonalWorkspace/协议解析拼接工具/protocol_adapter_engine",
+      "cmakeSource": "<REPO_ROOT>",
       "archivedEvidenceCount": 0,
       "rationale": "historical CMake build tree; repository source exists; ignored and untracked; no reparse point or active build process"
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out\\build\\windows-msvc-lab-ascii-adapter-no-v10",
+      "path": "<REPO_ROOT>\\out\\build\\windows-msvc-lab-ascii-adapter-no-v10",
       "fileCount": 41,
       "logicalBytes": 366474,
-      "cmakeSource": "F:/PersonalWorkspace/协议解析拼接工具/protocol_adapter_engine",
+      "cmakeSource": "<REPO_ROOT>",
       "archivedEvidenceCount": 0,
       "rationale": "historical CMake build tree; repository source exists; ignored and untracked; no reparse point or active build process"
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out\\build\\windows-msvc-lab-ascii-adapter-with-cli",
+      "path": "<REPO_ROOT>\\out\\build\\windows-msvc-lab-ascii-adapter-with-cli",
       "fileCount": 41,
       "logicalBytes": 366638,
-      "cmakeSource": "F:/PersonalWorkspace/协议解析拼接工具/protocol_adapter_engine",
+      "cmakeSource": "<REPO_ROOT>",
       "archivedEvidenceCount": 0,
       "rationale": "historical CMake build tree; repository source exists; ignored and untracked; no reparse point or active build process"
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out\\build\\windows-msvc-lab-ascii-cli-forbidden",
+      "path": "<REPO_ROOT>\\out\\build\\windows-msvc-lab-ascii-cli-forbidden",
       "fileCount": 41,
       "logicalBytes": 366378,
-      "cmakeSource": "F:/PersonalWorkspace/协议解析拼接工具/protocol_adapter_engine",
+      "cmakeSource": "<REPO_ROOT>",
       "archivedEvidenceCount": 0,
       "rationale": "historical CMake build tree; repository source exists; ignored and untracked; no reparse point or active build process"
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out\\build\\windows-msvc-lab-ascii-default-off",
+      "path": "<REPO_ROOT>\\out\\build\\windows-msvc-lab-ascii-default-off",
       "fileCount": 71,
       "logicalBytes": 1094764,
-      "cmakeSource": "F:/PersonalWorkspace/协议解析拼接工具/protocol_adapter_engine",
+      "cmakeSource": "<REPO_ROOT>",
       "archivedEvidenceCount": 0,
       "rationale": "historical CMake build tree; repository source exists; ignored and untracked; no reparse point or active build process"
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out\\build\\windows-msvc-lab-ascii-stream-ui",
+      "path": "<REPO_ROOT>\\out\\build\\windows-msvc-lab-ascii-stream-ui",
       "fileCount": 1500,
       "logicalBytes": 882713122,
-      "cmakeSource": "F:/PersonalWorkspace/协议解析拼接工具/protocol_adapter_engine",
+      "cmakeSource": "<REPO_ROOT>",
       "archivedEvidenceCount": 0,
       "rationale": "historical CMake build tree; repository source exists; ignored and untracked; no reparse point or active build process"
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out\\build\\windows-msvc-lab-ascii-ui",
+      "path": "<REPO_ROOT>\\out\\build\\windows-msvc-lab-ascii-ui",
       "fileCount": 848,
       "logicalBytes": 497381639,
-      "cmakeSource": "F:/PersonalWorkspace/协议解析拼接工具/protocol_adapter_engine",
+      "cmakeSource": "<REPO_ROOT>",
       "archivedEvidenceCount": 0,
       "rationale": "historical CMake build tree; repository source exists; ignored and untracked; no reparse point or active build process"
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out\\build\\windows-msvc-lab-ascii-ui-no-adapter",
+      "path": "<REPO_ROOT>\\out\\build\\windows-msvc-lab-ascii-ui-no-adapter",
       "fileCount": 37,
       "logicalBytes": 363090,
-      "cmakeSource": "F:/PersonalWorkspace/协议解析拼接工具/protocol_adapter_engine",
+      "cmakeSource": "<REPO_ROOT>",
       "archivedEvidenceCount": 0,
       "rationale": "historical CMake build tree; repository source exists; ignored and untracked; no reparse point or active build process"
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out\\build\\windows-msvc-lab-host-observer",
+      "path": "<REPO_ROOT>\\out\\build\\windows-msvc-lab-host-observer",
       "fileCount": 1676,
       "logicalBytes": 1068955258,
-      "cmakeSource": "F:/PersonalWorkspace/协议解析拼接工具/protocol_adapter_engine",
+      "cmakeSource": "<REPO_ROOT>",
       "archivedEvidenceCount": 0,
       "rationale": "historical CMake build tree; repository source exists; ignored and untracked; no reparse point or active build process"
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out\\build\\windows-msvc-lab-no-tests-dec041",
+      "path": "<REPO_ROOT>\\out\\build\\windows-msvc-lab-no-tests-dec041",
       "fileCount": 1210,
       "logicalBytes": 99333792,
-      "cmakeSource": "F:/PersonalWorkspace/协议解析拼接工具/protocol_adapter_engine",
+      "cmakeSource": "<REPO_ROOT>",
       "archivedEvidenceCount": 0,
       "rationale": "historical CMake build tree; repository source exists; ignored and untracked; no reparse point or active build process"
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out\\build\\windows-msvc-lab-no-tests-dec042a",
+      "path": "<REPO_ROOT>\\out\\build\\windows-msvc-lab-no-tests-dec042a",
       "fileCount": 1210,
       "logicalBytes": 103693595,
-      "cmakeSource": "F:/PersonalWorkspace/协议解析拼接工具/protocol_adapter_engine",
+      "cmakeSource": "<REPO_ROOT>",
       "archivedEvidenceCount": 0,
       "rationale": "historical CMake build tree; repository source exists; ignored and untracked; no reparse point or active build process"
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out\\build\\windows-msvc-lab-ui-v10-off",
+      "path": "<REPO_ROOT>\\out\\build\\windows-msvc-lab-ui-v10-off",
       "fileCount": 218,
       "logicalBytes": 146245367,
-      "cmakeSource": "F:/PersonalWorkspace/协议解析拼接工具/protocol_adapter_engine",
+      "cmakeSource": "<REPO_ROOT>",
       "archivedEvidenceCount": 0,
       "rationale": "historical CMake build tree; repository source exists; ignored and untracked; no reparse point or active build process"
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out\\build\\windows-msvc-lab-vendored-qt",
+      "path": "<REPO_ROOT>\\out\\build\\windows-msvc-lab-vendored-qt",
       "fileCount": 861,
       "logicalBytes": 338551046,
-      "cmakeSource": "F:/PersonalWorkspace/协议解析拼接工具/protocol_adapter_engine",
+      "cmakeSource": "<REPO_ROOT>",
       "archivedEvidenceCount": 0,
       "rationale": "historical CMake build tree; repository source exists; ignored and untracked; no reparse point or active build process"
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out\\build\\windows-msvc-length-business",
+      "path": "<REPO_ROOT>\\out\\build\\windows-msvc-length-business",
       "fileCount": 401,
       "logicalBytes": 66215863,
-      "cmakeSource": "F:/PersonalWorkspace/协议解析拼接工具/protocol_adapter_engine",
+      "cmakeSource": "<REPO_ROOT>",
       "archivedEvidenceCount": 0,
       "rationale": "historical CMake build tree; repository source exists; ignored and untracked; no reparse point or active build process"
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out\\build\\windows-msvc-length-dev",
+      "path": "<REPO_ROOT>\\out\\build\\windows-msvc-length-dev",
       "fileCount": 716,
       "logicalBytes": 359027678,
-      "cmakeSource": "F:/PersonalWorkspace/协议解析拼接工具/protocol_adapter_engine",
+      "cmakeSource": "<REPO_ROOT>",
       "archivedEvidenceCount": 0,
       "rationale": "historical CMake build tree; repository source exists; ignored and untracked; no reparse point or active build process"
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out\\build\\windows-msvc-length-lab",
+      "path": "<REPO_ROOT>\\out\\build\\windows-msvc-length-lab",
       "fileCount": 3760,
       "logicalBytes": 648851171,
-      "cmakeSource": "F:/PersonalWorkspace/协议解析拼接工具/protocol_adapter_engine",
+      "cmakeSource": "<REPO_ROOT>",
       "archivedEvidenceCount": 0,
       "rationale": "historical CMake build tree; repository source exists; ignored and untracked; no reparse point or active build process"
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out\\build\\windows-msvc-length-lab-no-tests",
+      "path": "<REPO_ROOT>\\out\\build\\windows-msvc-length-lab-no-tests",
       "fileCount": 314,
       "logicalBytes": 140999490,
-      "cmakeSource": "F:/PersonalWorkspace/协议解析拼接工具/protocol_adapter_engine",
+      "cmakeSource": "<REPO_ROOT>",
       "archivedEvidenceCount": 0,
       "rationale": "historical CMake build tree; repository source exists; ignored and untracked; no reparse point or active build process"
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out\\build\\windows-msvc-length-product-only",
+      "path": "<REPO_ROOT>\\out\\build\\windows-msvc-length-product-only",
       "fileCount": 217,
       "logicalBytes": 35970139,
-      "cmakeSource": "F:/PersonalWorkspace/协议解析拼接工具/protocol_adapter_engine",
+      "cmakeSource": "<REPO_ROOT>",
       "archivedEvidenceCount": 0,
       "rationale": "historical CMake build tree; repository source exists; ignored and untracked; no reparse point or active build process"
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out\\build\\windows-msvc-loader-slice",
+      "path": "<REPO_ROOT>\\out\\build\\windows-msvc-loader-slice",
       "fileCount": 1201,
       "logicalBytes": 58409179,
-      "cmakeSource": "F:/PersonalWorkspace/协议解析拼接工具/protocol_adapter_engine",
+      "cmakeSource": "<REPO_ROOT>",
       "archivedEvidenceCount": 0,
       "rationale": "historical CMake build tree; repository source exists; ignored and untracked; no reparse point or active build process"
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out\\build\\windows-msvc-loader-slice-dev",
+      "path": "<REPO_ROOT>\\out\\build\\windows-msvc-loader-slice-dev",
       "fileCount": 1016,
       "logicalBytes": 14300032,
-      "cmakeSource": "F:/PersonalWorkspace/协议解析拼接工具/protocol_adapter_engine",
+      "cmakeSource": "<REPO_ROOT>",
       "archivedEvidenceCount": 0,
       "rationale": "historical CMake build tree; repository source exists; ignored and untracked; no reparse point or active build process"
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out\\build\\windows-msvc-loader-spike-coexist",
+      "path": "<REPO_ROOT>\\out\\build\\windows-msvc-loader-spike-coexist",
       "fileCount": 2672,
       "logicalBytes": 53575528,
-      "cmakeSource": "F:/PersonalWorkspace/协议解析拼接工具/protocol_adapter_engine",
+      "cmakeSource": "<REPO_ROOT>",
       "archivedEvidenceCount": 0,
       "rationale": "historical CMake build tree; repository source exists; ignored and untracked; no reparse point or active build process"
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out\\build\\windows-msvc-product-dec034",
+      "path": "<REPO_ROOT>\\out\\build\\windows-msvc-product-dec034",
       "fileCount": 109,
       "logicalBytes": 3605778,
-      "cmakeSource": "F:/PersonalWorkspace/协议解析拼接工具/protocol_adapter_engine",
+      "cmakeSource": "<REPO_ROOT>",
       "archivedEvidenceCount": 0,
       "rationale": "historical CMake build tree; repository source exists; ignored and untracked; no reparse point or active build process"
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out\\build\\windows-msvc-product-only-dec039",
+      "path": "<REPO_ROOT>\\out\\build\\windows-msvc-product-only-dec039",
       "fileCount": 111,
       "logicalBytes": 3614297,
-      "cmakeSource": "F:/PersonalWorkspace/协议解析拼接工具/protocol_adapter_engine",
+      "cmakeSource": "<REPO_ROOT>",
       "archivedEvidenceCount": 0,
       "rationale": "historical CMake build tree; repository source exists; ignored and untracked; no reparse point or active build process"
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out\\build\\windows-msvc-product-only-dec041",
+      "path": "<REPO_ROOT>\\out\\build\\windows-msvc-product-only-dec041",
       "fileCount": 146,
       "logicalBytes": 12809356,
-      "cmakeSource": "F:/PersonalWorkspace/协议解析拼接工具/protocol_adapter_engine",
+      "cmakeSource": "<REPO_ROOT>",
       "archivedEvidenceCount": 0,
       "rationale": "historical CMake build tree; repository source exists; ignored and untracked; no reparse point or active build process"
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out\\build\\windows-msvc-product-only-dec042a",
+      "path": "<REPO_ROOT>\\out\\build\\windows-msvc-product-only-dec042a",
       "fileCount": 146,
       "logicalBytes": 13026047,
-      "cmakeSource": "F:/PersonalWorkspace/协议解析拼接工具/protocol_adapter_engine",
+      "cmakeSource": "<REPO_ROOT>",
       "archivedEvidenceCount": 0,
       "rationale": "historical CMake build tree; repository source exists; ignored and untracked; no reparse point or active build process"
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out\\build\\windows-msvc-product-only-protocol-lab-review",
+      "path": "<REPO_ROOT>\\out\\build\\windows-msvc-product-only-protocol-lab-review",
       "fileCount": 63,
       "logicalBytes": 430554,
-      "cmakeSource": "F:/PersonalWorkspace/协议解析拼接工具/protocol_adapter_engine",
+      "cmakeSource": "<REPO_ROOT>",
       "archivedEvidenceCount": 0,
       "rationale": "historical CMake build tree; repository source exists; ignored and untracked; no reparse point or active build process"
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out\\build\\windows-msvc-protocol-lab-no-testing-dec039",
+      "path": "<REPO_ROOT>\\out\\build\\windows-msvc-protocol-lab-no-testing-dec039",
       "fileCount": 1113,
       "logicalBytes": 26818258,
-      "cmakeSource": "F:/PersonalWorkspace/协议解析拼接工具/protocol_adapter_engine",
+      "cmakeSource": "<REPO_ROOT>",
       "archivedEvidenceCount": 0,
       "rationale": "historical CMake build tree; repository source exists; ignored and untracked; no reparse point or active build process"
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out\\build\\windows-msvc-protocol-lab-no-testing-review",
+      "path": "<REPO_ROOT>\\out\\build\\windows-msvc-protocol-lab-no-testing-review",
       "fileCount": 1249,
       "logicalBytes": 97219596,
-      "cmakeSource": "F:/PersonalWorkspace/协议解析拼接工具/protocol_adapter_engine",
+      "cmakeSource": "<REPO_ROOT>",
       "archivedEvidenceCount": 0,
       "rationale": "historical CMake build tree; repository source exists; ignored and untracked; no reparse point or active build process"
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out\\build\\windows-msvc-qt-ui-off",
+      "path": "<REPO_ROOT>\\out\\build\\windows-msvc-qt-ui-off",
       "fileCount": 176,
       "logicalBytes": 2073800,
-      "cmakeSource": "F:/PersonalWorkspace/协议解析拼接工具/protocol_adapter_engine",
+      "cmakeSource": "<REPO_ROOT>",
       "archivedEvidenceCount": 0,
       "rationale": "historical CMake build tree; repository source exists; ignored and untracked; no reparse point or active build process"
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out\\build\\windows-msvc-spike",
+      "path": "<REPO_ROOT>\\out\\build\\windows-msvc-spike",
       "fileCount": 3556,
       "logicalBytes": 57236918,
-      "cmakeSource": "F:/PersonalWorkspace/协议解析拼接工具/protocol_adapter_engine",
+      "cmakeSource": "<REPO_ROOT>",
       "archivedEvidenceCount": 0,
       "rationale": "historical CMake build tree; repository source exists; ignored and untracked; no reparse point or active build process"
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out\\build\\windows-msvc-spike-loader-coexist",
+      "path": "<REPO_ROOT>\\out\\build\\windows-msvc-spike-loader-coexist",
       "fileCount": 2688,
       "logicalBytes": 53883321,
-      "cmakeSource": "F:/PersonalWorkspace/协议解析拼接工具/protocol_adapter_engine",
+      "cmakeSource": "<REPO_ROOT>",
       "archivedEvidenceCount": 0,
       "rationale": "historical CMake build tree; repository source exists; ignored and untracked; no reparse point or active build process"
     }
@@ -940,37 +940,52 @@
   },
   "exclusions": [
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out\\build\\windows-msvc-pae-lab",
+      "path": "<REPO_ROOT>\\out\\build\\windows-msvc-pae-lab",
       "reason": "current recommended build and launch entry; permanent exclusion for this operation"
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out\\build\\windows-msvc-binary-ui-stage1",
+      "path": "<REPO_ROOT>\\out\\build\\windows-msvc-binary-ui-stage1",
       "reason": "current delivery build; permanent exclusion for this operation"
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out\\build\\windows-msvc-protocol-lab",
+      "path": "<REPO_ROOT>\\out\\build\\windows-msvc-protocol-lab",
       "reason": "contains four nested reparse points; targets not resolved for deletion"
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out",
+      "path": "<REPO_ROOT>\\out",
       "reason": "root deletion and all non-build children/root files are outside authorization"
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine_lab_ui",
+      "path": "<REPO_ROOT>_lab_ui",
       "reason": "old worktree and its generated output are outside authorization"
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\Lab验证",
+      "path": "<PROJECT_WORKSPACE_ROOT>\\Lab验证",
       "reason": "outer Lab validation directories are outside authorization"
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\third_party\\qt",
+      "path": "<REPO_ROOT>\\third_party\\qt",
       "reason": "vendored Qt is outside authorization"
     },
     {
-      "path": "D:\\develop_env\\Qt\\Qt5.11.3\\5.11.3",
+      "path": "<TOOLCHAIN_ROOT>\\Qt\\Qt5.11.3\\5.11.3",
       "reason": "local Qt installation is outside authorization"
     }
   ],
-  "destructionNotice": "Remove-Item permanently removes these build trees; they are not recoverable from Recycle Bin. Archived evidence is recoverable from archive.root; build trees require regeneration."
+  "destructionNotice": "Remove-Item permanently removes these build trees; they are not recoverable from Recycle Bin. Archived evidence is recoverable from archive.root; build trees require regeneration.",
+  "portable_derivation": {
+    "kind": "redacted-derived-copy",
+    "derived_at": "2026-09-22",
+    "original_evidence": "deliverables/evidence/portable-paths/documents/originals/docs/archive/generated-artifact-cleanup-execution-20260914.json",
+    "original_sha256": "A1BE2BEBA777493D168E4B601414F436A1DA6464EE22C5AA6A81BBBBACEABA63",
+    "path_aliases": {
+      "REPO_ROOT": "repository root",
+      "PROJECT_WORKSPACE_ROOT": "outer project workspace root",
+      "TRIAL_ROOT": "historical local trial root",
+      "TOOLCHAIN_ROOT": "local toolchain root",
+      "LOCAL_WORK_ROOT": "other local work or evidence root",
+      "LOCAL_SYSTEM_ROOT": "local system path root"
+    },
+    "validation_boundary": "Historical counts and hash values are preserved from the original evidence. Paths are redacted; this derived copy does not revalidate current filesystem state."
+  }
 }

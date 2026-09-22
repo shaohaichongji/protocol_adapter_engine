@@ -1,5 +1,7 @@
 # 整个 Qt Lab installed-SDK 独立构建实施范围核对
 
+> 路径可移植性说明（2026-09-22）：本文中的尖括号路径是语义别名。替换前逐字版本及其 SHA-256 保存在 Git 忽略的原始证据目录；别名用于描述历史或本地位置，不是可直接复制执行的当前命令。当前命令模板以 `docs/guides/06-构建测试与问题定位.md` 及对应构建指南为准。
+
 > 归档状态（2026-09-21）：本页是已被后续契约或验证承接的历史工程依据；正文中的现场、当前与下一步仅代表原记录时点。
 
 ## 1. 结论与证据边界
@@ -102,7 +104,7 @@ find_package(PAE CONFIG REQUIRED PATHS "${PAE_SDK_ROOT}" NO_DEFAULT_PATH)
 
 五包 `PROVENANCE.json` 均记录 `source_head=dbf4798f96a45b8d36a4754ad5a01e274680337e`、`source_worktree_dirty=true`，说明为指定 revision 加保留的 unstaged/untracked 变更。它是已知本地候选，不是当前 `c5b3692` 干净重打包，也不得标为 clean release/stable ABI。本片不重打五包。
 
-建议新仓库外验证根为 `F:/PersonalWorkspace/pae-lab-sdk-standalone-candidate1-20260919/`，分 `inputs/`、四个 D/R static/shared build 目录、`deploy/`、`logs/`。本轮未创建；实施时先确认目标不存在，不覆盖旧 consumer root。
+建议新仓库外验证根为 `<LOCAL_WORK_ROOT>/pae-lab-sdk-standalone-candidate1-20260919/`，分 `inputs/`、四个 D/R static/shared build 目录、`deploy/`、`logs/`。本轮未创建；实施时先确认目标不存在，不覆盖旧 consumer root。
 
 ### 5.2 Qt 与配置输入
 

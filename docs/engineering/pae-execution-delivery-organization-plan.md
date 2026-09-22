@@ -1,5 +1,7 @@
 # 公开执行、独立交付与仓库整理推进计划
 
+> 路径可移植性说明（2026-09-22）：本文中的尖括号路径是语义别名。替换前逐字版本及其 SHA-256 保存在 Git 忽略的原始证据目录；别名用于描述历史或本地位置，不是可直接复制执行的当前命令。当前命令模板以 `docs/guides/06-构建测试与问题定位.md` 及对应构建指南为准。
+
 2026-09-14：用户授权综合规划并派发任务。总边界沿用 [PAE / Lab 职责与独立交付边界](pae-lab-delivery-boundary.md)。
 公开编译与基础元数据首片已完成限定总控复核；这不代表完整 SDK、DLL 或生产验证。既有工作树变更全部保留，不 Stage/Commit/Push。
 
@@ -26,13 +28,13 @@ Lab 暂不派新工作。写入所有权、后续串行包装及删除停点见
 
 ### 最新限定回收：结构化编译诊断（2026-09-21）
 
-Lab已交接并停止。总控抽查worker投影、session revision拒绝/清理、PlainText诊断显示及新增测试，读取common与standalone static/shared共六组D/R最终定向日志，均3/3通过；未自行重跑构建测试。新static Release产品位于F:/PersonalWorkspace/pae-trial-7b4205e-20260920/lab-compile-diagnostics/static-verified/deploy/release-product/Release。Binary流式配置现场hash与canonical相同；交接5F6B开头hash实际对应ASCII流式文件，并非Binary文件变化。人工可见体验尚未完成，准备独立manual-compile-error.pae.json用于一组短体验，不修改产品配置或旧部署。SDK保持7b4205e，Lab为fe1683c加未提交本片及打包修补；未提交推送，不代表正式发布。细节见lab-structured-compile-diagnostics-validation-20260921.md。
+Lab已交接并停止。总控抽查worker投影、session revision拒绝/清理、PlainText诊断显示及新增测试，读取common与standalone static/shared共六组D/R最终定向日志，均3/3通过；未自行重跑构建测试。新static Release产品位于<TRIAL_ROOT>/lab-compile-diagnostics/static-verified/deploy/release-product/Release。Binary流式配置现场hash与canonical相同；交接5F6B开头hash实际对应ASCII流式文件，并非Binary文件变化。人工可见体验尚未完成，准备独立manual-compile-error.pae.json用于一组短体验，不修改产品配置或旧部署。SDK保持7b4205e，Lab为fe1683c加未提交本片及打包修补；未提交推送，不代表正式发布。细节见lab-structured-compile-diagnostics-validation-20260921.md。
 
 ### 当前实施：结构化编译诊断界面（2026-09-21）
 
 用户明确要求先完成诊断界面、再统一收尾。已派《Lab应用推进》独占Lab DTO/worker/completion/session/tab及相关定向测试；依据lab-trial-sdk-diagnostics-plan-20260920.md第4节。中文标签与原始稳定token并存，严格区分root pointer、offset缺失/0、NONE资源与真实零预算，不解析detail或引入Qt到PAE。保留既有错误决策，覆盖revision、清理、快照取消恢复及文档隔离。允许必要局部CMake/standalone白名单接线，不改PAE/API/Schema/根CMake/默认开关。
 
-基线fe1683c，保留三入口及示例打包修补全部未提交变更。仓内新验证根out/build/windows-msvc-lab-compile-diagnostics-20260921；完成后串行在F:/PersonalWorkspace/pae-trial-7b4205e-20260920/lab-compile-diagnostics消费既有只读SDK，做static/shared D/R定向验证与新部署，不覆盖现用产物或系统Qt。报告lab-structured-compile-diagnostics-validation-20260921.md；总控维护计划和入口，其他任务停止。范围外缺口停报，无Git写操作、删除、SDK重打或正式发布授权。回收复核后最多一组短体验，再统一收尾。
+基线fe1683c，保留三入口及示例打包修补全部未提交变更。仓内新验证根out/build/windows-msvc-lab-compile-diagnostics-20260921；完成后串行在<TRIAL_ROOT>/lab-compile-diagnostics消费既有只读SDK，做static/shared D/R定向验证与新部署，不覆盖现用产物或系统Qt。报告lab-structured-compile-diagnostics-validation-20260921.md；总控维护计划和入口，其他任务停止。范围外缺口停报，无Git写操作、删除、SDK重打或正式发布授权。回收复核后最多一组短体验，再统一收尾。
 
 ### 最新限定回收：试用 Lab 独立消费矩阵（2026-09-20）
 
@@ -52,11 +54,11 @@ STREAM_UI 缺口消失后链接暴露 BINDING_UI 遗漏，用户同意整体核�
 
 ### 当前实施：同批试用 Lab 独立消费（2026-09-20）
 
-PAE五包/六组包外消费已交接；总控读取验证日志并现场核对五包provenance、清单文件hash与源码clone clean，未重跑构建。Lab串行接手：仅补PrepareStandaloneInputs.ps1三项测试输入及tests/protocol_lab_ui/CMakeLists.txt中public A2的真实消费测试门禁，随后static/shared D/R Testing-on/off与模块来源验证。新根为F:/PersonalWorkspace/pae-trial-7b4205e-20260920/lab，SDK只读；仅新增lab-trial-sdk-7b4205e-validation.md报告。SDK为clean 7b4205e，Lab为该提交加明确记录的未提交输入/测试修正，不能混称clean同提交。范围外失败停报，不改诊断功能、不替换deliverables、不删除或Git写操作。复核后再决定归集；真实协议输入仍待用户提供。
+PAE五包/六组包外消费已交接；总控读取验证日志并现场核对五包provenance、清单文件hash与源码clone clean，未重跑构建。Lab串行接手：仅补PrepareStandaloneInputs.ps1三项测试输入及tests/protocol_lab_ui/CMakeLists.txt中public A2的真实消费测试门禁，随后static/shared D/R Testing-on/off与模块来源验证。新根为<TRIAL_ROOT>/lab，SDK只读；仅新增lab-trial-sdk-7b4205e-validation.md报告。SDK为clean 7b4205e，Lab为该提交加明确记录的未提交输入/测试修正，不能混称clean同提交。范围外失败停报，不改诊断功能、不替换deliverables、不删除或Git写操作。复核后再决定归集；真实协议输入仍待用户提供。
 
 ### 当前推进：统一试用交付、真实使用与诊断入口（2026-09-20）
 
-用户同意三步方向。固定功能输入为干净提交 7b4205ea899cf16b9c73ba6ebc4c64382b71dc63。PAE任务先检查既有打包入口，无缺口则在新隔离根 F:/PersonalWorkspace/pae-trial-7b4205e-20260920 生成五包并验证六组包外消费；共享树仅写 pae-trial-sdk-7b4205e-validation.md，需改脚本/功能则停报。Lab并行只读预检同批standalone及结构化编译诊断，仅写 lab-trial-sdk-diagnostics-plan-20260920.md，不构建或提前消费未完成包。SDK复核后再串行派Lab同批构建/验证/新交付归集；现用包不覆盖。诊断代码待交付基线闭合后实施，避免混入当前候选。真实使用待用户给出协议与宿主路径，只读评估后明确接入范围，不以合成样例代替真实证据。无Git写操作、正式发布、旧产物删除或系统Qt变更授权。
+用户同意三步方向。固定功能输入为干净提交 7b4205ea899cf16b9c73ba6ebc4c64382b71dc63。PAE任务先检查既有打包入口，无缺口则在新隔离根 <TRIAL_ROOT> 生成五包并验证六组包外消费；共享树仅写 pae-trial-sdk-7b4205e-validation.md，需改脚本/功能则停报。Lab并行只读预检同批standalone及结构化编译诊断，仅写 lab-trial-sdk-diagnostics-plan-20260920.md，不构建或提前消费未完成包。SDK复核后再串行派Lab同批构建/验证/新交付归集；现用包不覆盖。诊断代码待交付基线闭合后实施，避免混入当前候选。真实使用待用户给出协议与宿主路径，只读评估后明确接入范围，不以合成样例代替真实证据。无Git写操作、正式发布、旧产物删除或系统Qt变更授权。
 
 ### 最新限定收口：编辑提交与中文展示 smoke 修复（2026-09-20）
 
@@ -243,7 +245,7 @@ Lab/PAE停止，总控维护本计划及外层AGENTS。完成向总控01a04601-7
 
 用户授权下一步派发。《Lab应用推进》独占验证，PAE/工程整理停止。输入为out/sdk-clean-checkpoint/candidate1-20260919的static/shared D/R四包，均98df5e0/dirty=false；Lab功能源码和standalone脚本须核对与98df5e0一致，保留共享树文档修改，不将共享树整体标为clean。固定随仓Qt/yyjson，只复制现有获批依赖，不修改本机环境或依赖。
 
-新包外根建议F:/PersonalWorkspace/pae-lab-clean-sdk-static-20260919和pae-lab-clean-sdk-shared-20260919，先检查不存在，冲突唯一后缀，禁止覆盖旧r7/r8/r2及本轮SDK。使用现有准备/部署/模块来源脚本，static→shared，各D/R Testing-on既有32项、Testing-off产品构建及隔离核对严格串行；Release断言须生效。新部署的Qt DLL/plugin及shared PAE DLL实际加载路径和SDK/依赖输入→部署→加载哈希需取得证据，static依赖无pae.dll。未改Qt/yyjson校验逻辑可引用原负例；针对新SDK验证包类型/D-R错配、缺/错PAE DLL拒绝，用新派生输入，不删除或替换原件。普通SDK与Lab的门禁分开叙述。
+新包外根建议<LOCAL_WORK_ROOT>/pae-lab-clean-sdk-static-20260919和pae-lab-clean-sdk-shared-20260919，先检查不存在，冲突唯一后缀，禁止覆盖旧r7/r8/r2及本轮SDK。使用现有准备/部署/模块来源脚本，static→shared，各D/R Testing-on既有32项、Testing-off产品构建及隔离核对严格串行；Release断言须生效。新部署的Qt DLL/plugin及shared PAE DLL实际加载路径和SDK/依赖输入→部署→加载哈希需取得证据，static依赖无pae.dll。未改Qt/yyjson校验逻辑可引用原负例；针对新SDK验证包类型/D-R错配、缺/错PAE DLL拒绝，用新派生输入，不删除或替换原件。普通SDK与Lab的门禁分开叙述。
 
 唯一共享仓库可写报告docs/engineering/lab-clean-sdk-consumption-validation.md；其余仅新包外构建/部署/日志，禁止改代码、CMake、脚本、SDK或其他文档，缺口停报。standalone README的旧dirty说明不作为新SDK事实，以manifest/provenance及报告为准，后续入口统一更新。历史AV/focus-out若再现保留日志停报，不反复刷绿或顺带修复。无复杂人工验收、Stage/Commit/Push/正式发布/删除授权。完成后向总控01a04601-757d-7bb1-8254-61dde4954d74主动反馈一次完整摘要，停止写入待复核；不得自行扩大能力或发布声明。
 
@@ -253,7 +255,7 @@ Lab/PAE停止，总控维护本计划及外层AGENTS。完成向总控01a04601-7
 
 用户同意 detached 本地 clone 方案并授权推进。《子任务推进》独占执行：精确提交 98df5e0d844413fb6ad16a75dfceedcf17f2f1d6，创建全新本地 detached clone，核验 HEAD 和空 status；构建、打包输出均在其外，不复制共享树未提交文档。沿用打包脚本，保留固定 snapshot_note 并在验证报告解释其通用文案与 dirty=false 机器事实，不修改脚本或元数据冒充新实现。
 
-建议源根 F:/PersonalWorkspace/pae-clean-checkpoint-98df5e0-source；候选、构建、证据及外部消费根沿用 pae-sdk-clean-checkpoint-preflight.md 第4节建议，均先检查不存在，冲突使用唯一后缀，严禁覆盖旧根。允许本地 clone/checkout、五包生成及源码/static/shared 六组 D/R 串行验证、哈希/来源/符号/运行 DLL/错配负例；不改公共API/Core/Qt/功能代码。负例须核对实际门禁，普通 SDK 无对应拒绝机制时据实记录缺口，不把 Lab 专有校验当 SDK 能力，不自行扩代码。
+建议源根 <LOCAL_WORK_ROOT>/pae-clean-checkpoint-98df5e0-source；候选、构建、证据及外部消费根沿用 pae-sdk-clean-checkpoint-preflight.md 第4节建议，均先检查不存在，冲突使用唯一后缀，严禁覆盖旧根。允许本地 clone/checkout、五包生成及源码/static/shared 六组 D/R 串行验证、哈希/来源/符号/运行 DLL/错配负例；不改公共API/Core/Qt/功能代码。负例须核对实际门禁，普通 SDK 无对应拒绝机制时据实记录缺口，不把 Lab 专有校验当 SDK 能力，不自行扩代码。
 
 唯一仓库报告 docs/engineering/pae-sdk-clean-checkpoint-validation.md；忽略的 out 中允许本片新产物和日志。总控维护计划及外层 AGENTS，工程整理/Lab 停止。完成向总控 01a04601-757d-7bb1-8254-61dde4954d74 主动反馈一次，停止写入待复核。新 SDK 通过后再派 Lab 消费同批 SDK，本次不含该后片；无 Stage/Commit/Push/正式发布/删除授权，不新增人工验收，不改变系统环境，不宣称稳定 ABI/Linux/生产可用。
 
@@ -273,7 +275,7 @@ Lab/PAE停止，总控维护本计划及外层AGENTS。完成向总控01a04601-7
 
 用户授权下一步，《Lab应用推进》独占；PAE/工程整理停止。main@c5b3692加全部既有未提交实现保留。以已限定收口的static功能源为基线，仅补shared安装SDK消费与运行闭包，不改协议执行/展示行为。允许tools/protocol_lab_ui/standalone内CMake、输入准备/部署/模块取证脚本、README及必要专用门禁测试；报告独占docs/engineering/lab-sdk-standalone-shared-validation.md，总控计划/AGENTS由总控维护。其他源码或测试需改先停报，不改PAE公共API/Core、根构建、third_party及旧部署，无Git/发布/删除授权。
 
-使用既有candidate1-20260918的shared Debug/Release包，保持dbf4798 dirty provenance；不重打SDK。新仓库外短根建议F:/PersonalWorkspace/pae-lab-sdk-shared-20260919，先检查不存在，冲突唯一后缀；白名单复制Lab/配置/固定Qt/yyjson及SDK，不复制PAE开发src、不覆盖static证据根。准备入口新增显式包类型选择，原static行为保留，禁止shared失败后static fallback。
+使用既有candidate1-20260918的shared Debug/Release包，保持dbf4798 dirty provenance；不重打SDK。新仓库外短根建议<LOCAL_WORK_ROOT>/pae-lab-sdk-shared-20260919，先检查不存在，冲突唯一后缀；白名单复制Lab/配置/固定Qt/yyjson及SDK，不复制PAE开发src、不覆盖static证据根。准备入口新增显式包类型选择，原static行为保留，禁止shared失败后static fallback。
 
 通过PAE::pae imported target解析匹配配置的import library和runtime DLL，规范化并验证均属于当次SDK根；部署匹配pae.dll到新有界目录。测试可执行文件也须获得明确同源运行DLL，不依赖开发目录或系统PATH。串行shared D/R Testing-on/off：复用现有32项功能矩阵、有效Release断言、产品无注入/私有桥；核对dumpbin依赖、实际加载PAE与Qt DLL/plugin路径及输入/部署/加载文件哈希。记录进程局部环境与源码快照一致性，不改全局环境，仅结束本轮启动进程。
 
@@ -291,7 +293,7 @@ Lab/PAE停止，总控维护本计划及外层AGENTS。完成向总控01a04601-7
 
 允许报告第4节范围的兼容声明/类型隔离、standalone CMake与局部目标接线、必要公共展示helper及测试；不得复制整套session状态机。保留开发树兼容和全部第2节功能，standalone显式选择已迁移public路径，不改旧入口默认开关。root CMake、include/pae、src、SDK打包脚本及既有Qt/yyjson源不改，越界停报。允许在standalone下提供白名单输入准备/验证脚本及README，所有脚本文件编辑用apply_patch；不在脚本中删除或清空既有目录。
 
-批准仅为本地closure验证复制现有dirty-provenance SDK、固定Qt及获批yyjson/许可证到新的仓库外验证根。建议短根 F:/PersonalWorkspace/pae-lab-sdk-static-20260919，先验证不存在，冲突时唯一后缀，禁止覆盖旧根；输入只复制白名单，不带PAE开发src，不裁改源Qt，不正式分发。记录各类输入清单/哈希、SDK原provenance和Lab未提交源码身份，不伪称clean release。配置/测试fixture缺白名单项可按现有用例补齐并列明，禁止为通过而减少功能。
+批准仅为本地closure验证复制现有dirty-provenance SDK、固定Qt及获批yyjson/许可证到新的仓库外验证根。建议短根 <LOCAL_WORK_ROOT>/pae-lab-sdk-static-20260919，先验证不存在，冲突时唯一后缀，禁止覆盖旧根；输入只复制白名单，不带PAE开发src，不裁改源Qt，不正式分发。记录各类输入清单/哈希、SDK原provenance和Lab未提交源码身份，不伪称clean release。配置/测试fixture缺白名单项可按现有用例补齐并列明，禁止为通过而减少功能。
 
 串行static Debug/Release，每配置分Testing-on/off目录；执行报告第8.1节适用功能测试/自动Qt smoke、有效Release断言、Testing-off无注入/测试宏检查。检查真实编译与链接输入来源，只通过PAE::pae消费SDK；PAE静态包内部依赖由导出target提供不等于Lab引用开发私有桥。缺/错SDK、D/R错配、Qt输入缺失/错版、yyjson锁定输入不符须fail-closed；用替代测试输入模拟缺失，不删除原输入。部署仅新有界目录，受控环境验证Qt模块/plugin来源，保留失败日志；历史AV再现停报，不无限复跑。
 
@@ -419,7 +421,7 @@ SDK 前置已完成限定总控复核：六组运行/来源/导出记录、consu
 
 静态 framing 查询已完成总控限定源码/测试差异与日志复核，未重复构建；内部损坏 Plan 负例仍未实测。用户授权下一步，由《子任务推进》独占新 SDK 生成和包外验证，Lab/工程整理停止。基线仍为 `dbf4798` 加当前未提交查询实现/文档，必须保留并如实记录 dirty provenance 与实际打包输入哈希，不能将候选标成该 HEAD 的干净发布。
 
-新候选根 `out/sdk-public-stream-description/candidate1-20260918/`，生成 source、static-debug/release、shared-debug/release 五包；独立构建 `out/build/windows-msvc-public-stream-sdk-*`，证据 `out/public-stream-sdk/`，仓库外消费根 `F:\PersonalWorkspace\pae-sdk-public-stream-validation-candidate1-20260918\`。已存在的路径不覆盖，另选唯一后缀并记录。沿用 Windows x64 v142 已验证配置；源码包与二进制包各自独立消费，六组 D/R 串行运行，禁止暗用开发仓库 private 头/库或源码 fallback。
+新候选根 `out/sdk-public-stream-description/candidate1-20260918/`，生成 source、static-debug/release、shared-debug/release 五包；独立构建 `out/build/windows-msvc-public-stream-sdk-*`，证据 `out/public-stream-sdk/`，仓库外消费根 `<LOCAL_WORK_ROOT>\pae-sdk-public-stream-validation-candidate1-20260918\`。已存在的路径不覆盖，另选唯一后缀并记录。沿用 Windows x64 v142 已验证配置；源码包与二进制包各自独立消费，六组 D/R 串行运行，禁止暗用开发仓库 private 头/库或源码 fallback。
 
 复用打包脚本和当前 consumer，确保实际执行新查询，覆盖 ASCII stream M、complete M 为空及既有 Codec/Framer/Host/ASCII/Binary 消费。必要最小修正仅限 `scripts/package_sdk_stage3.ps1`、`cmake/PaeSdkInstall.cmake`、`cmake/PAEConfig.cmake.in`、`examples/public_api_sdk_consumer/`；不改公共接口、Core/Plan/Schema/Host/Lab 或根 CMake。若功能缺陷阻断，留证停报，不扩修。独占报告 `docs/engineering/pae-public-stream-sdk-validation.md`，其他文档由总控维护。
 

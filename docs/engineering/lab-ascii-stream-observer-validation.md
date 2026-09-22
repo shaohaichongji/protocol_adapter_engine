@@ -1,5 +1,7 @@
 # Lab ASCII Stream Observer 验证记录
 
+> 路径可移植性说明（2026-09-22）：本文中的尖括号路径是语义别名。替换前逐字版本及其 SHA-256 保存在 Git 忽略的原始证据目录；别名用于描述历史或本地位置，不是可直接复制执行的当前命令。当前命令模板以 `docs/guides/06-构建测试与问题定位.md` 及对应构建指南为准。
+
 日期：2026-09-13
 
 ## 结论与边界
@@ -43,7 +45,7 @@ Protocol Lab CLI，不写 Evidence，不引入网络、串口、设备或线程�
 ```powershell
 cmake -S . -B out/build/windows-msvc-lab-ascii-stream-ui `
   -G "Visual Studio 18 2026" -A x64 -T v142,version=14.29.30133 `
-  -DPAE_QT_ROOT="F:/PersonalWorkspace/DEI/third_party/windows/qt" `
+  -DPAE_QT_ROOT="<DEI_ROOT>/third_party/windows/qt" `
   -DBUILD_TESTING=ON -DPAE_BUILD_TESTING=ON `
   -DPAE_BUILD_PROTOCOL_LAB_UI=ON `
   -DPAE_BUILD_PROTOCOL_LAB_ASCII_ADAPTER=ON `

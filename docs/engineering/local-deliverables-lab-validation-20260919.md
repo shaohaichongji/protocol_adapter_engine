@@ -1,5 +1,7 @@
 # Lab 本机 deliverables 归集验证（2026-09-19）
 
+> 路径可移植性说明（2026-09-22）：本文中的尖括号路径是语义别名。替换前逐字版本及其 SHA-256 保存在 Git 忽略的原始证据目录；别名用于描述历史或本地位置，不是可直接复制执行的当前命令。当前命令模板以 `docs/guides/06-构建测试与问题定位.md` 及对应构建指南为准。
+
 ## 1. 结论与边界
 
 已将同批 `98df5e0d844413fb6ad16a75dfceedcf17f2f1d6` clean-checkpoint SDK 的 static/shared Release Lab 产品目录原样归集到仓库内被 Git 忽略的本机统一路径：
@@ -13,10 +15,10 @@
 
 ## 2. 基线与前置门禁
 
-- 仓库：`F:/PersonalWorkspace/协议解析拼接工具/protocol_adapter_engine`
+- 仓库：`<REPO_ROOT>`
 - 归集时 HEAD：`main@0b89beded03b39d8ffe019bfec659b5a5885a8f1`
-- static 来源：`F:/PersonalWorkspace/pae-lab-clean-sdk-static-20260919/deploy/release-testing-off/Release`
-- shared 来源：`F:/PersonalWorkspace/pae-lab-clean-sdk-shared-20260919/deploy/release-testing-off/Release`
+- static 来源：`<LOCAL_WORK_ROOT>/pae-lab-clean-sdk-static-20260919/deploy/release-testing-off/Release`
+- shared 来源：`<LOCAL_WORK_ROOT>/pae-lab-clean-sdk-shared-20260919/deploy/release-testing-off/Release`
 
 复制前确认：
 

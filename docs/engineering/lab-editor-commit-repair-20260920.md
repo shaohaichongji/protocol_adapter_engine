@@ -1,5 +1,7 @@
 # Lab 编辑提交 smoke 驱动修复记录（2026-09-20）
 
+> 路径可移植性说明（2026-09-22）：本文中的尖括号路径是语义别名。替换前逐字版本及其 SHA-256 保存在 Git 忽略的原始证据目录；别名用于描述历史或本地位置，不是可直接复制执行的当前命令。当前命令模板以 `docs/guides/06-构建测试与问题定位.md` 及对应构建指南为准。
+
 ## 1. 结论
 
 本轮按授权修复了 `DocumentTab` 中两处 smoke 驱动：
@@ -16,7 +18,7 @@ Debug 定向结果证明两处授权修复均到达预期阶段：
 
 ## 2. 基线与范围
 
-- 仓库：`F:\PersonalWorkspace\协议解析拼接工具\protocol_adapter_engine`
+- 仓库：`<REPO_ROOT>`
 - 分支与 HEAD：`main@fa81329563dd3aea9bb167ef9bd34526a2606161`
 - 输入诊断：`docs/archive/engineering-20260921/lab-editor-commit-diagnosis-20260920.md`
 - 实际修改：`tools/protocol_lab_ui/document_tab.cpp`

@@ -1,5 +1,7 @@
 # PAE 宿主端点绑定首片实施与Windows验证
 
+> 路径可移植性说明（2026-09-22）：本文中的尖括号路径是语义别名。替换前逐字版本及其 SHA-256 保存在 Git 忽略的原始证据目录；别名用于描述历史或本地位置，不是可直接复制执行的当前命令。当前命令模板以 `docs/guides/06-构建测试与问题定位.md` 及对应构建指南为准。
+
 日期：2026-09-13。基线：`0636e178461078dd8b408e86b14a967afd4b6e5f`。
 用户在确认[六项契约](host-endpoint-binding-contract.md)后授权推进PAE首片；Lab暂不实施。
 当前实现、定向自查和自动验证完成，尚未Stage、Commit、Push；本文不表示独立第二审查者已复核。
@@ -74,7 +76,7 @@ Plan仍使用原有独立预算。初始化失败不发布部分Session，移动
 Windows x64，Visual Studio 18 2026，MSVC 19.51.36257.0，CMake 4.3.1-msvc1。
 构建目录`out/build/windows-msvc-host-endpoint`；完整配置命令见示例README，所有Lab选项保持OFF。
 本次cmake/ctest来自：
-`D:/develop_env/Microsoft Visual Studio/18/Professional/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/bin/`。
+`<TOOLCHAIN_ROOT>/Microsoft Visual Studio/18/Professional/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/bin/`。
 
 ```powershell
 cmake --build out/build/windows-msvc-host-endpoint --config Debug -- /m:2
@@ -84,8 +86,8 @@ cmake --build out/build/windows-msvc-host-endpoint --config Release -- /m:2
 cmake --build out/build/windows-msvc-host-endpoint --config Release `
   --target pae_host_endpoint_tests pae_host_endpoint_example -- /m:2
 ctest --test-dir out/build/windows-msvc-host-endpoint -C Release --output-on-failure
-cmake -DPAE_SOURCE=F:/PersonalWorkspace/协议解析拼接工具/protocol_adapter_engine `
-  -DPAE_GATE_BINARY=F:/PersonalWorkspace/协议解析拼接工具/protocol_adapter_engine/out/host-endpoint-gates `
+cmake -DPAE_SOURCE=<REPO_ROOT> `
+  -DPAE_GATE_BINARY=<REPO_ROOT>/out/host-endpoint-gates `
   -P tests/host_endpoint/check_gates.cmake
 ```
 
@@ -98,10 +100,10 @@ cmake -DPAE_SOURCE=F:/PersonalWorkspace/协议解析拼接工具/protocol_adapte
   `out/host-endpoint-gates.log`及`out/host-endpoint-gates/*.log`。out为本地证据，不承诺随仓分发。
 
 Release示例：
-`F:/PersonalWorkspace/协议解析拼接工具/protocol_adapter_engine/out/build/windows-msvc-host-endpoint/examples/host_endpoint/Release/pae_host_endpoint_example.exe`
+`<REPO_ROOT>/out/build/windows-msvc-host-endpoint/examples/host_endpoint/Release/pae_host_endpoint_example.exe`
 
 SHA-256：`19067E63A845C9DFA7E48EC65B393D8977380C3B29B4CFF666E733A6B24A87D7`。
-配置：`F:/PersonalWorkspace/协议解析拼接工具/protocol_adapter_engine/examples/config/synthetic_ascii_stream_slice.pae.json`。
+配置：`<REPO_ROOT>/examples/config/synthetic_ascii_stream_slice.pae.json`。
 
 以上为Windows公开合成离线接入验证，不含Lab接线/新人工窗口验收、稳定ABI、旧Schema全代接入、
 UTF-8、网络、自动转发、跨协议映射、Linux、性能、硬件、Golden、部署或现场。

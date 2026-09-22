@@ -1,5 +1,7 @@
 # Lab 对公开消费准备 metadata 的复核
 
+> 路径可移植性说明（2026-09-22）：本文中的尖括号路径是语义别名。替换前逐字版本及其 SHA-256 保存在 Git 忽略的原始证据目录；别名用于描述历史或本地位置，不是可直接复制执行的当前命令。当前命令模板以 `docs/guides/06-构建测试与问题定位.md` 及对应构建指南为准。
+
 > 归档状态（2026-09-21）：本页是已被后续契约或验证承接的历史工程依据；正文中的现场、当前与下一步仅代表原记录时点。
 
 状态：2026-09-14 阶段 1B 后置只读复核结论，已完成派发范围，待总控复核。本文仅从 Lab
@@ -28,7 +30,7 @@ Encode 中的 caller/generated/unreferenced 来源、实际 Pipeline/Message 关
 
 本轮现场：
 
-- 仓库：`F:\PersonalWorkspace\协议解析拼接工具\protocol_adapter_engine`
+- 仓库：`<REPO_ROOT>`
 - 分支：`main`
 - HEAD：`dfb08f351cdb22a9b50c9e64e688e3b666e669bc`
 - staged：空

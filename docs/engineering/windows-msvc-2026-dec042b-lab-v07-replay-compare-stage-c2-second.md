@@ -1,5 +1,7 @@
 # PAE-DEC-042B Lab C2 第二段 Replay/Compare Windows 验证
 
+> 路径可移植性说明（2026-09-22）：本文中的尖括号路径是语义别名。替换前逐字版本及其 SHA-256 保存在 Git 忽略的原始证据目录；别名用于描述历史或本地位置，不是可直接复制执行的当前命令。当前命令模板以 `docs/guides/06-构建测试与问题定位.md` 及对应构建指南为准。
+
 ## 1. 范围与结论
 
 本检查点在默认关闭、Testing-only 的 C 执行 0.7 隔离目标中实现 Plan 关联、指定 Pipeline
@@ -44,7 +46,7 @@ Hash 只证明包内一致性，不提供签名、来源认证或防止全面自
 开发环境使用：
 
 ```powershell
-& 'D:\develop_env\Microsoft Visual Studio\18\Professional\Common7\Tools\Launch-VsDevShell.ps1' `
+& '<TOOLCHAIN_ROOT>\Microsoft Visual Studio\18\Professional\Common7\Tools\Launch-VsDevShell.ps1' `
   -Arch amd64 -HostArch amd64 -SkipAutomaticLocation
 cmake --build out/dec042b-c2-run-<debug|release>
 ctest --test-dir out/dec042b-c2-run-<debug|release> -N

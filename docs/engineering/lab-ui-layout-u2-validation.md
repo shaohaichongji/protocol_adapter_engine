@@ -1,8 +1,10 @@
 # Lab UI U2 页面分区与诊断可读性验证
 
+> 路径可移植性说明（2026-09-22）：本文中的尖括号路径是语义别名。替换前逐字版本及其 SHA-256 保存在 Git 忽略的原始证据目录；别名用于描述历史或本地位置，不是可直接复制执行的当前命令。当前命令模板以 `docs/guides/06-构建测试与问题定位.md` 及对应构建指南为准。
+
 ## 1. 范围与基线
 
-- 仓库：`F:\PersonalWorkspace\协议解析拼接工具\protocol_adapter_engine`
+- 仓库：`<REPO_ROOT>`
 - 现场基线：`main@19c524758190dffd2395c87dd10fbe3e8e2d053d`
 - U2 实际修改：`tools/protocol_lab_ui/document_tab.{h,cpp}` 与本报告。
 - G1、U1、总控文档和共享工作树中的全部既有改动保留；未修改 Session、Adapter、Core、

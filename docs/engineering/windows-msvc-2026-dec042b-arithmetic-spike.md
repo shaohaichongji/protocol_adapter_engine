@@ -1,5 +1,7 @@
 # DEC-042B 精确算术隔离验证报告
 
+> 路径可移植性说明（2026-09-22）：本文中的尖括号路径是语义别名。替换前逐字版本及其 SHA-256 保存在 Git 忽略的原始证据目录；别名用于描述历史或本地位置，不是可直接复制执行的当前命令。当前命令模板以 `docs/guides/06-构建测试与问题定位.md` 及对应构建指南为准。
+
 日期：2026-09-07。状态：只读审查未发现明确算术实现缺陷；P2测试证据缺口已补齐并通过Windows复核，未接入生产Core。
 授权为“隔离算术验证，暂不接入生产Core”，不包含Stage、Commit或Push。
 
@@ -58,7 +60,7 @@ Plan仅为实验内部结构，使用前提是Compile成功且未被修改。错
 
 Windows x64；CMake 4.4.3；Visual Studio 18 2026；MSVC 19.51.36256.0；
 Windows SDK 10.0.22621；编译选项含`/W4 /WX /permissive- /utf-8`。
-在仓库根目录执行（cmake/ctest均使用`D:\develop_env\cmake-4.4.3\bin`中的程序）：
+在仓库根目录执行（cmake/ctest均使用`<TOOLCHAIN_ROOT>\cmake-4.4.3\bin`中的程序）：
 
 ```powershell
 cmake -S spikes/decimal_arithmetic -B out/build/windows-msvc-decimal-arithmetic `

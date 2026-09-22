@@ -1,5 +1,7 @@
 # PAE 0.11 静态 Framing 查询 SDK 消费验证
 
+> 路径可移植性说明（2026-09-22）：本文中的尖括号路径是语义别名。替换前逐字版本及其 SHA-256 保存在 Git 忽略的原始证据目录；别名用于描述历史或本地位置，不是可直接复制执行的当前命令。当前命令模板以 `docs/guides/06-构建测试与问题定位.md` 及对应构建指南为准。
+
 ## 1. 结论与候选身份
 
 本轮从 `main@dbf4798f96a45b8d36a4754ad5a01e274680337e` 加当前保留的未提交查询实现、consumer
@@ -8,7 +10,7 @@
 发布物**。未 Stage、Commit、Push 或正式发布。
 
 候选根：`out/sdk-public-stream-description/candidate1-20260918/`；仓库外消费根：
-`F:/PersonalWorkspace/pae-sdk-public-stream-validation-candidate1-20260918/`。两者此前均不存在，未覆盖旧包。
+`<LOCAL_WORK_ROOT>/pae-sdk-public-stream-validation-candidate1-20260918/`。两者此前均不存在，未覆盖旧包。
 
 五包及 `SHA256SUMS.txt` 哈希：
 

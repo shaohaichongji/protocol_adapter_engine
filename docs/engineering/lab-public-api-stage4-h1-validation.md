@@ -1,10 +1,12 @@
 # Stage 4 H1：Lab public-only Binary complete Decode 验证
 
+> 路径可移植性说明（2026-09-22）：本文中的尖括号路径是语义别名。替换前逐字版本及其 SHA-256 保存在 Git 忽略的原始证据目录；别名用于描述历史或本地位置，不是可直接复制执行的当前命令。当前命令模板以 `docs/guides/06-构建测试与问题定位.md` 及对应构建指南为准。
+
 日期：2026-09-15。状态：已完成派发范围，待总控复核；已停止写入。此处只记录 H1 新 headless target，不宣称 Binary UI 已切换。
 
 ## 现场与变更
 
-仓库 `F:\PersonalWorkspace\协议解析拼接工具\protocol_adapter_engine`，接管时 `main@dfb08f351cdb22a9b50c9e64e688e3b666e669bc`，暂存区为空，既有目录迁移/UI/PAE/SDK 变更均保留。H1 仅增加 `public_binary_decode.h/.cpp`、H1 测试和独立 static consumer、契约/验证文档；最小改 `tools/protocol_lab_binary/CMakeLists.txt`、`tests/protocol_lab_binary/CMakeLists.txt` 与根 CMake 默认 OFF 门禁。没有改 PAE 公开接口/Core/Plan/Schema、旧 Binary backend、UI/v06/ASCII、Qt、SDK 包/脚本或索引。
+仓库 `<REPO_ROOT>`，接管时 `main@dfb08f351cdb22a9b50c9e64e688e3b666e669bc`，暂存区为空，既有目录迁移/UI/PAE/SDK 变更均保留。H1 仅增加 `public_binary_decode.h/.cpp`、H1 测试和独立 static consumer、契约/验证文档；最小改 `tools/protocol_lab_binary/CMakeLists.txt`、`tests/protocol_lab_binary/CMakeLists.txt` 与根 CMake 默认 OFF 门禁。没有改 PAE 公开接口/Core/Plan/Schema、旧 Binary backend、UI/v06/ASCII、Qt、SDK 包/脚本或索引。
 
 生产 H1 target `pae_protocol_lab_binary_public_h1` 只显式链接 `PAE::pae` 和通用编译选项，生产头仅标准库与 `pae/**`；没有私有 include、旧 materializer、test hook 或第二次 Decode。外部 consumer 的 VS `AdditionalIncludeDirectories` 仅有临时目录与 static SDK `include`；依赖库虽包含 static SDK Config 提供的内部 archive 传递闭包，consumer CMake 只声明 `PAE::pae`，未点名私有 target。
 
@@ -22,7 +24,7 @@
 
 H1 专项使用独立预期而非旧 backend 作 oracle，覆盖 BOOL/ENUM known-unknown/UINT64/INT64/BYTES/DECIMAL64 与实际 signed conversion raw、跨 byte bit mask/普通 byte range；bounded payload 零/中/最大与实际 SUM8/computed 存储；fixed SUM8/CRC、失败清旧成功字段/高亮和恢复；两个 Flow 的草稿/结果隔离、成功 Reset 清本 Flow 并重取 Handle；本地输入拒绝保留当前结果；实例/替换/结果容量的 exact/minus-one；callback 复制失败 `CALLBACK_FAILED/reset_required`。测试入口的断言在 Debug/Release 都执行。失败 candidate 不推断 Message，成功结果只在一次 Host output callback 中物化。
 
-外部 consumer 工程源位于 `C:\Users\Administrator\AppData\Local\Temp\pae-stage4-h1-consumer-20260915`，只有新 adapter `.h/.cpp` 与 consumer `CMakeLists.txt/main.cpp` 四文件；分别使用 `out/sdk-stage4-p/candidate2-20260915/static-debug`、`static-release` 安装包。没有重新打包或覆盖 P 候选；consumer 实际调用 H1 `Create` 与 `Decode`，而非 PAE SDK 原示例。
+外部 consumer 工程源位于 `<USER_PROFILE>\AppData\Local\Temp\pae-stage4-h1-consumer-20260915`，只有新 adapter `.h/.cpp` 与 consumer `CMakeLists.txt/main.cpp` 四文件；分别使用 `out/sdk-stage4-p/candidate2-20260915/static-debug`、`static-release` 安装包。没有重新打包或覆盖 P 候选；consumer 实际调用 H1 `Create` 与 `Decode`，而非 PAE SDK 原示例。
 
 ## 总控复核补齐（2026-09-15）
 

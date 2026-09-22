@@ -1,5 +1,7 @@
 # Schema 0.9有界流式切帧Windows验证记录
 
+> 路径可移植性说明（2026-09-22）：本文中的尖括号路径是语义别名。替换前逐字版本及其 SHA-256 保存在 Git 忽略的原始证据目录；别名用于描述历史或本地位置，不是可直接复制执行的当前命令。当前命令模板以 `docs/guides/06-构建测试与问题定位.md` 及对应构建指南为准。
+
 日期：2026-09-10。源码基线：`main` / `dc5c4433b51961a9e2d24f425fba672a7121290e`；
 本记录对应其上未提交的Schema 0.9 Framer检查点。未执行Stage、Commit或Push。
 
@@ -47,7 +49,7 @@ Frame/Values、调用Codec、调用UDP Adapter或发布证据之前统一返回�
 所有MSVC命令均先执行：
 
 ```powershell
-& 'D:\develop_env\Microsoft Visual Studio\18\Professional\Common7\Tools\Launch-VsDevShell.ps1' `
+& '<TOOLCHAIN_ROOT>\Microsoft Visual Studio\18\Professional\Common7\Tools\Launch-VsDevShell.ps1' `
   -Arch amd64 -HostArch amd64 -SkipAutomaticLocation
 ```
 

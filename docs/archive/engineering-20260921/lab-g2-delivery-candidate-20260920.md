@@ -1,15 +1,17 @@
 # Lab G2 交付候选归集记录（2026-09-20）
 
+> 路径可移植性说明（2026-09-22）：本文中的尖括号路径是语义别名。替换前逐字版本及其 SHA-256 保存在 Git 忽略的原始证据目录；别名用于描述历史或本地位置，不是可直接复制执行的当前命令。当前命令模板以 `docs/guides/06-构建测试与问题定位.md` 及对应构建指南为准。
+
 > 归档状态（2026-09-21）：本页是已被后续契约或验证承接的历史工程依据；正文中的现场、当前与下一步仅代表原记录时点。
 
 ## 1. 范围与基线
 
-- 仓库：`F:\PersonalWorkspace\协议解析拼接工具\protocol_adapter_engine`
+- 仓库：`<REPO_ROOT>`
 - 基线：`main@fa81329563dd3aea9bb167ef9bd34526a2606161`，派发时该检查点已推送。
 - 归集源：
-  `F:\PersonalWorkspace\协议解析拼接工具\protocol_adapter_engine\out\build\windows-msvc-lab-g2-c\common\out\protocol_lab_ui\Release`
+  `<REPO_ROOT>\out\build\windows-msvc-lab-g2-c\common\out\protocol_lab_ui\Release`
 - 候选根：
-  `F:\PersonalWorkspace\协议解析拼接工具\protocol_adapter_engine\deliverables\lab\fa81329`
+  `<REPO_ROOT>\deliverables\lab\fa81329`
 - 运行闭包：`deliverables/lab/fa81329/common-release`
 
 开始时候选根不存在；旧 `deliverables/lab/98df5e0` 和全部源构建/部署目录均保留。

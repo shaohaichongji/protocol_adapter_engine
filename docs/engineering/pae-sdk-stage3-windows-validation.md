@@ -1,5 +1,7 @@
 # PAE Windows x64 SDK 阶段 3 验证记录
 
+> 路径可移植性说明（2026-09-22）：本文中的尖括号路径是语义别名。替换前逐字版本及其 SHA-256 保存在 Git 忽略的原始证据目录；别名用于描述历史或本地位置，不是可直接复制执行的当前命令。当前命令模板以 `docs/guides/06-构建测试与问题定位.md` 及对应构建指南为准。
+
 日期：2026-09-15。状态：已完成派发范围，待总控复核。
 
 本记录只覆盖当前公开 C++17 Compiler/metadata、COMPLETE_RECORD Codec、StreamFramer 与
@@ -12,7 +14,7 @@ HostEndpoint 的 Windows x64 本地源码包、静态包和动态包。它不是
 - 构建工具：Visual Studio 18 2026，MSVC v142 14.29.30133，Windows SDK
   10.0.22621.0，x64。
 - 最终本地包：out/sdk-stage3/final6-20260915/。
-- 功能与配置门禁验证根：F:\PersonalWorkspace\pae-sdk-stage3-validation-final5-20260915。
+- 功能与配置门禁验证根：<LOCAL_WORK_ROOT>\pae-sdk-stage3-validation-final5-20260915。
 - 日志根：out/sdk-stage3-validation/recovery/。
 
 五个最终目录分别为源码包、Static Debug/Release、Shared Debug/Release。每个目录都有

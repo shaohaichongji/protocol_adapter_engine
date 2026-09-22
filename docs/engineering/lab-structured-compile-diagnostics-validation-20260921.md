@@ -1,5 +1,7 @@
 # Lab 结构化编译诊断验证（2026-09-21）
 
+> 路径可移植性说明（2026-09-22）：本文中的尖括号路径是语义别名。替换前逐字版本及其 SHA-256 保存在 Git 忽略的原始证据目录；别名用于描述历史或本地位置，不是可直接复制执行的当前命令。当前命令模板以 `docs/guides/06-构建测试与问题定位.md` 及对应构建指南为准。
+
 ## 1. 结论与边界
 
 本片在 `main@fe1683c9d540d7f5180cad1d0368cef4ccf1136d` 上完成 Lab 结构化编译诊断接入，未修改 PAE 公共 API、Schema、Core、Host、stream 执行语义或根 CMake。编译失败现在保留原有 `diagnostic_id` / 原始 detail 决策，同时经 Lab 自有纯 C++ DTO 将下列字段传到当前文档的诊断页：
@@ -66,8 +68,8 @@ Release 构建日志对三项测试均明确记录 `/DNDEBUG` 被 `/UNDEBUG` 覆
 
 最终逐字输入快照：
 
-- static：`F:\PersonalWorkspace\pae-trial-7b4205e-20260920\lab-compile-diagnostics\static-verified`
-- shared：`F:\PersonalWorkspace\pae-trial-7b4205e-20260920\lab-compile-diagnostics\shared-verified`
+- static：`<TRIAL_ROOT>\lab-compile-diagnostics\static-verified`
+- shared：`<TRIAL_ROOT>\lab-compile-diagnostics\shared-verified`
 
 两份 snapshot 与仓库当前九个本片源码/测试文件现场 SHA-256 比对均为 `mismatch_count=0`。消费的 Debug/Release static/shared SDK 均来自固定 SDK 根，其 `PROVENANCE.json` 记录 `source_head=7b4205ea899cf16b9c73ba6ebc4c64382b71dc63`、`source_worktree_dirty=false`；本轮未重打 SDK 五包。
 
@@ -82,7 +84,7 @@ Release 构建日志对三项测试均明确记录 `/DNDEBUG` 被 `/UNDEBUG` 覆
 
 额外构建了 Testing-off static Release 产品闭包，未启动可见窗口：
 
-`F:\PersonalWorkspace\pae-trial-7b4205e-20260920\lab-compile-diagnostics\static-verified\deploy\release-product\Release\pae_protocol_lab_ui.exe`
+`<TRIAL_ROOT>\lab-compile-diagnostics\static-verified\deploy\release-product\Release\pae_protocol_lab_ui.exe`
 
 该部署包含 18 个文件；`configs/synthetic_ascii_stream_slice.pae.json` 存在，SHA-256 为 `5F6B871DFBFC099070EE8FB9881F02C8671496C61BFC028CC24DB332E7E8BE4C`。产品清单见 `lab-compile-diagnostics/evidence/verified-release-product.json`。
 

@@ -1,8 +1,10 @@
 # 协议元数据内部命名整理验证（2026-09-20）
 
+> 路径可移植性说明（2026-09-22）：本文中的尖括号路径是语义别名。替换前逐字版本及其 SHA-256 保存在 Git 忽略的原始证据目录；别名用于描述历史或本地位置，不是可直接复制执行的当前命令。当前命令模板以 `docs/guides/06-构建测试与问题定位.md` 及对应构建指南为准。
+
 ## 1. 范围与基线
 
-- 仓库：`F:\PersonalWorkspace\协议解析拼接工具\protocol_adapter_engine`
+- 仓库：`<REPO_ROOT>`
 - 分支与基线：`main@fa81329563dd3aea9bb167ef9bd34526a2606161`
 - 授权依据：`docs/archive/engineering-20260921/protocol-metadata-naming-plan-20260920.md`
 - 本次仅整理 config compiler 内部协议元数据命名及其直接引用；公开 API、Schema、布局、预算、所有权和执行顺序未改变。

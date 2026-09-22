@@ -2,13 +2,13 @@
   "schema": "pae.generated-artifact-cleanup-manifest/0.1",
   "generatedAt": "2026-09-14T00:00:00+08:00",
   "authority": "inventory only; not cleanup authorization",
-  "repository": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine",
+  "repository": "<REPO_ROOT>",
   "exclusions": [
-    "F:\\PersonalWorkspace\\协议解析拼接工具\\协议参考文档",
-    "F:\\PersonalWorkspace\\协议解析拼接工具\\私有验证语料",
-    "F:\\PersonalWorkspace\\协议解析拼接工具\\EIK",
-    "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\third_party\\qt",
-    "D:\\develop_env\\Qt\\Qt5.11.3"
+    "<PROJECT_WORKSPACE_ROOT>\\协议参考文档",
+    "<PROJECT_WORKSPACE_ROOT>\\私有验证语料",
+    "<PROJECT_WORKSPACE_ROOT>\\EIK",
+    "<REPO_ROOT>\\third_party\\qt",
+    "<TOOLCHAIN_ROOT>\\Qt\\Qt5.11.3"
   ],
   "scanLimits": [
     "directory objects are direct children of main out/build, main out excluding build, old worktree out, and Lab验证",
@@ -19,10 +19,10 @@
   "execution": {
     "status": "completed",
     "scope": "113 exact direct children of main out/build from the separately authorized allowlist",
-    "allowlist": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\docs\\generated-artifact-cleanup-execution-20260914.json",
-    "archiveResult": "F:\\PersonalWorkspace\\协议解析拼接工具\\工程整理归档\\2026-09-14\\archive-copy-result.json",
+    "allowlist": "<REPO_ROOT>\\docs\\generated-artifact-cleanup-execution-20260914.json",
+    "archiveResult": "<PROJECT_WORKSPACE_ROOT>\\工程整理归档\\2026-09-14\\archive-copy-result.json",
     "archiveResultSha256": "7DE178820FEF94EA30C10C205A937F1B41B23CEA6A90876555C6E6640C0A9102",
-    "deleteResult": "F:\\PersonalWorkspace\\协议解析拼接工具\\工程整理归档\\2026-09-14\\cleanup-delete-result.json",
+    "deleteResult": "<PROJECT_WORKSPACE_ROOT>\\工程整理归档\\2026-09-14\\cleanup-delete-result.json",
     "deleteResultSha256": "81FB04EC88218E1A91D980C370B84F72C267989A174A4EA2A57E708AC79519C4",
     "deletedObjects": 113,
     "deletedFileCount": 104166,
@@ -35,22 +35,22 @@
     ],
     "oldWorktreeRetirement": {
       "status": "completed",
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine_lab_ui",
+      "path": "<REPO_ROOT>_lab_ui",
       "branch": "feat/lab-ui-c1",
       "head": "8bfe50fcb71a2e572bdc907b7392803038e6afdb",
       "removedIgnoredFileCount": 4747,
       "removedIgnoredLogicalBytes": 2443134288,
       "branchesDeleted": false,
-      "archiveResult": "F:\\PersonalWorkspace\\协议解析拼接工具\\工程整理归档\\2026-09-14\\old-worktree-retirement-archive-result.json",
+      "archiveResult": "<PROJECT_WORKSPACE_ROOT>\\工程整理归档\\2026-09-14\\old-worktree-retirement-archive-result.json",
       "archiveResultSha256": "DD7F5A8FE9D13F1AC97E59343DA862FFA82FA55281A22EACC3A79908902ADE4F",
-      "retirementResult": "F:\\PersonalWorkspace\\协议解析拼接工具\\工程整理归档\\2026-09-14\\old-worktree-retirement-result.json",
+      "retirementResult": "<PROJECT_WORKSPACE_ROOT>\\工程整理归档\\2026-09-14\\old-worktree-retirement-result.json",
       "retirementResultSha256": "DE395D96025B8062D22E2D2A813F24EEB87028DD396BEDD0456CBDEE050C05B9"
     },
     "note": "object entries below preserve the pre-cleanup inventory snapshot and recommendations"
   },
   "objects": [
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out\\build\\binary-materializer-default-off",
+      "path": "<REPO_ROOT>\\out\\build\\binary-materializer-default-off",
       "scope": "main_build",
       "name": "binary-materializer-default-off",
       "sizeBytes": 960226,
@@ -70,7 +70,7 @@
       "plannedArchiveRoot": null
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out\\dec042a-logs",
+      "path": "<REPO_ROOT>\\out\\dec042a-logs",
       "scope": "main_nonbuild",
       "name": "dec042a-logs",
       "sizeBytes": 137399,
@@ -90,7 +90,7 @@
       "plannedArchiveRoot": null
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out\\dec042a-smoke",
+      "path": "<REPO_ROOT>\\out\\dec042a-smoke",
       "scope": "main_nonbuild",
       "name": "dec042a-smoke",
       "sizeBytes": 21855,
@@ -110,7 +110,7 @@
       "plannedArchiveRoot": null
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out\\dec042b-c1-gate-missing-slices",
+      "path": "<REPO_ROOT>\\out\\dec042b-c1-gate-missing-slices",
       "scope": "main_nonbuild",
       "name": "dec042b-c1-gate-missing-slices",
       "sizeBytes": 765575,
@@ -130,7 +130,7 @@
       "plannedArchiveRoot": null
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out\\dec042b-c1-gate-ordinary-lab-schema05",
+      "path": "<REPO_ROOT>\\out\\dec042b-c1-gate-ordinary-lab-schema05",
       "scope": "main_nonbuild",
       "name": "dec042b-c1-gate-ordinary-lab-schema05",
       "sizeBytes": 608405,
@@ -150,7 +150,7 @@
       "plannedArchiveRoot": null
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out\\dec042b-c1-gate-testing-off",
+      "path": "<REPO_ROOT>\\out\\dec042b-c1-gate-testing-off",
       "scope": "main_nonbuild",
       "name": "dec042b-c1-gate-testing-off",
       "sizeBytes": 765516,
@@ -170,7 +170,7 @@
       "plannedArchiveRoot": null
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out\\dec042b-c1-lab-on-testing-off",
+      "path": "<REPO_ROOT>\\out\\dec042b-c1-lab-on-testing-off",
       "scope": "main_nonbuild",
       "name": "dec042b-c1-lab-on-testing-off",
       "sizeBytes": 18884808,
@@ -190,7 +190,7 @@
       "plannedArchiveRoot": null
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out\\dec042b-c1-product-only",
+      "path": "<REPO_ROOT>\\out\\dec042b-c1-product-only",
       "scope": "main_nonbuild",
       "name": "dec042b-c1-product-only",
       "sizeBytes": 839330,
@@ -210,7 +210,7 @@
       "plannedArchiveRoot": null
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out\\dec042b-c2-gate-missing-prereqs",
+      "path": "<REPO_ROOT>\\out\\dec042b-c2-gate-missing-prereqs",
       "scope": "main_nonbuild",
       "name": "dec042b-c2-gate-missing-prereqs",
       "sizeBytes": 765706,
@@ -230,7 +230,7 @@
       "plannedArchiveRoot": null
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out\\dec042b-c2-gate-ordinary-lab-v05",
+      "path": "<REPO_ROOT>\\out\\dec042b-c2-gate-ordinary-lab-v05",
       "scope": "main_nonbuild",
       "name": "dec042b-c2-gate-ordinary-lab-v05",
       "sizeBytes": 608406,
@@ -250,7 +250,7 @@
       "plannedArchiveRoot": null
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out\\dec042b-c2-gate-testing-off",
+      "path": "<REPO_ROOT>\\out\\dec042b-c2-gate-testing-off",
       "scope": "main_nonbuild",
       "name": "dec042b-c2-gate-testing-off",
       "sizeBytes": 608739,
@@ -270,7 +270,7 @@
       "plannedArchiveRoot": null
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out\\crc-validation",
+      "path": "<REPO_ROOT>\\out\\crc-validation",
       "scope": "main_nonbuild",
       "name": "crc-validation",
       "sizeBytes": 116955,
@@ -290,7 +290,7 @@
       "plannedArchiveRoot": null
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out\\dec042b-c2-lab-on-testing-off-debug",
+      "path": "<REPO_ROOT>\\out\\dec042b-c2-lab-on-testing-off-debug",
       "scope": "main_nonbuild",
       "name": "dec042b-c2-lab-on-testing-off-debug",
       "sizeBytes": 66295695,
@@ -310,7 +310,7 @@
       "plannedArchiveRoot": null
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out\\dec042b-c2-product-only-debug",
+      "path": "<REPO_ROOT>\\out\\dec042b-c2-product-only-debug",
       "scope": "main_nonbuild",
       "name": "dec042b-c2-product-only-debug",
       "sizeBytes": 24970041,
@@ -330,7 +330,7 @@
       "plannedArchiveRoot": null
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out\\dec042b-c2-product-only-release",
+      "path": "<REPO_ROOT>\\out\\dec042b-c2-product-only-release",
       "scope": "main_nonbuild",
       "name": "dec042b-c2-product-only-release",
       "sizeBytes": 3880457,
@@ -350,7 +350,7 @@
       "plannedArchiveRoot": null
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out\\dec042b-c2-run-debug",
+      "path": "<REPO_ROOT>\\out\\dec042b-c2-run-debug",
       "scope": "main_nonbuild",
       "name": "dec042b-c2-run-debug",
       "sizeBytes": 383590939,
@@ -370,7 +370,7 @@
       "plannedArchiveRoot": null
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out\\dec042b-c2-run-release",
+      "path": "<REPO_ROOT>\\out\\dec042b-c2-run-release",
       "scope": "main_nonbuild",
       "name": "dec042b-c2-run-release",
       "sizeBytes": 49867143,
@@ -390,7 +390,7 @@
       "plannedArchiveRoot": null
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out\\dec042b-c3-debug",
+      "path": "<REPO_ROOT>\\out\\dec042b-c3-debug",
       "scope": "main_nonbuild",
       "name": "dec042b-c3-debug",
       "sizeBytes": 609813339,
@@ -410,7 +410,7 @@
       "plannedArchiveRoot": null
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out\\dec042b-c3-gate-missing-dependencies",
+      "path": "<REPO_ROOT>\\out\\dec042b-c3-gate-missing-dependencies",
       "scope": "main_nonbuild",
       "name": "dec042b-c3-gate-missing-dependencies",
       "sizeBytes": 608599,
@@ -430,7 +430,7 @@
       "plannedArchiveRoot": null
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out\\dec042b-c3-gate-missing-explicit",
+      "path": "<REPO_ROOT>\\out\\dec042b-c3-gate-missing-explicit",
       "scope": "main_nonbuild",
       "name": "dec042b-c3-gate-missing-explicit",
       "sizeBytes": 608528,
@@ -450,7 +450,7 @@
       "plannedArchiveRoot": null
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out\\dec042b-c3-legacy-lab-default-debug",
+      "path": "<REPO_ROOT>\\out\\dec042b-c3-legacy-lab-default-debug",
       "scope": "main_nonbuild",
       "name": "dec042b-c3-legacy-lab-default-debug",
       "sizeBytes": 66287632,
@@ -470,7 +470,7 @@
       "plannedArchiveRoot": null
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out\\dec042b-c3-manual",
+      "path": "<REPO_ROOT>\\out\\dec042b-c3-manual",
       "scope": "main_nonbuild",
       "name": "dec042b-c3-manual",
       "sizeBytes": 40717,
@@ -490,7 +490,7 @@
       "plannedArchiveRoot": null
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out\\dec042b-c3-manual-invalid-values",
+      "path": "<REPO_ROOT>\\out\\dec042b-c3-manual-invalid-values",
       "scope": "main_nonbuild",
       "name": "dec042b-c3-manual-invalid-values",
       "sizeBytes": 6828,
@@ -510,7 +510,7 @@
       "plannedArchiveRoot": null
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out\\dec042b-c2-lab-on-testing-off-release",
+      "path": "<REPO_ROOT>\\out\\dec042b-c2-lab-on-testing-off-release",
       "scope": "main_nonbuild",
       "name": "dec042b-c2-lab-on-testing-off-release",
       "sizeBytes": 18697484,
@@ -530,7 +530,7 @@
       "plannedArchiveRoot": null
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out\\crc-reference",
+      "path": "<REPO_ROOT>\\out\\crc-reference",
       "scope": "main_nonbuild",
       "name": "crc-reference",
       "sizeBytes": 70971,
@@ -550,7 +550,7 @@
       "plannedArchiveRoot": null
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out\\crc-recovery",
+      "path": "<REPO_ROOT>\\out\\crc-recovery",
       "scope": "main_nonbuild",
       "name": "crc-recovery",
       "sizeBytes": 49695,
@@ -570,7 +570,7 @@
       "plannedArchiveRoot": null
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out\\bench-memory",
+      "path": "<REPO_ROOT>\\out\\bench-memory",
       "scope": "main_nonbuild",
       "name": "bench-memory",
       "sizeBytes": 19835,
@@ -590,7 +590,7 @@
       "plannedArchiveRoot": null
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out\\build\\windows-msvc-product-only-dec041",
+      "path": "<REPO_ROOT>\\out\\build\\windows-msvc-product-only-dec041",
       "scope": "main_build",
       "name": "windows-msvc-product-only-dec041",
       "sizeBytes": 12809356,
@@ -610,7 +610,7 @@
       "plannedArchiveRoot": null
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out\\build\\windows-msvc-product-only-dec042a",
+      "path": "<REPO_ROOT>\\out\\build\\windows-msvc-product-only-dec042a",
       "scope": "main_build",
       "name": "windows-msvc-product-only-dec042a",
       "sizeBytes": 13026047,
@@ -630,7 +630,7 @@
       "plannedArchiveRoot": null
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out\\build\\windows-msvc-product-only-protocol-lab-review",
+      "path": "<REPO_ROOT>\\out\\build\\windows-msvc-product-only-protocol-lab-review",
       "scope": "main_build",
       "name": "windows-msvc-product-only-protocol-lab-review",
       "sizeBytes": 430554,
@@ -650,7 +650,7 @@
       "plannedArchiveRoot": null
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out\\build\\windows-msvc-protocol-lab",
+      "path": "<REPO_ROOT>\\out\\build\\windows-msvc-protocol-lab",
       "scope": "main_build",
       "name": "windows-msvc-protocol-lab",
       "sizeBytes": 860247703,
@@ -667,10 +667,10 @@
       "referencedLogPathCount": 6,
       "mustPreserveBeforeAction": "all referenced logs listed in generated-artifact-evidence-index-20260914.json",
       "pendingConfirmation": true,
-      "plannedArchiveRoot": "F:\\PersonalWorkspace\\协议解析拼接工具\\工程整理归档\\2026-09-14"
+      "plannedArchiveRoot": "<PROJECT_WORKSPACE_ROOT>\\工程整理归档\\2026-09-14"
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out\\build\\windows-msvc-protocol-lab-no-testing-dec039",
+      "path": "<REPO_ROOT>\\out\\build\\windows-msvc-protocol-lab-no-testing-dec039",
       "scope": "main_build",
       "name": "windows-msvc-protocol-lab-no-testing-dec039",
       "sizeBytes": 26818258,
@@ -690,7 +690,7 @@
       "plannedArchiveRoot": null
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out\\build\\windows-msvc-protocol-lab-no-testing-review",
+      "path": "<REPO_ROOT>\\out\\build\\windows-msvc-protocol-lab-no-testing-review",
       "scope": "main_build",
       "name": "windows-msvc-protocol-lab-no-testing-review",
       "sizeBytes": 97219596,
@@ -710,7 +710,7 @@
       "plannedArchiveRoot": null
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out\\build\\windows-msvc-qt-ui-off",
+      "path": "<REPO_ROOT>\\out\\build\\windows-msvc-qt-ui-off",
       "scope": "main_build",
       "name": "windows-msvc-qt-ui-off",
       "sizeBytes": 2073800,
@@ -730,7 +730,7 @@
       "plannedArchiveRoot": null
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out\\build\\windows-msvc-spike",
+      "path": "<REPO_ROOT>\\out\\build\\windows-msvc-spike",
       "scope": "main_build",
       "name": "windows-msvc-spike",
       "sizeBytes": 57236918,
@@ -750,7 +750,7 @@
       "plannedArchiveRoot": null
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out\\build\\windows-msvc-spike-loader-coexist",
+      "path": "<REPO_ROOT>\\out\\build\\windows-msvc-spike-loader-coexist",
       "scope": "main_build",
       "name": "windows-msvc-spike-loader-coexist",
       "sizeBytes": 53883321,
@@ -770,7 +770,7 @@
       "plannedArchiveRoot": null
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out\\agent-c3-acceptance-20260908-205122",
+      "path": "<REPO_ROOT>\\out\\agent-c3-acceptance-20260908-205122",
       "scope": "main_nonbuild",
       "name": "agent-c3-acceptance-20260908-205122",
       "sizeBytes": 149657,
@@ -790,7 +790,7 @@
       "plannedArchiveRoot": null
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out\\agent-c3-acceptance-20260908-212535",
+      "path": "<REPO_ROOT>\\out\\agent-c3-acceptance-20260908-212535",
       "scope": "main_nonbuild",
       "name": "agent-c3-acceptance-20260908-212535",
       "sizeBytes": 139021,
@@ -810,7 +810,7 @@
       "plannedArchiveRoot": null
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out\\ascii-pure-literal-repro",
+      "path": "<REPO_ROOT>\\out\\ascii-pure-literal-repro",
       "scope": "main_nonbuild",
       "name": "ascii-pure-literal-repro",
       "sizeBytes": 9167,
@@ -830,7 +830,7 @@
       "plannedArchiveRoot": null
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out\\b",
+      "path": "<REPO_ROOT>\\out\\b",
       "scope": "main_nonbuild",
       "name": "b",
       "sizeBytes": 1700450502,
@@ -850,7 +850,7 @@
       "plannedArchiveRoot": null
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out\\b042b",
+      "path": "<REPO_ROOT>\\out\\b042b",
       "scope": "main_nonbuild",
       "name": "b042b",
       "sizeBytes": 25192798,
@@ -870,7 +870,7 @@
       "plannedArchiveRoot": null
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out\\b42bd",
+      "path": "<REPO_ROOT>\\out\\b42bd",
       "scope": "main_nonbuild",
       "name": "b42bd",
       "sizeBytes": 42720257,
@@ -890,7 +890,7 @@
       "plannedArchiveRoot": null
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out\\b42br",
+      "path": "<REPO_ROOT>\\out\\b42br",
       "scope": "main_nonbuild",
       "name": "b42br",
       "sizeBytes": 7921929,
@@ -910,7 +910,7 @@
       "plannedArchiveRoot": null
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out\\b42gate-lab",
+      "path": "<REPO_ROOT>\\out\\b42gate-lab",
       "scope": "main_nonbuild",
       "name": "b42gate-lab",
       "sizeBytes": 607963,
@@ -930,7 +930,7 @@
       "plannedArchiveRoot": null
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out\\b42gate-testoff",
+      "path": "<REPO_ROOT>\\out\\b42gate-testoff",
       "scope": "main_nonbuild",
       "name": "b42gate-testoff",
       "sizeBytes": 765171,
@@ -950,7 +950,7 @@
       "plannedArchiveRoot": null
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out\\b42product",
+      "path": "<REPO_ROOT>\\out\\b42product",
       "scope": "main_nonbuild",
       "name": "b42product",
       "sizeBytes": 838022,
@@ -970,7 +970,7 @@
       "plannedArchiveRoot": null
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out\\be-debug",
+      "path": "<REPO_ROOT>\\out\\be-debug",
       "scope": "main_nonbuild",
       "name": "be-debug",
       "sizeBytes": 93493343,
@@ -990,7 +990,7 @@
       "plannedArchiveRoot": null
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out\\be-default-off-release",
+      "path": "<REPO_ROOT>\\out\\be-default-off-release",
       "scope": "main_nonbuild",
       "name": "be-default-off-release",
       "sizeBytes": 682635,
@@ -1010,7 +1010,7 @@
       "plannedArchiveRoot": null
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out\\be-release",
+      "path": "<REPO_ROOT>\\out\\be-release",
       "scope": "main_nonbuild",
       "name": "be-release",
       "sizeBytes": 15493943,
@@ -1030,7 +1030,7 @@
       "plannedArchiveRoot": null
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out\\be-testing-off-release",
+      "path": "<REPO_ROOT>\\out\\be-testing-off-release",
       "scope": "main_nonbuild",
       "name": "be-testing-off-release",
       "sizeBytes": 11603501,
@@ -1050,7 +1050,7 @@
       "plannedArchiveRoot": null
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out\\dec042b-c3-product-only-debug-msvc",
+      "path": "<REPO_ROOT>\\out\\dec042b-c3-product-only-debug-msvc",
       "scope": "main_nonbuild",
       "name": "dec042b-c3-product-only-debug-msvc",
       "sizeBytes": 24987058,
@@ -1070,7 +1070,7 @@
       "plannedArchiveRoot": null
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out\\build\\windows-msvc-product-only-dec039",
+      "path": "<REPO_ROOT>\\out\\build\\windows-msvc-product-only-dec039",
       "scope": "main_build",
       "name": "windows-msvc-product-only-dec039",
       "sizeBytes": 3614297,
@@ -1090,7 +1090,7 @@
       "plannedArchiveRoot": null
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out\\dec042b-c3-product-only-release-msvc",
+      "path": "<REPO_ROOT>\\out\\dec042b-c3-product-only-release-msvc",
       "scope": "main_nonbuild",
       "name": "dec042b-c3-product-only-release-msvc",
       "sizeBytes": 10542734,
@@ -1110,7 +1110,7 @@
       "plannedArchiveRoot": null
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out\\dec042b-c3-release-msvc",
+      "path": "<REPO_ROOT>\\out\\dec042b-c3-release-msvc",
       "scope": "main_nonbuild",
       "name": "dec042b-c3-release-msvc",
       "sizeBytes": 80303596,
@@ -1130,7 +1130,7 @@
       "plannedArchiveRoot": null
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out\\v09-builder-version-repro",
+      "path": "<REPO_ROOT>\\out\\v09-builder-version-repro",
       "scope": "main_nonbuild",
       "name": "v09-builder-version-repro",
       "sizeBytes": 2358466,
@@ -1150,7 +1150,7 @@
       "plannedArchiveRoot": null
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out\\v09-full-debug",
+      "path": "<REPO_ROOT>\\out\\v09-full-debug",
       "scope": "main_nonbuild",
       "name": "v09-full-debug",
       "sizeBytes": 754598087,
@@ -1170,7 +1170,7 @@
       "plannedArchiveRoot": null
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out\\v09-full-release",
+      "path": "<REPO_ROOT>\\out\\v09-full-release",
       "scope": "main_nonbuild",
       "name": "v09-full-release",
       "sizeBytes": 69075175,
@@ -1190,7 +1190,7 @@
       "plannedArchiveRoot": null
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out\\v09-lab-testing-off",
+      "path": "<REPO_ROOT>\\out\\v09-lab-testing-off",
       "scope": "main_nonbuild",
       "name": "v09-lab-testing-off",
       "sizeBytes": 34911468,
@@ -1210,7 +1210,7 @@
       "plannedArchiveRoot": null
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out\\v09-product-only",
+      "path": "<REPO_ROOT>\\out\\v09-product-only",
       "scope": "main_nonbuild",
       "name": "v09-product-only",
       "sizeBytes": 12178091,
@@ -1230,7 +1230,7 @@
       "plannedArchiveRoot": null
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out\\v09-progress-repro",
+      "path": "<REPO_ROOT>\\out\\v09-progress-repro",
       "scope": "main_nonbuild",
       "name": "v09-progress-repro",
       "sizeBytes": 1073648,
@@ -1250,7 +1250,7 @@
       "plannedArchiveRoot": null
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out\\validation",
+      "path": "<REPO_ROOT>\\out\\validation",
       "scope": "main_nonbuild",
       "name": "validation",
       "sizeBytes": 297900,
@@ -1270,7 +1270,7 @@
       "plannedArchiveRoot": null
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out\\yv",
+      "path": "<REPO_ROOT>\\out\\yv",
       "scope": "main_nonbuild",
       "name": "yv",
       "sizeBytes": 567842470,
@@ -1290,7 +1290,7 @@
       "plannedArchiveRoot": null
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out\\yv-eol",
+      "path": "<REPO_ROOT>\\out\\yv-eol",
       "scope": "main_nonbuild",
       "name": "yv-eol",
       "sizeBytes": 6600727,
@@ -1310,7 +1310,7 @@
       "plannedArchiveRoot": null
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out",
+      "path": "<REPO_ROOT>\\out",
       "scope": "main_out_root_files",
       "name": "out root files only",
       "sizeBytes": 15984758,
@@ -1327,10 +1327,10 @@
       "referencedLogPathCount": 207,
       "mustPreserveBeforeAction": "all referenced root logs and non-reproducible evidence",
       "pendingConfirmation": true,
-      "plannedArchiveRoot": "F:\\PersonalWorkspace\\协议解析拼接工具\\工程整理归档\\2026-09-14"
+      "plannedArchiveRoot": "<PROJECT_WORKSPACE_ROOT>\\工程整理归档\\2026-09-14"
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out\\v08-tmp",
+      "path": "<REPO_ROOT>\\out\\v08-tmp",
       "scope": "main_nonbuild",
       "name": "v08-tmp",
       "sizeBytes": 5561,
@@ -1350,7 +1350,7 @@
       "plannedArchiveRoot": null
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine_lab_ui\\out\\cmake-default-check",
+      "path": "<REPO_ROOT>_lab_ui\\out\\cmake-default-check",
       "scope": "old_worktree_out",
       "name": "cmake-default-check",
       "sizeBytes": 875440,
@@ -1370,7 +1370,7 @@
       "plannedArchiveRoot": null
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine_lab_ui\\out\\final-shared-v145",
+      "path": "<REPO_ROOT>_lab_ui\\out\\final-shared-v145",
       "scope": "old_worktree_out",
       "name": "final-shared-v145",
       "sizeBytes": 618460185,
@@ -1390,7 +1390,7 @@
       "plannedArchiveRoot": null
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine_lab_ui\\out\\final-ui-v142",
+      "path": "<REPO_ROOT>_lab_ui\\out\\final-ui-v142",
       "scope": "old_worktree_out",
       "name": "final-ui-v142",
       "sizeBytes": 616080374,
@@ -1407,10 +1407,10 @@
       "referencedLogPathCount": 0,
       "mustPreserveBeforeAction": "unique logs and failed-test records, if any",
       "pendingConfirmation": true,
-      "plannedArchiveRoot": "F:\\PersonalWorkspace\\协议解析拼接工具\\工程整理归档\\2026-09-14"
+      "plannedArchiveRoot": "<PROJECT_WORKSPACE_ROOT>\\工程整理归档\\2026-09-14"
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine_lab_ui\\out\\lab-reuse-legacy-v145",
+      "path": "<REPO_ROOT>_lab_ui\\out\\lab-reuse-legacy-v145",
       "scope": "old_worktree_out",
       "name": "lab-reuse-legacy-v145",
       "sizeBytes": 68884969,
@@ -1430,7 +1430,7 @@
       "plannedArchiveRoot": null
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine_lab_ui\\out\\lab-reuse-ui-only-v142",
+      "path": "<REPO_ROOT>_lab_ui\\out\\lab-reuse-ui-only-v142",
       "scope": "old_worktree_out",
       "name": "lab-reuse-ui-only-v142",
       "sizeBytes": 474458,
@@ -1450,7 +1450,7 @@
       "plannedArchiveRoot": null
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine_lab_ui\\out\\max-fixture-check",
+      "path": "<REPO_ROOT>_lab_ui\\out\\max-fixture-check",
       "scope": "old_worktree_out",
       "name": "max-fixture-check",
       "sizeBytes": 514846,
@@ -1470,7 +1470,7 @@
       "plannedArchiveRoot": null
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine_lab_ui\\out\\ui-c1-baseline-v145",
+      "path": "<REPO_ROOT>_lab_ui\\out\\ui-c1-baseline-v145",
       "scope": "old_worktree_out",
       "name": "ui-c1-baseline-v145",
       "sizeBytes": 487565932,
@@ -1490,7 +1490,7 @@
       "plannedArchiveRoot": null
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine_lab_ui\\out\\ui-v08-check",
+      "path": "<REPO_ROOT>_lab_ui\\out\\ui-v08-check",
       "scope": "old_worktree_out",
       "name": "ui-v08-check",
       "sizeBytes": 364124,
@@ -1510,7 +1510,7 @@
       "plannedArchiveRoot": null
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine_lab_ui\\out\\ui-v08-v142-check",
+      "path": "<REPO_ROOT>_lab_ui\\out\\ui-v08-v142-check",
       "scope": "old_worktree_out",
       "name": "ui-v08-v142-check",
       "sizeBytes": 353479166,
@@ -1530,7 +1530,7 @@
       "plannedArchiveRoot": null
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine_lab_ui\\out\\ui-v142-check",
+      "path": "<REPO_ROOT>_lab_ui\\out\\ui-v142-check",
       "scope": "old_worktree_out",
       "name": "ui-v142-check",
       "sizeBytes": 294981380,
@@ -1550,7 +1550,7 @@
       "plannedArchiveRoot": null
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine_lab_ui\\out\\ui-v145-reject",
+      "path": "<REPO_ROOT>_lab_ui\\out\\ui-v145-reject",
       "scope": "old_worktree_out",
       "name": "ui-v145-reject",
       "sizeBytes": 363184,
@@ -1570,7 +1570,7 @@
       "plannedArchiveRoot": null
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine_lab_ui\\out\\default-v145-check",
+      "path": "<REPO_ROOT>_lab_ui\\out\\default-v145-check",
       "scope": "old_worktree_out",
       "name": "default-v145-check",
       "sizeBytes": 1088999,
@@ -1590,7 +1590,7 @@
       "plannedArchiveRoot": null
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out\\v08-review-round2-header-gap",
+      "path": "<REPO_ROOT>\\out\\v08-review-round2-header-gap",
       "scope": "main_nonbuild",
       "name": "v08-review-round2-header-gap",
       "sizeBytes": 18480,
@@ -1610,7 +1610,7 @@
       "plannedArchiveRoot": null
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out\\v08-review-missing-length",
+      "path": "<REPO_ROOT>\\out\\v08-review-missing-length",
       "scope": "main_nonbuild",
       "name": "v08-review-missing-length",
       "sizeBytes": 17120,
@@ -1630,7 +1630,7 @@
       "plannedArchiveRoot": null
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out\\v08-review-bit-container",
+      "path": "<REPO_ROOT>\\out\\v08-review-bit-container",
       "scope": "main_nonbuild",
       "name": "v08-review-bit-container",
       "sizeBytes": 38234,
@@ -1650,7 +1650,7 @@
       "plannedArchiveRoot": null
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out\\dec042b-c3-testing-off-debug",
+      "path": "<REPO_ROOT>\\out\\dec042b-c3-testing-off-debug",
       "scope": "main_nonbuild",
       "name": "dec042b-c3-testing-off-debug",
       "sizeBytes": 109014806,
@@ -1670,7 +1670,7 @@
       "plannedArchiveRoot": null
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out\\dec042b-c3-testing-off-release-msvc",
+      "path": "<REPO_ROOT>\\out\\dec042b-c3-testing-off-release-msvc",
       "scope": "main_nonbuild",
       "name": "dec042b-c3-testing-off-release-msvc",
       "sizeBytes": 33153984,
@@ -1690,7 +1690,7 @@
       "plannedArchiveRoot": null
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out\\dec042b-c3-unicode-pre-fix-中文 路径",
+      "path": "<REPO_ROOT>\\out\\dec042b-c3-unicode-pre-fix-中文 路径",
       "scope": "main_nonbuild",
       "name": "dec042b-c3-unicode-pre-fix-中文 路径",
       "sizeBytes": 12758,
@@ -1710,7 +1710,7 @@
       "plannedArchiveRoot": null
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out\\dec042b-lab-c1-debug",
+      "path": "<REPO_ROOT>\\out\\dec042b-lab-c1-debug",
       "scope": "main_nonbuild",
       "name": "dec042b-lab-c1-debug",
       "sizeBytes": 276773018,
@@ -1730,7 +1730,7 @@
       "plannedArchiveRoot": null
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out\\dec042b-lab-c1-release",
+      "path": "<REPO_ROOT>\\out\\dec042b-lab-c1-release",
       "scope": "main_nonbuild",
       "name": "dec042b-lab-c1-release",
       "sizeBytes": 30821270,
@@ -1750,7 +1750,7 @@
       "plannedArchiveRoot": null
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out\\downloads",
+      "path": "<REPO_ROOT>\\out\\downloads",
       "scope": "main_nonbuild",
       "name": "downloads",
       "sizeBytes": 12322603,
@@ -1770,7 +1770,7 @@
       "plannedArchiveRoot": null
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out\\embedding-boundary-host",
+      "path": "<REPO_ROOT>\\out\\embedding-boundary-host",
       "scope": "main_nonbuild",
       "name": "embedding-boundary-host",
       "sizeBytes": 0,
@@ -1790,7 +1790,7 @@
       "plannedArchiveRoot": null
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out\\host-dec032",
+      "path": "<REPO_ROOT>\\out\\host-dec032",
       "scope": "main_nonbuild",
       "name": "host-dec032",
       "sizeBytes": 0,
@@ -1810,7 +1810,7 @@
       "plannedArchiveRoot": null
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out\\host-dec033a",
+      "path": "<REPO_ROOT>\\out\\host-dec033a",
       "scope": "main_nonbuild",
       "name": "host-dec033a",
       "sizeBytes": 428,
@@ -1830,7 +1830,7 @@
       "plannedArchiveRoot": null
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out\\host-endpoint-gates",
+      "path": "<REPO_ROOT>\\out\\host-endpoint-gates",
       "scope": "main_nonbuild",
       "name": "host-endpoint-gates",
       "sizeBytes": 1305575,
@@ -1850,7 +1850,7 @@
       "plannedArchiveRoot": null
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out\\integrated-ui-v09",
+      "path": "<REPO_ROOT>\\out\\integrated-ui-v09",
       "scope": "main_nonbuild",
       "name": "integrated-ui-v09",
       "sizeBytes": 694766639,
@@ -1870,7 +1870,7 @@
       "plannedArchiveRoot": null
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out\\manual-lab",
+      "path": "<REPO_ROOT>\\out\\manual-lab",
       "scope": "main_nonbuild",
       "name": "manual-lab",
       "sizeBytes": 81283,
@@ -1890,7 +1890,7 @@
       "plannedArchiveRoot": null
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out\\qt-checkpoint-closeout",
+      "path": "<REPO_ROOT>\\out\\qt-checkpoint-closeout",
       "scope": "main_nonbuild",
       "name": "qt-checkpoint-closeout",
       "sizeBytes": 6772,
@@ -1910,7 +1910,7 @@
       "plannedArchiveRoot": null
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out\\recovery-v09-compiler",
+      "path": "<REPO_ROOT>\\out\\recovery-v09-compiler",
       "scope": "main_nonbuild",
       "name": "recovery-v09-compiler",
       "sizeBytes": 26779696,
@@ -1930,7 +1930,7 @@
       "plannedArchiveRoot": null
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out\\recovery-v09-lab",
+      "path": "<REPO_ROOT>\\out\\recovery-v09-lab",
       "scope": "main_nonbuild",
       "name": "recovery-v09-lab",
       "sizeBytes": 115682333,
@@ -1950,7 +1950,7 @@
       "plannedArchiveRoot": null
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out\\recovery-v09-lab-tests",
+      "path": "<REPO_ROOT>\\out\\recovery-v09-lab-tests",
       "scope": "main_nonbuild",
       "name": "recovery-v09-lab-tests",
       "sizeBytes": 148547198,
@@ -1970,7 +1970,7 @@
       "plannedArchiveRoot": null
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out\\recovery-v09-tests",
+      "path": "<REPO_ROOT>\\out\\recovery-v09-tests",
       "scope": "main_nonbuild",
       "name": "recovery-v09-tests",
       "sizeBytes": 124756499,
@@ -1990,7 +1990,7 @@
       "plannedArchiveRoot": null
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out\\review",
+      "path": "<REPO_ROOT>\\out\\review",
       "scope": "main_nonbuild",
       "name": "review",
       "sizeBytes": 412012,
@@ -2010,7 +2010,7 @@
       "plannedArchiveRoot": null
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out\\sources",
+      "path": "<REPO_ROOT>\\out\\sources",
       "scope": "main_nonbuild",
       "name": "sources",
       "sizeBytes": 26094751,
@@ -2030,7 +2030,7 @@
       "plannedArchiveRoot": null
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out\\symlink-capability-check",
+      "path": "<REPO_ROOT>\\out\\symlink-capability-check",
       "scope": "main_nonbuild",
       "name": "symlink-capability-check",
       "sizeBytes": 4,
@@ -2050,7 +2050,7 @@
       "plannedArchiveRoot": null
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out\\v08-empty-payload-diagnostic",
+      "path": "<REPO_ROOT>\\out\\v08-empty-payload-diagnostic",
       "scope": "main_nonbuild",
       "name": "v08-empty-payload-diagnostic",
       "sizeBytes": 13205,
@@ -2070,7 +2070,7 @@
       "plannedArchiveRoot": null
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out\\v08-readonly-precommit-decimal",
+      "path": "<REPO_ROOT>\\out\\v08-readonly-precommit-decimal",
       "scope": "main_nonbuild",
       "name": "v08-readonly-precommit-decimal",
       "sizeBytes": 9812,
@@ -2090,7 +2090,7 @@
       "plannedArchiveRoot": null
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out\\v08-recovery-runs",
+      "path": "<REPO_ROOT>\\out\\v08-recovery-runs",
       "scope": "main_nonbuild",
       "name": "v08-recovery-runs",
       "sizeBytes": 33391,
@@ -2110,7 +2110,7 @@
       "plannedArchiveRoot": null
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out\\dec042b-c3-release",
+      "path": "<REPO_ROOT>\\out\\dec042b-c3-release",
       "scope": "main_nonbuild",
       "name": "dec042b-c3-release",
       "sizeBytes": 799367,
@@ -2130,7 +2130,7 @@
       "plannedArchiveRoot": null
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\Lab验证\\qt513-smoke-20260909-171741-dcd2dd",
+      "path": "<PROJECT_WORKSPACE_ROOT>\\Lab验证\\qt513-smoke-20260909-171741-dcd2dd",
       "scope": "lab_validation",
       "name": "qt513-smoke-20260909-171741-dcd2dd",
       "sizeBytes": 69635857,
@@ -2147,10 +2147,10 @@
       "referencedLogPathCount": 0,
       "mustPreserveBeforeAction": "REPORT.md, logs, hashes and historical tar/snapshot provenance",
       "pendingConfirmation": true,
-      "plannedArchiveRoot": "F:\\PersonalWorkspace\\协议解析拼接工具\\工程整理归档\\2026-09-14"
+      "plannedArchiveRoot": "<PROJECT_WORKSPACE_ROOT>\\工程整理归档\\2026-09-14"
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out\\build\\windows-msvc-product-dec034",
+      "path": "<REPO_ROOT>\\out\\build\\windows-msvc-product-dec034",
       "scope": "main_build",
       "name": "windows-msvc-product-dec034",
       "sizeBytes": 3605778,
@@ -2170,7 +2170,7 @@
       "plannedArchiveRoot": null
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out\\build\\windows-msvc-loader-spike-coexist",
+      "path": "<REPO_ROOT>\\out\\build\\windows-msvc-loader-spike-coexist",
       "scope": "main_build",
       "name": "windows-msvc-loader-spike-coexist",
       "sizeBytes": 53575528,
@@ -2190,7 +2190,7 @@
       "plannedArchiveRoot": null
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out\\build\\windows-msvc-all-slices",
+      "path": "<REPO_ROOT>\\out\\build\\windows-msvc-all-slices",
       "scope": "main_build",
       "name": "windows-msvc-all-slices",
       "sizeBytes": 433993765,
@@ -2210,7 +2210,7 @@
       "plannedArchiveRoot": null
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out\\build\\windows-msvc-all-slices-dec018-audit",
+      "path": "<REPO_ROOT>\\out\\build\\windows-msvc-all-slices-dec018-audit",
       "scope": "main_build",
       "name": "windows-msvc-all-slices-dec018-audit",
       "sizeBytes": 236932482,
@@ -2230,7 +2230,7 @@
       "plannedArchiveRoot": null
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out\\build\\windows-msvc-all-slices-dec032",
+      "path": "<REPO_ROOT>\\out\\build\\windows-msvc-all-slices-dec032",
       "scope": "main_build",
       "name": "windows-msvc-all-slices-dec032",
       "sizeBytes": 257989074,
@@ -2250,7 +2250,7 @@
       "plannedArchiveRoot": null
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out\\build\\windows-msvc-all-slices-dec033a",
+      "path": "<REPO_ROOT>\\out\\build\\windows-msvc-all-slices-dec033a",
       "scope": "main_build",
       "name": "windows-msvc-all-slices-dec033a",
       "sizeBytes": 237207561,
@@ -2270,7 +2270,7 @@
       "plannedArchiveRoot": null
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out\\build\\windows-msvc-all-slices-dec034",
+      "path": "<REPO_ROOT>\\out\\build\\windows-msvc-all-slices-dec034",
       "scope": "main_build",
       "name": "windows-msvc-all-slices-dec034",
       "sizeBytes": 264959894,
@@ -2290,7 +2290,7 @@
       "plannedArchiveRoot": null
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out\\build\\windows-msvc-all-slices-dec039",
+      "path": "<REPO_ROOT>\\out\\build\\windows-msvc-all-slices-dec039",
       "scope": "main_build",
       "name": "windows-msvc-all-slices-dec039",
       "sizeBytes": 391942985,
@@ -2307,10 +2307,10 @@
       "referencedLogPathCount": 4,
       "mustPreserveBeforeAction": "all referenced logs listed in generated-artifact-evidence-index-20260914.json",
       "pendingConfirmation": true,
-      "plannedArchiveRoot": "F:\\PersonalWorkspace\\协议解析拼接工具\\工程整理归档\\2026-09-14"
+      "plannedArchiveRoot": "<PROJECT_WORKSPACE_ROOT>\\工程整理归档\\2026-09-14"
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out\\build\\windows-msvc-all-slices-dec040",
+      "path": "<REPO_ROOT>\\out\\build\\windows-msvc-all-slices-dec040",
       "scope": "main_build",
       "name": "windows-msvc-all-slices-dec040",
       "sizeBytes": 477393820,
@@ -2330,7 +2330,7 @@
       "plannedArchiveRoot": null
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out\\build\\windows-msvc-all-slices-dec041",
+      "path": "<REPO_ROOT>\\out\\build\\windows-msvc-all-slices-dec041",
       "scope": "main_build",
       "name": "windows-msvc-all-slices-dec041",
       "sizeBytes": 532288616,
@@ -2350,7 +2350,7 @@
       "plannedArchiveRoot": null
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out\\build\\windows-msvc-all-slices-dec042a",
+      "path": "<REPO_ROOT>\\out\\build\\windows-msvc-all-slices-dec042a",
       "scope": "main_build",
       "name": "windows-msvc-all-slices-dec042a",
       "sizeBytes": 541928534,
@@ -2370,7 +2370,7 @@
       "plannedArchiveRoot": null
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out\\build\\windows-msvc-all-slices-dec042b-compiler",
+      "path": "<REPO_ROOT>\\out\\build\\windows-msvc-all-slices-dec042b-compiler",
       "scope": "main_build",
       "name": "windows-msvc-all-slices-dec042b-compiler",
       "sizeBytes": 339637729,
@@ -2390,7 +2390,7 @@
       "plannedArchiveRoot": null
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out\\build\\v08-product-only",
+      "path": "<REPO_ROOT>\\out\\build\\v08-product-only",
       "scope": "main_build",
       "name": "v08-product-only",
       "sizeBytes": 36597108,
@@ -2410,7 +2410,7 @@
       "plannedArchiveRoot": null
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out\\build\\windows-msvc-all-slices-frozen",
+      "path": "<REPO_ROOT>\\out\\build\\windows-msvc-all-slices-frozen",
       "scope": "main_build",
       "name": "windows-msvc-all-slices-frozen",
       "sizeBytes": 62050448,
@@ -2430,7 +2430,7 @@
       "plannedArchiveRoot": null
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out\\build\\windows-msvc-ascii",
+      "path": "<REPO_ROOT>\\out\\build\\windows-msvc-ascii",
       "scope": "main_build",
       "name": "windows-msvc-ascii",
       "sizeBytes": 484753814,
@@ -2450,7 +2450,7 @@
       "plannedArchiveRoot": null
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out\\build\\windows-msvc-ascii-all-slices",
+      "path": "<REPO_ROOT>\\out\\build\\windows-msvc-ascii-all-slices",
       "scope": "main_build",
       "name": "windows-msvc-ascii-all-slices",
       "sizeBytes": 655385735,
@@ -2470,7 +2470,7 @@
       "plannedArchiveRoot": null
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out\\build\\windows-msvc-ascii-lab-no-tests",
+      "path": "<REPO_ROOT>\\out\\build\\windows-msvc-ascii-lab-no-tests",
       "scope": "main_build",
       "name": "windows-msvc-ascii-lab-no-tests",
       "sizeBytes": 153641922,
@@ -2490,7 +2490,7 @@
       "plannedArchiveRoot": null
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out\\build\\windows-msvc-ascii-lab-no-tests-v08",
+      "path": "<REPO_ROOT>\\out\\build\\windows-msvc-ascii-lab-no-tests-v08",
       "scope": "main_build",
       "name": "windows-msvc-ascii-lab-no-tests-v08",
       "sizeBytes": 154139290,
@@ -2510,7 +2510,7 @@
       "plannedArchiveRoot": null
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out\\build\\windows-msvc-ascii-product",
+      "path": "<REPO_ROOT>\\out\\build\\windows-msvc-ascii-product",
       "scope": "main_build",
       "name": "windows-msvc-ascii-product",
       "sizeBytes": 60494845,
@@ -2530,7 +2530,7 @@
       "plannedArchiveRoot": null
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out\\build\\windows-msvc-ascii-stream",
+      "path": "<REPO_ROOT>\\out\\build\\windows-msvc-ascii-stream",
       "scope": "main_build",
       "name": "windows-msvc-ascii-stream",
       "sizeBytes": 592551995,
@@ -2550,7 +2550,7 @@
       "plannedArchiveRoot": null
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out\\build\\windows-msvc-ascii-stream-default-off",
+      "path": "<REPO_ROOT>\\out\\build\\windows-msvc-ascii-stream-default-off",
       "scope": "main_build",
       "name": "windows-msvc-ascii-stream-default-off",
       "sizeBytes": 1095949,
@@ -2570,7 +2570,7 @@
       "plannedArchiveRoot": null
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out\\build\\windows-msvc-ascii-stream-default-off-final",
+      "path": "<REPO_ROOT>\\out\\build\\windows-msvc-ascii-stream-default-off-final",
       "scope": "main_build",
       "name": "windows-msvc-ascii-stream-default-off-final",
       "sizeBytes": 67983535,
@@ -2590,7 +2590,7 @@
       "plannedArchiveRoot": null
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out\\build\\windows-msvc-ascii-stream-lab-gate",
+      "path": "<REPO_ROOT>\\out\\build\\windows-msvc-ascii-stream-lab-gate",
       "scope": "main_build",
       "name": "windows-msvc-ascii-stream-lab-gate",
       "sizeBytes": 1095001,
@@ -2610,7 +2610,7 @@
       "plannedArchiveRoot": null
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out\\build\\windows-msvc-ascii-stream-lab-gate-final",
+      "path": "<REPO_ROOT>\\out\\build\\windows-msvc-ascii-stream-lab-gate-final",
       "scope": "main_build",
       "name": "windows-msvc-ascii-stream-lab-gate-final",
       "sizeBytes": 366962,
@@ -2630,7 +2630,7 @@
       "plannedArchiveRoot": null
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out\\build\\windows-msvc-all-slices-protocol-lab-review",
+      "path": "<REPO_ROOT>\\out\\build\\windows-msvc-all-slices-protocol-lab-review",
       "scope": "main_build",
       "name": "windows-msvc-all-slices-protocol-lab-review",
       "sizeBytes": 345454070,
@@ -2650,7 +2650,7 @@
       "plannedArchiveRoot": null
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out\\build\\v08-lab-no-tests",
+      "path": "<REPO_ROOT>\\out\\build\\v08-lab-no-tests",
       "scope": "main_build",
       "name": "v08-lab-no-tests",
       "sizeBytes": 154699290,
@@ -2670,7 +2670,7 @@
       "plannedArchiveRoot": null
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out\\build\\v08-lab",
+      "path": "<REPO_ROOT>\\out\\build\\v08-lab",
       "scope": "main_build",
       "name": "v08-lab",
       "sizeBytes": 812073448,
@@ -2690,7 +2690,7 @@
       "plannedArchiveRoot": null
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out\\build\\v08-invalid-lab",
+      "path": "<REPO_ROOT>\\out\\build\\v08-invalid-lab",
       "scope": "main_build",
       "name": "v08-invalid-lab",
       "sizeBytes": 363045,
@@ -2710,7 +2710,7 @@
       "plannedArchiveRoot": null
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out\\build\\binary-materializer-missing-dependencies",
+      "path": "<REPO_ROOT>\\out\\build\\binary-materializer-missing-dependencies",
       "scope": "main_build",
       "name": "binary-materializer-missing-dependencies",
       "sizeBytes": 366893,
@@ -2730,7 +2730,7 @@
       "plannedArchiveRoot": null
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out\\build\\clean-measure-final-nlohmann",
+      "path": "<REPO_ROOT>\\out\\build\\clean-measure-final-nlohmann",
       "scope": "main_build",
       "name": "clean-measure-final-nlohmann",
       "sizeBytes": 29726876,
@@ -2750,7 +2750,7 @@
       "plannedArchiveRoot": null
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out\\build\\clean-measure-final-rapidjson",
+      "path": "<REPO_ROOT>\\out\\build\\clean-measure-final-rapidjson",
       "scope": "main_build",
       "name": "clean-measure-final-rapidjson",
       "sizeBytes": 5516280,
@@ -2770,7 +2770,7 @@
       "plannedArchiveRoot": null
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out\\build\\clean-measure-final-yyjson",
+      "path": "<REPO_ROOT>\\out\\build\\clean-measure-final-yyjson",
       "scope": "main_build",
       "name": "clean-measure-final-yyjson",
       "sizeBytes": 10648033,
@@ -2790,7 +2790,7 @@
       "plannedArchiveRoot": null
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out\\build\\clean-measure-yyjson",
+      "path": "<REPO_ROOT>\\out\\build\\clean-measure-yyjson",
       "scope": "main_build",
       "name": "clean-measure-yyjson",
       "sizeBytes": 358643,
@@ -2810,7 +2810,7 @@
       "plannedArchiveRoot": null
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out\\build\\host-dec018-audit",
+      "path": "<REPO_ROOT>\\out\\build\\host-dec018-audit",
       "scope": "main_build",
       "name": "host-dec018-audit",
       "sizeBytes": 4110036,
@@ -2830,7 +2830,7 @@
       "plannedArchiveRoot": null
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out\\build\\lab-ascii-stream-observer-default-off",
+      "path": "<REPO_ROOT>\\out\\build\\lab-ascii-stream-observer-default-off",
       "scope": "main_build",
       "name": "lab-ascii-stream-observer-default-off",
       "sizeBytes": 485550,
@@ -2850,7 +2850,7 @@
       "plannedArchiveRoot": null
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out\\build\\lab-ascii-stream-observer-gate-adapter-without-observer",
+      "path": "<REPO_ROOT>\\out\\build\\lab-ascii-stream-observer-gate-adapter-without-observer",
       "scope": "main_build",
       "name": "lab-ascii-stream-observer-gate-adapter-without-observer",
       "sizeBytes": 363833,
@@ -2870,7 +2870,7 @@
       "plannedArchiveRoot": null
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out\\build\\lab-ascii-stream-observer-gate-cli",
+      "path": "<REPO_ROOT>\\out\\build\\lab-ascii-stream-observer-gate-cli",
       "scope": "main_build",
       "name": "lab-ascii-stream-observer-gate-cli",
       "sizeBytes": 362155,
@@ -2890,7 +2890,7 @@
       "plannedArchiveRoot": null
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out\\build\\lab-ascii-stream-observer-gate-missing",
+      "path": "<REPO_ROOT>\\out\\build\\lab-ascii-stream-observer-gate-missing",
       "scope": "main_build",
       "name": "lab-ascii-stream-observer-gate-missing",
       "sizeBytes": 362476,
@@ -2910,7 +2910,7 @@
       "plannedArchiveRoot": null
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out\\build\\lab-ascii-stream-observer-no-tests",
+      "path": "<REPO_ROOT>\\out\\build\\lab-ascii-stream-observer-no-tests",
       "scope": "main_build",
       "name": "lab-ascii-stream-observer-no-tests",
       "sizeBytes": 50853408,
@@ -2930,7 +2930,7 @@
       "plannedArchiveRoot": null
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out\\build\\lab-host-observer-missing-dependencies",
+      "path": "<REPO_ROOT>\\out\\build\\lab-host-observer-missing-dependencies",
       "scope": "main_build",
       "name": "lab-host-observer-missing-dependencies",
       "sizeBytes": 367126,
@@ -2950,7 +2950,7 @@
       "plannedArchiveRoot": null
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out\\build\\lab-stream-gate-cli",
+      "path": "<REPO_ROOT>\\out\\build\\lab-stream-gate-cli",
       "scope": "main_build",
       "name": "lab-stream-gate-cli",
       "sizeBytes": 364631,
@@ -2970,7 +2970,7 @@
       "plannedArchiveRoot": null
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out\\build\\lab-stream-gate-missing",
+      "path": "<REPO_ROOT>\\out\\build\\lab-stream-gate-missing",
       "scope": "main_build",
       "name": "lab-stream-gate-missing",
       "sizeBytes": 365670,
@@ -2990,7 +2990,7 @@
       "plannedArchiveRoot": null
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out\\build\\scaffold-default",
+      "path": "<REPO_ROOT>\\out\\build\\scaffold-default",
       "scope": "main_build",
       "name": "scaffold-default",
       "sizeBytes": 662616,
@@ -3010,7 +3010,7 @@
       "plannedArchiveRoot": null
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out\\build\\v06-a",
+      "path": "<REPO_ROOT>\\out\\build\\v06-a",
       "scope": "main_build",
       "name": "v06-a",
       "sizeBytes": 25893683,
@@ -3027,10 +3027,10 @@
       "referencedLogPathCount": 7,
       "mustPreserveBeforeAction": "all referenced logs listed in generated-artifact-evidence-index-20260914.json",
       "pendingConfirmation": true,
-      "plannedArchiveRoot": "F:\\PersonalWorkspace\\协议解析拼接工具\\工程整理归档\\2026-09-14"
+      "plannedArchiveRoot": "<PROJECT_WORKSPACE_ROOT>\\工程整理归档\\2026-09-14"
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out\\build\\v06-default",
+      "path": "<REPO_ROOT>\\out\\build\\v06-default",
       "scope": "main_build",
       "name": "v06-default",
       "sizeBytes": 1085348,
@@ -3050,7 +3050,7 @@
       "plannedArchiveRoot": null
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out\\build\\v06-gates",
+      "path": "<REPO_ROOT>\\out\\build\\v06-gates",
       "scope": "main_build",
       "name": "v06-gates",
       "sizeBytes": 16968,
@@ -3067,10 +3067,10 @@
       "referencedLogPathCount": 6,
       "mustPreserveBeforeAction": "all referenced logs listed in generated-artifact-evidence-index-20260914.json",
       "pendingConfirmation": true,
-      "plannedArchiveRoot": "F:\\PersonalWorkspace\\协议解析拼接工具\\工程整理归档\\2026-09-14"
+      "plannedArchiveRoot": "<PROJECT_WORKSPACE_ROOT>\\工程整理归档\\2026-09-14"
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out\\build\\v06-schema-lab-reject",
+      "path": "<REPO_ROOT>\\out\\build\\v06-schema-lab-reject",
       "scope": "main_build",
       "name": "v06-schema-lab-reject",
       "sizeBytes": 363283,
@@ -3090,7 +3090,7 @@
       "plannedArchiveRoot": null
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out\\build\\v06-testing-off",
+      "path": "<REPO_ROOT>\\out\\build\\v06-testing-off",
       "scope": "main_build",
       "name": "v06-testing-off",
       "sizeBytes": 362940,
@@ -3110,7 +3110,7 @@
       "plannedArchiveRoot": null
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out\\build\\v08-business",
+      "path": "<REPO_ROOT>\\out\\build\\v08-business",
       "scope": "main_build",
       "name": "v08-business",
       "sizeBytes": 455447763,
@@ -3130,7 +3130,7 @@
       "plannedArchiveRoot": null
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out\\build\\v08-dev",
+      "path": "<REPO_ROOT>\\out\\build\\v08-dev",
       "scope": "main_build",
       "name": "v08-dev",
       "sizeBytes": 384212699,
@@ -3150,7 +3150,7 @@
       "plannedArchiveRoot": null
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out\\build\\v08-invalid-compiler",
+      "path": "<REPO_ROOT>\\out\\build\\v08-invalid-compiler",
       "scope": "main_build",
       "name": "v08-invalid-compiler",
       "sizeBytes": 363473,
@@ -3170,7 +3170,7 @@
       "plannedArchiveRoot": null
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out\\build\\windows-msvc-ascii-stream-lab-gate-recovery",
+      "path": "<REPO_ROOT>\\out\\build\\windows-msvc-ascii-stream-lab-gate-recovery",
       "scope": "main_build",
       "name": "windows-msvc-ascii-stream-lab-gate-recovery",
       "sizeBytes": 367230,
@@ -3190,7 +3190,7 @@
       "plannedArchiveRoot": null
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out\\build\\windows-msvc-pae-lab",
+      "path": "<REPO_ROOT>\\out\\build\\windows-msvc-pae-lab",
       "scope": "main_build",
       "name": "windows-msvc-pae-lab",
       "sizeBytes": 1242430147,
@@ -3210,7 +3210,7 @@
       "plannedArchiveRoot": null
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out\\build\\windows-msvc-ascii-stream-missing-deps",
+      "path": "<REPO_ROOT>\\out\\build\\windows-msvc-ascii-stream-missing-deps",
       "scope": "main_build",
       "name": "windows-msvc-ascii-stream-missing-deps",
       "sizeBytes": 1096273,
@@ -3230,7 +3230,7 @@
       "plannedArchiveRoot": null
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out\\build\\windows-msvc-ascii-stream-missing-deps-recovery",
+      "path": "<REPO_ROOT>\\out\\build\\windows-msvc-ascii-stream-missing-deps-recovery",
       "scope": "main_build",
       "name": "windows-msvc-ascii-stream-missing-deps-recovery",
       "sizeBytes": 367575,
@@ -3250,7 +3250,7 @@
       "plannedArchiveRoot": null
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out\\build\\windows-msvc-host-add-subdirectory-dec033a",
+      "path": "<REPO_ROOT>\\out\\build\\windows-msvc-host-add-subdirectory-dec033a",
       "scope": "main_build",
       "name": "windows-msvc-host-add-subdirectory-dec033a",
       "sizeBytes": 4119240,
@@ -3270,7 +3270,7 @@
       "plannedArchiveRoot": null
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out\\build\\windows-msvc-host-endpoint",
+      "path": "<REPO_ROOT>\\out\\build\\windows-msvc-host-endpoint",
       "scope": "main_build",
       "name": "windows-msvc-host-endpoint",
       "sizeBytes": 544328289,
@@ -3290,7 +3290,7 @@
       "plannedArchiveRoot": null
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out\\build\\windows-msvc-lab-ascii-adapter",
+      "path": "<REPO_ROOT>\\out\\build\\windows-msvc-lab-ascii-adapter",
       "scope": "main_build",
       "name": "windows-msvc-lab-ascii-adapter",
       "sizeBytes": 77562607,
@@ -3310,7 +3310,7 @@
       "plannedArchiveRoot": null
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out\\build\\windows-msvc-lab-ascii-adapter-no-v10",
+      "path": "<REPO_ROOT>\\out\\build\\windows-msvc-lab-ascii-adapter-no-v10",
       "scope": "main_build",
       "name": "windows-msvc-lab-ascii-adapter-no-v10",
       "sizeBytes": 366474,
@@ -3330,7 +3330,7 @@
       "plannedArchiveRoot": null
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out\\build\\windows-msvc-lab-ascii-adapter-with-cli",
+      "path": "<REPO_ROOT>\\out\\build\\windows-msvc-lab-ascii-adapter-with-cli",
       "scope": "main_build",
       "name": "windows-msvc-lab-ascii-adapter-with-cli",
       "sizeBytes": 366638,
@@ -3350,7 +3350,7 @@
       "plannedArchiveRoot": null
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out\\build\\windows-msvc-lab-ascii-cli-forbidden",
+      "path": "<REPO_ROOT>\\out\\build\\windows-msvc-lab-ascii-cli-forbidden",
       "scope": "main_build",
       "name": "windows-msvc-lab-ascii-cli-forbidden",
       "sizeBytes": 366378,
@@ -3370,7 +3370,7 @@
       "plannedArchiveRoot": null
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out\\build\\windows-msvc-lab-ascii-default-off",
+      "path": "<REPO_ROOT>\\out\\build\\windows-msvc-lab-ascii-default-off",
       "scope": "main_build",
       "name": "windows-msvc-lab-ascii-default-off",
       "sizeBytes": 1094764,
@@ -3390,7 +3390,7 @@
       "plannedArchiveRoot": null
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out\\build\\windows-msvc-lab-ascii-stream-ui",
+      "path": "<REPO_ROOT>\\out\\build\\windows-msvc-lab-ascii-stream-ui",
       "scope": "main_build",
       "name": "windows-msvc-lab-ascii-stream-ui",
       "sizeBytes": 882713122,
@@ -3410,7 +3410,7 @@
       "plannedArchiveRoot": null
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out\\build\\windows-msvc-lab-ascii-ui",
+      "path": "<REPO_ROOT>\\out\\build\\windows-msvc-lab-ascii-ui",
       "scope": "main_build",
       "name": "windows-msvc-lab-ascii-ui",
       "sizeBytes": 497381639,
@@ -3430,7 +3430,7 @@
       "plannedArchiveRoot": null
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out\\build\\windows-msvc-lab-ascii-ui-no-adapter",
+      "path": "<REPO_ROOT>\\out\\build\\windows-msvc-lab-ascii-ui-no-adapter",
       "scope": "main_build",
       "name": "windows-msvc-lab-ascii-ui-no-adapter",
       "sizeBytes": 363090,
@@ -3450,7 +3450,7 @@
       "plannedArchiveRoot": null
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out\\build\\windows-msvc-host-add-subdirectory-dec032",
+      "path": "<REPO_ROOT>\\out\\build\\windows-msvc-host-add-subdirectory-dec032",
       "scope": "main_build",
       "name": "windows-msvc-host-add-subdirectory-dec032",
       "sizeBytes": 3592300,
@@ -3470,7 +3470,7 @@
       "plannedArchiveRoot": null
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out\\build\\windows-msvc-lab-host-observer",
+      "path": "<REPO_ROOT>\\out\\build\\windows-msvc-lab-host-observer",
       "scope": "main_build",
       "name": "windows-msvc-lab-host-observer",
       "sizeBytes": 1068955258,
@@ -3490,7 +3490,7 @@
       "plannedArchiveRoot": null
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out\\build\\windows-msvc-lab-no-tests-dec042a",
+      "path": "<REPO_ROOT>\\out\\build\\windows-msvc-lab-no-tests-dec042a",
       "scope": "main_build",
       "name": "windows-msvc-lab-no-tests-dec042a",
       "sizeBytes": 103693595,
@@ -3510,7 +3510,7 @@
       "plannedArchiveRoot": null
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out\\build\\windows-msvc-lab-ui-v10-off",
+      "path": "<REPO_ROOT>\\out\\build\\windows-msvc-lab-ui-v10-off",
       "scope": "main_build",
       "name": "windows-msvc-lab-ui-v10-off",
       "sizeBytes": 146245367,
@@ -3530,7 +3530,7 @@
       "plannedArchiveRoot": null
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out\\build\\windows-msvc-lab-vendored-qt",
+      "path": "<REPO_ROOT>\\out\\build\\windows-msvc-lab-vendored-qt",
       "scope": "main_build",
       "name": "windows-msvc-lab-vendored-qt",
       "sizeBytes": 338551046,
@@ -3550,7 +3550,7 @@
       "plannedArchiveRoot": null
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out\\build\\windows-msvc-length-business",
+      "path": "<REPO_ROOT>\\out\\build\\windows-msvc-length-business",
       "scope": "main_build",
       "name": "windows-msvc-length-business",
       "sizeBytes": 66215863,
@@ -3570,7 +3570,7 @@
       "plannedArchiveRoot": null
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out\\build\\windows-msvc-length-dev",
+      "path": "<REPO_ROOT>\\out\\build\\windows-msvc-length-dev",
       "scope": "main_build",
       "name": "windows-msvc-length-dev",
       "sizeBytes": 359027678,
@@ -3590,7 +3590,7 @@
       "plannedArchiveRoot": null
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out\\build\\windows-msvc-length-lab",
+      "path": "<REPO_ROOT>\\out\\build\\windows-msvc-length-lab",
       "scope": "main_build",
       "name": "windows-msvc-length-lab",
       "sizeBytes": 648851171,
@@ -3610,7 +3610,7 @@
       "plannedArchiveRoot": null
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out\\build\\windows-msvc-length-lab-no-tests",
+      "path": "<REPO_ROOT>\\out\\build\\windows-msvc-length-lab-no-tests",
       "scope": "main_build",
       "name": "windows-msvc-length-lab-no-tests",
       "sizeBytes": 140999490,
@@ -3630,7 +3630,7 @@
       "plannedArchiveRoot": null
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out\\build\\windows-msvc-length-product-only",
+      "path": "<REPO_ROOT>\\out\\build\\windows-msvc-length-product-only",
       "scope": "main_build",
       "name": "windows-msvc-length-product-only",
       "sizeBytes": 35970139,
@@ -3650,7 +3650,7 @@
       "plannedArchiveRoot": null
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out\\build\\windows-msvc-loader-slice",
+      "path": "<REPO_ROOT>\\out\\build\\windows-msvc-loader-slice",
       "scope": "main_build",
       "name": "windows-msvc-loader-slice",
       "sizeBytes": 58409179,
@@ -3670,7 +3670,7 @@
       "plannedArchiveRoot": null
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out\\build\\windows-msvc-loader-slice-dev",
+      "path": "<REPO_ROOT>\\out\\build\\windows-msvc-loader-slice-dev",
       "scope": "main_build",
       "name": "windows-msvc-loader-slice-dev",
       "sizeBytes": 14300032,
@@ -3690,7 +3690,7 @@
       "plannedArchiveRoot": null
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out\\build\\windows-msvc-lab-no-tests-dec041",
+      "path": "<REPO_ROOT>\\out\\build\\windows-msvc-lab-no-tests-dec041",
       "scope": "main_build",
       "name": "windows-msvc-lab-no-tests-dec041",
       "sizeBytes": 99333792,
@@ -3710,7 +3710,7 @@
       "plannedArchiveRoot": null
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out\\build\\windows-msvc-embedded-boundary",
+      "path": "<REPO_ROOT>\\out\\build\\windows-msvc-embedded-boundary",
       "scope": "main_build",
       "name": "windows-msvc-embedded-boundary",
       "sizeBytes": 3801856,
@@ -3730,7 +3730,7 @@
       "plannedArchiveRoot": null
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out\\build\\windows-msvc-decimal-arithmetic",
+      "path": "<REPO_ROOT>\\out\\build\\windows-msvc-decimal-arithmetic",
       "scope": "main_build",
       "name": "windows-msvc-decimal-arithmetic",
       "sizeBytes": 2827777,
@@ -3750,7 +3750,7 @@
       "plannedArchiveRoot": null
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out\\build\\windows-msvc-dec042b-gate-lab",
+      "path": "<REPO_ROOT>\\out\\build\\windows-msvc-dec042b-gate-lab",
       "scope": "main_build",
       "name": "windows-msvc-dec042b-gate-lab",
       "sizeBytes": 364053,
@@ -3770,7 +3770,7 @@
       "plannedArchiveRoot": null
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out\\build\\windows-msvc-ascii-stream-product-only",
+      "path": "<REPO_ROOT>\\out\\build\\windows-msvc-ascii-stream-product-only",
       "scope": "main_build",
       "name": "windows-msvc-ascii-stream-product-only",
       "sizeBytes": 1140686,
@@ -3790,7 +3790,7 @@
       "plannedArchiveRoot": null
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out\\build\\windows-msvc-ascii-stream-product-only-final",
+      "path": "<REPO_ROOT>\\out\\build\\windows-msvc-ascii-stream-product-only-final",
       "scope": "main_build",
       "name": "windows-msvc-ascii-stream-product-only-final",
       "sizeBytes": 13208438,
@@ -3810,7 +3810,7 @@
       "plannedArchiveRoot": null
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out\\build\\windows-msvc-ascii-v10-lab-forbidden",
+      "path": "<REPO_ROOT>\\out\\build\\windows-msvc-ascii-v10-lab-forbidden",
       "scope": "main_build",
       "name": "windows-msvc-ascii-v10-lab-forbidden",
       "sizeBytes": 366440,
@@ -3830,7 +3830,7 @@
       "plannedArchiveRoot": null
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out\\build\\windows-msvc-binary-materializer-noqt",
+      "path": "<REPO_ROOT>\\out\\build\\windows-msvc-binary-materializer-noqt",
       "scope": "main_build",
       "name": "windows-msvc-binary-materializer-noqt",
       "sizeBytes": 320204346,
@@ -3850,7 +3850,7 @@
       "plannedArchiveRoot": null
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out\\build\\windows-msvc-binary-materializer-production",
+      "path": "<REPO_ROOT>\\out\\build\\windows-msvc-binary-materializer-production",
       "scope": "main_build",
       "name": "windows-msvc-binary-materializer-production",
       "sizeBytes": 17294036,
@@ -3870,7 +3870,7 @@
       "plannedArchiveRoot": null
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out\\build\\windows-msvc-binary-ui-stage1",
+      "path": "<REPO_ROOT>\\out\\build\\windows-msvc-binary-ui-stage1",
       "scope": "main_build",
       "name": "windows-msvc-binary-ui-stage1",
       "sizeBytes": 1404136323,
@@ -3890,7 +3890,7 @@
       "plannedArchiveRoot": null
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out\\build\\windows-msvc-codec-compile-check",
+      "path": "<REPO_ROOT>\\out\\build\\windows-msvc-codec-compile-check",
       "scope": "main_build",
       "name": "windows-msvc-codec-compile-check",
       "sizeBytes": 843454,
@@ -3910,7 +3910,7 @@
       "plannedArchiveRoot": null
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out\\build\\windows-msvc-codec-product-only",
+      "path": "<REPO_ROOT>\\out\\build\\windows-msvc-codec-product-only",
       "scope": "main_build",
       "name": "windows-msvc-codec-product-only",
       "sizeBytes": 3251572,
@@ -3930,7 +3930,7 @@
       "plannedArchiveRoot": null
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out\\build\\windows-msvc-codec-product-only-dec018-audit",
+      "path": "<REPO_ROOT>\\out\\build\\windows-msvc-codec-product-only-dec018-audit",
       "scope": "main_build",
       "name": "windows-msvc-codec-product-only-dec018-audit",
       "sizeBytes": 3611206,
@@ -3950,7 +3950,7 @@
       "plannedArchiveRoot": null
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out\\build\\windows-msvc-codec-product-only-dec032",
+      "path": "<REPO_ROOT>\\out\\build\\windows-msvc-codec-product-only-dec032",
       "scope": "main_build",
       "name": "windows-msvc-codec-product-only-dec032",
       "sizeBytes": 3302690,
@@ -3970,7 +3970,7 @@
       "plannedArchiveRoot": null
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out\\build\\windows-msvc-codec-product-only-dec033a",
+      "path": "<REPO_ROOT>\\out\\build\\windows-msvc-codec-product-only-dec033a",
       "scope": "main_build",
       "name": "windows-msvc-codec-product-only-dec033a",
       "sizeBytes": 3606461,
@@ -3990,7 +3990,7 @@
       "plannedArchiveRoot": null
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out\\build\\windows-msvc-codec-product-only-dec040",
+      "path": "<REPO_ROOT>\\out\\build\\windows-msvc-codec-product-only-dec040",
       "scope": "main_build",
       "name": "windows-msvc-codec-product-only-dec040",
       "sizeBytes": 12700547,
@@ -4010,7 +4010,7 @@
       "plannedArchiveRoot": null
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out\\build\\windows-msvc-codec-slice",
+      "path": "<REPO_ROOT>\\out\\build\\windows-msvc-codec-slice",
       "scope": "main_build",
       "name": "windows-msvc-codec-slice",
       "sizeBytes": 158683662,
@@ -4030,7 +4030,7 @@
       "plannedArchiveRoot": null
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out\\build\\windows-msvc-crc-gate-no-compiler",
+      "path": "<REPO_ROOT>\\out\\build\\windows-msvc-crc-gate-no-compiler",
       "scope": "main_build",
       "name": "windows-msvc-crc-gate-no-compiler",
       "sizeBytes": 364708,
@@ -4050,7 +4050,7 @@
       "plannedArchiveRoot": null
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out\\build\\windows-msvc-crc-gate-no-lab-flag",
+      "path": "<REPO_ROOT>\\out\\build\\windows-msvc-crc-gate-no-lab-flag",
       "scope": "main_build",
       "name": "windows-msvc-crc-gate-no-lab-flag",
       "sizeBytes": 364708,
@@ -4070,7 +4070,7 @@
       "plannedArchiveRoot": null
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out\\build\\windows-msvc-crc-gate-no-v05",
+      "path": "<REPO_ROOT>\\out\\build\\windows-msvc-crc-gate-no-v05",
       "scope": "main_build",
       "name": "windows-msvc-crc-gate-no-v05",
       "sizeBytes": 364283,
@@ -4090,7 +4090,7 @@
       "plannedArchiveRoot": null
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out\\build\\windows-msvc-crc-lab-no-tests",
+      "path": "<REPO_ROOT>\\out\\build\\windows-msvc-crc-lab-no-tests",
       "scope": "main_build",
       "name": "windows-msvc-crc-lab-no-tests",
       "sizeBytes": 143288646,
@@ -4110,7 +4110,7 @@
       "plannedArchiveRoot": null
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out\\build\\windows-msvc-crc-product-only",
+      "path": "<REPO_ROOT>\\out\\build\\windows-msvc-crc-product-only",
       "scope": "main_build",
       "name": "windows-msvc-crc-product-only",
       "sizeBytes": 13208022,
@@ -4130,7 +4130,7 @@
       "plannedArchiveRoot": null
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out\\build\\windows-msvc-dec034",
+      "path": "<REPO_ROOT>\\out\\build\\windows-msvc-dec034",
       "scope": "main_build",
       "name": "windows-msvc-dec034",
       "sizeBytes": 29376622,
@@ -4150,7 +4150,7 @@
       "plannedArchiveRoot": null
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out\\build\\windows-msvc-dec042b-compiler",
+      "path": "<REPO_ROOT>\\out\\build\\windows-msvc-dec042b-compiler",
       "scope": "main_build",
       "name": "windows-msvc-dec042b-compiler",
       "sizeBytes": 74456857,
@@ -4170,7 +4170,7 @@
       "plannedArchiveRoot": null
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out\\build\\windows-msvc-dec042b-core-resume",
+      "path": "<REPO_ROOT>\\out\\build\\windows-msvc-dec042b-core-resume",
       "scope": "main_build",
       "name": "windows-msvc-dec042b-core-resume",
       "sizeBytes": 298677098,
@@ -4190,7 +4190,7 @@
       "plannedArchiveRoot": null
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out\\build\\windows-msvc-dec042b-default",
+      "path": "<REPO_ROOT>\\out\\build\\windows-msvc-dec042b-default",
       "scope": "main_build",
       "name": "windows-msvc-dec042b-default",
       "sizeBytes": 70803858,
@@ -4210,7 +4210,7 @@
       "plannedArchiveRoot": null
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out\\build\\windows-msvc-dec042b-gate-core",
+      "path": "<REPO_ROOT>\\out\\build\\windows-msvc-dec042b-gate-core",
       "scope": "main_build",
       "name": "windows-msvc-dec042b-gate-core",
       "sizeBytes": 364145,
@@ -4230,7 +4230,7 @@
       "plannedArchiveRoot": null
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\protocol_adapter_engine\\out\\build\\windows-msvc-ascii-stream-missing-deps-final",
+      "path": "<REPO_ROOT>\\out\\build\\windows-msvc-ascii-stream-missing-deps-final",
       "scope": "main_build",
       "name": "windows-msvc-ascii-stream-missing-deps-final",
       "sizeBytes": 367315,
@@ -4250,7 +4250,7 @@
       "plannedArchiveRoot": null
     },
     {
-      "path": "F:\\PersonalWorkspace\\协议解析拼接工具\\Lab验证\\qt513-v142-pae-integration-20260909-195332-acecb93c",
+      "path": "<PROJECT_WORKSPACE_ROOT>\\Lab验证\\qt513-v142-pae-integration-20260909-195332-acecb93c",
       "scope": "lab_validation",
       "name": "qt513-v142-pae-integration-20260909-195332-acecb93c",
       "sizeBytes": 127973434,
@@ -4267,7 +4267,22 @@
       "referencedLogPathCount": 0,
       "mustPreserveBeforeAction": "REPORT.md, logs, hashes and historical tar/snapshot provenance",
       "pendingConfirmation": true,
-      "plannedArchiveRoot": "F:\\PersonalWorkspace\\协议解析拼接工具\\工程整理归档\\2026-09-14"
+      "plannedArchiveRoot": "<PROJECT_WORKSPACE_ROOT>\\工程整理归档\\2026-09-14"
     }
-  ]
+  ],
+  "portable_derivation": {
+    "kind": "redacted-derived-copy",
+    "derived_at": "2026-09-22",
+    "original_evidence": "deliverables/evidence/portable-paths/documents/originals/docs/archive/generated-artifact-cleanup-manifest-20260914.json",
+    "original_sha256": "60900B158469A874654B552BAF2024C498B2E25D03DDACC63945D9335D945CE3",
+    "path_aliases": {
+      "REPO_ROOT": "repository root",
+      "PROJECT_WORKSPACE_ROOT": "outer project workspace root",
+      "TRIAL_ROOT": "historical local trial root",
+      "TOOLCHAIN_ROOT": "local toolchain root",
+      "LOCAL_WORK_ROOT": "other local work or evidence root",
+      "LOCAL_SYSTEM_ROOT": "local system path root"
+    },
+    "validation_boundary": "Historical counts and hash values are preserved from the original evidence. Paths are redacted; this derived copy does not revalidate current filesystem state."
+  }
 }

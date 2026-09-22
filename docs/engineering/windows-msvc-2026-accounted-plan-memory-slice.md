@@ -1,5 +1,7 @@
 # PAE-DEC-033A Accounted Plan Memory Windows验证报告
 
+> 路径可移植性说明（2026-09-22）：本文中的尖括号路径是语义别名。替换前逐字版本及其 SHA-256 保存在 Git 忽略的原始证据目录；别名用于描述历史或本地位置，不是可直接复制执行的当前命令。当前命令模板以 `docs/guides/06-构建测试与问题定位.md` 及对应构建指南为准。
+
 ## 1. 结论
 
 截至2026-09-02，`PAE-DEC-033A`不可变Plan长期内存计量与单Plan准入内部切片已在Windows x64、MSVC Release/Debug下实现并通过当前阶段门禁，状态为`PARTIALLY VERIFIED（部分已验证）`。
@@ -34,7 +36,7 @@ Config Compiler（配置编译器）Runner由`24/24`增至`28/28`，新增：
 
 实际工具：
 
-- CMake/CTest：`D:\develop_env\cmake-4.4.3\bin`，版本4.4.3；
+- CMake/CTest：`<TOOLCHAIN_ROOT>\cmake-4.4.3\bin`，版本4.4.3；
 - Generator（生成器）：`Visual Studio 18 2026`，x64；
 - MSVC：19.51.36256.0；
 - Windows SDK：10.0.22621.0。

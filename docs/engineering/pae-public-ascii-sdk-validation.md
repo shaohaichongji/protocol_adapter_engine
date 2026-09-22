@@ -1,5 +1,7 @@
 # ASCII 公开事实新 SDK 独立消费验证
 
+> 路径可移植性说明（2026-09-22）：本文中的尖括号路径是语义别名。替换前逐字版本及其 SHA-256 保存在 Git 忽略的原始证据目录；别名用于描述历史或本地位置，不是可直接复制执行的当前命令。当前命令模板以 `docs/guides/06-构建测试与问题定位.md` 及对应构建指南为准。
+
 总控状态更新（2026-09-18）：本片已完成限定 consumer/证据/包来源复核及候选与消费目录 DLL 配对哈希复算；总控未重复六组运行或全部 manifest 复算。已纳入用户授权的 SDK/A1/A2 本地提交检查点范围，未授权 Push/正式发布。下方“待总控复核/未 Commit”为执行任务交付时点。
 
 日期：2026-09-18。状态：**已完成派发范围，待总控复核**。本记录是 Windows x64 本地候选的技术验证，不是正式发布、稳定 ABI、许可证授予或生产可用声明。未 Stage、Commit、Push，也未覆盖 Stage 3 `final6`、Stage 4 P `candidate2` 或 H2 部署。
@@ -8,10 +10,10 @@
 
 - 分支与基线：`main@481d51ae2d62e2e28754fd84e5df4bb64309a1e2`。开始时暂存区为空，工作树仅有总控维护的两份计划文档修改；本轮完整保留。
 - 工具链：Visual Studio 18 2026，x64，MSVC v142 `14.29.30133`；Debug `/MDd`，Release `/MD`。
-- 新候选根：`F:\PersonalWorkspace\协议解析拼接工具\protocol_adapter_engine\out\sdk-stage4-ascii\candidate1-20260918\`。
+- 新候选根：`<REPO_ROOT>\out\sdk-stage4-ascii\candidate1-20260918\`。
 - 五包：`pae-sdk-source`、`pae-sdk-static-debug`、`pae-sdk-static-release`、`pae-sdk-shared-debug`、`pae-sdk-shared-release`。
-- 仓库外消费根：`F:\PersonalWorkspace\pae-sdk-stage4-ascii-validation-candidate1-20260918\`。五包逐文件复制后复算 189 个文件，SHA-256 全部相同。六个 consumer 构建目录均位于该根，不把开发仓库作为源码或 package prefix。
-- 证据根：`F:\PersonalWorkspace\协议解析拼接工具\protocol_adapter_engine\out\stage4-ascii-sdk\`。
+- 仓库外消费根：`<LOCAL_WORK_ROOT>\pae-sdk-stage4-ascii-validation-candidate1-20260918\`。五包逐文件复制后复算 189 个文件，SHA-256 全部相同。六个 consumer 构建目录均位于该根，不把开发仓库作为源码或 package prefix。
+- 证据根：`<REPO_ROOT>\out\stage4-ascii-sdk\`。
 
 复用 `scripts/package_sdk_stage3.ps1`、`cmake/PaeSdkInstall.cmake` 和 `cmake/PAEConfig.cmake.in` 即可包含当前公开头、实现及 consumer，没有修改打包/安装代码。只对 `examples/public_api_sdk_consumer/main.cpp` 补充包外断言：Decode/Encode Action、literal/field Segment、Field 描述，成功 ASCII RX BYTES 的真实输入切片与匹配身份，以及 Host candidate observer 与业务结果的同源身份；既有 Binary physical、Codec、Framer、Host 和多 Message Encode 检查保留。
 
@@ -85,8 +87,8 @@ cmake --build <external-build> --config <matching-config> --target pae_sdk_stage
 
 `dumpbin /dependents` 显示 Shared consumer 直接依赖 `pae.dll`，Static consumer 不依赖 `pae.dll`；Debug 使用 Debug MSVC/UCRT，Release 使用 Release MSVC/UCRT。包内 CMake 的 post-build copy 将 DLL 放到实际运行 EXE 同目录：
 
-- Debug：`F:\PersonalWorkspace\pae-sdk-stage4-ascii-validation-candidate1-20260918\build-shared-debug\Debug\pae.dll`
-- Release：`F:\PersonalWorkspace\pae-sdk-stage4-ascii-validation-candidate1-20260918\build-shared-release\Release\pae.dll`
+- Debug：`<LOCAL_WORK_ROOT>\pae-sdk-stage4-ascii-validation-candidate1-20260918\build-shared-debug\Debug\pae.dll`
+- Release：`<LOCAL_WORK_ROOT>\pae-sdk-stage4-ascii-validation-candidate1-20260918\build-shared-release\Release\pae.dll`
 
 两份运行目录 DLL 分别与所选外部包 `bin\pae.dll` 的 SHA-256 完全相同。证据为 `dumpbin-exports-shared-*.log`、`dumpbin-dependents-shared-*.log`、`dumpbin-consumer-dependents-*.log` 和 `runtime-library-paths.log`。共享构建仍有 Stage 3 已记录的 C4251 实验 C++ ABI 警告；本轮没有引入新公开持有成员，也不把同工具链运行通过提升为稳定 ABI 承诺。
 

@@ -1,5 +1,7 @@
 # Lab ASCII 0.10 非 Qt public-only A1 验证记录
 
+> 路径可移植性说明（2026-09-22）：本文中的尖括号路径是语义别名。替换前逐字版本及其 SHA-256 保存在 Git 忽略的原始证据目录；别名用于描述历史或本地位置，不是可直接复制执行的当前命令。当前命令模板以 `docs/guides/06-构建测试与问题定位.md` 及对应构建指南为准。
+
 总控状态更新（2026-09-18）：A1 含预算一致性返修已限定收口，总控核对源码及 budget-fix 证据，未重复构建测试。已纳入用户授权的 SDK/A1/A2 本地提交检查点范围，未授权 Push/正式发布。下方“待总控复核/未 Commit”为执行任务交付时点。
 
 日期：2026-09-18。状态：**已完成派发范围，待总控复核**。本记录只覆盖完整记录 ASCII 0.10 的非 Qt adapter、自有 DTO 和 Windows x64 定向验证；不是 UI、显式 Host、0.11 stream、正式 SDK 发布或历史 Qt 访问违例修复结论。未 Stage、Commit、Push、删除或发布。
@@ -34,7 +36,7 @@
 
 工具链为 Visual Studio 18 2026、x64、MSVC v142 `14.29.30133`。独立构建目录：
 
-`F:\PersonalWorkspace\协议解析拼接工具\protocol_adapter_engine\out\build\windows-msvc-stage4-ascii-public-a1`
+`<REPO_ROOT>\out\build\windows-msvc-stage4-ascii-public-a1`
 
 配置使用：
 
@@ -61,7 +63,7 @@ Configure、D/R 定向构建、直接运行和 CTest 均退出 0；直接运行�
 
 外部消费根为：
 
-`F:\PersonalWorkspace\pae-lab-ascii-a1-static-consumer-20260918\`
+`<LOCAL_WORK_ROOT>\pae-lab-ascii-a1-static-consumer-20260918\`
 
 两个全新构建分别只设置对应安装包 `CMAKE_PREFIX_PATH`，通过 `find_package(PAE CONFIG REQUIRED)` / `PAE::pae` 编译同一 adapter 源码和最小 consumer：
 

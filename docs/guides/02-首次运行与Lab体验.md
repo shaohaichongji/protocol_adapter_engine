@@ -7,8 +7,8 @@
 ## 前置条件
 
 - Windows x64；
-- 本机仓库位于 `F:\PersonalWorkspace\协议解析拼接工具\protocol_adapter_engine`；
-- `F:\PersonalWorkspace\pae-trial-7b4205e-20260920\lab-compile-diagnostics\static-verified\deploy\release-product\Release` 已存在；仅 clone 仓库不会自动获得本地产物。
+- 已在仓库根目录打开 PowerShell；
+- 本机已归集 `deliverables/lab/fe1683c-plus-patches/static-release`；该目录是 Git 忽略的本地产物，仅 clone 仓库不会自动获得。
 
 ## 读完能做什么
 
@@ -19,9 +19,12 @@
 普通本地体验优先使用含结构化编译诊断的 installed-SDK static Release，包含 Binary G1/G2 及 ASCII/legacy 公开路径。SDK 身份为 clean 7b4205e；Lab 为 fe1683c 加诊断和打包修补，并非干净提交重建。旧入口保持不变，完整身份与证据见 [统一交付入口](../../deliverables/README.md)。
 
 ```powershell
-$LabRoot = 'F:\PersonalWorkspace\pae-trial-7b4205e-20260920\lab-compile-diagnostics\static-verified\deploy\release-product\Release'
+$RepoRoot = (Get-Location).Path
+$LabRoot = (Resolve-Path 'deliverables/lab/fe1683c-plus-patches/static-release').Path
 & "$LabRoot\pae_protocol_lab_ui.exe"
 ```
+
+若 `Resolve-Path` 失败，说明本机尚未归集该候选；clone 不包含 SDK/Lab 二进制。先按 [06 构建测试与问题定位](06-构建测试与问题定位.md) 选择 standalone Lab 路线，并从 [`tools/protocol_lab_ui/standalone/README.md`](../../tools/protocol_lab_ui/standalone/README.md) 生成完整部署，不要猜测旧 trial 路径。
 
 完整目录至少包含 EXE、`Qt5Core.dll`、`Qt5Gui.dll`、`Qt5Widgets.dll`、`platforms/qwindows.dll` 和 `configs/*.pae.json`。不要只复制裸 EXE。shared 对照目录还必须保留同批 `pae.dll`。
 
@@ -53,13 +56,13 @@ $LabRoot = 'F:\PersonalWorkspace\pae-trial-7b4205e-20260920\lab-compile-diagnost
 
 这些配置全部是从零构造的合成协议，不对应真实设备。`synthetic_ui_max.pae.json` 用于资源上界观察，不适合第一次阅读。
 
-Binary 分块流示例完整路径：`F:\PersonalWorkspace\pae-trial-7b4205e-20260920\lab-compile-diagnostics\static-verified\deploy\release-product\Release\configs\synthetic_stream_framing_slice.pae.json`。该文件已按限定修补补入部署，不需要回读开发仓库。
+Binary 分块流示例位于 `$LabRoot\configs\synthetic_stream_framing_slice.pae.json`。该文件已按限定修补补入部署，不需要回读开发仓库。
 
 ## 3. 一次有边界的 Lab 体验
 
 第一次建议只做下面这一条 Binary 完整记录，不需要立即执行全部验收清单：
 
-1. 点击“浏览”，选择完整路径 `F:\PersonalWorkspace\pae-trial-7b4205e-20260920\lab-compile-diagnostics\static-verified\deploy\release-product\Release\configs\synthetic_binary_ui_stage1.pae.json`；如尚未加载，点击“加载 / 重新加载”。
+1. 点击“浏览”，选择 `$LabRoot\configs\synthetic_binary_ui_stage1.pae.json`；如尚未加载，点击“加载 / 重新加载”。
 2. 在“绑定设置”中确认草稿为 `device / 解析 / ui_pipeline`，点击“应用绑定表”。返回“操作”，确认当前绑定，选择 `Flow 0`，当前动作为“解析”。
 3. 在“原始输入”中粘贴下面的 Hex，然后点击“解析完整记录”：
 
@@ -98,9 +101,12 @@ flowchart TD
 如果你准备写 C++，可先验证当前 Static Release 包的综合 consumer。必须在 Visual Studio Developer Shell 或已能调用相应 CMake/编译器的终端中执行，并使用新的包外构建目录：
 
 ```powershell
-Set-Location 'F:\PersonalWorkspace\协议解析拼接工具\protocol_adapter_engine'
-$PackageRoot = (Resolve-Path 'F:\PersonalWorkspace\pae-trial-7b4205e-20260920\sdk\pae-sdk-static-release').Path
-$BuildRoot = 'F:\PersonalWorkspace\pae-first-use-sdk-consumer'
+$RepoRoot = (Get-Location).Path
+$PackageRoot = (Resolve-Path 'deliverables/sdk/7b4205e/pae-sdk-static-release').Path
+$BuildRoot = Join-Path $RepoRoot 'out/build/first-use-sdk-consumer'
+if (Test-Path -LiteralPath $BuildRoot) {
+  throw "Choose a fresh build directory: $BuildRoot"
+}
 
 cmake -S "$PackageRoot\examples\sdk_consumer" -B $BuildRoot `
   -G "Visual Studio 18 2026" -A x64 -T "v142,version=14.29.30133" `

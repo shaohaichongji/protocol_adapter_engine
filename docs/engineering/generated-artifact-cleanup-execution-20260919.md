@@ -1,5 +1,7 @@
 # PAE 生成产物清理执行记录（2026-09-19）
 
+> 路径可移植性说明（2026-09-22）：本文中的尖括号路径是语义别名。替换前逐字版本及其 SHA-256 保存在 Git 忽略的原始证据目录；别名用于描述历史或本地位置，不是可直接复制执行的当前命令。当前命令模板以 `docs/guides/06-构建测试与问题定位.md` 及对应构建指南为准。
+
 ## 1. 结论
 
 依据 [生成产物清理盘点](../archive/engineering-20260921/generated-artifact-cleanup-inventory-20260919.md) 第 5、7 节的固定候选清单，已完成“dry-run → 证据归集与逐文件校验 → 链接对象先移除 → 精确根删除 → 保护项复核”。
@@ -34,7 +36,7 @@
 执行前门禁实际通过：
 
 1. 分支/基线为 `main@0b89beded03b39d8ffe019bfec659b5a5885a8f1`，暂存区为空。
-2. 99 个绝对路径全部存在，均严格位于各自 `out`、当前 clean Lab 根或 `F:\PersonalWorkspace` scope 内；没有重复、父子候选或与保护路径重叠。
+2. 99 个绝对路径全部存在，均严格位于各自 `out`、当前 clean Lab 根或 `<LOCAL_WORK_ROOT>` scope 内；没有重复、父子候选或与保护路径重叠。
 3. 候选根及其祖先没有意外 reparse point；`out` 的 27 个已知 SymbolicLink 与盘点完全一致。
 4. `pae-clean-checkpoint-98df5e0-source` 仍为干净 detached `98df5e0d844413fb6ad16a75dfceedcf17f2f1d6`，仅一个 worktree，且该提交是当前 HEAD 的祖先，没有独有提交。
 5. 未发现 `pae_protocol_lab_ui`、CMake、CTest、MSBuild 或 Ninja 进程；没有终止用户进程。
@@ -92,7 +94,7 @@
 - 当前 clean static/shared Lab 的完整 `deploy`、`logs`、`INPUT_PROVENANCE.json`、`INPUT_SHA256.json`；
 - 仓库 `src`、`tests`、`third_party`；
 - `out\downloads`、`out\sources`、`out\manual-lab`、`out\review`、`out\validation`、两份 `agent-c3-acceptance-*` 和 `out` 根散文件；
-- 本机 Qt `D:\develop_env\Qt\Qt5.11.3\5.11.3`。
+- 本机 Qt `<TOOLCHAIN_ROOT>\Qt\Qt5.11.3\5.11.3`。
 
 保护快照共有 6,963 个普通文件；删除前后相对同一绝对路径的文件集合、长度、SHA-256 全部一致。保护快照本身没有 reparse point。
 

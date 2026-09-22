@@ -1,5 +1,7 @@
 # Lab 统一试用交付验证记录（7b4205e）
 
+> 路径可移植性说明（2026-09-22）：本文中的尖括号路径是语义别名。替换前逐字版本及其 SHA-256 保存在 Git 忽略的原始证据目录；别名用于描述历史或本地位置，不是可直接复制执行的当前命令。当前命令模板以 `docs/guides/06-构建测试与问题定位.md` 及对应构建指南为准。
+
 ## 当前结论（2026-09-20，提交候选整理）
 
 本报告按实施顺序保留失败、补充授权和续验记录；第1～8节描述各次执行当时的状态，不代表当前仍阻塞。最新证据与边界见第9节：static/shared 的 Debug 各33/33、Release各32/32测试通过，四组Testing-off新构建及模块来源验证完成。总控已核对四组CTest成功汇总，并现场复算18个模块的输入/部署/加载文件哈希一致，未重跑构建测试或逐份复核全部负例日志。
@@ -14,10 +16,10 @@
 
 ## 2. 基线与边界
 
-- 仓库：`F:\PersonalWorkspace\协议解析拼接工具\protocol_adapter_engine`
+- 仓库：`<REPO_ROOT>`
 - 分支与 HEAD：`main@7b4205ea899cf16b9c73ba6ebc4c64382b71dc63`
-- 固定 SDK 输入：`F:\PersonalWorkspace\pae-trial-7b4205e-20260920\sdk`
-- Lab 隔离根：`F:\PersonalWorkspace\pae-trial-7b4205e-20260920\lab`
+- 固定 SDK 输入：`<TRIAL_ROOT>\sdk`
+- Lab 隔离根：`<TRIAL_ROOT>\lab`
 - 五类 SDK 包的 `PROVENANCE.json` 均记录 `source_head=7b4205e...`、`source_worktree_dirty=false`；本轮只消费，不重打包。
 - 保留总控计划与 PAE 任务报告等既有改动；无 Stage、Commit、Push、发布、删除或旧部署替换。
 
@@ -48,8 +50,8 @@ static/shared 快照均已生成，三项输入均存在。
 
 执行两次 `PrepareStandaloneInputs.ps1` 均成功：
 
-- `F:\PersonalWorkspace\pae-trial-7b4205e-20260920\lab\evidence\prepare-static.log`
-- `F:\PersonalWorkspace\pae-trial-7b4205e-20260920\lab\evidence\prepare-shared.log`
+- `<TRIAL_ROOT>\lab\evidence\prepare-static.log`
+- `<TRIAL_ROOT>\lab\evidence\prepare-shared.log`
 
 两份快照分别与当前获批白名单比较：
 
@@ -58,10 +60,10 @@ static/shared 快照均已生成，三项输入均存在。
 
 证据：
 
-- `F:\PersonalWorkspace\pae-trial-7b4205e-20260920\lab\evidence\static-whitelist-comparison.json`
-- `F:\PersonalWorkspace\pae-trial-7b4205e-20260920\lab\evidence\shared-whitelist-comparison.json`
-- `F:\PersonalWorkspace\pae-trial-7b4205e-20260920\lab\static\INPUT_PROVENANCE.json`
-- `F:\PersonalWorkspace\pae-trial-7b4205e-20260920\lab\shared\INPUT_PROVENANCE.json`
+- `<TRIAL_ROOT>\lab\evidence\static-whitelist-comparison.json`
+- `<TRIAL_ROOT>\lab\evidence\shared-whitelist-comparison.json`
+- `<TRIAL_ROOT>\lab\static\INPUT_PROVENANCE.json`
+- `<TRIAL_ROOT>\lab\shared\INPUT_PROVENANCE.json`
 
 ## 5. static Debug Testing-on 结果
 
@@ -77,13 +79,13 @@ static/shared 快照均已生成，三项输入均存在。
 
 配置日志：
 
-- `F:\PersonalWorkspace\pae-trial-7b4205e-20260920\lab\static\logs\debug-testing-on-configure.log`
+- `<TRIAL_ROOT>\lab\static\logs\debug-testing-on-configure.log`
 
 构建前 `ctest -N -V` 共列出 33 项测试，包含 Binary public/stream、ASCII public A1/A2、ASCII editor、ASCII complete/one-way、CRT probe、Qt smoke、headless session 等目标。此清单只证明测试已生成和注册；由于尚未构建，可执行文件缺失提示是预期现象，不是测试结果。
 
 清单日志：
 
-- `F:\PersonalWorkspace\pae-trial-7b4205e-20260920\lab\static\logs\debug-testing-on-inventory.log`
+- `<TRIAL_ROOT>\lab\static\logs\debug-testing-on-inventory.log`
 
 ### 5.2 首次构建失败
 
@@ -96,7 +98,7 @@ document_session.cpp(351,15): error C2065: “STREAM_INSPECT”: 未声明的标
 
 相同问题出现在产品 headless 目标和多个测试 headless 目标。完整日志：
 
-- `F:\PersonalWorkspace\pae-trial-7b4205e-20260920\lab\static\logs\debug-testing-on-build.log`
+- `<TRIAL_ROOT>\lab\static\logs\debug-testing-on-build.log`
 
 源码与构建条件对应关系：
 
@@ -137,13 +139,13 @@ static/shared 两份既有隔离输入只同步了该自有 CMake 副本，并�
 
 增量核对日志：
 
-- `F:\PersonalWorkspace\pae-trial-7b4205e-20260920\lab\static\logs\stream-ui-fix-input-verification.log`
-- `F:\PersonalWorkspace\pae-trial-7b4205e-20260920\lab\shared\logs\stream-ui-fix-input-verification.log`
+- `<TRIAL_ROOT>\lab\static\logs\stream-ui-fix-input-verification.log`
+- `<TRIAL_ROOT>\lab\shared\logs\stream-ui-fix-input-verification.log`
 
 static Debug Testing-on 重新配置成功，生成的 VS 工程已包含 `PAE_BUILD_PROTOCOL_LAB_STREAM_UI=1`；原 `STREAM_INSPECT` 编译错误不再出现。证据：
 
-- `F:\PersonalWorkspace\pae-trial-7b4205e-20260920\lab\static\logs\stream-ui-fix-debug-testing-on-configure.log`
-- `F:\PersonalWorkspace\pae-trial-7b4205e-20260920\lab\static\logs\stream-ui-fix-debug-testing-on-build.log`
+- `<TRIAL_ROOT>\lab\static\logs\stream-ui-fix-debug-testing-on-configure.log`
+- `<TRIAL_ROOT>\lab\static\logs\stream-ui-fix-debug-testing-on-build.log`
 
 但同一次续跑构建在链接阶段发现新的独立 feature definition 缺口并退出 1：
 
@@ -199,8 +201,8 @@ endif()
 
 输入核对日志：
 
-- `F:\PersonalWorkspace\pae-trial-7b4205e-20260920\lab\static\logs\feature-consistency-input-verification.log`
-- `F:\PersonalWorkspace\pae-trial-7b4205e-20260920\lab\shared\logs\feature-consistency-input-verification.log`
+- `<TRIAL_ROOT>\lab\static\logs\feature-consistency-input-verification.log`
+- `<TRIAL_ROOT>\lab\shared\logs\feature-consistency-input-verification.log`
 
 ### 8.1 static Debug Testing-on
 

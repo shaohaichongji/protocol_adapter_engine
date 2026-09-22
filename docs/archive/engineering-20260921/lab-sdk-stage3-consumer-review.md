@@ -1,5 +1,7 @@
 # Lab 对 Windows x64 SDK 阶段 3 的后置消费复核
 
+> 路径可移植性说明（2026-09-22）：本文中的尖括号路径是语义别名。替换前逐字版本及其 SHA-256 保存在 Git 忽略的原始证据目录；别名用于描述历史或本地位置，不是可直接复制执行的当前命令。当前命令模板以 `docs/guides/06-构建测试与问题定位.md` 及对应构建指南为准。
+
 > 归档状态（2026-09-21）：本页是已被后续契约或验证承接的历史工程依据；正文中的现场、当前与下一步仅代表原记录时点。
 
 日期：2026-09-15。状态：final3 补充复核已完成，待总控复核；本报告先审查冻结的
@@ -61,8 +63,8 @@ archive，或公共头无法独立形成消费边界的新增确定阻断。
   公开头、provenance/manifest/hash及既有日志；补充轮审查更新后的
   [阶段 3 验证记录](../../engineering/pae-sdk-stage3-windows-validation.md)、final3 五包 README、随包 consumer、
   Manifest及 final3 入口/完整性/二进制比对日志，没有重做未变的 final2 源码检查。
-- 仓库外验证根分别记录为 `F:\PersonalWorkspace\pae-sdk-stage3-validation-final2-20260915` 与
-  `F:\PersonalWorkspace\pae-sdk-stage3-validation-final3-20260915`。本任务只读取其已生成项目和日志，
+- 仓库外验证根分别记录为 `<LOCAL_WORK_ROOT>\pae-sdk-stage3-validation-final2-20260915` 与
+  `<LOCAL_WORK_ROOT>\pae-sdk-stage3-validation-final3-20260915`。本任务只读取其已生成项目和日志，
   没有重新配置、编译或运行；六次 final3 README PASS、7/7 回归、包哈希与 DLL 检查均属于 PAE
   交付证据，不是本任务新增动态验证。
 - final2/final3 的 `source_worktree_dirty=true` 与 dirty snapshot 说明一致；这些本地产物位于 ignored

@@ -1,5 +1,7 @@
 # Lab Qt 依赖核验与随仓方案
 
+> 路径可移植性说明（2026-09-22）：本文中的尖括号路径是语义别名。替换前逐字版本及其 SHA-256 保存在 Git 忽略的原始证据目录；别名用于描述历史或本地位置，不是可直接复制执行的当前命令。当前命令模板以 `docs/guides/06-构建测试与问题定位.md` 及对应构建指南为准。
+
 > 归档状态（2026-09-21）：本页是已被后续契约或验证承接的历史工程依据；正文中的现场、当前与下一步仅代表原记录时点。
 
 日期：2026-09-13。当前决定：用户改为完整复用 DEI Qt 包，已复制至 third_party/qt 并设置新配置默认路径。
@@ -10,7 +12,7 @@
 完整复制2440个文件、296552738字节，逐文件SHA-256与DEI源目录一致；保留全部模块，不做裁剪。
 见 [固定副本说明](../../../third_party/qt-package.md) 与 `third_party/qt-files.json`。
 现有显式CMake缓存不自动覆盖，后续构建必须核对实际PAE_QT_ROOT。
-用户要求删除 `D:/develop_env/Qt/pae-qt-audit-20260913-120357`，最初删除调用被执行接口安全策略拒绝；
+用户要求删除 `<TOOLCHAIN_ROOT>/Qt/pae-qt-audit-20260913-120357`，最初删除调用被执行接口安全策略拒绝；
 用户随后手动删除，已再次核对目录不存在。下文该目录及材料路径仅为历史记录，不再是可用证据入口。
 DEI原包及Qt5.11未修改。
 
@@ -35,7 +37,7 @@ Lab 当前使用外部 Qt 包，PAE 仓库的 `third_party` 尚未包含 Qt。
 - 当前构建缓存：`out/build/windows-msvc-lab-host-observer/CMakeCache.txt`。
 - 消费边界：`cmake/PaeQt513.cmake`、`tools/protocol_lab_ui/CMakeLists.txt`。
 - 部署范围：`cmake/DeployProtocolLabUi.cmake`。
-- 当前外部包：`F:/PersonalWorkspace/DEI/third_party/windows/qt`。
+- 当前外部包：`<DEI_ROOT>/third_party/windows/qt`。
 - 包的相邻 README 仅描述 Qt 5 headers / libs / runtime 用途，不提供获取与构建记录。
 
 外部包核验只提取通用依赖事实；不向 PAE 复制外部项目代码或业务资料。
@@ -128,7 +130,7 @@ Binary Host 六项已确认契约保持有效，实施仍待独立授权，不�
 
 - 依赖声明将 Qt 5.13 UI runtime 标注为 LGPLv3，并给出 Qt 官网及 5.13 官方归档入口。这是项目声明线索，不是当前二进制与上游包一致性的证明，也不直接覆盖工具及内嵌组件。
 - 可见路径历史包含目录整理与基线初始化；没有从这些记录取得原始安装包 Hash、构建参数或修改清单。
-- 已知本机 `D:/develop_env/Qt` 下仅看到 Qt5.11.3 目录，不能拿它代替当前 5.13.0 包。未扩大扫描用户全盘。
+- 已知本机 `<TOOLCHAIN_ROOT>/Qt` 下仅看到 Qt5.11.3 目录，不能拿它代替当前 5.13.0 包。未扩大扫描用户全盘。
 - [Qt 官方 5.13.0 归档](https://download.qt.io/archive/qt/5.13/5.13.0/)仍列出 Windows 开源安装包（约 3.7G）、single 与 submodules 入口。此次仅查看目录，未下载或运行安装程序；安装器名称中的 x86 不用于推断待选 kit 的目标架构。
 
 后续有两条路径：优先由用户提供现有包的原始安装包或获取/构建记录，进行对应性核验；若确实无法恢复，则单独批准从官方归档获取同版本材料，检查目标 kit、许可证及 Hash，再评估替换与验证成本。
@@ -137,7 +139,7 @@ Binary Host 六项已确认契约保持有效，实施仍待独立授权，不�
 ## 8. 官方材料获取（2026-09-13 获准）
 
 用户随后授权从官方归档获取同版本材料核验。下载目录为仓库外
-`D:/develop_env/Qt/pae-qt-audit-20260913-120357/`，不运行安装器、不替换现有依赖。
+`<TOOLCHAIN_ROOT>/Qt/pae-qt-audit-20260913-120357/`，不运行安装器、不替换现有依赖。
 
 - `qtbase-everywhere-src-5.13.0.zip` 已下载，大小 80,298,006 字节；实测 SHA-256 为 `214af72d583a74fa1d0b9f8d4b4d69430ccdb2cc805119e4fdc6ca37db473906`，与官方 `.sha256` 一致。
 - 从源包限定提取了根 LICENSE 文件及 moc/rcc/uic 的 main.cpp。三个工具的源码许可头为 GPL-EXCEPT，指向 LICENSE.GPL3-EXCEPT；后续许可清单必须区分工具、库与内嵌第三方组件，不将工具统一标注为 LGPLv3。
@@ -217,7 +219,7 @@ candidate-files.json、SHA256SUMS.proposed、license-source-index.json、root-li
 
 ## 11. 仓库外基础候选组包与首次隔离检查（2026-09-13）
 
-按用户确认，在 `D:/develop_env/Qt/pae-qt-audit-20260913-120357/candidate-package`
+按用户确认，在 `<TOOLCHAIN_ROOT>/Qt/pae-qt-audit-20260913-120357/candidate-package`
 组装 Lab Widgets raster 候选。源代码检索未发现 Lab UI 使用 QOpenGL、QGLWidget、Qt Quick 或 Web
 组件；本轮排除6项图形后端候选，不将基础包视为通用Qt SDK或OpenGL部署包。
 

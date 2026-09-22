@@ -1,5 +1,7 @@
 # 生成产物与旧工作区精确盘点（2026-09-14）
 
+> 路径可移植性说明（2026-09-22）：本文中的尖括号路径是语义别名。替换前逐字版本及其 SHA-256 保存在 Git 忽略的原始证据目录；别名用于描述历史或本地位置，不是可直接复制执行的当前命令。当前命令模板以 `docs/guides/06-构建测试与问题定位.md` 及对应构建指南为准。
+
 > 历史状态提示：本文记录整理当时的现场。用户随后已永久删除外层 `Lab验证` 与 `工程整理归档`；下述外层归档路径现已失效，仅保留路径和 Hash 供历史追溯。
 
 本报告先保留第二轮“逐对象授权”盘点快照，再记录第三轮经用户授权后的本地证据归档与限定清理结果。没有退役 worktree、删除分支、修改源代码、构建、测试、Stage、Commit 或 Push。盘点大小均为删除前的文件逻辑大小，不等同于磁盘物理可用空间。
@@ -7,11 +9,11 @@
 ## 实际执行结果
 
 - 删除前 allowlist 见 [generated-artifact-cleanup-execution-20260914.json](generated-artifact-cleanup-execution-20260914.json)：114 个历史 build 候选中，113 个通过实时 preflight；它们均为 `out/build` 的直接子目录、ignored 且无 tracked 文件、无 reparse point、无活动构建进程，声明的 CMake 源目录仍存在。`windows-msvc-protocol-lab` 因含 4 个 reparse point 被排除。
-- 当时的本地归档根为 `F:\PersonalWorkspace\协议解析拼接工具\工程整理归档\2026-09-14`。基线 344 项加 `v06-gates` 其余 2 个日志，共复制并复算 SHA-256 346/346 项、5,911,057 逻辑字节，无冲突；当时映射文件为 `archive-copy-result.json`，其 SHA-256 为 `7DE178820FEF94EA30C10C205A937F1B41B23CEA6A90876555C6E6640C0A9102`。该外层路径现已失效。
+- 当时的本地归档根为 `<PROJECT_WORKSPACE_ROOT>\工程整理归档\2026-09-14`。基线 344 项加 `v06-gates` 其余 2 个日志，共复制并复算 SHA-256 346/346 项、5,911,057 逻辑字节，无冲突；当时映射文件为 `archive-copy-result.json`，其 SHA-256 为 `7DE178820FEF94EA30C10C205A937F1B41B23CEA6A90876555C6E6640C0A9102`。该外层路径现已失效。
 - 按 allowlist 逐项永久删除 113/113 个历史 build 目录，无失败或部分残留；删除前合计 104166 个文件、14,866,416,694 逻辑字节（13.845 GiB）。当时结果文件为 `cleanup-delete-result.json`，其 SHA-256 为 `81FB04EC88218E1A91D980C370B84F72C267989A174A4EA2A57E708AC79519C4`。该外层路径现已失效。
 - 删除是 `Remove-Item -LiteralPath -Recurse -Force` 的永久操作，不在回收站。当时归档证据可从归档根取回；该外层归档后来已由用户永久删除，现不能再据此路径恢复。构建树本身需按源码、CMake preset/Cache 和验证文档重新生成。
 - 主仓 `out/build` 现仅保留 `windows-msvc-pae-lab`、`windows-msvc-binary-ui-stage1`、`windows-msvc-protocol-lab`。80 个主仓非 build 直接目录与 `out` 根文件、旧 worktree、外层 `Lab验证`、随仓 Qt、本机 Qt 和所有分支均未删除。
-- 第四轮在补充归档并复算旧 worktree 证据后，通过 Git 退役 `F:\PersonalWorkspace\协议解析拼接工具\protocol_adapter_engine_lab_ui`；详情见 [旧 Lab worktree 退役记录](generated-artifact-worktree-retirement-20260914.md)。当时本地与远端 `feat/lab-ui-c1` 分支仍保留，外层 `Lab验证`、随仓 Qt、本机 Qt 和主仓产物未受该轮影响；外层 `Lab验证` 已在后续由用户永久删除。
+- 第四轮在补充归档并复算旧 worktree 证据后，通过 Git 退役 `<REPO_ROOT>_lab_ui`；详情见 [旧 Lab worktree 退役记录](generated-artifact-worktree-retirement-20260914.md)。当时本地与远端 `feat/lab-ui-c1` 分支仍保留，外层 `Lab验证`、随仓 Qt、本机 Qt 和主仓产物未受该轮影响；外层 `Lab验证` 已在后续由用户永久删除。
 
 ## 结论
 
@@ -26,10 +28,10 @@
 
 本次逐对象清单覆盖：
 
-1. `F:\PersonalWorkspace\协议解析拼接工具\protocol_adapter_engine\out\build` 的全部直接子目录；
+1. `<REPO_ROOT>\out\build` 的全部直接子目录；
 2. 主仓库 `out` 除 `build` 外的全部直接子目录，以及 `out` 根文件集合；
-3. `F:\PersonalWorkspace\协议解析拼接工具\protocol_adapter_engine_lab_ui\out` 的全部直接子目录；
-4. `F:\PersonalWorkspace\协议解析拼接工具\Lab验证` 的两个直接子目录。
+3. `<REPO_ROOT>_lab_ui\out` 的全部直接子目录；
+4. `<PROJECT_WORKSPACE_ROOT>\Lab验证` 的两个直接子目录。
 
 明确排除私有协议材料、`EIK`、随仓 Qt、本机 Qt、源代码、tracked 工作树内容以及其他仓库外目录。原始对象 JSON 中的 `pendingConfirmation: true` 保留的是第二轮盘点快照；第三轮实际删除权限只来自独立 allowlist，不能从旧推荐标签反推。
 
@@ -49,10 +51,10 @@
 
 ### build 内需先归档引用日志的四个对象
 
-- `F:\PersonalWorkspace\协议解析拼接工具\protocol_adapter_engine\out\build\v06-a`：7 个 literal 日志引用。
-- `F:\PersonalWorkspace\协议解析拼接工具\protocol_adapter_engine\out\build\v06-gates`：6 个 literal 日志引用。
-- `F:\PersonalWorkspace\协议解析拼接工具\protocol_adapter_engine\out\build\windows-msvc-all-slices-dec039`：4 个 literal 日志引用。
-- `F:\PersonalWorkspace\协议解析拼接工具\protocol_adapter_engine\out\build\windows-msvc-protocol-lab`：6 个 literal 日志引用，且包含 4 个 reparse point。
+- `<REPO_ROOT>\out\build\v06-a`：7 个 literal 日志引用。
+- `<REPO_ROOT>\out\build\v06-gates`：6 个 literal 日志引用。
+- `<REPO_ROOT>\out\build\windows-msvc-all-slices-dec039`：4 个 literal 日志引用。
+- `<REPO_ROOT>\out\build\windows-msvc-protocol-lab`：6 个 literal 日志引用，且包含 4 个 reparse point。
 
 其余 2 个 build literal 引用位于当前保留的 `windows-msvc-binary-ui-stage1`，因此 25 个 build literal 引用与清单统计一致。
 
@@ -60,7 +62,7 @@
 
 规划的归档根目录曾在第三轮实际创建，后续已由用户永久删除：
 
-`F:\PersonalWorkspace\协议解析拼接工具\工程整理归档\2026-09-14`
+`<PROJECT_WORKSPACE_ROOT>\工程整理归档\2026-09-14`
 
 证据类别如下：
 

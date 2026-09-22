@@ -1,5 +1,7 @@
 # PAE 用户入口、工程文档与生成产物盘点（2026-09-21）
 
+> 路径可移植性说明（2026-09-22）：本文中的尖括号路径是语义别名。替换前逐字版本及其 SHA-256 保存在 Git 忽略的原始证据目录；别名用于描述历史或本地位置，不是可直接复制执行的当前命令。当前命令模板以 `docs/guides/06-构建测试与问题定位.md` 及对应构建指南为准。
+
 ## 1. 结论与边界
 
 本轮在 `main@e2527cad500f928100b588fe433e891d460bbc6a` 上只做入口整理和只读盘点，没有移动工程文档、归集大包、删除产物、构建、测试或启动 UI。
@@ -132,9 +134,9 @@ lab-g2-delivery-candidate-20260920.md
 
 | 绝对路径 | 文件 / bytes | 报告引用与保护原因 |
 | --- | ---: | --- |
-| `F:\PersonalWorkspace\协议解析拼接工具\protocol_adapter_engine\out\build\windows-msvc-lab-compile-diagnostics-20260921` | 1,195 / 575,095,706 | `lab-structured-compile-diagnostics-validation-20260921.md` 直接引用；对应当前首选 Lab 的结构化诊断源码验证，暂不列入清理 |
+| `<REPO_ROOT>\out\build\windows-msvc-lab-compile-diagnostics-20260921` | 1,195 / 575,095,706 | `lab-structured-compile-diagnostics-validation-20260921.md` 直接引用；对应当前首选 Lab 的结构化诊断源码验证，暂不列入清理 |
 
-另一任务正在使用 `F:\PersonalWorkspace\协议解析拼接工具\protocol_adapter_engine\out\onboarding-20260921` 验证入门示例；该根不是本盘点的历史候选，必须等任务完成和总控回收后再判断。
+另一任务正在使用 `<REPO_ROOT>\out\onboarding-20260921` 验证入门示例；该根不是本盘点的历史候选，必须等任务完成和总控回收后再判断。
 
 ### 3.2 七个历史构建候选
 
@@ -142,13 +144,13 @@ lab-g2-delivery-candidate-20260920.md
 
 | 绝对路径 | 文件 | bytes | 当前报告引用 / 唯一性 | 可清理条件 |
 | --- | ---: | ---: | --- | --- |
-| `F:\PersonalWorkspace\协议解析拼接工具\protocol_adapter_engine\out\build\windows-msvc-lab-editor-commit-diagnosis-20260920` | 62 | 50,798,452 | `lab-editor-commit-diagnosis-20260920.md` 引用；诊断结论已由 repair 报告承接 | 归集 CMake 配置、CTest/诊断日志并映射 diagnosis/repair 报告 |
-| `F:\PersonalWorkspace\协议解析拼接工具\protocol_adapter_engine\out\build\windows-msvc-lab-editor-commit-repair-20260920` | 991 | 296,806,972 | `lab-editor-commit-repair-20260920.md` 多处引用；最终 D/R smoke 日志在相邻 validation 根 | 先核对 validation 最终日志完整，再归集 build 内配置与 Testing 状态 |
-| `F:\PersonalWorkspace\协议解析拼接工具\protocol_adapter_engine\out\build\windows-msvc-lab-g2-a` | 641 | 117,586,939 | G2-A contract/validation 直接引用；源码已进入后续检查点 | 归集配置/CTest，保护 G2-A validation 与契约 |
-| `F:\PersonalWorkspace\协议解析拼接工具\protocol_adapter_engine\out\build\windows-msvc-lab-g2-b` | 1,036 | 207,922,854 | G2-B 报告记录父根失败缓存与 `v142` 有效子根 | 两类缓存都要记录，不能只保存成功子根；保护 G2-B validation |
-| `F:\PersonalWorkspace\协议解析拼接工具\protocol_adapter_engine\out\build\windows-msvc-lab-g2-c` | 3,803 | 1,630,151,827 | G2-C common/Binary-only/config gate 报告及旧 `fa81329` 交付来源引用 | 先保护 `deliverables/lab/fa81329` 及 manifest，归集三类配置/CTest 和来源映射 |
-| `F:\PersonalWorkspace\协议解析拼接工具\protocol_adapter_engine\out\build\windows-msvc-protocol-metadata-20260920` | 2,572 | 1,983,992,868 | naming plan/validation 直接引用；含 D/R 及 Qt 目标生成物 | 归集配置、最终专项日志/CTest；保留 protocol-metadata validation |
-| `F:\PersonalWorkspace\协议解析拼接工具\protocol_adapter_engine\out\build\windows-msvc-qt-smoke-repair-20260920` | 991 | 292,722,927 | Qt smoke repair 报告引用；最终 repair 日志在相邻 validation 根 | 归集配置与 Testing 状态，保护 repair/diagnosis 报告及 validation |
+| `<REPO_ROOT>\out\build\windows-msvc-lab-editor-commit-diagnosis-20260920` | 62 | 50,798,452 | `lab-editor-commit-diagnosis-20260920.md` 引用；诊断结论已由 repair 报告承接 | 归集 CMake 配置、CTest/诊断日志并映射 diagnosis/repair 报告 |
+| `<REPO_ROOT>\out\build\windows-msvc-lab-editor-commit-repair-20260920` | 991 | 296,806,972 | `lab-editor-commit-repair-20260920.md` 多处引用；最终 D/R smoke 日志在相邻 validation 根 | 先核对 validation 最终日志完整，再归集 build 内配置与 Testing 状态 |
+| `<REPO_ROOT>\out\build\windows-msvc-lab-g2-a` | 641 | 117,586,939 | G2-A contract/validation 直接引用；源码已进入后续检查点 | 归集配置/CTest，保护 G2-A validation 与契约 |
+| `<REPO_ROOT>\out\build\windows-msvc-lab-g2-b` | 1,036 | 207,922,854 | G2-B 报告记录父根失败缓存与 `v142` 有效子根 | 两类缓存都要记录，不能只保存成功子根；保护 G2-B validation |
+| `<REPO_ROOT>\out\build\windows-msvc-lab-g2-c` | 3,803 | 1,630,151,827 | G2-C common/Binary-only/config gate 报告及旧 `fa81329` 交付来源引用 | 先保护 `deliverables/lab/fa81329` 及 manifest，归集三类配置/CTest 和来源映射 |
+| `<REPO_ROOT>\out\build\windows-msvc-protocol-metadata-20260920` | 2,572 | 1,983,992,868 | naming plan/validation 直接引用；含 D/R 及 Qt 目标生成物 | 归集配置、最终专项日志/CTest；保留 protocol-metadata validation |
+| `<REPO_ROOT>\out\build\windows-msvc-qt-smoke-repair-20260920` | 991 | 292,722,927 | Qt smoke repair 报告引用；最终 repair 日志在相邻 validation 根 | 归集配置与 Testing 状态，保护 repair/diagnosis 报告及 validation |
 
 合计：7 根、10,096 个文件、4,579,982,839 bytes（4.265 GiB）。建议下一轮只对这 7 条绝对路径建立白名单：先归集并逐文件 Hash，再另请用户确认删除；不得使用 `out/build/windows-msvc-*` 通配符，以免包含当前结构化诊断根。
 
@@ -160,20 +162,20 @@ lab-g2-delivery-candidate-20260920.md
 
 | 绝对路径 | 文件 / bytes |
 | --- | ---: |
-| `F:\PersonalWorkspace\协议解析拼接工具\protocol_adapter_engine\out\bench-memory` | 6 / 19,835 |
-| `F:\PersonalWorkspace\协议解析拼接工具\protocol_adapter_engine\out\crc-recovery` | 46 / 49,695 |
-| `F:\PersonalWorkspace\协议解析拼接工具\protocol_adapter_engine\out\dec042a-smoke` | 19 / 21,855 |
-| `F:\PersonalWorkspace\协议解析拼接工具\protocol_adapter_engine\out\dec042b-c3-manual` | 30 / 40,717 |
-| `F:\PersonalWorkspace\协议解析拼接工具\protocol_adapter_engine\out\dec042b-c3-manual-invalid-values` | 6 / 6,828 |
-| `F:\PersonalWorkspace\协议解析拼接工具\protocol_adapter_engine\out\lab-sdk-standalone-preflight-configs` | 12 / 545,327 |
-| `F:\PersonalWorkspace\协议解析拼接工具\protocol_adapter_engine\out\v08-recovery-runs` | 28 / 33,391 |
-| `F:\PersonalWorkspace\协议解析拼接工具\protocol_adapter_engine\out\v08-review-bit-container` | 34 / 38,234 |
-| `F:\PersonalWorkspace\协议解析拼接工具\protocol_adapter_engine\out\v08-review-missing-length` | 16 / 17,120 |
-| `F:\PersonalWorkspace\协议解析拼接工具\protocol_adapter_engine\out\v08-tmp` | 6 / 5,561 |
-| `F:\PersonalWorkspace\协议解析拼接工具\protocol_adapter_engine\out\validation\dec040-debug-targeted` | 28 / 36,225 |
-| `F:\PersonalWorkspace\协议解析拼接工具\protocol_adapter_engine\out\validation\dec040-p2-smoke-20260906a` | 18 / 20,317 |
-| `F:\PersonalWorkspace\协议解析拼接工具\protocol_adapter_engine\out\validation\length-resume-debug` | 35 / 46,510 |
-| `F:\PersonalWorkspace\协议解析拼接工具\protocol_adapter_engine\out\validation\schema-debug-inspect` | 1 / 5,034 |
+| `<REPO_ROOT>\out\bench-memory` | 6 / 19,835 |
+| `<REPO_ROOT>\out\crc-recovery` | 46 / 49,695 |
+| `<REPO_ROOT>\out\dec042a-smoke` | 19 / 21,855 |
+| `<REPO_ROOT>\out\dec042b-c3-manual` | 30 / 40,717 |
+| `<REPO_ROOT>\out\dec042b-c3-manual-invalid-values` | 6 / 6,828 |
+| `<REPO_ROOT>\out\lab-sdk-standalone-preflight-configs` | 12 / 545,327 |
+| `<REPO_ROOT>\out\v08-recovery-runs` | 28 / 33,391 |
+| `<REPO_ROOT>\out\v08-review-bit-container` | 34 / 38,234 |
+| `<REPO_ROOT>\out\v08-review-missing-length` | 16 / 17,120 |
+| `<REPO_ROOT>\out\v08-tmp` | 6 / 5,561 |
+| `<REPO_ROOT>\out\validation\dec040-debug-targeted` | 28 / 36,225 |
+| `<REPO_ROOT>\out\validation\dec040-p2-smoke-20260906a` | 18 / 20,317 |
+| `<REPO_ROOT>\out\validation\length-resume-debug` | 35 / 46,510 |
+| `<REPO_ROOT>\out\validation\schema-debug-inspect` | 1 / 5,034 |
 
 若以后清理，应先按内容把失败复现、人工记录、输入、日志和纯生成副本分开；只有在对应报告已承接结论或最小证据已归集后，才按精确根申请删除。
 
@@ -184,17 +186,17 @@ lab-g2-delivery-candidate-20260920.md
 - `out\downloads`（12,322,603 bytes）与 `out\sources`（26,094,751 bytes）：影响离线依赖复现，策略未定，保留。
 - `out\symlink-capability-check`：含当前唯一 reparse point，必须用单独链接策略处理，本轮保留且不跟随。
 - `out` 根直属 605 个普通文件、16,047,535 bytes：来源混合，禁止按根级通配符删除；应先建立逐文件来源/引用清单。
-- `F:\PersonalWorkspace\pae-trial-7b4205e-20260920`：当前推荐 SDK 与 Lab 试用根，35,144 个文件、7,084,028,424 bytes（6.598 GiB），不是本轮清理候选。
+- `<TRIAL_ROOT>`：当前推荐 SDK 与 Lab 试用根，35,144 个文件、7,084,028,424 bytes（6.598 GiB），不是本轮清理候选。
 - 仓库 `deliverables`、`local_private`（若存在）、本机 Qt、旧 `98df5e0`/`fa81329` 对照交付均继续保护。
 
 ## 5. 其他仓库目录
 
 | 路径 | 现场事实 | 结论 |
 | --- | --- | --- |
-| `F:\PersonalWorkspace\协议解析拼接工具\protocol_adapter_engine\src\core` | 已在 2026-09-20 获批清理中删除；Git 原本不跟踪空目录 | 不重建，不再列候选 |
-| `F:\PersonalWorkspace\协议解析拼接工具\protocol_adapter_engine\spikes\json_parser` | 54 个物理文件、386,074 bytes，其中 30 个 tracked；根 `CMakeLists.txt` 仍 `add_subdirectory(spikes/json_parser)` | 必须保留；如要退出需先修改构建入口、preset、测试和文档，属于独立重构 |
-| `F:\PersonalWorkspace\协议解析拼接工具\protocol_adapter_engine\docs\engineering` | 171 份文档，现行与历史混排 | 先按第 2 节迁移 30 个高置信候选，不删除历史事实 |
-| `F:\PersonalWorkspace\协议解析拼接工具\protocol_adapter_engine\docs\archive\root-readme-history-20260921.md` | 根 README 入口降噪前完整快照，链接已按 archive 位置修正 | 长期保留 |
+| `<REPO_ROOT>\src\core` | 已在 2026-09-20 获批清理中删除；Git 原本不跟踪空目录 | 不重建，不再列候选 |
+| `<REPO_ROOT>\spikes\json_parser` | 54 个物理文件、386,074 bytes，其中 30 个 tracked；根 `CMakeLists.txt` 仍 `add_subdirectory(spikes/json_parser)` | 必须保留；如要退出需先修改构建入口、preset、测试和文档，属于独立重构 |
+| `<REPO_ROOT>\docs\engineering` | 171 份文档，现行与历史混排 | 先按第 2 节迁移 30 个高置信候选，不删除历史事实 |
+| `<REPO_ROOT>\docs\archive\root-readme-history-20260921.md` | 根 README 入口降噪前完整快照，链接已按 archive 位置修正 | 长期保留 |
 
 本轮没有发现可在不改变构建或历史追溯的前提下立即删除的其他 tracked 目录。
 

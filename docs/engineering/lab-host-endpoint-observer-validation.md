@@ -1,5 +1,7 @@
 # Lab 宿主端点观察：实施、验证与人工验收入口
 
+> 路径可移植性说明（2026-09-22）：本文中的尖括号路径是语义别名。替换前逐字版本及其 SHA-256 保存在 Git 忽略的原始证据目录；别名用于描述历史或本地位置，不是可直接复制执行的当前命令。当前命令模板以 `docs/guides/06-构建测试与问题定位.md` 及对应构建指南为准。
+
 日期：2026-09-13。基线：`main@e7078b29dd50548c84f3161ab45a1dc02e4c6f60`。
 授权范围：[六项契约](lab-host-endpoint-observer-contract.md)；先PAE验证、再Lab串行接线。
 实现、自动验证及用户人工验收均已完成。用户确认Lab已关闭，并授权核对、提交与推送。
@@ -88,13 +90,13 @@ ctest --test-dir out/build/windows-msvc-lab-host-observer -C Release --output-on
 启动完整程序路径：
 
 ```text
-F:\PersonalWorkspace\协议解析拼接工具\protocol_adapter_engine\out\build\windows-msvc-lab-host-observer\out\protocol_lab_ui\Release\pae_protocol_lab_ui.exe
+<REPO_ROOT>\out\build\windows-msvc-lab-host-observer\out\protocol_lab_ui\Release\pae_protocol_lab_ui.exe
 ```
 
 用File → Open打开完整JSON路径：
 
 ```text
-F:\PersonalWorkspace\协议解析拼接工具\protocol_adapter_engine\examples\config\synthetic_ascii_stream_slice.pae.json
+<REPO_ROOT>\examples\config\synthetic_ascii_stream_slice.pae.json
 ```
 
 1. 保持两条默认草稿：`device / Decode / ascii_pipeline`、
@@ -116,7 +118,7 @@ F:\PersonalWorkspace\协议解析拼接工具\protocol_adapter_engine\examples\c
 完整记录接线另开Tab，JSON完整路径：
 
 ```text
-F:\PersonalWorkspace\协议解析拼接工具\protocol_adapter_engine\examples\config\synthetic_ascii_text_slice.pae.json
+<REPO_ROOT>\examples\config\synthetic_ascii_text_slice.pae.json
 ```
 
 7. Apply默认两条绑定。Decode活动绑定、ASCII (escaped)输入`RX ALICE!OK\r\n`，

@@ -22,7 +22,7 @@ Decode 预期，因此不是只做往返自洽。
 
 ```powershell
 $PackageRoot = (Resolve-Path .).Path
-$Build = 'C:\path\to\fresh\pae-getting-started-build'
+$Build = Join-Path (Split-Path -Parent $PackageRoot) 'pae-getting-started-build'
 $Config = "$PackageRoot\examples\config\synthetic_stream_framing_slice.pae.json"
 ```
 

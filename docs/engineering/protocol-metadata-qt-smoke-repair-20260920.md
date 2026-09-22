@@ -1,5 +1,7 @@
 # Protocol Metadata Qt Smoke 启动与诊断修复记录（2026-09-20）
 
+> 路径可移植性说明（2026-09-22）：本文中的尖括号路径是语义别名。替换前逐字版本及其 SHA-256 保存在 Git 忽略的原始证据目录；别名用于描述历史或本地位置，不是可直接复制执行的当前命令。当前命令模板以 `docs/guides/06-构建测试与问题定位.md` 及对应构建指南为准。
+
 ## 1. 结论
 
 - 本轮已修复仓库构建下 Qt window smoke 的启动入口：CTest 现在运行对应配置的完整部署目录，而不是缺少 Qt DLL/plugin 的 `bin/<Config>` 可执行文件。
@@ -12,7 +14,7 @@
 
 ## 2. 基线与范围
 
-- 仓库：`F:\PersonalWorkspace\协议解析拼接工具\protocol_adapter_engine`
+- 仓库：`<REPO_ROOT>`
 - 分支与 HEAD：`main@fa81329563dd3aea9bb167ef9bd34526a2606161`
 - 新构建根：`out/build/windows-msvc-qt-smoke-repair-20260920`
 - 新证据根：`out/validation/qt-smoke-repair-20260920`

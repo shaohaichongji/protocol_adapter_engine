@@ -1,5 +1,7 @@
 # PAE-DEC-042A 字节对齐INT64 Windows验证报告
 
+> 路径可移植性说明（2026-09-22）：本文中的尖括号路径是语义别名。替换前逐字版本及其 SHA-256 保存在 Git 忽略的原始证据目录；别名用于描述历史或本地位置，不是可直接复制执行的当前命令。当前命令模板以 `docs/guides/06-构建测试与问题定位.md` 及对应构建指南为准。
+
 日期：2026-09-06。状态：实现与本轮Windows验证完成，待总控审查；未Stage、Commit或Push。
 
 ## 1. 验证结论与边界
@@ -127,7 +129,7 @@ PlanDraftAssembler，原样Freeze均成功；仅修改版本为0.1/0.2/0.3，或
 
 ### 7.3 实际命令和结果
 
-使用`D:\develop_env\cmake-4.4.3\bin`中的CMake/CTest，Debug和Release分别执行：
+使用`<TOOLCHAIN_ROOT>\cmake-4.4.3\bin`中的CMake/CTest，Debug和Release分别执行：
 
 ```powershell
 cmake --build out/build/windows-msvc-all-slices-dec042a --config Debug

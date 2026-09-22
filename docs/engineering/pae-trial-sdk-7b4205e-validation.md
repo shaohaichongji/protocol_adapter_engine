@@ -1,5 +1,7 @@
 # PAE 7b4205e 同批试用 SDK 生成与包外消费验证
 
+> 路径可移植性说明（2026-09-22）：本文中的尖括号路径是语义别名。替换前逐字版本及其 SHA-256 保存在 Git 忽略的原始证据目录；别名用于描述历史或本地位置，不是可直接复制执行的当前命令。当前命令模板以 `docs/guides/06-构建测试与问题定位.md` 及对应构建指南为准。
+
 ## 1. 结论与边界
 
 本次从固定提交 `7b4205ea899cf16b9c73ba6ebc4c64382b71dc63` 的全新 detached clone 生成 5 份 SDK 包，并完成 6 组真实包外 consumer 的配置、构建和运行。5 份包的 `PROVENANCE.json`、`MANIFEST.txt`、`SHA256SUMS.txt` 以及包内文件长度和 Hash 全量复核通过；6 组 consumer 均输出完整 `PAE_SDK_STAGE3_CONSUMER_PASS`，且各构建树注册测试数为 0。
@@ -10,7 +12,7 @@
 
 ## 2. 隔离目录与工具链
 
-- 试用根：`F:\PersonalWorkspace\pae-trial-7b4205e-20260920`
+- 试用根：`<TRIAL_ROOT>`
 - 干净源码：`source`，固定提交 detached checkout，生成前后 `git status --short` 均为空
 - SDK：`sdk`
 - 包外 consumer：`consumers`

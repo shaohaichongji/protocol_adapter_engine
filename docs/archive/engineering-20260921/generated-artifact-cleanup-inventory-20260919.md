@@ -1,15 +1,17 @@
 # PAE 生成产物清理盘点（2026-09-19）
 
+> 路径可移植性说明（2026-09-22）：本文中的尖括号路径是语义别名。替换前逐字版本及其 SHA-256 保存在 Git 忽略的原始证据目录；别名用于描述历史或本地位置，不是可直接复制执行的当前命令。当前命令模板以 `docs/guides/06-构建测试与问题定位.md` 及对应构建指南为准。
+
 > 归档状态（2026-09-21）：本页是已被后续契约或验证承接的历史工程依据；正文中的现场、当前与下一步仅代表原记录时点。
 
 ## 1. 结论与边界
 
 2026-09-19 在 `main@0b89beded03b39d8ffe019bfec659b5a5885a8f1` 上只读盘点了：
 
-- `F:\PersonalWorkspace` 直属、名称以 `pae-` 开头的 24 个生成根；
-- 仓库 `F:\PersonalWorkspace\协议解析拼接工具\protocol_adapter_engine\out`。
+- `<LOCAL_WORK_ROOT>` 直属、名称以 `pae-` 开头的 24 个生成根；
+- 仓库 `<REPO_ROOT>\out`。
 
-未遍历 `F:\PersonalWorkspace` 中其他项目。本轮未删除、移动、复制或压缩任何产物，未构建或启动 Lab。
+未遍历 `<LOCAL_WORK_ROOT>` 中其他项目。本轮未删除、移动、复制或压缩任何产物，未构建或启动 Lab。
 
 范围内总逻辑体积约 **33.895 GiB**：仓库 `out` 约 20.772 GiB，外部 `pae-*` 根约 13.123 GiB。下表的 **22.780 GiB** 和 **33.522 GiB** 均是“归集最小原始证据之前”的估计上限，不是无条件可删除量；49 个构建根和 8 个旧外部 SDK 根中的日志、CTest 状态及手工证据必须先按第 5.3 节归集：
 
@@ -28,7 +30,7 @@
 - 其中 21 个 v06 链接的保存目标为相对路径 `v06-evidence-runs\controlled_external_*`，归一化后仍在各自生成证据根下；5 个 v07 目录链接保存绝对路径，分别指向同一构建根内的 `run_reader_baseline`；最后 1 个能力检查链接保存绝对路径，指向同目录 `target.txt`。
 - 后续清理不得让递归命令穿越上述链接。必须先按精确路径删除链接对象本身，再处理其父构建根；不得对链接目标执行递归删除。当前计量使用 `/XJ`，且证据扫描排除了链接对象。
 - 未发现运行中的 `pae_protocol_lab_ui`、CMake、CTest、MSBuild 或 Ninja 进程。首次统计遗留的一个本轮只读 PowerShell helper 经精确命令行核对后已终止，未写盘。
-- 主仓库只登记一个 worktree：`F:\PersonalWorkspace\协议解析拼接工具\protocol_adapter_engine`。
+- 主仓库只登记一个 worktree：`<REPO_ROOT>`。
 - 外部根只有 `pae-clean-checkpoint-98df5e0-source\.git`。它是独立 detached clone，HEAD 为 `98df5e0d844413fb6ad16a75dfceedcf17f2f1d6`，`git status --short` 为空，未发现独有修改。
 - `98df5e0..0b89bed` 只有 10 个 Markdown 入口/计划/验证报告变化，无功能源码变化；因此删除干净 clone 不会丢失未合并代码，但仍需独立删除授权。
 - 仓库 `out` 由根 `.gitignore:1:/out/` 忽略；其中内容不是 Git 跟踪变更。非 Git 生成根仍可能含独有原始日志，因此本报告把这些日志单独归为“需先归集”，不只凭目录名判定可删。
@@ -65,7 +67,7 @@
 | `pae-sdk-public-stream-validation-candidate1-20260918` | 0.028 | 189 | 89 | 0 | 旧 public-stream SDK 消费根；`P` |
 | `pae-lab-ascii-a1-static-consumer-20260918` | 0.024 | 125 | 73 | 0 | 旧 A1 static consumer 根；无根清单/logs，报告复核后 `D` |
 
-上表中外部根的绝对基准均为 `F:\PersonalWorkspace\<根名>`。
+上表中外部根的绝对基准均为 `<LOCAL_WORK_ROOT>\<根名>`。
 
 ## 4. 关键二级目录
 
@@ -98,8 +100,8 @@
 
 普通本地使用的最小保留路径是：
 
-- static Release：`F:\PersonalWorkspace\pae-lab-clean-sdk-static-20260919\deploy\release-testing-off\Release`，20.35 MiB / 17 文件；
-- shared Release：`F:\PersonalWorkspace\pae-lab-clean-sdk-shared-20260919\deploy\release-testing-off\Release`，20.49 MiB / 18 文件，其中包含 `pae.dll`。
+- static Release：`<LOCAL_WORK_ROOT>\pae-lab-clean-sdk-static-20260919\deploy\release-testing-off\Release`，20.35 MiB / 17 文件；
+- shared Release：`<LOCAL_WORK_ROOT>\pae-lab-clean-sdk-shared-20260919\deploy\release-testing-off\Release`，20.49 MiB / 18 文件，其中包含 `pae.dll`。
 
 本报告保守建议保留两根的完整 `deploy`，不只保留 Release，以免丢失已验证的 Debug 和 Testing-on/off 对照身份。
 
@@ -155,8 +157,8 @@
 ### 5.2 可再生候选（仍需另行删除授权）
 
 1. 第 7.2 节四份旧 preflight 部署：0.181 GiB。
-2. `F:\PersonalWorkspace\pae-clean-checkpoint-98df5e0-source`：0.351 GiB；它是 clean detached clone，不是主仓 worktree。
-3. `F:\PersonalWorkspace\pae-sdk-clean-checkpoint-validation-candidate1-20260919`：0.130 GiB；仓库候选与证据保留后可重建。
+2. `<LOCAL_WORK_ROOT>\pae-clean-checkpoint-98df5e0-source`：0.351 GiB；它是 clean detached clone，不是主仓 worktree。
+3. `<LOCAL_WORK_ROOT>\pae-sdk-clean-checkpoint-validation-candidate1-20260919`：0.130 GiB；仓库候选与证据保留后可重建。
 4. 第 7.3 节当前 static/shared 根内精确子目录：1.934 GiB；不包含 `deploy`、`logs` 或根清单。
 
 ### 5.3 需先归集最小证据
@@ -195,7 +197,7 @@
 
 ### 7.1 `out` 构建型一级根（归集前候选上限 20.184 GiB）
 
-基准：`F:\PersonalWorkspace\协议解析拼接工具\protocol_adapter_engine\out\`
+基准：`<REPO_ROOT>\out\`
 
 ```text
 build
@@ -252,15 +254,15 @@ b42gate-lab
 ### 7.2 旧 preflight 部署（0.181 GiB）
 
 ```text
-F:\PersonalWorkspace\协议解析拼接工具\protocol_adapter_engine\out\lab-sdk-standalone-preflight-deploy
-F:\PersonalWorkspace\协议解析拼接工具\protocol_adapter_engine\out\lab-sdk-standalone-preflight-deploy-2
-F:\PersonalWorkspace\协议解析拼接工具\protocol_adapter_engine\out\lab-sdk-standalone-preflight-deploy-3
-F:\PersonalWorkspace\协议解析拼接工具\protocol_adapter_engine\out\lab-sdk-standalone-preflight-deploy-4
+<REPO_ROOT>\out\lab-sdk-standalone-preflight-deploy
+<REPO_ROOT>\out\lab-sdk-standalone-preflight-deploy-2
+<REPO_ROOT>\out\lab-sdk-standalone-preflight-deploy-3
+<REPO_ROOT>\out\lab-sdk-standalone-preflight-deploy-4
 ```
 
 ### 7.3 当前 Lab 根内可再生子目录（1.934 GiB）
 
-static 基准：`F:\PersonalWorkspace\pae-lab-clean-sdk-static-20260919\`
+static 基准：`<LOCAL_WORK_ROOT>\pae-lab-clean-sdk-static-20260919\`
 
 ```text
 build
@@ -274,7 +276,7 @@ negative-static-kind-mismatch
 negative-static-release-sdk-debug-build
 ```
 
-shared 基准：`F:\PersonalWorkspace\pae-lab-clean-sdk-shared-20260919\`
+shared 基准：`<LOCAL_WORK_ROOT>\pae-lab-clean-sdk-shared-20260919\`
 
 ```text
 build-debug-testing-off
@@ -293,10 +295,10 @@ negative-shared-wrong-runtime-dll
 ### 7.4 旧仓库 SDK 包根（0.302 GiB）
 
 ```text
-F:\PersonalWorkspace\协议解析拼接工具\protocol_adapter_engine\out\sdk-public-stream-description
-F:\PersonalWorkspace\协议解析拼接工具\protocol_adapter_engine\out\sdk-stage3
-F:\PersonalWorkspace\协议解析拼接工具\protocol_adapter_engine\out\sdk-stage4-ascii
-F:\PersonalWorkspace\协议解析拼接工具\protocol_adapter_engine\out\sdk-stage4-p
+<REPO_ROOT>\out\sdk-public-stream-description
+<REPO_ROOT>\out\sdk-stage3
+<REPO_ROOT>\out\sdk-stage4-ascii
+<REPO_ROOT>\out\sdk-stage4-p
 ```
 
 ### 7.5 旧外部 Lab/SDK 根

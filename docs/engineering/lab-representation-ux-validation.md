@@ -1,5 +1,7 @@
 # Lab 表示切换 UX：实施与验证
 
+> 路径可移植性说明（2026-09-22）：本文中的尖括号路径是语义别名。替换前逐字版本及其 SHA-256 保存在 Git 忽略的原始证据目录；别名用于描述历史或本地位置，不是可直接复制执行的当前命令。当前命令模板以 `docs/guides/06-构建测试与问题定位.md` 及对应构建指南为准。
+
 ## 范围与当前状态
 
 2026-09-13用户授权规划并推进下一阶段，基线`main@ff72894`且开始时工作区干净。
@@ -38,12 +40,12 @@ Linux、硬件、网络、性能和现场均不在本次验证范围内。
 
 EXE：
 ```text
-F:\PersonalWorkspace\协议解析拼接工具\protocol_adapter_engine\out\build\windows-msvc-lab-host-observer\out\protocol_lab_ui\Release\pae_protocol_lab_ui.exe
+<REPO_ROOT>\out\build\windows-msvc-lab-host-observer\out\protocol_lab_ui\Release\pae_protocol_lab_ui.exe
 ```
 
 配置：
 ```text
-F:\PersonalWorkspace\协议解析拼接工具\protocol_adapter_engine\examples\config\synthetic_ascii_stream_slice.pae.json
+<REPO_ROOT>\examples\config\synthetic_ascii_stream_slice.pae.json
 ```
 
 1. 加载配置，Apply默认绑定表，选择Decode绑定和Flow 1，确认Representation为Hex。
