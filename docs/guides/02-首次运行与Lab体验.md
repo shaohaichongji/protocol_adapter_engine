@@ -8,24 +8,24 @@
 
 - Windows x64；
 - 已在仓库根目录打开 PowerShell；
-- 试用 YAML 时，本机已有 `out/build/lab-yaml-sdk-migration-20260926/standalone-static-Release-verified/deploy/Release/`；沿用既有 JSON 入口时，本机已有 `deliverables/lab/fe1683c-plus-patches/static-release/`。两者都是 Git 忽略的本地产物，仅 clone 仓库不会自动获得。
+- 本机已有 `deliverables/lab/b12ad80/static-release/` 完整部署；沿用旧版 JSON 入口时，本机另有 `deliverables/lab/fe1683c-plus-patches/static-release/`。这些都是 Git 忽略的本地产物，仅 clone 仓库不会自动获得。
 
 ## 读完能做什么
 
 读完后可以从正确的完整部署目录启动 Lab、选择 JSON 或受限 YAML 合成配置做一次离线观察，并知道哪些结果只是 UI 体验、哪些需要后续 SDK 或真实设备验证。
 
-## YAML 初版：一次统一体验建议
+## 当前同基线初版：一次统一体验建议
 
-本机新候选优先使用 standalone **static Release**。它采用带可选 `yaml_frontend` 组件的 SDK；shared Release 是同片对照。两者的目录见 [统一交付入口](../../deliverables/README.md)。从仓库根目录启动：
+本机 `b12ad80` 同基线候选优先使用 standalone **static Release**。它采用同批带可选 `yaml_frontend` 组件的 SDK；shared Release 是同批对照。两者的目录见 [统一交付入口](../../deliverables/README.md)。从仓库根目录启动：
 
 ```powershell
-$LabRoot = (Resolve-Path 'out/build/lab-yaml-sdk-migration-20260926/standalone-static-Release-verified/deploy/Release').Path
+$LabRoot = (Resolve-Path 'deliverables/lab/b12ad80/static-release').Path
 & "$LabRoot\pae_protocol_lab_ui.exe"
 ```
 
 启动后只建议做一次合成配置体验：浏览 `$LabRoot\configs\synthetic_ascii_literal_only.pae.yaml`，加载或重新加载；为 `ascii_pipeline` 的 `ping` 接收动作输入 Hex `50 49 4E 47 0D 0A`，观察完整记录解析结果及来源诊断。该 YAML 文件描述 `PING\r\n` 接收和 `PONG\r\n` 发送，字段列表为空。JSON 作者源仍可照常使用；YAML 按 [Profile V0.1](../../schema/pae_yaml_profile_v0.1.md) 转成严格 JSON 后走同一编译器。无需为了首次体验逐项重跑历史测试。
 
-这一步是**待执行的人工体验建议**，目前没有可见 UI 通过记录。已有仓库及 standalone Debug/Release 定向自动测试见 [Lab YAML 验证](../engineering/lab-yaml-sdk-migration-validation-20260926.md)；其中不可见 UI smoke 不能替代上述人工操作。若候选目录不存在，clone 不会补齐已构建产物，按 [06 构建测试与问题定位](06-构建测试与问题定位.md) 和 [standalone 说明](../../tools/protocol_lab_ui/standalone/README.md) 选择生成路线。
+2026-09-26 用户已确认本版 static Release 的 Binary JSON 与上述 YAML 正常解析通过，并已关闭 Lab；具体输入及范围见 [人工记录](../engineering/yaml-clean-delivery-validation-20260926.md)。配置错误诊断等未测项不计通过。本轮从干净固定提交构建的 standalone static/shared Debug/Release 定向测试各 5/5，见 [同基线 Lab 验证](../engineering/yaml-clean-lab-validation-20260926.md)；自动与人工证据分开记录。若候选目录不存在，clone 不会补齐已构建产物，按 [06 构建测试与问题定位](06-构建测试与问题定位.md) 和 [standalone 说明](../../tools/protocol_lab_ui/standalone/README.md) 选择生成路线。
 
 ## 1. 既有 JSON 功能体验入口
 
@@ -111,7 +111,7 @@ flowchart TD
 
 ## 4. 先跑 SDK consumer（可选）
 
-如果你准备写 C++，可先验证既有 `7b4205e` Static Release 包的综合 consumer。必须在 Visual Studio Developer Shell 或已能调用相应 CMake/编译器的终端中执行，并使用新的包外构建目录：
+如果你准备写 C++，下列命令仍可复核既有 `7b4205e` Static Release 包的综合 consumer；当前 `b12ad80` SDK 的包外验证另见 [同基线 SDK 验证](../engineering/yaml-clean-sdk-validation-20260926.md)。必须在 Visual Studio Developer Shell 或已能调用相应 CMake/编译器的终端中执行，并使用新的包外构建目录：
 
 ```powershell
 $RepoRoot = (Get-Location).Path

@@ -2,6 +2,21 @@
 
 ## 当前推进（2026-09-26）
 
+最新人工反馈：用户确认归集后的 static Release JSON/YAML 两条正常解析通过，Lab 已关闭。
+本片限定收口，详见 [人工记录](yaml-clean-delivery-validation-20260926.md)。配置错误诊断、
+shared 人工体验及真实协议未据此验证。当前只剩收尾文档提交候选，Git 写操作另行授权。
+以下为此前过程。
+
+最新：固定 `b12ad80` 的 SDK/Lab 构建、专项验证及独立版本归集已完成限定复核。
+总控现场复算新位置 365 文件长度/Hash 与清单一致；当前入口见
+[统一交付](../../deliverables/README.md)，细节见 [归集验证](yaml-clean-delivery-validation-20260926.md)。
+人工统一体验待进行，各执行任务停止，无新提交推送、旧产物删除或正式发布。
+
+累计 YAML SDK/Lab 变更已提交 `b12ad80`，未推送。用户同意
+[同基线初版交付收尾](yaml-clean-delivery-plan-20260926.md)：本轮先从固定提交新构建 SDK，
+回收后再构建消费同包的 Lab，最后归集和一次统一体验。旧候选身份不改、不覆盖，
+本轮不推送或发布。以下为此前过程。
+
 统一候选导航和中文指南已回收，总控核对差异及空暂存区，`git diff --check` 通过。
 48 个累计文件待提交授权；入口见 [本地交付](../../deliverables/README.md)，
 清单见 [收口报告](yaml-candidate-entry-closeout-20260926.md)。各执行任务停止，

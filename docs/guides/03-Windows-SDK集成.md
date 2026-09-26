@@ -9,15 +9,15 @@
 - 已理解 [01 项目定位与能力边界](01-项目定位与能力边界.md)；
 - 使用 Visual Studio 18 2026 x64 与已验证的 MSVC `v142,version=14.29.30133`；
 - 明确 consumer 要使用 Debug 还是 Release；
-- 已在仓库根目录打开终端；YAML 初版候选位于 `out/build/yaml-sdk-packaging-20260926/`，既有 JSON SDK 位于 `deliverables/sdk/7b4205e/`。两者都是本地产物、不随 clone 获取，也不是正式发布；不存在时应按 [06 构建测试与问题定位](06-构建测试与问题定位.md) 的 SDK 路线重新生成。统一导航见 [交付入口](../../deliverables/README.md)。
+- 已在仓库根目录打开终端；当前同基线候选位于 `deliverables/sdk/b12ad80/`，既有 JSON SDK 位于 `deliverables/sdk/7b4205e/`。两者都是本地产物、不随 clone 获取，也不是正式发布；不存在时应按 [06 构建测试与问题定位](06-构建测试与问题定位.md) 的 SDK 路线重新生成。统一导航见 [交付入口](../../deliverables/README.md)。
 
 ## 读完能做什么
 
 读完后可以正确选择 JSON-only 或受限 YAML 候选，使用 `PAE_SOURCE_DIR` 或 `CMAKE_PREFIX_PATH` 接入 `PAE::pae`，并避开 Debug/Release、Static/Shared 和 DLL 部署错配。
 
-## YAML 初版候选速览
+## 当前 YAML 初版候选速览
 
-首次试用选择 `out/build/yaml-sdk-packaging-20260926/static-release-final-package/`。同根还有 `source final package with spaces/`、`static-debug-final-package/`、`shared-debug-final-package/`、`shared-release-final-package/`；需要 JSON-only 对照时选择 `json-only-static-final-package/` 或 `json-only-shared-final-package/`。这七个候选包保留各自 `PROVENANCE.json` 中的 dirty 来源身份，后续提交不会使现有包自动成为 clean 构建。实际包外消费范围见 [YAML SDK 打包验证](../engineering/yaml-sdk-packaging-validation-20260926.md)。
+首次试用选择 `deliverables/sdk/b12ad80/pae-sdk-static-release/`。同根另有 `pae-sdk-source/`、`pae-sdk-static-debug/`、`pae-sdk-shared-debug/`、`pae-sdk-shared-release/`；需要 JSON-only 对照时选择 `pae-sdk-json-only-static-release/` 或 `pae-sdk-json-only-shared-release/`。七包由干净固定提交 `b12ad80` 构建，本次归集不改变包内 `PROVENANCE.json` 与哈希；[SDK 构建验证](../engineering/yaml-clean-sdk-validation-20260926.md)记录 Source 和六个二进制包的实际消费，[归集验证](../engineering/yaml-clean-delivery-validation-20260926.md)记录新位置一致性。前一批 `out/build/yaml-sdk-packaging-20260926/` 保留其 `4da54b9` dirty 候选身份，不与本批混用来源证据。
 
 JSON 继续直接调用 `pae::CompileProtocolJson()`。选择 YAML 作者源时，先按 [Profile V0.1](../../schema/pae_yaml_profile_v0.1.md) 限定语法转换成严格 JSON，再交给同一编译器；YAML 不增加新的协议执行语义。包内 `examples/yaml_sdk_consumer/` 是最小完整示例：
 
@@ -26,7 +26,7 @@ find_package(PAE CONFIG REQUIRED COMPONENTS yaml_frontend)
 target_link_libraries(my_pae_consumer PRIVATE PAE::pae PAE::yaml_frontend)
 ```
 
-上例用于带 YAML 组件的二进制包，`CMAKE_PREFIX_PATH` 必须指向选定包根。`PAE::yaml_frontend` 是静态附加库；Shared PAE 仍须把同包 `pae.dll` 放在程序可加载目录，没有单独 YAML DLL。JSON-only 包请求该组件会在 Configure 阶段失败。Source 包含可选源码但默认关闭，使用 `PAE_SOURCE_DIR` 接入时需显式设置 `PAE_BUILD_YAML_FRONTEND=ON`；详见包内示例 CMake。Debug/Release、`v142,version=14.29.30133` 与 CRT 配置应与对应候选匹配。它们是同工具链试用包，不承诺跨工具链稳定 ABI 或生产容量。
+上例用于带 YAML 组件的二进制包，`CMAKE_PREFIX_PATH` 必须指向选定包根。`PAE::yaml_frontend` 是静态附加库；Shared PAE 仍须把同包 `pae.dll` 放在程序可加载目录，没有单独 YAML DLL。JSON-only 包请求该组件会在 Configure 阶段失败。Source 包含可选源码但默认关闭，使用 `PAE_SOURCE_DIR` 接入时需显式设置 `PAE_BUILD_YAML_FRONTEND=ON`；详见包内示例 CMake。Debug/Release、`v142,version=14.29.30133` 与 CRT 配置应与对应候选匹配。本地同工具链验证不等于跨工具链稳定 ABI 或生产容量保证。
 
 ## 1. 既有 JSON SDK：选择包
 

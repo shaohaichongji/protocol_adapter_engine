@@ -2,9 +2,31 @@
 
 此目录集中本机可用的 PAE SDK 和配套 Lab，不是正式对外发布目录。导航纳入版本控制，`sdk/`、`lab/`、`evidence/` 中本地产物被 Git 忽略；仅 clone 仓库不会自动获得这些产物。
 
-## YAML 初版本地候选（2026-09-26）
+## 当前 YAML 初版同基线候选（b12ad80）
 
-首次试用 YAML 优先选择 **static Release** SDK 与对应的 standalone Lab。以下路径均相对于仓库根目录，位于 Git 忽略的 `out/`；仅 clone 仓库不会取得这些已构建产物。包内 `PROVENANCE.json` 记录 `source_head=4da54b9`、`source_worktree_dirty=true`；这些候选基于未提交输入，后续提交不会自动改变既有包和二进制的身份。
+本机首次试用优先选择 `sdk/b12ad80/pae-sdk-static-release/` 和 `lab/b12ad80/static-release/`。下表路径相对于本 `deliverables/` 目录；七个 SDK 包与两个完整 Lab Release 部署均由干净的 `b12ad809bdbc35589e8e5755f0e4ad04f386fa10` 固定提交构建，本次只是按原字节归集。包内 `PROVENANCE.json`、清单和哈希未改，归集记录见[同基线验证](../docs/engineering/yaml-clean-delivery-validation-20260926.md)。
+
+| 用途 | 本目录下路径 |
+| --- | --- |
+| Source（含可选 YAML 源码，默认关闭） | `sdk/b12ad80/pae-sdk-source/` |
+| Static Debug / Release，带 YAML 静态附加组件 | `sdk/b12ad80/pae-sdk-static-debug/`、`sdk/b12ad80/pae-sdk-static-release/` |
+| Shared Debug / Release，带 YAML 静态附加组件 | `sdk/b12ad80/pae-sdk-shared-debug/`、`sdk/b12ad80/pae-sdk-shared-release/` |
+| JSON-only Static / Shared Release 对照 | `sdk/b12ad80/pae-sdk-json-only-static-release/`、`sdk/b12ad80/pae-sdk-json-only-shared-release/` |
+| standalone Lab Static / Shared Release | `lab/b12ad80/static-release/`、`lab/b12ad80/shared-release/` |
+
+从仓库根目录可启动当前 static Release Lab，打开邻接 `configs/synthetic_ascii_literal_only.pae.yaml`；也可选其中的 JSON 合成配置：
+
+```powershell
+& '.\deliverables\lab\b12ad80\static-release\pae_protocol_lab_ui.exe'
+```
+
+完整运行目录含 EXE、Qt DLL、`platforms/` 与 `configs/`；shared 另需同批 `pae.dll`。带 YAML 的二进制 SDK 通过 `PAE::yaml_frontend` 静态附加组件与 `PAE::pae` 配套使用；JSON-only 包不提供该组件。详见[首次 Lab 体验](../docs/guides/02-首次运行与Lab体验.md)和[Windows SDK 集成](../docs/guides/03-Windows-SDK集成.md)。归集成品在 Git 忽略的 `sdk/`、`lab/` 下，仅 clone 仓库不会获得二进制包或 Lab 部署。
+
+SDK 本轮七包从固定提交重新构建、安装、打包并完成包外消费，见[干净 SDK 验证](../docs/engineering/yaml-clean-sdk-validation-20260926.md)；Lab standalone static/shared Debug/Release 四组各有 5/5 定向测试，见[干净 Lab 验证](../docs/engineering/yaml-clean-lab-validation-20260926.md)。用户已确认 static Release JSON/YAML 正常解析及步骤中的绑定应用通过、Lab 已关闭，见[人工记录](../docs/engineering/yaml-clean-delivery-validation-20260926.md)。配置错误诊断、shared 人工体验和真实协议等未测项不计通过；此处是本地试用候选，不是正式发布、稳定 ABI 或许可闭合。
+
+## 较早 YAML dirty 候选（保留原身份）
+
+下列 2026-09-26 前一批路径相对于仓库根目录，位于 Git 忽略的 `out/`，仅作既有验证与身份对照。包内 `PROVENANCE.json` 记录 `source_head=4da54b9`、`source_worktree_dirty=true`；后续提交及本轮归集均不会自动改变这些包和二进制的身份。
 
 | 用途 | 本地候选目录 |
 | --- | --- |
@@ -16,20 +38,20 @@
 
 二进制 YAML 包以 `find_package(PAE CONFIG REQUIRED COMPONENTS yaml_frontend)` 获取 `PAE::yaml_frontend`，并与 `PAE::pae` 同时链接；YAML 是静态附加组件，Shared PAE 仍需同包 `pae.dll`，没有独立 YAML DLL。JSON-only 包不提供该组件；Source 包需显式开启 `PAE_BUILD_YAML_FRONTEND`。配置须符合[受限 Profile V0.1](../schema/pae_yaml_profile_v0.1.md)，YAML 先转换成严格 JSON，再走原编译器。选择与包一致的 Debug/Release、MSVC 工具链和 CRT；具体接入见[03 Windows SDK 集成](../docs/guides/03-Windows-SDK集成.md)。
 
-首次图形体验可从仓库根目录启动 static Release 候选，再打开其 `configs/synthetic_ascii_literal_only.pae.yaml`：
+若需复核前一批 dirty static Release 候选，可从仓库根目录启动，再打开其 `configs/synthetic_ascii_literal_only.pae.yaml`：
 
 ```powershell
 & '.\out\build\lab-yaml-sdk-migration-20260926\standalone-static-Release-verified\deploy\Release\pae_protocol_lab_ui.exe'
 ```
 
-这是待人工体验的候选入口，尚未记录可见 UI 体验通过。保留完整部署目录的 EXE、Qt DLL、`platforms/` 和 `configs/`；shared 目录还需邻接的同包 `pae.dll`。七包打包及包外消费见[SDK 验证](../docs/engineering/yaml-sdk-packaging-validation-20260926.md)，Lab 定向验证和未覆盖项见[Lab 验证](../docs/engineering/lab-yaml-sdk-migration-validation-20260926.md)。[本轮入口收口](../docs/engineering/yaml-candidate-entry-closeout-20260926.md)只核对导航与候选文件，不重跑构建或 UI。
+前一批没有可见 UI 体验通过记录。保留完整部署目录的 EXE、Qt DLL、`platforms/` 和 `configs/`；shared 目录还需邻接的同包 `pae.dll`。原七包打包及包外消费见[SDK 验证](../docs/engineering/yaml-sdk-packaging-validation-20260926.md)，原 Lab 定向验证见[Lab 验证](../docs/engineering/lab-yaml-sdk-migration-validation-20260926.md)。[较早入口记录](../docs/engineering/yaml-candidate-entry-closeout-20260926.md)只核对当时导航与候选文件。
 
 ## 既有 JSON 试用入口（2026-09-22）
 
-当前推荐产物已归集到本目录下；以下路径均相对于 `deliverables/`：
+这批既有产物已归集到本目录下；以下路径均相对于 `deliverables/`：
 
-- SDK 根：`sdk/7b4205e/`，内含 `pae-sdk-source`、`pae-sdk-static-debug`、`pae-sdk-static-release`、`pae-sdk-shared-debug`、`pae-sdk-shared-release` 五包；首次集成优先 static Release。
-- Lab 首选（含结构化编译诊断及 Binary 流式示例）：`lab/fe1683c-plus-patches/static-release/`。
+- SDK 根：`sdk/7b4205e/`，内含 `pae-sdk-source`、`pae-sdk-static-debug`、`pae-sdk-static-release`、`pae-sdk-shared-debug`、`pae-sdk-shared-release` 五包；复核此批时可先用 static Release。
+- Lab 对照（含结构化编译诊断及 Binary 流式示例）：`lab/fe1683c-plus-patches/static-release/`。
 - 本次归集的原始证据与绝对路径清单位于 Git 忽略的 `evidence/portable-delivery/`；公共验证摘要见[归集验证记录](../docs/engineering/portable-delivery-validation-20260922.md)。
 
 `sdk/`、`lab/`、`evidence/` 仍是本机 Git 忽略目录，仅 clone 仓库不会取得这些大文件；需要按验证记录另行取得或重建，不能把 README 中的相对路径理解为产物已纳入版本控制。诊断改动前的 shared 对照未纳入本轮新归集。

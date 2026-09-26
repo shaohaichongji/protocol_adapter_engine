@@ -4,6 +4,12 @@
 
 ## 1. 先按目的选择入口
 
+最新：YAML SDK/Lab 累计变更已提交 `b12ad80`，未由总控推送；
+[同基线交付计划](yaml-clean-delivery-plan-20260926.md) 的构建与归集已完成限定复核。
+用户确认 static Release JSON/YAML 正常解析通过、Lab 已关闭，见
+[人工记录](yaml-clean-delivery-validation-20260926.md)。配置错误诊断等未测项保留；
+收尾文档尚未提交，旧产物未覆盖或删除。以下日期条目保留此前过程。
+
 2026-09-26：YAML 内部前端及构建固化已提交 `4da54b9`；Lab 可选入口已正式交接并完成限定复核，尚未提交。
 当前入口见 [YAML 计划](yaml-entry-plan-20260926.md)和 [候选入口与累计清单](yaml-candidate-entry-closeout-20260926.md)。
 可选静态 SDK 组件、七包打包及 standalone Lab 公开消费迁移已完成限定复核，入口默认关闭。

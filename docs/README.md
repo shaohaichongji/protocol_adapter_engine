@@ -23,7 +23,9 @@
 
 ## 当前交付身份
 
-本机统一入口为 [`deliverables/README.md`](../deliverables/README.md)。当前推荐 SDK 五包来自 clean `7b4205ea899cf16b9c73ba6ebc4c64382b71dc63`；首选 Lab 来自 `fe1683c` 加构建时尚未提交的结构化编译诊断与 Binary 流式示例打包修补。修补现已提交，但二进制未重建；Lab 使用上述 installed SDK，不能标为当前 HEAD 的干净构建。
+本机统一入口为 [`deliverables/README.md`](../deliverables/README.md)。当前本地初版候选来自固定干净提交 `b12ad809bdbc35589e8e5755f0e4ad04f386fa10`：七个 SDK 包在 `deliverables/sdk/b12ad80/`，消费同批 SDK 的 standalone Lab 在 `deliverables/lab/b12ad80/`，首次使用优先 static Release。包含可选受限 YAML 入口，JSON 仍为 canonical 编译输入。构建及包外消费证据、归集校验见 [同基线归集记录](engineering/yaml-clean-delivery-validation-20260926.md)。用户已确认 static Release JSON/YAML 正常解析通过，Lab 已关闭；配置错误诊断等未测项保持边界。本地产物被 Git 忽略，仅 clone 仓库不会自动取得。
+
+此前 `7b4205e` SDK、`fe1683c-plus-patches` Lab 及提交前 dirty YAML 候选保留原构建身份，不因新版本归集而改变验证记录。
 
 旧 `98df5e0` SDK/standalone 与 `fa81329/common-release` 继续作为历史对照。各身份不能互换来源证据；均不表示稳定 ABI、Linux、正式分发、许可闭合、真实协议或现场验收。
 
