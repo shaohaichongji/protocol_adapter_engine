@@ -11,11 +11,18 @@ if(NOT _ryml_sha STREQUAL "0d0b8076174cf62f034406b03529fda542ebc9a17506d3bd6d949
   message(FATAL_ERROR "PAE YAML frontend rapidyaml 0.16.0 header SHA256 mismatch")
 endif()
 
-add_library(pae_yaml_frontend STATIC frontend.cpp)
+add_library(pae_yaml_frontend STATIC frontend.cpp public_facade.cpp)
+add_library(PAE::yaml_frontend ALIAS pae_yaml_frontend)
 target_compile_features(pae_yaml_frontend PUBLIC cxx_std_17)
 if(MSVC)
   target_compile_options(pae_yaml_frontend PRIVATE /utf-8)
 endif()
-target_include_directories(pae_yaml_frontend PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}")
+target_include_directories(
+  pae_yaml_frontend
+  PUBLIC
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/public>
+    $<INSTALL_INTERFACE:include>
+)
 get_filename_component(_ryml_dir "${_pae_ryml_header}" DIRECTORY)
 target_include_directories(pae_yaml_frontend PRIVATE "${_ryml_dir}")

@@ -454,6 +454,17 @@ bool DocumentTab::DiagnosticUsesPlainTextForSmoke() const noexcept {
   return diagnostic_label_->textFormat() == Qt::PlainText;
 }
 
+#if defined(PAE_BUILD_PROTOCOL_LAB_YAML_ENTRY)
+bool DocumentTab::YamlGeneratedJsonMatchesForSmoke() const noexcept {
+  if (!active_yaml_conversion_ || !session_.prepared()) return false;
+#if defined(PAE_BUILD_PROTOCOL_LAB_BINDING_UI)
+  return host_config_text_ == active_yaml_conversion_->Json();
+#else
+  return true;
+#endif
+}
+#endif
+
 QString DocumentTab::ConfigPath() const { return path_edit_->text(); }
 
 QString DocumentTab::Title() const {
@@ -475,6 +486,10 @@ void DocumentTab::AcceptCompletion(std::unique_ptr<CompileCompletion> completion
   }
 #if defined(PAE_BUILD_PROTOCOL_LAB_BINDING_UI)
   if (host_pending_revision_ && completion->load_revision == *host_pending_revision_) {
+#if defined(PAE_BUILD_PROTOCOL_LAB_YAML_ENTRY)
+    if (active_yaml_conversion_ && completion->structured_compile_diagnostic)
+      AnnotateYamlSource(*completion->structured_compile_diagnostic, *active_yaml_conversion_);
+#endif
 #if defined(PAE_BUILD_PROTOCOL_LAB_ASCII_SMOKE_DIAGNOSTIC)
     ascii_smoke_diagnostic::Trace("host_completion_before_publish", this);
 #endif
@@ -484,11 +499,35 @@ void DocumentTab::AcceptCompletion(std::unique_ptr<CompileCompletion> completion
 #endif
     return;
   }
+#endif
   if (completion->load_revision != session_.load_revision()) return;
+#if defined(PAE_BUILD_PROTOCOL_LAB_YAML_ENTRY)
+  auto yaml_conversion = std::move(completion->yaml_conversion);
+#if defined(PAE_BUILD_PROTOCOL_LAB_BINDING_UI)
+  std::string generated_host_text;
+  if (yaml_conversion) {
+    try {
+      generated_host_text.assign(yaml_conversion->Json().data(),
+                                 yaml_conversion->Json().size());
+    } catch (const std::bad_alloc&) {
+      completion->route = SchemaDispatchStatus::CLASSIFICATION_FAILED;
+      completion->classification_error = "YAML generated JSON retention allocation failed";
+      yaml_conversion.reset();
+    }
+  }
+#endif
 #endif
   const bool published = session_.ApplyCompileCompletion(std::move(completion));
   ResetVisibleDocument();
   if (published) {
+#if defined(PAE_BUILD_PROTOCOL_LAB_YAML_ENTRY)
+    if (yaml_conversion) {
+#if defined(PAE_BUILD_PROTOCOL_LAB_BINDING_UI)
+      host_config_text_ = std::move(generated_host_text);
+#endif
+      active_yaml_conversion_ = std::move(yaml_conversion);
+    }
+#endif
     RebuildSelectorsAndModel();
 #if defined(PAE_BUILD_PROTOCOL_LAB_BINDING_UI)
     InitializeHostDraft();
@@ -523,6 +562,9 @@ bool DocumentTab::CloseDocument(bool require_confirmation) {
   }
 #endif
   closed_ = true;
+#if defined(PAE_BUILD_PROTOCOL_LAB_YAML_ENTRY)
+  active_yaml_conversion_.reset();
+#endif
   worker_.CloseDocument(session_.id());
   field_model_->Reset(nullptr, {});
   hex_view_->ClearFrame();
@@ -2670,7 +2712,9 @@ void DocumentTab::AcceptHostCompletion(std::unique_ptr<CompileCompletion> comple
         if (completion->route == SchemaDispatchStatus::CLASSIFICATION_FAILED)
           error = "schema classification failed: " + completion->classification_error;
         else if (completion->public_diagnostic)
-          error = "public Binary compiler failed: " + completion->public_diagnostic->detail;
+          error = completion->structured_compile_diagnostic
+                      ? FormatCompileDiagnostic(*completion->structured_compile_diagnostic)
+                      : "public Binary compiler failed: " + completion->public_diagnostic->detail;
         else
           error = "public Binary preparation result was stale or incomplete";
       }
@@ -2827,6 +2871,10 @@ void DocumentTab::AcceptHostCompletion(std::unique_ptr<CompileCompletion> comple
 #endif
   host_pending_bindings_.clear();
   if (!candidate) {
+#if defined(PAE_BUILD_PROTOCOL_LAB_YAML_ENTRY)
+    if (error.empty() && completion->structured_compile_diagnostic)
+      error = FormatCompileDiagnostic(*completion->structured_compile_diagnostic);
+#endif
     host_status_->setText(UiText("准备失败；当前状态保持不变。\n%1").arg(FromUtf8(error)));
     RefreshState();
     return;
@@ -3367,7 +3415,11 @@ void DocumentTab::BuildUi() {
 
   connect(browse_button_, &QPushButton::clicked, this, [this] {
     const auto path = QFileDialog::getOpenFileName(this, UiText("打开 PAE 配置"), path_edit_->text(),
+#if defined(PAE_BUILD_PROTOCOL_LAB_YAML_ENTRY)
+                                                   UiText("PAE 配置 (*.json *.yaml *.yml);;所有文件 (*)"));
+#else
                                                    UiText("JSON 文件 (*.json);;所有文件 (*)"));
+#endif
     if (!path.isEmpty()) {
       LoadPath(path);
     }
@@ -3453,10 +3505,28 @@ void DocumentTab::BeginLoadFromPath(bool discard_confirmed) {
 #endif
   host_config_text_.clear();
 #endif
+#if defined(PAE_BUILD_PROTOCOL_LAB_YAML_ENTRY)
+  active_yaml_conversion_.reset();
+#endif
   const auto revision = session_.BeginLoad();
   ResetVisibleDocument();
   RefreshState();
 
+  const auto suffix = QFileInfo(path_edit_->text()).suffix();
+  const bool yaml_source = suffix.compare(QStringLiteral("yaml"), Qt::CaseInsensitive) == 0 ||
+                           suffix.compare(QStringLiteral("yml"), Qt::CaseInsensitive) == 0;
+#if !defined(PAE_BUILD_PROTOCOL_LAB_YAML_ENTRY)
+  if (yaml_source) {
+    auto completion = std::make_unique<CompileCompletion>();
+    completion->document_id = session_.id();
+    completion->load_revision = revision;
+    completion->route = SchemaDispatchStatus::CLASSIFICATION_FAILED;
+    completion->classification_error = "YAML entry is disabled in this Lab build";
+    completion->diagnostic = CompileCompletion::Diagnostic{completion->classification_error};
+    AcceptCompletion(std::move(completion));
+    return;
+  }
+#endif
   QFile file(path_edit_->text());
   if (!file.open(QIODevice::ReadOnly)) {
     auto completion = std::make_unique<CompileCompletion>();
@@ -3467,22 +3537,33 @@ void DocumentTab::BeginLoadFromPath(bool discard_confirmed) {
     AcceptCompletion(std::move(completion));
     return;
   }
-  const auto bytes = file.read(static_cast<qint64>(kMaximumConfigBytes + 1U));
-  if (bytes.size() > static_cast<qint64>(kMaximumConfigBytes)) {
+  const auto maximum_source_bytes = yaml_source
+#if defined(PAE_BUILD_PROTOCOL_LAB_YAML_ENTRY)
+      ? pae::yaml::TrialResourceLimitsV01().input_bytes
+#else
+      ? kMaximumConfigBytes
+#endif
+      : kMaximumConfigBytes;
+  const auto bytes = file.read(static_cast<qint64>(maximum_source_bytes + 1U));
+  if (bytes.size() > static_cast<qint64>(maximum_source_bytes)) {
     auto completion = std::make_unique<CompileCompletion>();
     completion->document_id = session_.id();
     completion->load_revision = revision;
-    completion->diagnostic =
-        CompileCompletion::Diagnostic{"UI config file exceeds 4 MiB precheck"};
+    completion->diagnostic = CompileCompletion::Diagnostic{
+        yaml_source ? "YAML file exceeds frontend input precheck"
+                    : "UI config file exceeds 4 MiB precheck"};
     AcceptCompletion(std::move(completion));
     return;
   }
 #if defined(PAE_BUILD_PROTOCOL_LAB_BINDING_UI)
-  host_config_text_.assign(bytes.constData(), static_cast<std::size_t>(bytes.size()));
+  if (!yaml_source)
+    host_config_text_.assign(bytes.constData(), static_cast<std::size_t>(bytes.size()));
 #endif
   const auto status =
       worker_.Submit(session_.id(), revision,
-                     std::string_view(bytes.constData(), static_cast<std::size_t>(bytes.size())));
+                     std::string_view(bytes.constData(), static_cast<std::size_t>(bytes.size())),
+                     yaml_source ? ConfigSourceFormat::YAML : ConfigSourceFormat::JSON,
+                     yaml_source ? Utf8(path_edit_->text()) : std::string{});
   if (status != SubmitStatus::ACCEPTED) {
     auto completion = std::make_unique<CompileCompletion>();
     completion->document_id = session_.id();

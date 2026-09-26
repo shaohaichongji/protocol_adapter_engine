@@ -235,17 +235,57 @@ std::unique_ptr<CompileCompletion> CompileRequest(CompileWorker::Request request
   auto completion = std::make_unique<CompileCompletion>();
   completion->document_id = request.document_id;
   completion->load_revision = request.load_revision;
-  completion->config_sha256 = protocol_lab::HashBytes(request.config_text);
+  std::string_view compile_text = request.config_text;
+  if (request.source_format == ConfigSourceFormat::YAML) {
+#if defined(PAE_BUILD_PROTOCOL_LAB_YAML_ENTRY)
+    auto converted = pae::yaml::ConvertToStrictJson(request.config_text, request.source_identity);
+    if (!converted.Succeeded()) {
+      completion->route = SchemaDispatchStatus::CLASSIFICATION_FAILED;
+      completion->classification_error =
+          std::string("YAML 转换失败：") + converted.Reason() + "；原文位置：未提供";
+      return completion;
+    }
+    completion->yaml_conversion =
+        std::make_unique<pae::yaml::ConversionResult>(std::move(converted));
+    compile_text = completion->yaml_conversion->Json();
+#else
+    completion->route = SchemaDispatchStatus::CLASSIFICATION_FAILED;
+    completion->classification_error = "YAML entry is disabled in this Lab build";
+    return completion;
+#endif
+  }
+  completion->config_sha256 = protocol_lab::HashBytes(compile_text);
 #if defined(PAE_BUILD_PROTOCOL_LAB_BINARY_PUBLIC_H2) || \
     defined(PAE_BUILD_PROTOCOL_LAB_ASCII_PUBLIC_A2) || \
     defined(PAE_BUILD_PROTOCOL_LAB_ASCII_PUBLIC_STREAM_UI) || \
     defined(PAE_BUILD_PROTOCOL_LAB_PUBLIC_LEGACY_COMPLETE)
-  const auto dispatch = ClassifySchemaVersion(request.config_text);
+  const auto dispatch = ClassifySchemaVersion(compile_text);
   completion->route = dispatch.status;
   if (dispatch.status == SchemaDispatchStatus::CLASSIFICATION_FAILED) {
     completion->classification_error = dispatch.detail;
+    if (request.source_format == ConfigSourceFormat::YAML)
+      completion->classification_error += "；YAML 原文位置：未提供";
     return completion;
   }
+#if defined(PAE_BUILD_PROTOCOL_LAB_YAML_ENTRY)
+  if (request.source_format == ConfigSourceFormat::YAML &&
+      !(
+#if defined(PAE_BUILD_PROTOCOL_LAB_BINARY_PUBLIC_H2)
+        dispatch.status == SchemaDispatchStatus::BINARY_PUBLIC ||
+#endif
+#if defined(PAE_BUILD_PROTOCOL_LAB_PUBLIC_LEGACY_COMPLETE)
+        dispatch.status == SchemaDispatchStatus::LEGACY_PUBLIC ||
+#endif
+#if defined(PAE_BUILD_PROTOCOL_LAB_ASCII_PUBLIC_A2) || \
+    defined(PAE_BUILD_PROTOCOL_LAB_ASCII_PUBLIC_STREAM_UI)
+        dispatch.status == SchemaDispatchStatus::ASCII_PUBLIC ||
+#endif
+        false)) {
+    completion->route = SchemaDispatchStatus::CLASSIFICATION_FAILED;
+    completion->classification_error = "YAML requires an enabled public Lab compiler route";
+    return completion;
+  }
+#endif
   if (dispatch.status == SchemaDispatchStatus::BINARY_PUBLIC
 #if defined(PAE_BUILD_PROTOCOL_LAB_PUBLIC_LEGACY_COMPLETE)
       || dispatch.status == SchemaDispatchStatus::LEGACY_PUBLIC
@@ -256,10 +296,16 @@ std::unique_ptr<CompileCompletion> CompileRequest(CompileWorker::Request request
 #endif
   ) {
     ++completion->compiler_attempt_count;
-    auto result = pae::CompileProtocolJson(request.config_text);
+    auto result = pae::CompileProtocolJson(compile_text);
     if (!result.Succeeded()) {
       if (result.Diagnostic()) { completion->public_diagnostic = *result.Diagnostic();
         completion->structured_compile_diagnostic = ProjectCompileDiagnostic(*result.Diagnostic());
+#if defined(PAE_BUILD_PROTOCOL_LAB_YAML_ENTRY)
+        if (completion->yaml_conversion) {
+          AnnotateYamlSource(*completion->structured_compile_diagnostic,
+                             *completion->yaml_conversion);
+        }
+#endif
       }
       return completion;
     }
@@ -273,7 +319,7 @@ std::unique_ptr<CompileCompletion> CompileRequest(CompileWorker::Request request
       config_compiler::DerivedProtocolMetadataMemoryLimit(protocol_plan::ResourceProfile::DESKTOP);
   ++completion->compiler_attempt_count;
   auto result =
-      config_compiler::CompileJsonToPlanWithMetadata(request.config_text, desktop_limit);
+      config_compiler::CompileJsonToPlanWithMetadata(compile_text, desktop_limit);
   if (!result.Succeeded()) {
     if (result.Diagnostic() != nullptr) { completion->diagnostic = *result.Diagnostic();
       completion->structured_compile_diagnostic = ProjectCompileDiagnostic(*result.Diagnostic());
@@ -340,12 +386,39 @@ CompileDiagnosticView ProjectCompileDiagnostic(const pae::CompileDiagnostic& dia
 }
 #endif
 
+#if defined(PAE_BUILD_PROTOCOL_LAB_YAML_ENTRY)
+void AnnotateYamlSource(CompileDiagnosticView& diagnostic,
+                        const pae::yaml::ConversionResult& conversion) noexcept {
+  diagnostic.yaml_source = true;
+  const auto exact = conversion.FindSource(diagnostic.json_pointer);
+  const auto source = exact ? exact : conversion.FindNearestSource(diagnostic.json_pointer);
+  if (source) {
+    const bool key = exact && diagnostic.code == "UNKNOWN_PROPERTY" &&
+                     source->key_line != 0U;
+    diagnostic.yaml_line = key ? source->key_line : source->value_line;
+    diagnostic.yaml_column = key ? source->key_column : source->value_column;
+    diagnostic.yaml_approximate = source->ancestor_fallback ||
+        (key ? source->key_approximate : source->value_approximate);
+  }
+}
+#endif
+
 std::string FormatCompileDiagnostic(const CompileDiagnosticView& diagnostic) {
   std::string text = "阶段：" + diagnostic.stage + "\n错误码：" + diagnostic.code;
   text += "\nJSON 位置：";
   text += diagnostic.json_pointer.empty() ? "根（空 pointer）" : diagnostic.json_pointer;
-  text += "\n字节偏移：";
+  text += diagnostic.yaml_source ? "\n生成 JSON 字节偏移：" : "\n字节偏移：";
   text += diagnostic.byte_offset ? std::to_string(*diagnostic.byte_offset) : "未提供";
+  if (diagnostic.yaml_source) {
+    text += "\nYAML 原文位置：";
+    if (diagnostic.yaml_line && diagnostic.yaml_column) {
+      text += std::to_string(*diagnostic.yaml_line) + ":" +
+              std::to_string(*diagnostic.yaml_column);
+      if (diagnostic.yaml_approximate) text += "（近似/容器回退）";
+    } else {
+      text += "未映射";
+    }
+  }
   text += "\n资源类型：" + diagnostic.resource_kind;
   text += "\n需要 / 限制：";
   if (diagnostic.has_resource_budget) {
@@ -443,8 +516,16 @@ CompileWorker::CompileWorker(CompileFunction compile_function)
 CompileWorker::~CompileWorker() = default;
 
 SubmitStatus CompileWorker::Submit(DocumentId document_id, Revision load_revision,
-                                   std::string_view config_text) {
+                                    std::string_view config_text,
+                                    ConfigSourceFormat source_format,
+                                    std::string_view source_identity) {
   if (config_text.size() > kMaximumConfigBytes) return SubmitStatus::CONFIG_TOO_LARGE;
+#if defined(PAE_BUILD_PROTOCOL_LAB_YAML_ENTRY)
+  if (source_format == ConfigSourceFormat::YAML &&
+      (config_text.size() > pae::yaml::TrialResourceLimitsV01().input_bytes ||
+       source_identity.size() > pae::yaml::TrialResourceLimitsV01().auxiliary_bytes))
+    return SubmitStatus::CONFIG_TOO_LARGE;
+#endif
   std::lock_guard<std::mutex> lock(implementation_->mutex);
   if (implementation_->stopping) return SubmitStatus::WORKER_STOPPED;
   if (implementation_->closed_documents.find(document_id) !=
@@ -459,6 +540,9 @@ SubmitStatus CompileWorker::Submit(DocumentId document_id, Revision load_revisio
   replacement.document_id = document_id;
   replacement.load_revision = load_revision;
   replacement.config_text.assign(config_text.data(), config_text.size());
+  replacement.source_format = source_format;
+  if (!source_identity.empty())
+    replacement.source_identity.assign(source_identity.data(), source_identity.size());
   replacement.enqueue_sequence = implementation_->next_enqueue_sequence++;
   implementation_->pending[document_id] = std::move(replacement);
   implementation_->wake.notify_one();

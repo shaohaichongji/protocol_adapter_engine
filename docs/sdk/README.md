@@ -91,3 +91,37 @@ source 包的配置位于 `examples/config/`，配置时使用 `PAE_SOURCE_DIR=$
 `MANIFEST.txt` 记录文件和长度，`SHA256SUMS.txt` 记录包内文件 Hash，`PROVENANCE.json` 记录来源。
 这些信息用于内部一致性与追溯，不提供签名、来源认证或防篡改保证。仓库当前没有项目级 PAE 许可；
 `LICENSES/yyjson-LICENSE.txt` 只适用于 yyjson，不代表 PAE 获准外部分发。
+
+## 8. 可选 YAML 作者源组件（本地试用候选）
+
+开启 `PAE_BUILD_YAML_FRONTEND` 的本地安装树可另外提供 `PAE::yaml_frontend` 静态
+附加目标及 `<pae/yaml_frontend.h>`；默认 OFF/JSON-only 安装树不携带该头、目标、示例
+和 rapidyaml 许可目录。`scripts/package_sdk_stage3.ps1` 的 source 包白名单现包含
+可选 YAML 源码、公开头、CMake、固定 rapidyaml 原件与通知、Profile 和独立合成
+consumer；source 包中该组件仍默认 OFF，不要求 JSON-only 消费者编译它。binary
+包从已安装树识别 ON/OFF，ON 时必须具有附加库、头、Profile、许可和示例，缺文件或
+混合状态拒绝；OFF 包仍可独立消费 JSON，显式请求 YAML 组件则在 `find_package`
+阶段失败。shared PAE 包是 `pae.dll` 加静态 YAML 库，没有 YAML DLL。
+
+本地打包候选的 `MANIFEST.txt`、`SHA256SUMS.txt` 与 `PROVENANCE.json` 可以由
+`scripts/verify_yaml_sdk_package.ps1` 按实际包内容复核。复制既有安装树制包时，
+元数据记录当前 HEAD/dirty 和既有安装树字节这一事实；当前 Git 状态本身不能证明
+此前二进制是由当前脏树重建。仓库侧 2026-09-26 的实际打包与消费记录见
+`docs/engineering/yaml-sdk-packaging-validation-20260926.md`（不随 SDK 包安装）。
+这些仍是本地试用候选，
+不是正式发布、对外分发许可或稳定 ABI 承诺。
+
+包内 `examples/yaml_sdk_consumer` 展示显式消费：`find_package(PAE CONFIG REQUIRED
+COMPONENTS yaml_frontend)`，链接 `PAE::yaml_frontend` 与 `PAE::pae`；先把受限 YAML
+转换为自有严格 JSON，再调用既有 `CompileProtocolJson` 和 Codec。前端不解释协议
+Schema，不自动替换 JSON 编译入口；转换失败没有可用的 JSON 或来源映射。生成 JSON
+的 view 借用 move-only 转换结果 owner，移动、赋值或销毁后须重新获取。来源查询返回
+值类型的 YAML 行列；最近祖先回退有独立标志，生成 JSON offset 不能当成 YAML offset。
+
+`TrialResourceLimitsV01()` 只读给出当前**试用组件资源约束 V0.1**：输入 16 KiB、
+Parser/辅助各 128 KiB、JSON 32 KiB、512 节点、16 层、4 KiB 标量。它们是拒绝边界，
+不是生产容量或全进程 RSS 上界；公开结果 owner 另有一次分配，失败返回
+`ALLOCATION_FAILED`。公开接口不提供故障注入或任意预算调参。转换库的当前 C++ ABI
+仅按同包 x64/MSVC/CRT 配对验证，不能跨编译器或混用 Debug/Release；项目级许可与
+对外分发仍待另行审查。rapidyaml 相关通知仅随启用组件的安装树提供，不能替代
+PAE 项目的分发许可。

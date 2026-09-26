@@ -4,7 +4,14 @@
 
 This entry builds the complete Qt Lab from the copied Lab whitelist, one installed static or shared PAE SDK,
 the fixed Qt 5.13 input and the locked Lab-owned yyjson dependency. It never adds the PAE source
-tree as a subdirectory and links Lab targets only to `PAE::pae`.
+tree as a subdirectory and, by default, links Lab targets only to `PAE::pae`.
+
+The optional YAML authoring entry is `PAE_LAB_ENABLE_YAML_ENTRY=ON` (default `OFF`). ON requests
+the installed `yaml_frontend` component through `find_package(PAE COMPONENTS yaml_frontend)`,
+links `PAE::yaml_frontend`, and adds only the copied synthetic YAML example to the isolated
+deployment. A JSON-only SDK is valid with the option OFF and is rejected at Configure with ON.
+There is no fallback to the repository's internal frontend. The YAML add-on is a static library
+in both static and shared SDK packages; shared Lab still uses the matching SDK `pae.dll`.
 
 Use `PrepareStandaloneInputs.ps1` from the repository with explicit `-RepositoryRoot`,
 `-DestinationRoot`, `-SdkCandidateRoot` and `-PackageKind static|shared`; the destination must not

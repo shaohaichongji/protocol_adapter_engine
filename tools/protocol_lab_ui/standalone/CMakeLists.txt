@@ -2,6 +2,7 @@ cmake_minimum_required(VERSION 3.25)
 project(PaeProtocolLabStandalone LANGUAGES C CXX)
 
 option(PAE_LAB_BUILD_TESTING "Build the installed-SDK Lab validation tests" ON)
+option(PAE_LAB_ENABLE_YAML_ENTRY "Enable the installed-SDK YAML Lab entry" OFF)
 set(PAE_LAB_EXPECTED_LIBRARY_KIND "STATIC" CACHE STRING "Required installed PAE package kind")
 set_property(CACHE PAE_LAB_EXPECTED_LIBRARY_KIND PROPERTY STRINGS STATIC SHARED)
 set(PAE_LAB_SOURCE_ROOT "${CMAKE_CURRENT_LIST_DIR}/../../.." CACHE PATH "Lab whitelist source root")
@@ -24,7 +25,11 @@ if(NOT EXISTS "${PAE_SDK_ROOT}/PROVENANCE.json" OR
    NOT IS_DIRECTORY "${PAE_SDK_ROOT}/lib")
   message(FATAL_ERROR "PAE_SDK_ROOT must name one installed SDK package root exactly")
 endif()
-find_package(PAE CONFIG REQUIRED PATHS "${PAE_SDK_ROOT}" NO_DEFAULT_PATH)
+if(PAE_LAB_ENABLE_YAML_ENTRY)
+  find_package(PAE CONFIG REQUIRED COMPONENTS yaml_frontend PATHS "${PAE_SDK_ROOT}" NO_DEFAULT_PATH)
+else()
+  find_package(PAE CONFIG REQUIRED PATHS "${PAE_SDK_ROOT}" NO_DEFAULT_PATH)
+endif()
 cmake_path(NORMAL_PATH PAE_DIR OUTPUT_VARIABLE normalized_pae_dir)
 cmake_path(IS_PREFIX PAE_SDK_ROOT "${normalized_pae_dir}" NORMALIZE pae_dir_is_sdk)
 if(NOT pae_dir_is_sdk)
@@ -37,6 +42,33 @@ endif()
 if(NOT PAE_LIBRARY_KIND STREQUAL PAE_LAB_EXPECTED_LIBRARY_KIND)
   message(FATAL_ERROR
     "Installed PAE package kind mismatch: expected ${PAE_LAB_EXPECTED_LIBRARY_KIND}, got ${PAE_LIBRARY_KIND}")
+endif()
+if(PAE_LAB_ENABLE_YAML_ENTRY)
+  if(NOT TARGET PAE::yaml_frontend)
+    message(FATAL_ERROR "Installed PAE package lacks PAE::yaml_frontend")
+  endif()
+  string(TOUPPER "${PAE_PACKAGE_CONFIGURATION}" pae_yaml_configuration_upper)
+  get_target_property(pae_yaml_library PAE::yaml_frontend
+    "IMPORTED_LOCATION_${pae_yaml_configuration_upper}")
+  if(NOT pae_yaml_library OR NOT EXISTS "${pae_yaml_library}")
+    message(FATAL_ERROR "PAE::yaml_frontend lacks its installed static add-on library")
+  endif()
+  cmake_path(NORMAL_PATH pae_yaml_library OUTPUT_VARIABLE normalized_pae_yaml_library)
+  cmake_path(IS_PREFIX PAE_SDK_ROOT "${normalized_pae_yaml_library}" NORMALIZE pae_yaml_library_in_sdk)
+  if(NOT pae_yaml_library_in_sdk)
+    message(FATAL_ERROR "PAE::yaml_frontend escaped PAE_SDK_ROOT")
+  endif()
+  file(SHA256 "${normalized_pae_yaml_library}" pae_yaml_library_sha256)
+  file(STRINGS "${PAE_SDK_ROOT}/SHA256SUMS.txt" pae_yaml_manifest_line
+    REGEX "^[0-9A-Fa-f]+  lib/pae/addons/pae_yaml_frontend\\.lib$")
+  if(NOT pae_yaml_manifest_line MATCHES "^([0-9A-Fa-f]+)  lib/pae/addons/pae_yaml_frontend\\.lib$")
+    message(FATAL_ERROR "Installed YAML add-on lacks a unique manifest entry")
+  endif()
+  string(TOLOWER "${CMAKE_MATCH_1}" pae_yaml_manifest_sha256)
+  string(TOLOWER "${pae_yaml_library_sha256}" pae_yaml_library_sha256)
+  if(NOT pae_yaml_library_sha256 STREQUAL pae_yaml_manifest_sha256)
+    message(FATAL_ERROR "Installed YAML add-on hash does not match SHA256SUMS.txt")
+  endif()
 endif()
 if(NOT PAE_PACKAGE_CONFIGURATION STREQUAL "Debug" AND
    NOT PAE_PACKAGE_CONFIGURATION STREQUAL "Release")
@@ -140,6 +172,9 @@ set(ascii_dir "${PAE_LAB_SOURCE_ROOT}/tools/protocol_lab_ascii")
 set(binary_dir "${PAE_LAB_SOURCE_ROOT}/tools/protocol_lab_binary")
 
 add_library(pae_lab_features INTERFACE)
+if(PAE_LAB_ENABLE_YAML_ENTRY)
+  target_compile_definitions(pae_lab_features INTERFACE PAE_BUILD_PROTOCOL_LAB_YAML_ENTRY=1)
+endif()
 target_compile_definitions(pae_lab_features INTERFACE
   PAE_PROTOCOL_LAB_STANDALONE_PUBLIC_ONLY=1
   PAE_BUILD_PROTOCOL_LAB_PUBLIC_LEGACY_COMPLETE=1
@@ -206,6 +241,9 @@ target_link_libraries(pae_protocol_lab_ui_headless_internal PUBLIC
   pae_protocol_lab_ui_owned_presentation pae_protocol_lab_ui_ascii_public_facade
   pae_protocol_lab_ui_binary_public_h2 PAE::pae pae_lab_features
   PRIVATE pae_lab_yyjson_vendor pae::project_options)
+if(PAE_LAB_ENABLE_YAML_ENTRY)
+  target_link_libraries(pae_protocol_lab_ui_headless_internal PUBLIC PAE::yaml_frontend)
+endif()
 
 add_executable(pae_protocol_lab_ui
   "${ui_dir}/application_window.cpp" "${ui_dir}/application_window.h"
@@ -225,6 +263,7 @@ set(PAE_LAB_UI_SMOKE_EXECUTABLE "${PAE_LAB_DEPLOY_ROOT}/$<CONFIG>/pae_protocol_l
 set(PAE_BUILD_PROTOCOL_LAB_ASCII_ADAPTER OFF)
 set(PAE_BUILD_PROTOCOL_LAB_BINARY_MATERIALIZER OFF)
 set(PAE_BUILD_PROTOCOL_LAB_PUBLIC_LEGACY_COMPLETE ON)
+set(PAE_BUILD_PROTOCOL_LAB_YAML_ENTRY ${PAE_LAB_ENABLE_YAML_ENTRY})
 set(PAE_BUILD_PROTOCOL_LAB_BINARY_PUBLIC_H1 ON)
 set(PAE_BUILD_PROTOCOL_LAB_BINARY_UI ON)
 set(PAE_BUILD_PROTOCOL_LAB_BINARY_PUBLIC_H2 ON)
@@ -259,6 +298,9 @@ if(PAE_LAB_BUILD_TESTING)
     pae_protocol_lab_ui_owned_presentation pae_protocol_lab_ui_ascii_public_facade
     pae_protocol_lab_ui_binary_public_h2 PAE::pae pae_lab_features
     PRIVATE pae_lab_yyjson_vendor pae::project_options)
+  if(PAE_LAB_ENABLE_YAML_ENTRY)
+    target_link_libraries(pae_protocol_lab_ui_headless_internal_test PUBLIC PAE::yaml_frontend)
+  endif()
   set(PAE_PROTOCOL_LAB_UI_HEADLESS_TEST_TARGET pae_protocol_lab_ui_headless_internal_test)
   add_subdirectory("${PAE_LAB_SOURCE_ROOT}/tests/protocol_lab_binary" tests-protocol-lab-binary)
   add_subdirectory("${PAE_LAB_SOURCE_ROOT}/tests/protocol_lab_ascii" tests-protocol-lab-ascii)

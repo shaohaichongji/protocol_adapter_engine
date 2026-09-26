@@ -8,6 +8,9 @@
 #include <string>
 #include <string_view>
 #include <vector>
+#if defined(PAE_BUILD_PROTOCOL_LAB_YAML_ENTRY)
+#include "pae/yaml_frontend.h"
+#endif
 
 #if !defined(PAE_PROTOCOL_LAB_STANDALONE_PUBLIC_ONLY)
 #include "../../src/config_compiler/config_compiler.h"
@@ -28,6 +31,8 @@ using ResultTicket = std::uint64_t;
 
 inline constexpr std::size_t kMaximumConfigBytes = 4U * 1024U * 1024U;
 
+enum class ConfigSourceFormat { JSON, YAML };
+
 struct CompileDiagnosticView {
   std::string stage;
   std::string code;
@@ -39,6 +44,10 @@ struct CompileDiagnosticView {
   std::uint64_t limit_bytes = 0U;
   std::string resource_profile;
   std::string detail;
+  bool yaml_source = false;
+  std::optional<std::size_t> yaml_line;
+  std::optional<std::size_t> yaml_column;
+  bool yaml_approximate = false;
 };
 
 #if !defined(PAE_PROTOCOL_LAB_STANDALONE_PUBLIC_ONLY)
@@ -52,6 +61,10 @@ CompileDiagnosticView ProjectCompileDiagnostic(
 CompileDiagnosticView ProjectCompileDiagnostic(const pae::CompileDiagnostic& diagnostic);
 #endif
 std::string FormatCompileDiagnostic(const CompileDiagnosticView& diagnostic);
+#if defined(PAE_BUILD_PROTOCOL_LAB_YAML_ENTRY)
+void AnnotateYamlSource(CompileDiagnosticView& diagnostic,
+                        const pae::yaml::ConversionResult& conversion) noexcept;
+#endif
 
 struct CompileCompletion {
   DocumentId document_id = 0U;
@@ -78,6 +91,9 @@ struct CompileCompletion {
   SchemaDispatchStatus route = SchemaDispatchStatus::PRIVATE_LEGACY;
   std::string classification_error;
   std::size_t compiler_attempt_count = 0U;
+#if defined(PAE_BUILD_PROTOCOL_LAB_YAML_ENTRY)
+  std::unique_ptr<pae::yaml::ConversionResult> yaml_conversion;
+#endif
 #if defined(PAE_BUILD_PROTOCOL_LAB_BINARY_PUBLIC_H2) || \
     defined(PAE_BUILD_PROTOCOL_LAB_ASCII_PUBLIC_A2) || \
     defined(PAE_BUILD_PROTOCOL_LAB_ASCII_PUBLIC_STREAM_UI) || \
@@ -101,6 +117,8 @@ class CompileWorker final {
     DocumentId document_id = 0U;
     Revision load_revision = 0U;
     std::string config_text;
+    ConfigSourceFormat source_format = ConfigSourceFormat::JSON;
+    std::string source_identity;
     std::uint64_t enqueue_sequence = 0U;
   };
   using CompileFunction = std::function<std::unique_ptr<CompileCompletion>(Request)>;
@@ -111,7 +129,9 @@ class CompileWorker final {
   CompileWorker& operator=(const CompileWorker&) = delete;
   ~CompileWorker();
 
-  SubmitStatus Submit(DocumentId document_id, Revision load_revision, std::string_view config_text);
+  SubmitStatus Submit(DocumentId document_id, Revision load_revision, std::string_view config_text,
+                      ConfigSourceFormat source_format = ConfigSourceFormat::JSON,
+                      std::string_view source_identity = {});
   void CloseDocument(DocumentId document_id);
   std::vector<ResultTicket> DrainReadyTickets();
   std::unique_ptr<CompileCompletion> TakeResult(ResultTicket ticket);

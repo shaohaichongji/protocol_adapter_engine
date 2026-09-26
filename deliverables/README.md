@@ -2,7 +2,29 @@
 
 此目录集中本机可用的 PAE SDK 和配套 Lab，不是正式对外发布目录。导航纳入版本控制，`sdk/`、`lab/`、`evidence/` 中本地产物被 Git 忽略；仅 clone 仓库不会自动获得这些产物。
 
-## 当前推荐试用入口（2026-09-22）
+## YAML 初版本地候选（2026-09-26）
+
+首次试用 YAML 优先选择 **static Release** SDK 与对应的 standalone Lab。以下路径均相对于仓库根目录，位于 Git 忽略的 `out/`；仅 clone 仓库不会取得这些已构建产物。包内 `PROVENANCE.json` 记录 `source_head=4da54b9`、`source_worktree_dirty=true`；这些候选基于未提交输入，后续提交不会自动改变既有包和二进制的身份。
+
+| 用途 | 本地候选目录 |
+| --- | --- |
+| Source（含可选 YAML 源码，默认不启用） | `out/build/yaml-sdk-packaging-20260926/source final package with spaces/` |
+| Static Debug / Release（含 YAML 静态附加组件） | `out/build/yaml-sdk-packaging-20260926/static-debug-final-package/`、`out/build/yaml-sdk-packaging-20260926/static-release-final-package/` |
+| Shared Debug / Release（含 YAML 静态附加组件） | `out/build/yaml-sdk-packaging-20260926/shared-debug-final-package/`、`out/build/yaml-sdk-packaging-20260926/shared-release-final-package/` |
+| JSON-only Static / Shared Release 对照 | `out/build/yaml-sdk-packaging-20260926/json-only-static-final-package/`、`out/build/yaml-sdk-packaging-20260926/json-only-shared-final-package/` |
+| YAML standalone Lab Static / Shared Release | `out/build/lab-yaml-sdk-migration-20260926/standalone-static-Release-verified/deploy/Release/`、`out/build/lab-yaml-sdk-migration-20260926/standalone-shared-Release-verified/deploy/Release/` |
+
+二进制 YAML 包以 `find_package(PAE CONFIG REQUIRED COMPONENTS yaml_frontend)` 获取 `PAE::yaml_frontend`，并与 `PAE::pae` 同时链接；YAML 是静态附加组件，Shared PAE 仍需同包 `pae.dll`，没有独立 YAML DLL。JSON-only 包不提供该组件；Source 包需显式开启 `PAE_BUILD_YAML_FRONTEND`。配置须符合[受限 Profile V0.1](../schema/pae_yaml_profile_v0.1.md)，YAML 先转换成严格 JSON，再走原编译器。选择与包一致的 Debug/Release、MSVC 工具链和 CRT；具体接入见[03 Windows SDK 集成](../docs/guides/03-Windows-SDK集成.md)。
+
+首次图形体验可从仓库根目录启动 static Release 候选，再打开其 `configs/synthetic_ascii_literal_only.pae.yaml`：
+
+```powershell
+& '.\out\build\lab-yaml-sdk-migration-20260926\standalone-static-Release-verified\deploy\Release\pae_protocol_lab_ui.exe'
+```
+
+这是待人工体验的候选入口，尚未记录可见 UI 体验通过。保留完整部署目录的 EXE、Qt DLL、`platforms/` 和 `configs/`；shared 目录还需邻接的同包 `pae.dll`。七包打包及包外消费见[SDK 验证](../docs/engineering/yaml-sdk-packaging-validation-20260926.md)，Lab 定向验证和未覆盖项见[Lab 验证](../docs/engineering/lab-yaml-sdk-migration-validation-20260926.md)。[本轮入口收口](../docs/engineering/yaml-candidate-entry-closeout-20260926.md)只核对导航与候选文件，不重跑构建或 UI。
+
+## 既有 JSON 试用入口（2026-09-22）
 
 当前推荐产物已归集到本目录下；以下路径均相对于 `deliverables/`：
 
@@ -44,7 +66,7 @@ SDK 五包/六组包外消费、诊断改动前Lab static/shared Debug各33项�
 
 ## 历史 Lab：common 功能候选与 SDK 对照
 
-以下旧 common 候选保留用于历史对照；新试用优先使用上方 installed-SDK 入口：
+以下旧 common 候选保留用于历史对照；需要此前 JSON 公开路径时使用上方既有 installed-SDK 入口：
 
 ```powershell
 & '.\deliverables\lab\fa81329\common-release\pae_protocol_lab_ui.exe'

@@ -3,7 +3,8 @@
 ## 状态与作用
 
 本文件起于 2026-09-26 YAML 首片的**待总控复核契约候选**。当前已有独立非 Qt
-前端实现候选及定向验证，但尚未接入 Lab/SDK，不是已获批准的正式产品入口。
+前端、仓库内可选 Lab 入口和可选 SDK 静态组件的分片实现及各自限定验证；后两者
+不等于人工体验、正式包发布或已批准的稳定产品入口。
 已确认的上位边界见 `docs/engineering/yaml-entry-plan-20260926.md`：YAML 是作者源，
 经非 Qt 前端转换为严格 JSON 后，仍调用既有 `CompileProtocolJson`。JSON 仍是规范编译输入；
 Schema、执行语义、公开 ABI、现用 SDK 与 Lab 均不因本 Profile 改变。
@@ -54,8 +55,12 @@ Schema、执行语义、公开 ABI、现用 SDK 与 Lab 均不因本 Profile 改
   历史首片 libyaml 探针只验证了输入前置、Event 阶段和输出阶段检查；当时 Parser
   内部分配的上界未证明。后续 rapidyaml 候选通过每调用分配回调预算覆盖其
   Parser/Tree/arena 请求；这不是整个进程 RSS、线程栈或极端嵌套的全域资源证明。
-- 具体生产数值限额及异常诊断格式尚未获批。本探针中的 16 KiB 输入、32 KiB 输出、
-  4 KiB 单标量、512 节点和 16 层仅为隔离实验参数，不构成正式容量承诺。
+- 具体生产数值限额及异常诊断格式尚未获批。SDK 可选组件首片将现有默认值固定称为
+  **试用组件资源约束 V0.1**：输入 16 KiB、Parser 和辅助预算各 128 KiB、输出 JSON
+  32 KiB、512 节点、16 层及 4 KiB 单标量。公开只读查询用于调用方预读；不开放任意
+  调参或测试故障注入。上述是当前拒绝边界，不是生产容量档位、进程 RSS、CRT/栈
+  峰值或完整内存计费承诺；公开结果 owner 还需一次单独分配，失败返回分配失败状态。
+  后续调整须明确更新约束版本、说明和测试，不能仅修改默认数值。
 
 ## 兼容与验证边界
 
@@ -63,8 +68,11 @@ JSON-only 构建及调用不得强制引入 YAML 依赖。YAML 作者源不要�
 历史首片仅有独立解析器探针与两份公开合成配置的结构对照，未调用 PAE 编译器。
 当前独立内部前端已对公开 Binary CRC 与 ASCII 样例执行原 JSON/转换 JSON 的真实
 `CompileProtocolJson` 和已知 Decode/Encode 对照，证据见
-`docs/engineering/yaml-frontend-slice-validation-20260926.md`。这仍不证明所有配置等价，
-也不代表 Lab、SDK 或正式产品接入；后续接入须另行派发和验证。
+`docs/engineering/yaml-frontend-slice-validation-20260926.md`。这仍不证明所有配置等价。
+后续仓库内 Lab 与可选 SDK 安装树的限定结果分别见
+`docs/engineering/lab-yaml-minimal-entry-validation-20260926.md` 和
+`docs/engineering/yaml-sdk-component-validation-20260926.md`；不能把前端首片的历史测试
+追溯写成这两项已经通过，也不能据此宣称正式产品或人工验收。
 
 后续资源探针在 `docs/engineering/yaml-parser-resource-validation-20260926.md` 中记录：
 libyaml Event 异常清理已返修，第二候选 rapidyaml 的局部分配预算已作隔离动态验证。

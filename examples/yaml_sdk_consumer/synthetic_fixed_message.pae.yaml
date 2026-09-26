@@ -1,0 +1,46 @@
+schema_version: "0.9"
+protocol_id: synthetic_yaml_sdk
+protocol_version: "0.1-synthetic"
+display_name: Synthetic YAML SDK example
+description: Public independent three-byte record.
+source_ref: "SYNTHETIC_FROM_SCRATCH:yaml_sdk"
+resource_profile: desktop
+framing_profiles:
+  - id: complete_record
+    display_name: Complete record
+    description: One complete record per call.
+    source_ref: "SYNTHETIC_FROM_SCRATCH:yaml_sdk#framing"
+    input_kind: complete_record
+pipelines:
+  - id: synthetic_rx
+    display_name: Synthetic receive
+    description: Public three-byte pipeline.
+    source_ref: "SYNTHETIC_FROM_SCRATCH:yaml_sdk#pipeline"
+    direction_id: synthetic_rx
+    input_framing_profile_id: complete_record
+    message_ids: [synthetic_message]
+messages:
+  - id: synthetic_message
+    display_name: Synthetic message
+    description: AA followed by a two-byte unsigned integer.
+    source_ref: "SYNTHETIC_FROM_SCRATCH:yaml_sdk#message"
+    direction_id: synthetic_rx
+    frame_length_bytes: 3
+    matcher:
+      all:
+        - kind: fixed_bytes
+          byte_offset: 0
+          bytes: "AA"
+    fields:
+      - id: synthetic_value
+        display_name: Synthetic value
+        description: Two-byte big-endian input value.
+        source_ref: "SYNTHETIC_FROM_SCRATCH:yaml_sdk#value"
+        value_type: UINT64
+        wire:
+          codec: unsigned_integer
+          byte_offset: 1
+          byte_width: 2
+          byte_order: big_endian
+        encode:
+          source: input

@@ -27,6 +27,7 @@ endif()
 
 option(PAE_BUILD_JSON_PARSER_SPIKE "Build the disposable JSON parser comparison spike" OFF)
 option(PAE_BUILD_YAML_FRONTEND "Build the optional internal YAML-to-strict-JSON frontend" OFF)
+option(PAE_BUILD_PROTOCOL_LAB_YAML_ENTRY "Enable the optional YAML authoring entry in the repository Qt Lab" OFF)
 option(
     PAE_BUILD_PUBLIC_API_STAGE1
     "Build the experimental public compiler, metadata, COMPLETE_RECORD codec, and StreamFramer API"
@@ -185,6 +186,19 @@ endif()
 
 if(PAE_BUILD_PROTOCOL_LAB_UI AND NOT PAE_BUILD_PUBLIC_API_STAGE1)
     message(FATAL_ERROR "PAE_BUILD_PROTOCOL_LAB_UI requires PAE_BUILD_PUBLIC_API_STAGE1=ON for the Lab-owned presentation targets linking PAE::pae.")
+endif()
+
+if(PAE_BUILD_PROTOCOL_LAB_YAML_ENTRY AND
+   (NOT PAE_BUILD_PROTOCOL_LAB_UI OR NOT PAE_BUILD_YAML_FRONTEND OR
+    NOT PAE_BUILD_PUBLIC_API_STAGE1))
+    message(FATAL_ERROR "PAE_BUILD_PROTOCOL_LAB_YAML_ENTRY requires UI, YAML frontend and public API Stage 1 explicitly ON.")
+endif()
+if(PAE_BUILD_PROTOCOL_LAB_YAML_ENTRY AND
+   NOT PAE_BUILD_PROTOCOL_LAB_BINARY_PUBLIC_H2 AND
+   NOT PAE_BUILD_PROTOCOL_LAB_ASCII_PUBLIC_A2 AND
+   NOT PAE_BUILD_PROTOCOL_LAB_ASCII_PUBLIC_STREAM_UI AND
+   NOT PAE_BUILD_PROTOCOL_LAB_PUBLIC_LEGACY_COMPLETE)
+    message(FATAL_ERROR "PAE_BUILD_PROTOCOL_LAB_YAML_ENTRY requires at least one enabled public Lab compiler route.")
 endif()
 
 if(PAE_BUILD_PROTOCOL_LAB_BINARY_PUBLIC_H1 AND NOT PAE_BUILD_PUBLIC_API_STAGE1)

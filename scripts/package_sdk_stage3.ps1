@@ -36,11 +36,11 @@ function Copy-RelativeFile {
     Copy-Item -LiteralPath $sourcePath -Destination $destinationPath
 }
 
+$yamlOn = $false
 if ($Kind -eq "source") {
     if (Test-Path -LiteralPath $packageRootPath) {
         throw "Source package destination already exists: $packageRootPath"
     }
-    New-Item -ItemType Directory -Path $packageRootPath | Out-Null
 
     $sourceFiles = @(
         "CMakeLists.txt",
@@ -54,6 +54,7 @@ if ($Kind -eq "source") {
         "schema/pae.schema.json",
         "schema/protocol_plan_execution_semantics_v0.1.md",
         "schema/strict_json_profile_v0.1.md",
+        "schema/pae_yaml_profile_v0.1.md",
         "src/public_api/CMakeLists.txt",
         "src/public_api/codec.cpp",
         "src/public_api/compiled_state_internal.h",
@@ -89,11 +90,22 @@ if ($Kind -eq "source") {
         "src/protocol_framing/CMakeLists.txt",
         "src/protocol_framing/stream_framer.cpp",
         "src/protocol_framing/stream_framer.h",
+        "src/config_frontend_yaml/CMakeLists.txt",
+        "src/config_frontend_yaml/frontend.cpp",
+        "src/config_frontend_yaml/frontend.h",
+        "src/config_frontend_yaml/public_facade.cpp",
+        "src/config_frontend_yaml/public/pae/yaml_frontend.h",
+        "third_party/README.md",
         "third_party/yyjson/LICENSE",
         "third_party/yyjson/README.md",
         "third_party/yyjson/dependency.lock.json",
         "third_party/yyjson/src/yyjson.c",
-        "third_party/yyjson/src/yyjson.h"
+        "third_party/yyjson/src/yyjson.h",
+        "third_party/rapidyaml/.gitattributes",
+        "third_party/rapidyaml/LICENSE.txt",
+        "third_party/rapidyaml/README.md",
+        "third_party/rapidyaml/THIRD_PARTY_NOTICES.txt",
+        "third_party/rapidyaml/rapidyaml.hpp"
     )
     $sourceFiles += Get-ChildItem -LiteralPath (Join-Path $sourceRootPath "include/pae") -File |
         ForEach-Object { "include/pae/$($_.Name)" }
@@ -116,9 +128,19 @@ if ($Kind -eq "source") {
         "examples/config/synthetic_lab_exchange_slice.pae.json",
         "examples/config/synthetic_stream_framing_slice.pae.json",
         "examples/config/synthetic_ascii_text_slice.pae.json",
-        "examples/config/synthetic_ascii_stream_slice.pae.json"
+        "examples/config/synthetic_ascii_stream_slice.pae.json",
+        "examples/yaml_sdk_consumer/CMakeLists.txt",
+        "examples/yaml_sdk_consumer/main.cpp",
+        "examples/yaml_sdk_consumer/synthetic_fixed_message.pae.yaml"
     )
-    $sourceFiles | Sort-Object -Unique | ForEach-Object { Copy-RelativeFile $_ }
+    $sourceFiles = @($sourceFiles | Sort-Object -Unique)
+    foreach ($relativePath in $sourceFiles) {
+        if (-not (Test-Path -LiteralPath (Join-Path $sourceRootPath $relativePath) -PathType Leaf)) {
+            throw "Required SDK source file is missing: $relativePath"
+        }
+    }
+    New-Item -ItemType Directory -Path $packageRootPath | Out-Null
+    $sourceFiles | ForEach-Object { Copy-RelativeFile $_ }
     $consumerDirectory = Join-Path $packageRootPath "examples/sdk_consumer"
     New-Item -ItemType Directory -Path $consumerDirectory | Out-Null
     Copy-Item -LiteralPath (Join-Path $sourceRootPath "examples/public_api_sdk_consumer/CMakeLists.txt") `
@@ -155,10 +177,60 @@ if ($Kind -eq "source") {
             throw "Binary package is incomplete: $requiredPath"
         }
     }
+    if (-not (Test-Path -LiteralPath (Join-Path $packageRootPath "lib/pae.lib") -PathType Leaf)) {
+        throw "Binary package is incomplete: lib/pae.lib"
+    }
     $packageConfig = Get-Content -Raw -LiteralPath (Join-Path $packageRootPath "lib/cmake/PAE/PAEConfig.cmake")
     $expectedConfigLine = 'set(PAE_PACKAGE_CONFIGURATION "' + $Configuration + '")'
     if (-not $packageConfig.Contains($expectedConfigLine)) {
         throw "Binary package configuration does not match requested Configuration $Configuration"
+    }
+    $expectedLibraryKind = 'set(PAE_LIBRARY_KIND "' + $Kind.ToUpperInvariant() + '")'
+    if (-not $packageConfig.Contains($expectedLibraryKind)) {
+        throw "Binary package library kind does not match requested kind $Kind"
+    }
+    $yamlOn = $packageConfig.Contains('set(PAE_yaml_frontend_FOUND ON)')
+    $yamlOff = $packageConfig.Contains('set(PAE_yaml_frontend_FOUND OFF)')
+    if ($yamlOn -eq $yamlOff) {
+        throw "Binary package has unknown YAML component declaration"
+    }
+    if ($yamlOn -and (-not $packageConfig.Contains('add_library(PAE::yaml_frontend STATIC IMPORTED)') -or
+            -not $packageConfig.Contains('IMPORTED_LOCATION_${_pae_consumer_configuration_upper}'))) {
+        throw "Binary package does not define the declared YAML imported target"
+    }
+    $yamlRequiredFiles = @(
+        "include/pae/yaml_frontend.h",
+        "lib/pae/addons/pae_yaml_frontend.lib",
+        "share/pae/schema/pae_yaml_profile_v0.1.md",
+        "LICENSES/rapidyaml/LICENSE.txt",
+        "LICENSES/rapidyaml/THIRD_PARTY_NOTICES.txt",
+        "examples/yaml_sdk_consumer/CMakeLists.txt",
+        "examples/yaml_sdk_consumer/main.cpp",
+        "examples/yaml_sdk_consumer/synthetic_fixed_message.pae.yaml"
+    )
+    foreach ($relativePath in $yamlRequiredFiles) {
+        $present = Test-Path -LiteralPath (Join-Path $packageRootPath $relativePath) -PathType Leaf
+        if ($yamlOn -and -not $present) {
+            throw "Binary YAML component is incomplete: $relativePath"
+        }
+        if ($yamlOff -and $present) {
+            throw "JSON-only binary package unexpectedly contains YAML component file: $relativePath"
+        }
+    }
+    foreach ($relativePath in @("bin/pae_yaml_frontend.dll", "third_party/rapidyaml")) {
+        if (Test-Path -LiteralPath (Join-Path $packageRootPath $relativePath)) {
+            throw "Binary package contains unsupported YAML delivery shape: $relativePath"
+        }
+    }
+    if ($yamlOff -and (Test-Path -LiteralPath (Join-Path $packageRootPath "LICENSES/rapidyaml"))) {
+        throw "JSON-only binary package unexpectedly contains rapidyaml notices"
+    }
+    if ($Kind -eq "shared") {
+        if (-not (Test-Path -LiteralPath (Join-Path $packageRootPath "bin/pae.dll") -PathType Leaf)) {
+            throw "Shared binary package is missing bin/pae.dll"
+        }
+    } elseif (Test-Path -LiteralPath (Join-Path $packageRootPath "bin/pae.dll")) {
+        throw "Static binary package unexpectedly contains bin/pae.dll"
     }
 }
 
@@ -176,6 +248,7 @@ $statusLines = @(& git -C $sourceRootPath status --short --untracked-files=all)
 if ($LASTEXITCODE -ne 0) {
     throw "Unable to read the source Git status"
 }
+$yamlComponentInstalled = $Kind -ne "source" -and $yamlOn
 
 $readmeLines = @(
     "# PAE Windows x64 SDK Stage 3 local package",
@@ -183,6 +256,9 @@ $readmeLines = @(
     "- Package kind: $Kind",
     "- Configuration: $Configuration",
     "- Consumer target: PAE::pae",
+    "- Optional YAML source available: $($Kind -eq 'source')",
+    "- Optional YAML installed component: $yamlComponentInstalled",
+    "- YAML linkage: $(if ($yamlComponentInstalled) { 'static add-on PAE::yaml_frontend' } else { 'none' })",
     "- Language level: C++17",
     "- MSVC runtime: /MDd for Debug, /MD for Release",
     "- Status: local review artifact, not a formal release",
@@ -213,7 +289,10 @@ if ($Kind -eq "source") {
         '    }',
         "",
         "PAE_SOURCE_DIR must be this unpacked package root. The source package is",
-        "self-contained and does not fall back to the development repository."
+        "self-contained and does not fall back to the development repository.",
+        "Optional YAML source is included but PAE_BUILD_YAML_FRONTEND remains OFF by default.",
+        "To try YAML, configure examples/yaml_sdk_consumer with PAE_SOURCE_DIR set to this",
+        "package root; it explicitly enables the optional frontend and public PAE."
     )
 } else {
     $readmeLines += @(
@@ -228,6 +307,15 @@ if ($Kind -eq "source") {
         "CMAKE_PREFIX_PATH must be this package root. Do not use a Debug consumer with",
         "a Release package or a Release consumer with a Debug package."
     )
+    if ($yamlComponentInstalled) {
+        $readmeLines += @(
+            "The package also contains optional static add-on PAE::yaml_frontend and",
+            "examples/yaml_sdk_consumer. For shared PAE this is pae.dll plus a static YAML",
+            "library, not a YAML DLL. Use the matching package Configuration."
+        )
+    } else {
+        $readmeLines += "This JSON-only binary package does not contain PAE::yaml_frontend."
+    }
 }
 $readmeLines += @(
     "",
@@ -244,7 +332,9 @@ $readmeLines += @(
     "and PROVENANCE.json records the source revision and dirty-snapshot status.",
     "",
     "The repository currently has no project-level PAE license. LICENSES/yyjson-LICENSE.txt",
-    "and vendored third_party/yyjson/LICENSE where present apply only to yyjson. Do not",
+    "and vendored third_party/yyjson/LICENSE where present apply only to yyjson.",
+    "LICENSES/rapidyaml or vendored third_party/rapidyaml notices apply only to that",
+    "optional dependency. Do not",
     "treat this local package as authorized for external redistribution."
 )
 $readme = $readmeLines -join "`n"
@@ -260,7 +350,10 @@ $provenance = [ordered]@{
     project_version = "0.1.0"
     source_head = $head
     source_worktree_dirty = ($statusLines.Count -ne 0)
-    source_snapshot_note = "Built from the named Git revision plus preserved unstaged and untracked working-tree changes."
+    source_snapshot_note = if ($Kind -ne "source") { "Packaged the existing install-tree bytes. The named Git revision and current dirty status do not alone identify the earlier binary build." } elseif ($statusLines.Count -ne 0) { "Copied from the named Git revision plus preserved unstaged and untracked working-tree changes." } else { "Copied from the clean named Git revision." }
+    yaml_frontend_source_optional = ($Kind -eq "source")
+    yaml_frontend_installed = $yamlComponentInstalled
+    yaml_frontend_linkage = if ($yamlComponentInstalled) { "static-addon" } else { "none" }
     generated_utc = [DateTime]::UtcNow.ToString("yyyy-MM-ddTHH:mm:ssZ")
 }
 $provenance | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath (Join-Path $packageRootPath "PROVENANCE.json") -Encoding utf8

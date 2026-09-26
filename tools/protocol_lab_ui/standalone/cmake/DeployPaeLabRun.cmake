@@ -75,7 +75,9 @@ endforeach()
 file(COPY_FILE "${platform}" "${deploy_dir}/platforms/qwindows${suffix}.dll" ONLY_IF_DIFFERENT)
 string(REPLACE "|" ";" configs "${PAE_CONFIG_FILES}")
 foreach(file IN LISTS configs)
-  if(NOT EXISTS "${file}" OR NOT "${file}" MATCHES "\\.pae\\.json$")
+  if(NOT EXISTS "${file}" OR
+     (NOT "${file}" MATCHES "\\.pae\\.json$" AND
+      NOT (PAE_LAB_ENABLE_YAML_ENTRY AND "${file}" MATCHES "\\.pae\\.ya?ml$")))
     message(FATAL_ERROR "Invalid Lab config input: ${file}")
   endif()
   cmake_path(GET file FILENAME name)

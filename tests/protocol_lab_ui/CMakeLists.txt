@@ -38,6 +38,10 @@ set(
         bounded_v08_state
         schema_dispatch
 )
+if(PAE_BUILD_PROTOCOL_LAB_YAML_ENTRY AND PAE_BUILD_PROTOCOL_LAB_PUBLIC_LEGACY_COMPLETE AND
+   PAE_BUILD_PROTOCOL_LAB_ASCII_PUBLIC_A2)
+    list(APPEND pae_protocol_lab_ui_headless_test_names yaml_entry)
+endif()
 
 add_executable(
     pae_protocol_lab_ui_owned_presentation_types_tests
@@ -205,6 +209,45 @@ if(PAE_BUILD_PROTOCOL_LAB_BINARY_PUBLIC_H2)
         PROPERTIES LABELS "tools;protocol_lab_ui;offline;qt;binary;stream;smoke" TIMEOUT 180
     )
 endif()
+if(PAE_BUILD_PROTOCOL_LAB_YAML_ENTRY AND PAE_BUILD_PROTOCOL_LAB_PUBLIC_LEGACY_COMPLETE AND
+   PAE_BUILD_PROTOCOL_LAB_ASCII_PUBLIC_A2)
+    add_executable(pae_protocol_lab_ui_yaml_ui_smoke_tests
+        yaml_ui_smoke_tests.cpp
+        ${pae_lab_ui_test_source_root}/tools/protocol_lab_ui/document_tab.cpp
+        ${pae_lab_ui_test_source_root}/tools/protocol_lab_ui/exact_value_delegate.cpp
+        ${pae_lab_ui_test_source_root}/tools/protocol_lab_ui/field_table_model.cpp
+        ${pae_lab_ui_test_source_root}/tools/protocol_lab_ui/hex_view.cpp)
+    target_include_directories(pae_protocol_lab_ui_yaml_ui_smoke_tests PRIVATE
+        "${pae_lab_ui_test_source_root}/tools/protocol_lab_ui")
+    target_link_libraries(pae_protocol_lab_ui_yaml_ui_smoke_tests PRIVATE
+        pae_protocol_lab_ui_headless_internal PAE::Qt5Widgets pae::project_options)
+    target_compile_definitions(pae_protocol_lab_ui_yaml_ui_smoke_tests PRIVATE
+        "PAE_UI_FIXTURE_DIR=L\"${CMAKE_CURRENT_SOURCE_DIR}/fixtures\""
+        "PAE_TEST_YAML_PATH=L\"${pae_lab_ui_test_source_root}/tests/protocol_lab_ui/fixtures/synthetic_ascii_literal_only.pae.yaml\""
+        "PAE_TEST_JSON_PATH=L\"${pae_lab_ui_test_source_root}/examples/config/synthetic_ascii_literal_only.pae.json\"")
+    if(MSVC)
+        target_compile_options(pae_protocol_lab_ui_yaml_ui_smoke_tests PRIVATE /UNDEBUG)
+    else()
+        target_compile_options(pae_protocol_lab_ui_yaml_ui_smoke_tests PRIVATE -UNDEBUG)
+    endif()
+    set(pae_yaml_qt_config "$<IF:$<CONFIG:Debug>,debug,release>")
+    set(pae_yaml_qt_suffix "$<IF:$<CONFIG:Debug>,d,>")
+    add_custom_command(TARGET pae_protocol_lab_ui_yaml_ui_smoke_tests POST_BUILD
+        COMMAND "${CMAKE_COMMAND}" -E make_directory "$<TARGET_FILE_DIR:pae_protocol_lab_ui_yaml_ui_smoke_tests>/platforms"
+        COMMAND "${CMAKE_COMMAND}" -E copy_if_different
+            "${PAE_QT_ROOT}/bin/${pae_yaml_qt_config}/Qt5Core${pae_yaml_qt_suffix}.dll"
+            "${PAE_QT_ROOT}/bin/${pae_yaml_qt_config}/Qt5Gui${pae_yaml_qt_suffix}.dll"
+            "${PAE_QT_ROOT}/bin/${pae_yaml_qt_config}/Qt5Widgets${pae_yaml_qt_suffix}.dll"
+            "$<TARGET_FILE_DIR:pae_protocol_lab_ui_yaml_ui_smoke_tests>"
+        COMMAND "${CMAKE_COMMAND}" -E copy_if_different
+            "${PAE_QT_ROOT}/bin/${pae_yaml_qt_config}/platforms/qwindows${pae_yaml_qt_suffix}.dll"
+            "$<TARGET_FILE_DIR:pae_protocol_lab_ui_yaml_ui_smoke_tests>/platforms"
+        VERBATIM)
+    add_test(NAME pae.tools.protocol_lab_ui.yaml_ui_smoke
+        COMMAND pae_protocol_lab_ui_yaml_ui_smoke_tests)
+    set_tests_properties(pae.tools.protocol_lab_ui.yaml_ui_smoke PROPERTIES
+        LABELS "tools;protocol_lab_ui;offline;qt;yaml;smoke" TIMEOUT 30)
+endif()
 if(PAE_BUILD_PROTOCOL_LAB_ASCII_PUBLIC_A2)
     add_executable(
         pae_protocol_lab_ui_ascii_public_facade_isolation_tests
@@ -271,6 +314,10 @@ foreach(pae_ui_test_name IN LISTS pae_protocol_lab_ui_headless_test_names)
                 "PAE_ASCII_TEXT_CONFIG=L\"${pae_lab_ui_test_source_root}/examples/config/synthetic_ascii_text_slice.pae.json\""
                 "PAE_ASCII_LITERAL_CONFIG=L\"${pae_lab_ui_test_source_root}/examples/config/synthetic_ascii_literal_only.pae.json\""
         )
+    endif()
+    if(pae_ui_test_name STREQUAL "yaml_entry")
+        target_compile_definitions("${pae_ui_test_target}" PRIVATE
+            "PAE_TEST_SOURCE=\"${pae_lab_ui_test_source_root}\"")
     endif()
     if(pae_ui_test_name STREQUAL "ascii_public_a2")
         target_compile_definitions(

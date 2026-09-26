@@ -13,6 +13,40 @@ else()
     set(PAE_SDK_LIBRARY_KIND STATIC)
 endif()
 
+if(PAE_BUILD_YAML_FRONTEND)
+    if(NOT TARGET pae_yaml_frontend)
+        message(FATAL_ERROR "YAML SDK component requires pae_yaml_frontend")
+    endif()
+    set(PAE_SDK_HAS_YAML_FRONTEND ON)
+    install(
+        TARGETS pae_yaml_frontend
+        ARCHIVE DESTINATION "${CMAKE_INSTALL_LIBDIR}/pae/addons"
+    )
+    install(
+        FILES "${PROJECT_SOURCE_DIR}/src/config_frontend_yaml/public/pae/yaml_frontend.h"
+        DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}/pae"
+    )
+    install(
+        FILES "${PROJECT_SOURCE_DIR}/schema/pae_yaml_profile_v0.1.md"
+        DESTINATION "${CMAKE_INSTALL_DATADIR}/pae/schema"
+    )
+    install(
+        FILES
+            "${PROJECT_SOURCE_DIR}/third_party/rapidyaml/LICENSE.txt"
+            "${PROJECT_SOURCE_DIR}/third_party/rapidyaml/THIRD_PARTY_NOTICES.txt"
+        DESTINATION "LICENSES/rapidyaml"
+    )
+    install(
+        FILES
+            "${PROJECT_SOURCE_DIR}/examples/yaml_sdk_consumer/CMakeLists.txt"
+            "${PROJECT_SOURCE_DIR}/examples/yaml_sdk_consumer/main.cpp"
+            "${PROJECT_SOURCE_DIR}/examples/yaml_sdk_consumer/synthetic_fixed_message.pae.yaml"
+        DESTINATION "examples/yaml_sdk_consumer"
+    )
+else()
+    set(PAE_SDK_HAS_YAML_FRONTEND OFF)
+endif()
+
 install(
     TARGETS pae_public_api
     ARCHIVE DESTINATION "${CMAKE_INSTALL_LIBDIR}"
@@ -99,3 +133,4 @@ install(
 
 unset(PAE_SDK_CONFIGURATION)
 unset(PAE_SDK_LIBRARY_KIND)
+unset(PAE_SDK_HAS_YAML_FRONTEND)

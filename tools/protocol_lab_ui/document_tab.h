@@ -96,6 +96,9 @@ class DocumentTab final : public QWidget {
   Revision LoadRevisionForSmoke() const noexcept { return session_.load_revision(); }
   QString DiagnosticTextForSmoke() const;
   bool DiagnosticUsesPlainTextForSmoke() const noexcept;
+#if defined(PAE_BUILD_PROTOCOL_LAB_YAML_ENTRY)
+  bool YamlGeneratedJsonMatchesForSmoke() const noexcept;
+#endif
   const EncodeTimingSnapshot& LastTiming() const noexcept { return timing_; }
 
  private:
@@ -126,6 +129,9 @@ class DocumentTab final : public QWidget {
   std::vector<BinaryHostBinding> binary_host_pending_bindings_;
   std::optional<BinaryPreparationIdentity> binary_host_pending_identity_;
 #endif
+#endif
+#if defined(PAE_BUILD_PROTOCOL_LAB_YAML_ENTRY)
+  std::unique_ptr<pae::yaml::ConversionResult> active_yaml_conversion_;
 #endif
   void BuildUi();
   void BeginLoadFromPath(bool discard_confirmed = false);

@@ -138,6 +138,13 @@ add_library(
         inspect_hex_input.cpp
         inspect_hex_input.h
 )
+if(PAE_BUILD_PROTOCOL_LAB_YAML_ENTRY)
+    if(NOT TARGET PAE::yaml_frontend OR NOT TARGET PAE::pae)
+        message(FATAL_ERROR "Lab YAML entry requires PAE::yaml_frontend and public PAE targets.")
+    endif()
+    target_link_libraries(pae_protocol_lab_ui_headless_internal PUBLIC PAE::yaml_frontend)
+    target_compile_definitions(pae_protocol_lab_ui_headless_internal PUBLIC PAE_BUILD_PROTOCOL_LAB_YAML_ENTRY=1)
+endif()
 if(PAE_BUILD_PROTOCOL_LAB_PUBLIC_LEGACY_COMPLETE)
     target_sources(
         pae_protocol_lab_ui_headless_internal

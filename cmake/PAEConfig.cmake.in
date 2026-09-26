@@ -1,6 +1,15 @@
 @PACKAGE_INIT@
 
+set(PAE_yaml_frontend_FOUND @PAE_SDK_HAS_YAML_FRONTEND@)
+if(PAE_FIND_REQUIRED_yaml_frontend AND NOT PAE_yaml_frontend_FOUND)
+    set(PAE_NOT_FOUND_MESSAGE "PAE package does not contain requested yaml_frontend component")
+endif()
+check_required_components(PAE)
+
 if(TARGET PAE::pae)
+    if(PAE_yaml_frontend_FOUND AND NOT TARGET PAE::yaml_frontend)
+        message(FATAL_ERROR "PAE::pae already exists but PAE::yaml_frontend does not; package targets cannot be mixed")
+    endif()
     return()
 endif()
 
@@ -80,6 +89,33 @@ else()
         endif()
     endforeach()
     unset(_pae_internal_dir)
+endif()
+
+if(PAE_yaml_frontend_FOUND)
+    add_library(PAE::yaml_frontend STATIC IMPORTED)
+    set_target_properties(
+        PAE::yaml_frontend
+        PROPERTIES
+            IMPORTED_CONFIGURATIONS "${_pae_imported_configurations}"
+            INTERFACE_INCLUDE_DIRECTORIES "${PACKAGE_PREFIX_DIR}/@CMAKE_INSTALL_INCLUDEDIR@"
+            INTERFACE_COMPILE_FEATURES cxx_std_17
+    )
+    foreach(_pae_consumer_configuration IN LISTS _pae_imported_configurations)
+        string(TOUPPER "${_pae_consumer_configuration}" _pae_consumer_configuration_upper)
+        if(_pae_consumer_configuration STREQUAL PAE_PACKAGE_CONFIGURATION)
+            set_property(
+                TARGET PAE::yaml_frontend
+                PROPERTY "IMPORTED_LOCATION_${_pae_consumer_configuration_upper}"
+                         "${PACKAGE_PREFIX_DIR}/@CMAKE_INSTALL_LIBDIR@/pae/addons/@CMAKE_STATIC_LIBRARY_PREFIX@pae_yaml_frontend@CMAKE_STATIC_LIBRARY_SUFFIX@"
+            )
+        else()
+            set_property(
+                TARGET PAE::yaml_frontend
+                PROPERTY "IMPORTED_LOCATION_${_pae_consumer_configuration_upper}"
+                         "${_pae_configuration_guard}"
+            )
+        endif()
+    endforeach()
 endif()
 
 unset(_pae_consumer_configuration)

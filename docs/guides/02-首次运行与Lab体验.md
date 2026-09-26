@@ -2,21 +2,34 @@
 
 ## 适用读者
 
-希望先运行已归集 Qt Lab、观察公开合成协议，再决定是否编写配置或接入 C++ 的开发者。
+希望先运行 Qt Lab、观察公开合成协议，再决定是否编写配置或接入 C++ 的开发者。
 
 ## 前置条件
 
 - Windows x64；
 - 已在仓库根目录打开 PowerShell；
-- 本机已归集 `deliverables/lab/fe1683c-plus-patches/static-release`；该目录是 Git 忽略的本地产物，仅 clone 仓库不会自动获得。
+- 试用 YAML 时，本机已有 `out/build/lab-yaml-sdk-migration-20260926/standalone-static-Release-verified/deploy/Release/`；沿用既有 JSON 入口时，本机已有 `deliverables/lab/fe1683c-plus-patches/static-release/`。两者都是 Git 忽略的本地产物，仅 clone 仓库不会自动获得。
 
 ## 读完能做什么
 
-读完后可以从正确的完整部署目录启动 Lab、选择合适的公开配置做一次离线观察，并知道哪些结果只是 UI 体验、哪些需要后续 SDK 或真实设备验证。
+读完后可以从正确的完整部署目录启动 Lab、选择 JSON 或受限 YAML 合成配置做一次离线观察，并知道哪些结果只是 UI 体验、哪些需要后续 SDK 或真实设备验证。
 
-## 1. 启动最新功能体验候选
+## YAML 初版：一次统一体验建议
 
-普通本地体验优先使用含结构化编译诊断的 installed-SDK static Release，包含 Binary G1/G2 及 ASCII/legacy 公开路径。SDK 身份为 clean 7b4205e；Lab 为 fe1683c 加诊断和打包修补，并非干净提交重建。旧入口保持不变，完整身份与证据见 [统一交付入口](../../deliverables/README.md)。
+本机新候选优先使用 standalone **static Release**。它采用带可选 `yaml_frontend` 组件的 SDK；shared Release 是同片对照。两者的目录见 [统一交付入口](../../deliverables/README.md)。从仓库根目录启动：
+
+```powershell
+$LabRoot = (Resolve-Path 'out/build/lab-yaml-sdk-migration-20260926/standalone-static-Release-verified/deploy/Release').Path
+& "$LabRoot\pae_protocol_lab_ui.exe"
+```
+
+启动后只建议做一次合成配置体验：浏览 `$LabRoot\configs\synthetic_ascii_literal_only.pae.yaml`，加载或重新加载；为 `ascii_pipeline` 的 `ping` 接收动作输入 Hex `50 49 4E 47 0D 0A`，观察完整记录解析结果及来源诊断。该 YAML 文件描述 `PING\r\n` 接收和 `PONG\r\n` 发送，字段列表为空。JSON 作者源仍可照常使用；YAML 按 [Profile V0.1](../../schema/pae_yaml_profile_v0.1.md) 转成严格 JSON 后走同一编译器。无需为了首次体验逐项重跑历史测试。
+
+这一步是**待执行的人工体验建议**，目前没有可见 UI 通过记录。已有仓库及 standalone Debug/Release 定向自动测试见 [Lab YAML 验证](../engineering/lab-yaml-sdk-migration-validation-20260926.md)；其中不可见 UI smoke 不能替代上述人工操作。若候选目录不存在，clone 不会补齐已构建产物，按 [06 构建测试与问题定位](06-构建测试与问题定位.md) 和 [standalone 说明](../../tools/protocol_lab_ui/standalone/README.md) 选择生成路线。
+
+## 1. 既有 JSON 功能体验入口
+
+沿用此前 JSON 功能体验时，使用含结构化编译诊断的 installed-SDK static Release，包含 Binary G1/G2 及 ASCII/legacy 公开路径。SDK 身份为 clean 7b4205e；Lab 为 fe1683c 加诊断和打包修补，并非干净提交重建。此入口身份与上方 YAML 新候选分开，完整证据见 [统一交付入口](../../deliverables/README.md)。
 
 ```powershell
 $RepoRoot = (Get-Location).Path
@@ -24,7 +37,7 @@ $LabRoot = (Resolve-Path 'deliverables/lab/fe1683c-plus-patches/static-release')
 & "$LabRoot\pae_protocol_lab_ui.exe"
 ```
 
-若 `Resolve-Path` 失败，说明本机尚未归集该候选；clone 不包含 SDK/Lab 二进制。先按 [06 构建测试与问题定位](06-构建测试与问题定位.md) 选择 standalone Lab 路线，并从 [`tools/protocol_lab_ui/standalone/README.md`](../../tools/protocol_lab_ui/standalone/README.md) 生成完整部署，不要猜测旧 trial 路径。
+若 `Resolve-Path` 失败，说明本机尚未归集此既有候选；clone 不包含 SDK/Lab 二进制。先按 [06 构建测试与问题定位](06-构建测试与问题定位.md) 选择 standalone Lab 路线，并从 [`tools/protocol_lab_ui/standalone/README.md`](../../tools/protocol_lab_ui/standalone/README.md) 生成完整部署，不要猜测旧 trial 路径。
 
 完整目录至少包含 EXE、`Qt5Core.dll`、`Qt5Gui.dll`、`Qt5Widgets.dll`、`platforms/qwindows.dll` 和 `configs/*.pae.json`。不要只复制裸 EXE。shared 对照目录还必须保留同批 `pae.dll`。
 
@@ -43,7 +56,7 @@ $LabRoot = (Resolve-Path 'deliverables/lab/fe1683c-plus-patches/static-release')
 
 不要通过修改全局 `PATH` 去掩盖缺失模块；目录不完整时应回到原交付目录。
 
-## 2. 选择第一份配置
+## 2. 既有 JSON 配置选择
 
 建议先用小而明确的公开合成配置：
 
@@ -60,7 +73,7 @@ Binary 分块流示例位于 `$LabRoot\configs\synthetic_stream_framing_slice.pa
 
 ## 3. 一次有边界的 Lab 体验
 
-第一次建议只做下面这一条 Binary 完整记录，不需要立即执行全部验收清单：
+若选择本节的既有 JSON 路线，第一次建议只做下面这一条 Binary 完整记录，不需要立即执行全部验收清单：
 
 1. 点击“浏览”，选择 `$LabRoot\configs\synthetic_binary_ui_stage1.pae.json`；如尚未加载，点击“加载 / 重新加载”。
 2. 在“绑定设置”中确认草稿为 `device / 解析 / ui_pipeline`，点击“应用绑定表”。返回“操作”，确认当前绑定，选择 `Flow 0`，当前动作为“解析”。
@@ -98,7 +111,7 @@ flowchart TD
 
 ## 4. 先跑 SDK consumer（可选）
 
-如果你准备写 C++，可先验证当前 Static Release 包的综合 consumer。必须在 Visual Studio Developer Shell 或已能调用相应 CMake/编译器的终端中执行，并使用新的包外构建目录：
+如果你准备写 C++，可先验证既有 `7b4205e` Static Release 包的综合 consumer。必须在 Visual Studio Developer Shell 或已能调用相应 CMake/编译器的终端中执行，并使用新的包外构建目录：
 
 ```powershell
 $RepoRoot = (Get-Location).Path

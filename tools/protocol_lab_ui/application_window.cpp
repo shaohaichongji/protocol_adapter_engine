@@ -144,7 +144,11 @@ ApplicationWindow::ApplicationWindow(QWidget* parent) : QMainWindow(parent) {
   connect(open_action_, &QAction::triggered, this, [this] {
     const auto path =
         QFileDialog::getOpenFileName(this, UiText("打开 PAE 配置"), {},
+#if defined(PAE_BUILD_PROTOCOL_LAB_YAML_ENTRY)
+                                     UiText("PAE 配置 (*.json *.yaml *.yml);;所有文件 (*)"));
+#else
                                      UiText("JSON 文件 (*.json);;所有文件 (*)"));
+#endif
     if (!path.isEmpty()) {
       AddDocument(path);
     }

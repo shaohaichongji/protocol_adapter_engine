@@ -10,6 +10,9 @@ function(pae_lab_configure_deployment target)
     synthetic_ascii_literal_only.pae.json synthetic_ascii_stream_slice.pae.json
     synthetic_stream_framing_slice.pae.json
     synthetic_ui_max.pae.json)
+  if(PAE_LAB_ENABLE_YAML_ENTRY)
+    list(APPEND config_names synthetic_ascii_literal_only.pae.yaml)
+  endif()
   set(config_files)
   foreach(name IN LISTS config_names)
     set(path "${PAE_LAB_CONFIG_ROOT}/${name}")
@@ -31,6 +34,7 @@ function(pae_lab_configure_deployment target)
       "-DPAE_DEPLOY_DIR=${PAE_LAB_DEPLOY_ROOT}/$<CONFIG>"
       "-DPAE_ALLOWED_OUT_ROOT=${PAE_LAB_DEPLOY_ROOT}"
       "-DPAE_CONFIG_FILES=${config_arg}"
+      "-DPAE_LAB_ENABLE_YAML_ENTRY=${PAE_LAB_ENABLE_YAML_ENTRY}"
       -P "${CMAKE_CURRENT_FUNCTION_LIST_DIR}/DeployPaeLabRun.cmake"
     VERBATIM)
 endfunction()

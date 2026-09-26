@@ -68,7 +68,9 @@ $labFiles = @(
     'tests\protocol_lab_binary\CMakeLists.txt', 'tests\protocol_lab_binary\public_binary_decode_tests.cpp',
     'tests\protocol_lab_binary\public_binary_stream_tests.cpp',
     'tests\protocol_lab_ascii\CMakeLists.txt', 'tests\protocol_lab_ascii\public_ascii_offline_adapter_tests.cpp',
-    'tests\protocol_lab_ascii\public_ascii_stream_adapter_tests.cpp'
+    'tests\protocol_lab_ascii\public_ascii_stream_adapter_tests.cpp',
+    'tests\protocol_lab_ui\fixtures\synthetic_ascii_literal_only.pae.yaml',
+    'tests\protocol_lab_ui\fixtures\synthetic_crc_slice.pae.yaml'
 )
 $labFiles += Get-ChildItem -LiteralPath (Join-Path $repo 'tools\protocol_lab_ui\standalone') -File -Recurse |
     ForEach-Object { $_.FullName.Substring($repo.Length + 1) }
@@ -91,7 +93,9 @@ $configs = @(
     'examples\config\synthetic_stream_framing_slice.pae.json',
     'examples\config\synthetic_bounded_variable_record.pae.json',
     'examples\config\synthetic_int64_slice.pae.json',
-    'examples\config\synthetic_crc_slice.pae.json'
+    'examples\config\synthetic_crc_slice.pae.json',
+    'tests\protocol_lab_ui\fixtures\synthetic_ascii_literal_only.pae.yaml',
+    'tests\protocol_lab_ui\fixtures\synthetic_crc_slice.pae.yaml'
 )
 foreach ($relative in $configs) {
     Copy-RelativeFile $relative
