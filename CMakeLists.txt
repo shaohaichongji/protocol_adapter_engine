@@ -26,6 +26,7 @@ if(MSVC)
 endif()
 
 option(PAE_BUILD_JSON_PARSER_SPIKE "Build the disposable JSON parser comparison spike" OFF)
+option(PAE_BUILD_YAML_FRONTEND "Build the optional internal YAML-to-strict-JSON frontend" OFF)
 option(
     PAE_BUILD_PUBLIC_API_STAGE1
     "Build the experimental public compiler, metadata, COMPLETE_RECORD codec, and StreamFramer API"
@@ -557,6 +558,10 @@ endif()
 
 if(PAE_BUILD_JSON_PARSER_SPIKE)
     add_subdirectory(spikes/json_parser)
+endif()
+
+if(PAE_BUILD_YAML_FRONTEND)
+    add_subdirectory(src/config_frontend_yaml)
 endif()
 
 if(PAE_BUILD_LOADER_SCHEMA_IR_SLICE OR

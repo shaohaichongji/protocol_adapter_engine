@@ -4,6 +4,11 @@
 
 ## 1. 先按目的选择入口
 
+2026-09-26：YAML 内部前端、限定返修及可选依赖/构建固化已完成限定复核，待整理提交检查点。
+当前入口见 [YAML 计划](yaml-entry-plan-20260926.md)、[前端验证](yaml-frontend-slice-validation-20260926.md)
+和 [构建固化验证](yaml-build-integration-validation-20260926.md)。默认关闭，未进入 Lab/SDK，
+不替换 JSON 或现有交付，也不表示稳定公开 YAML API。
+
 2026-09-20：最新体验 Lab 已归集，见 [G2 交付记录](../archive/engineering-20260921/lab-g2-delivery-candidate-20260920.md)；SDK 身份保持不变，见 [仓库/SDK 审计](pae-repository-sdk-audit-20260920.md)。本轮清理范围见 [产物盘点](../archive/engineering-20260921/pae-artifact-cleanup-inventory-20260920.md)。旧 G1 预检和图形覆盖盘点中的“尚未接入”是历史状态，不覆盖已完成的 G1/G2。
 
 | 目的 | 先读 |

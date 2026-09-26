@@ -10,6 +10,10 @@ yyjson 0.12.0已经确认为Compiler和Protocol Lab的内部JSON Parser（解析
 唯一当前锁见[yyjson说明](yyjson/README.md)；Configure（配置生成）阶段只读取本地源码并校验
 长度和SHA-256，不提供网络下载回退。
 
+rapidyaml 0.16.0 单头仅供默认关闭的内部 YAML 前端使用。上游原件、嵌入许可通知、固定
+SHA-256 和更新边界见[rapidyaml说明](rapidyaml/README.md)；只有显式开启
+`PAE_BUILD_YAML_FRONTEND` 才检查并编译该依赖。它不进入 Core、Lab 或公开 API 默认依赖链。
+
 JSON Parser Spike中的nlohmann/json和RapidJSON继续是实验候选，可以保留构建目录临时下载方式；
 不得因此把它们加入正式产品依赖。`spikes/json_parser/dependencies.lock.json`是选型阶段历史快照，
 不再是yyjson当前消费入口。

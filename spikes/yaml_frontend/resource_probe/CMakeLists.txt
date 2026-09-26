@@ -1,0 +1,16 @@
+cmake_minimum_required(VERSION 3.20)
+project(pae_yaml_resource_probe LANGUAGES CXX)
+
+if(NOT DEFINED RAPIDYAML_HEADER OR NOT EXISTS "${RAPIDYAML_HEADER}")
+  message(FATAL_ERROR "Set RAPIDYAML_HEADER to the isolated official single-header asset")
+endif()
+
+get_filename_component(RAPIDYAML_DIR "${RAPIDYAML_HEADER}" DIRECTORY)
+add_executable(pae_yaml_resource_probe resource_probe.cpp)
+target_compile_features(pae_yaml_resource_probe PRIVATE cxx_std_17)
+target_include_directories(pae_yaml_resource_probe PRIVATE "${RAPIDYAML_DIR}")
+if(WIN32)
+  target_compile_definitions(pae_yaml_resource_probe PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
+  target_compile_options(pae_yaml_resource_probe PRIVATE /utf-8)
+  target_link_libraries(pae_yaml_resource_probe PRIVATE psapi)
+endif()

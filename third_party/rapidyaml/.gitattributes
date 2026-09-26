@@ -1,0 +1,3 @@
+# Preserve the verified upstream bytes through Git checkout and archive operations.
+rapidyaml.hpp -text
+LICENSE.txt -text
