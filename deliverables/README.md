@@ -2,9 +2,15 @@
 
 此目录集中本机可用的 PAE SDK 和配套 Lab，不是正式对外发布目录。导航纳入版本控制，`sdk/`、`lab/`、`evidence/` 中本地产物被 Git 忽略；仅 clone 仓库不会自动获得这些产物。
 
-## 当前 YAML 初版同基线候选（b12ad80）
+## 当前首选：adeae30 Windows x64 本地体验包
 
-本机首次试用优先选择 `sdk/b12ad80/pae-sdk-static-release/` 和 `lab/b12ad80/static-release/`。下表路径相对于本 `deliverables/` 目录；七个 SDK 包与两个完整 Lab Release 部署均由干净的 `b12ad809bdbc35589e8e5755f0e4ad04f386fa10` 固定提交构建，本次只是按原字节归集。包内 `PROVENANCE.json`、清单和哈希未改，归集记录见[同基线验证](../docs/engineering/yaml-clean-delivery-validation-20260926.md)。
+完整包位于 `sdk/adeae30-experience/PAE-Lab-Windows-x64-adeae30.zip`，旁边的 `ZIP.sha256` 可核对压缩包；同目录保留解压前的完整包目录。解压后从包根 `README.md` 开始，默认直接运行 `lab/pae_protocol_lab_ui.exe`。五个 SDK 与一个 Lab static Release 部署使用固定产品源码 `adeae30d942ba42cc518c244c220730b7e462d2c`；SDK 文档另经 `experience-sdk-docs/1` 投影，二者不是同一身份。归集和解压后验证见[体验包验证](../docs/engineering/experience-bundle-validation-20260927.md)。
+
+这是本地体验候选：Qt 固定副本的许可/通知与再分发审查未闭合，不作正式对外发布。下文 b12ad80 与更早入口保留历史身份，不再作为首次体验首选。
+
+## 前一批 YAML 初版同基线候选（b12ad80）
+
+需要上一批回退对照时选择 `sdk/b12ad80/pae-sdk-static-release/` 和 `lab/b12ad80/static-release/`；首次试用使用上方 adeae30 体验包。下表路径相对于本 `deliverables/` 目录；七个 SDK 包与两个完整 Lab Release 部署均由干净的 `b12ad809bdbc35589e8e5755f0e4ad04f386fa10` 固定提交构建，当时按原字节归集。包内 `PROVENANCE.json`、清单和哈希未改，归集记录见[同基线验证](../docs/engineering/yaml-clean-delivery-validation-20260926.md)。
 
 | 用途 | 本目录下路径 |
 | --- | --- |
@@ -24,27 +30,13 @@
 
 SDK 本轮七包从固定提交重新构建、安装、打包并完成包外消费，见[干净 SDK 验证](../docs/engineering/yaml-clean-sdk-validation-20260926.md)；Lab standalone static/shared Debug/Release 四组各有 5/5 定向测试，见[干净 Lab 验证](../docs/engineering/yaml-clean-lab-validation-20260926.md)。用户已确认 static Release JSON/YAML 正常解析及步骤中的绑定应用通过、Lab 已关闭，见[人工记录](../docs/engineering/yaml-clean-delivery-validation-20260926.md)。配置错误诊断、shared 人工体验和真实协议等未测项不计通过；此处是本地试用候选，不是正式发布、稳定 ABI 或许可闭合。
 
-## 较早 YAML dirty 候选（保留原身份）
+## 较早 YAML dirty 候选：构建目录已退役
 
-下列 2026-09-26 前一批路径相对于仓库根目录，位于 Git 忽略的 `out/`，仅作既有验证与身份对照。包内 `PROVENANCE.json` 记录 `source_head=4da54b9`、`source_worktree_dirty=true`；后续提交及本轮归集均不会自动改变这些包和二进制的身份。
+2026-09-26 较早 dirty 候选的 SDK 打包与 Lab 迁移构建目录已纳入 2026-09-27 五根清理，不再提供旧启动命令。首次试用使用上方 adeae30 完整体验包，回退对照使用 b12ad80。
 
-| 用途 | 本地候选目录 |
-| --- | --- |
-| Source（含可选 YAML 源码，默认不启用） | `out/build/yaml-sdk-packaging-20260926/source final package with spaces/` |
-| Static Debug / Release（含 YAML 静态附加组件） | `out/build/yaml-sdk-packaging-20260926/static-debug-final-package/`、`out/build/yaml-sdk-packaging-20260926/static-release-final-package/` |
-| Shared Debug / Release（含 YAML 静态附加组件） | `out/build/yaml-sdk-packaging-20260926/shared-debug-final-package/`、`out/build/yaml-sdk-packaging-20260926/shared-release-final-package/` |
-| JSON-only Static / Shared Release 对照 | `out/build/yaml-sdk-packaging-20260926/json-only-static-final-package/`、`out/build/yaml-sdk-packaging-20260926/json-only-shared-final-package/` |
-| YAML standalone Lab Static / Shared Release | `out/build/lab-yaml-sdk-migration-20260926/standalone-static-Release-verified/deploy/Release/`、`out/build/lab-yaml-sdk-migration-20260926/standalone-shared-Release-verified/deploy/Release/` |
+历史身份仍为 `source_head=4da54b9`、`source_worktree_dirty=true`，不因清理或后续提交改变。必要日志、配置及来源清单归集在 `evidence/cleanup-five-20260927/`；不是旧二进制完整备份。历史验证报告中的原路径仅表示当时位置。
 
-二进制 YAML 包以 `find_package(PAE CONFIG REQUIRED COMPONENTS yaml_frontend)` 获取 `PAE::yaml_frontend`，并与 `PAE::pae` 同时链接；YAML 是静态附加组件，Shared PAE 仍需同包 `pae.dll`，没有独立 YAML DLL。JSON-only 包不提供该组件；Source 包需显式开启 `PAE_BUILD_YAML_FRONTEND`。配置须符合[受限 Profile V0.1](../schema/pae_yaml_profile_v0.1.md)，YAML 先转换成严格 JSON，再走原编译器。选择与包一致的 Debug/Release、MSVC 工具链和 CRT；具体接入见[03 Windows SDK 集成](../docs/guides/03-Windows-SDK集成.md)。
-
-若需复核前一批 dirty static Release 候选，可从仓库根目录启动，再打开其 `configs/synthetic_ascii_literal_only.pae.yaml`：
-
-```powershell
-& '.\out\build\lab-yaml-sdk-migration-20260926\standalone-static-Release-verified\deploy\Release\pae_protocol_lab_ui.exe'
-```
-
-前一批没有可见 UI 体验通过记录。保留完整部署目录的 EXE、Qt DLL、`platforms/` 和 `configs/`；shared 目录还需邻接的同包 `pae.dll`。原七包打包及包外消费见[SDK 验证](../docs/engineering/yaml-sdk-packaging-validation-20260926.md)，原 Lab 定向验证见[Lab 验证](../docs/engineering/lab-yaml-sdk-migration-validation-20260926.md)。[较早入口记录](../docs/engineering/yaml-candidate-entry-closeout-20260926.md)只核对当时导航与候选文件。
+详见[清理记录](../docs/engineering/build-cleanup-20260927.md)与[两批保留规则](../docs/engineering/build-artifact-retention.md)。原[SDK 验证](../docs/engineering/yaml-sdk-packaging-validation-20260926.md)、[Lab 验证](../docs/engineering/lab-yaml-sdk-migration-validation-20260926.md)保留原证据边界。
 
 ## 既有 JSON 试用入口（2026-09-22）
 

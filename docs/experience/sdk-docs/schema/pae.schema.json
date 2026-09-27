@@ -1,0 +1,1440 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:pae:schema:protocol-package:0.11:ascii-stream-framing-slice",
+  "title": "PAE ProtocolPackage V0.1-V0.11 ASCII Stream Framing Slice",
+  "description": "Schema 0.11增加以CRLF结束的有界ASCII流式接收。",
+  "x-pae-status": "ASCII CRLF STREAM FRAMING MINIMAL SLICE",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "protocol_id",
+    "protocol_version",
+    "display_name",
+    "source_ref",
+    "resource_profile",
+    "framing_profiles",
+    "pipelines",
+    "messages"
+  ],
+  "properties": {
+    "schema_version": {
+      "enum": ["0.1", "0.2", "0.3", "0.4", "0.5", "0.6", "0.7", "0.8", "0.9", "0.10", "0.11"]
+    },
+    "protocol_id": {
+      "$ref": "#/$defs/stable_id"
+    },
+    "protocol_version": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 64
+    },
+    "display_name": {
+      "$ref": "#/$defs/display_name"
+    },
+    "description": {
+      "$ref": "#/$defs/description"
+    },
+    "source_ref": {
+      "$ref": "#/$defs/source_ref"
+    },
+    "resource_profile": {
+      "enum": [
+        "desktop",
+        "constrained"
+      ]
+    },
+    "framing_profiles": {
+      "type": "array",
+      "minItems": 1,
+      "items": true
+    },
+    "pipelines": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 128,
+      "items": {
+        "$ref": "#/$defs/pipeline"
+      }
+    },
+    "messages": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 256,
+      "items": true
+    }
+  },
+  "allOf": [
+    {
+      "if": {"properties": {"schema_version": {"const": "0.1"}}},
+      "then": {"properties": {"messages": {"items": {"$ref": "#/$defs/message_v01"}}}},
+      "else": {
+        "if": {"properties": {"schema_version": {"const": "0.2"}}},
+        "then": {"properties": {"messages": {"items": {"$ref": "#/$defs/message_v02"}}}},
+        "else": {
+          "if": {"properties": {"schema_version": {"const": "0.3"}}},
+          "then": {"properties": {"messages": {"items": {"$ref": "#/$defs/message_v03"}}}},
+          "else": {
+            "if": {"properties": {"schema_version": {"const": "0.4"}}},
+            "then": {"properties": {"messages": {"items": {"$ref": "#/$defs/message_v04"}}}},
+            "else": {
+              "if": {"properties": {"schema_version": {"const": "0.5"}}},
+              "then": {"properties": {"messages": {"items": {"$ref": "#/$defs/message_v05"}}}},
+              "else": {
+                "if": {"properties": {"schema_version": {"const": "0.6"}}},
+                "then": {"properties": {"messages": {"items": {"$ref": "#/$defs/message_v06"}}}},
+                "else": {
+                  "if": {"properties": {"schema_version": {"const": "0.7"}}},
+                  "then": {"properties": {"messages": {"items": {"$ref": "#/$defs/message_v07"}}}},
+                  "else": {
+                    "if": {"properties": {"schema_version": {"enum": ["0.10", "0.11"]}}},
+                    "then": {"properties": {"messages": {"items": {"$ref": "#/$defs/message_v10"}}}},
+                    "else": {"properties": {"messages": {"items": {"$ref": "#/$defs/message_v08"}}}}
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {"properties": {"schema_version": {"const": "0.9"}}},
+      "then": {
+        "properties": {
+          "framing_profiles": {"items": {"$ref": "#/$defs/framing_profile_v09"}}
+        }
+      },
+      "else": {
+        "if": {"properties": {"schema_version": {"const": "0.11"}}},
+        "then": {
+          "properties": {
+            "framing_profiles": {
+              "items": {
+                "oneOf": [
+                  {"$ref": "#/$defs/framing_profile"},
+                  {"$ref": "#/$defs/framing_profile_v11_ascii_crlf"}
+                ]
+              }
+            }
+          }
+        },
+        "else": {
+          "properties": {
+            "framing_profiles": {"items": {"$ref": "#/$defs/framing_profile"}}
+          }
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "stable_id": {
+      "type": "string",
+      "maxLength": 128,
+      "pattern": "^[a-z][a-z0-9_]*$"
+    },
+    "display_name": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 256
+    },
+    "description": {
+      "type": "string",
+      "maxLength": 1024
+    },
+    "source_ref": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 512
+    },
+    "framing_profile": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "display_name",
+        "description",
+        "source_ref",
+        "input_kind"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/stable_id"
+        },
+        "display_name": {
+          "$ref": "#/$defs/display_name"
+        },
+        "description": {
+          "$ref": "#/$defs/description"
+        },
+        "source_ref": {
+          "$ref": "#/$defs/source_ref"
+        },
+        "input_kind": {
+          "const": "complete_record"
+        }
+      }
+    },
+    "framing_profile_v09": {
+      "oneOf": [
+        {"$ref": "#/$defs/framing_profile"},
+        {"$ref": "#/$defs/framing_profile_v09_fixed"},
+        {"$ref": "#/$defs/framing_profile_v09_sync_fixed"},
+        {"$ref": "#/$defs/framing_profile_v09_sync_length"}
+      ]
+    },
+    "framing_profile_v11_ascii_crlf": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "display_name", "description", "source_ref", "input_kind", "strategy", "terminator_text", "maximum_frame_length"],
+      "properties": {
+        "id": {"$ref": "#/$defs/stable_id"},
+        "display_name": {"$ref": "#/$defs/display_name"},
+        "description": {"$ref": "#/$defs/description"},
+        "source_ref": {"$ref": "#/$defs/source_ref"},
+        "input_kind": {"const": "stream_chunk"},
+        "strategy": {"const": "ascii_crlf"},
+        "terminator_text": {"const": "\r\n"},
+        "maximum_frame_length": {"type": "integer", "minimum": 2}
+      }
+    },
+    "framing_profile_metadata": {
+      "type": "object",
+      "properties": {
+        "id": {"$ref": "#/$defs/stable_id"},
+        "display_name": {"$ref": "#/$defs/display_name"},
+        "description": {"$ref": "#/$defs/description"},
+        "source_ref": {"$ref": "#/$defs/source_ref"}
+      }
+    },
+    "framing_profile_v09_fixed": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "display_name", "description", "source_ref", "input_kind", "strategy", "frame_length_bytes"],
+      "properties": {
+        "id": {"$ref": "#/$defs/stable_id"},
+        "display_name": {"$ref": "#/$defs/display_name"},
+        "description": {"$ref": "#/$defs/description"},
+        "source_ref": {"$ref": "#/$defs/source_ref"},
+        "input_kind": {"const": "stream_chunk"},
+        "strategy": {"const": "fixed_length"},
+        "frame_length_bytes": {"type": "integer", "minimum": 1}
+      }
+    },
+    "framing_profile_v09_sync_fixed": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "display_name", "description", "source_ref", "input_kind", "strategy", "sync_bytes", "frame_length_bytes"],
+      "properties": {
+        "id": {"$ref": "#/$defs/stable_id"},
+        "display_name": {"$ref": "#/$defs/display_name"},
+        "description": {"$ref": "#/$defs/description"},
+        "source_ref": {"$ref": "#/$defs/source_ref"},
+        "input_kind": {"const": "stream_chunk"},
+        "strategy": {"const": "sync_fixed_length"},
+        "sync_bytes": {"type": "string", "pattern": "^[0-9A-F]{2}( [0-9A-F]{2})*$"},
+        "frame_length_bytes": {"type": "integer", "minimum": 1}
+      }
+    },
+    "framing_profile_v09_sync_length": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "display_name", "description", "source_ref", "input_kind", "strategy", "sync_bytes", "length_field", "minimum_frame_length", "maximum_frame_length"],
+      "properties": {
+        "id": {"$ref": "#/$defs/stable_id"},
+        "display_name": {"$ref": "#/$defs/display_name"},
+        "description": {"$ref": "#/$defs/description"},
+        "source_ref": {"$ref": "#/$defs/source_ref"},
+        "input_kind": {"const": "stream_chunk"},
+        "strategy": {"const": "sync_length_field"},
+        "sync_bytes": {"type": "string", "pattern": "^[0-9A-F]{2}( [0-9A-F]{2})*$"},
+        "length_field": {"$ref": "#/$defs/stream_length_field"},
+        "minimum_frame_length": {"type": "integer", "minimum": 1},
+        "maximum_frame_length": {"type": "integer", "minimum": 1}
+      }
+    },
+    "stream_length_field": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["byte_offset", "byte_width"],
+          "properties": {
+            "byte_offset": {"type": "integer", "minimum": 0},
+            "byte_width": {"const": 1}
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["byte_offset", "byte_width", "byte_order"],
+          "properties": {
+            "byte_offset": {"type": "integer", "minimum": 0},
+            "byte_width": {"enum": [2, 4]},
+            "byte_order": {"enum": ["big_endian", "little_endian"]}
+          }
+        }
+      ]
+    },
+    "pipeline": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "display_name",
+        "description",
+        "source_ref",
+        "direction_id",
+        "input_framing_profile_id",
+        "message_ids"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/stable_id"
+        },
+        "display_name": {
+          "$ref": "#/$defs/display_name"
+        },
+        "description": {
+          "$ref": "#/$defs/description"
+        },
+        "source_ref": {
+          "$ref": "#/$defs/source_ref"
+        },
+        "direction_id": {
+          "$ref": "#/$defs/stable_id"
+        },
+        "input_framing_profile_id": {
+          "$ref": "#/$defs/stable_id"
+        },
+        "message_ids": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 256,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/stable_id"
+          }
+        }
+      }
+    },
+    "message_v01": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "display_name",
+        "description",
+        "source_ref",
+        "direction_id",
+        "frame_length_bytes",
+        "matcher",
+        "fields"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/stable_id"
+        },
+        "display_name": {
+          "$ref": "#/$defs/display_name"
+        },
+        "description": {
+          "$ref": "#/$defs/description"
+        },
+        "source_ref": {
+          "$ref": "#/$defs/source_ref"
+        },
+        "direction_id": {
+          "$ref": "#/$defs/stable_id"
+        },
+        "frame_length_bytes": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 1048576
+        },
+        "matcher": {
+          "$ref": "#/$defs/matcher"
+        },
+        "fields": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 4096,
+          "items": {
+            "$ref": "#/$defs/field_v01"
+          }
+        }
+      }
+    },
+    "message_v02": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "display_name", "description", "source_ref", "direction_id",
+                   "frame_length_bytes", "matcher", "fields"],
+      "properties": {
+        "id": {"$ref": "#/$defs/stable_id"},
+        "display_name": {"$ref": "#/$defs/display_name"},
+        "description": {"$ref": "#/$defs/description"},
+        "source_ref": {"$ref": "#/$defs/source_ref"},
+        "direction_id": {"$ref": "#/$defs/stable_id"},
+        "frame_length_bytes": {"type": "integer", "minimum": 1, "maximum": 1048576},
+        "matcher": {"$ref": "#/$defs/matcher"},
+        "bit_containers": {
+          "type": "array", "minItems": 1, "maxItems": 4096,
+          "items": {"$ref": "#/$defs/bit_container"}
+        },
+        "fields": {
+          "type": "array", "minItems": 1, "maxItems": 4096,
+          "items": {"$ref": "#/$defs/field_v02"}
+        }
+      }
+    },
+    "message_v03": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "display_name", "description", "source_ref", "direction_id",
+                   "frame_length_bytes", "matcher", "fields"],
+      "properties": {
+        "id": {"$ref": "#/$defs/stable_id"},
+        "display_name": {"$ref": "#/$defs/display_name"},
+        "description": {"$ref": "#/$defs/description"},
+        "source_ref": {"$ref": "#/$defs/source_ref"},
+        "direction_id": {"$ref": "#/$defs/stable_id"},
+        "frame_length_bytes": {"type": "integer", "minimum": 1, "maximum": 1048576},
+        "matcher": {"$ref": "#/$defs/matcher"},
+        "bit_containers": {
+          "type": "array", "minItems": 1, "maxItems": 4096,
+          "items": {"$ref": "#/$defs/bit_container"}
+        },
+        "integrity": {"$ref": "#/$defs/integrity_sum8"},
+        "fields": {
+          "type": "array", "minItems": 1, "maxItems": 4096,
+          "items": {"$ref": "#/$defs/field_v02"}
+        }
+      }
+    },
+    "message_v04": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "display_name", "description", "source_ref", "direction_id",
+                   "frame_length_bytes", "matcher", "fields"],
+      "properties": {
+        "id": {"$ref": "#/$defs/stable_id"},
+        "display_name": {"$ref": "#/$defs/display_name"},
+        "description": {"$ref": "#/$defs/description"},
+        "source_ref": {"$ref": "#/$defs/source_ref"},
+        "direction_id": {"$ref": "#/$defs/stable_id"},
+        "frame_length_bytes": {"type": "integer", "minimum": 1, "maximum": 1048576},
+        "matcher": {"$ref": "#/$defs/matcher"},
+        "bit_containers": {
+          "type": "array", "minItems": 1, "maxItems": 4096,
+          "items": {"$ref": "#/$defs/bit_container"}
+        },
+        "integrity": {"$ref": "#/$defs/integrity_sum8"},
+        "fields": {
+          "type": "array", "minItems": 1, "maxItems": 4096,
+          "items": {"$ref": "#/$defs/field_v04"}
+        }
+      }
+    },
+    "message_v05": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "display_name", "description", "source_ref", "direction_id",
+                   "frame_length_bytes", "matcher", "fields"],
+      "properties": {
+        "id": {"$ref": "#/$defs/stable_id"},
+        "display_name": {"$ref": "#/$defs/display_name"},
+        "description": {"$ref": "#/$defs/description"},
+        "source_ref": {"$ref": "#/$defs/source_ref"},
+        "direction_id": {"$ref": "#/$defs/stable_id"},
+        "frame_length_bytes": {"type": "integer", "minimum": 1, "maximum": 1048576},
+        "matcher": {"$ref": "#/$defs/matcher"},
+        "bit_containers": {
+          "type": "array", "minItems": 1, "maxItems": 4096,
+          "items": {"$ref": "#/$defs/bit_container"}
+        },
+        "integrity": {"$ref": "#/$defs/integrity_sum8"},
+        "fields": {
+          "type": "array", "minItems": 1, "maxItems": 4096,
+          "items": {"$ref": "#/$defs/field_v05"}
+        }
+      }
+    },
+    "message_v06": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "display_name", "description", "source_ref", "direction_id",
+                   "frame_length_bytes", "matcher", "fields"],
+      "properties": {
+        "id": {"$ref": "#/$defs/stable_id"},
+        "display_name": {"$ref": "#/$defs/display_name"},
+        "description": {"$ref": "#/$defs/description"},
+        "source_ref": {"$ref": "#/$defs/source_ref"},
+        "direction_id": {"$ref": "#/$defs/stable_id"},
+        "frame_length_bytes": {"type": "integer", "minimum": 1, "maximum": 1048576},
+        "matcher": {"$ref": "#/$defs/matcher"},
+        "bit_containers": {
+          "type": "array", "minItems": 1, "maxItems": 4096,
+          "items": {"$ref": "#/$defs/bit_container"}
+        },
+        "integrity": {"oneOf": [
+          {"$ref": "#/$defs/integrity_sum8"},
+          {"$ref": "#/$defs/integrity_crc"}
+        ]},
+        "fields": {
+          "type": "array", "minItems": 1, "maxItems": 4096,
+          "items": {"$ref": "#/$defs/field_v05"}
+        }
+      }
+    },
+    "message_v07": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "display_name", "description", "source_ref", "direction_id",
+                   "frame_length_bytes", "matcher", "fields"],
+      "properties": {
+        "id": {"$ref": "#/$defs/stable_id"},
+        "display_name": {"$ref": "#/$defs/display_name"},
+        "description": {"$ref": "#/$defs/description"},
+        "source_ref": {"$ref": "#/$defs/source_ref"},
+        "direction_id": {"$ref": "#/$defs/stable_id"},
+        "frame_length_bytes": {"type": "integer", "minimum": 1, "maximum": 1048576},
+        "matcher": {"$ref": "#/$defs/matcher"},
+        "bit_containers": {
+          "type": "array", "minItems": 1, "maxItems": 4096,
+          "items": {"$ref": "#/$defs/bit_container"}
+        },
+        "integrity": {"oneOf": [
+          {"$ref": "#/$defs/integrity_sum8"},
+          {"$ref": "#/$defs/integrity_crc"}
+        ]},
+        "fields": {
+          "type": "array", "minItems": 1, "maxItems": 4096,
+          "items": {"$ref": "#/$defs/field_v07"}
+        }
+      }
+    },
+    "message_v08": {
+      "oneOf": [
+        {"$ref": "#/$defs/message_v07"},
+        {"$ref": "#/$defs/message_v08_bounded"}
+      ]
+    },
+    "message_v10": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "display_name", "description", "source_ref", "direction_id",
+                   "layout", "fields"],
+      "properties": {
+        "id": {"$ref": "#/$defs/stable_id"},
+        "display_name": {"$ref": "#/$defs/display_name"},
+        "description": {"$ref": "#/$defs/description"},
+        "source_ref": {"$ref": "#/$defs/source_ref"},
+        "direction_id": {"$ref": "#/$defs/stable_id"},
+        "layout": {"$ref": "#/$defs/ascii_text_layout"},
+        "fields": {
+          "type": "array", "maxItems": 2048,
+          "items": {"$ref": "#/$defs/ascii_text_field"}
+        }
+      }
+    },
+    "ascii_text_layout": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "encoding"],
+      "properties": {
+        "kind": {"const": "text"},
+        "encoding": {"const": "ascii"},
+        "decode": {"$ref": "#/$defs/ascii_text_action"},
+        "encode": {"$ref": "#/$defs/ascii_text_action"}
+      },
+      "anyOf": [{"required": ["decode"]}, {"required": ["encode"]}]
+    },
+    "ascii_text_action": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["segments"],
+      "properties": {
+        "segments": {
+          "type": "array", "minItems": 1, "maxItems": 4097,
+          "items": {"$ref": "#/$defs/ascii_text_segment"}
+        }
+      }
+    },
+    "ascii_text_segment": {
+      "oneOf": [
+        {
+          "type": "object", "additionalProperties": false,
+          "required": ["kind", "text"],
+          "properties": {
+            "kind": {"const": "literal"},
+            "text": {"type": "string", "minLength": 1, "maxLength": 65536}
+          }
+        },
+        {
+          "type": "object", "additionalProperties": false,
+          "required": ["kind", "field_id"],
+          "properties": {
+            "kind": {"const": "field"},
+            "field_id": {"$ref": "#/$defs/stable_id"}
+          }
+        }
+      ]
+    },
+    "ascii_text_field": {
+      "allOf": [
+        {"$ref": "#/$defs/field_common"},
+        {
+          "type": "object",
+          "required": ["value_type", "wire"],
+          "properties": {
+            "value_type": {"const": "BYTES"},
+            "wire": {"$ref": "#/$defs/wire_ascii_text"},
+            "encode": {"$ref": "#/$defs/input_encode_source"}
+          }
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    "wire_ascii_text": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["codec", "min_byte_length", "max_byte_length"],
+      "properties": {
+        "codec": {"const": "ascii_text"},
+        "min_byte_length": {"type": "integer", "minimum": 0,
+                            "maximum": 18446744073709551615},
+        "max_byte_length": {"type": "integer", "minimum": 0,
+                            "maximum": 18446744073709551615},
+        "allowed_control_bytes": {
+          "type": "string",
+          "pattern": "^(?:[0-9A-F]{2})(?: [0-9A-F]{2})*$"
+        }
+      }
+    },
+    "message_v08_bounded": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "display_name", "description", "source_ref", "direction_id",
+                   "layout", "matcher", "fields"],
+      "properties": {
+        "id": {"$ref": "#/$defs/stable_id"},
+        "display_name": {"$ref": "#/$defs/display_name"},
+        "description": {"$ref": "#/$defs/description"},
+        "source_ref": {"$ref": "#/$defs/source_ref"},
+        "direction_id": {"$ref": "#/$defs/stable_id"},
+        "layout": {"$ref": "#/$defs/bounded_payload_layout"},
+        "matcher": {"$ref": "#/$defs/matcher"},
+        "bit_containers": {
+          "type": "array", "minItems": 1, "maxItems": 4096,
+          "items": {"$ref": "#/$defs/bit_container"}
+        },
+        "integrity": {"oneOf": [
+          {"$ref": "#/$defs/integrity_sum8_bounded"},
+          {"$ref": "#/$defs/integrity_crc_bounded"}
+        ]},
+        "fields": {
+          "type": "array", "minItems": 1, "maxItems": 4096,
+          "items": {"$ref": "#/$defs/field_v08"}
+        }
+      }
+    },
+    "bounded_payload_layout": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "header_length_bytes", "payload_field_id", "min_payload_bytes",
+                   "max_payload_bytes"],
+      "properties": {
+        "kind": {"const": "bounded_payload"},
+        "header_length_bytes": {"type": "integer", "minimum": 1,
+                                "maximum": 18446744073709551615},
+        "payload_field_id": {"$ref": "#/$defs/stable_id"},
+        "min_payload_bytes": {"type": "integer", "minimum": 0,
+                              "maximum": 18446744073709551615},
+        "max_payload_bytes": {"type": "integer", "minimum": 0,
+                              "maximum": 18446744073709551615}
+      }
+    },
+    "integrity_range_bounded": {
+      "oneOf": [
+        {
+          "type": "object", "additionalProperties": false,
+          "required": ["byte_offset", "byte_length"],
+          "properties": {
+            "byte_offset": {"type": "integer", "minimum": 0,
+                            "maximum": 18446744073709551615},
+            "byte_length": {"type": "integer", "minimum": 1,
+                            "maximum": 18446744073709551615}
+          }
+        },
+        {
+          "type": "object", "additionalProperties": false,
+          "required": ["byte_offset", "end"],
+          "properties": {
+            "byte_offset": {"type": "integer", "minimum": 0,
+                            "maximum": 18446744073709551615},
+            "end": {"const": "payload_end"}
+          }
+        }
+      ]
+    },
+    "integrity_sum8_bounded": {
+      "type": "object", "additionalProperties": false,
+      "required": ["algorithm", "range", "storage"],
+      "properties": {
+        "algorithm": {"const": "sum8"},
+        "range": {"$ref": "#/$defs/integrity_range_bounded"},
+        "storage": {
+          "type": "object", "additionalProperties": false,
+          "required": ["anchor"], "properties": {"anchor": {"const": "payload_end"}}
+        }
+      }
+    },
+    "integrity_crc_bounded": {
+      "type": "object", "additionalProperties": false,
+      "required": ["algorithm", "parameters", "range", "storage"],
+      "properties": {
+        "algorithm": {"const": "crc"},
+        "parameters": {"$ref": "#/$defs/crc_parameters"},
+        "range": {"$ref": "#/$defs/integrity_range_bounded"},
+        "storage": {
+          "type": "object", "additionalProperties": false,
+          "required": ["anchor", "byte_order"],
+          "properties": {
+            "anchor": {"const": "payload_end"},
+            "byte_order": {"enum": ["big_endian", "little_endian"]}
+          }
+        }
+      }
+    },
+    "integrity_sum8": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["algorithm", "range", "storage"],
+      "properties": {
+        "algorithm": {"const": "sum8"},
+        "range": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["byte_offset", "byte_length"],
+          "properties": {
+            "byte_offset": {"type": "integer", "minimum": 0, "maximum": 18446744073709551615},
+            "byte_length": {"type": "integer", "minimum": 1, "maximum": 18446744073709551615}
+          }
+        },
+        "storage": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["byte_offset"],
+          "properties": {
+            "byte_offset": {"type": "integer", "minimum": 0, "maximum": 18446744073709551615}
+          }
+        }
+      }
+    },
+    "integrity_crc": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["algorithm", "parameters", "range", "storage"],
+      "properties": {
+        "algorithm": {"const": "crc"},
+        "parameters": {
+          "$ref": "#/$defs/crc_parameters"
+        },
+        "range": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["byte_offset", "byte_length"],
+          "properties": {
+            "byte_offset": {"type": "integer", "minimum": 0, "maximum": 18446744073709551615},
+            "byte_length": {"type": "integer", "minimum": 1, "maximum": 18446744073709551615}
+          }
+        },
+        "storage": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["byte_offset", "byte_order"],
+          "properties": {
+            "byte_offset": {"type": "integer", "minimum": 0, "maximum": 18446744073709551615},
+            "byte_order": {"enum": ["big_endian", "little_endian"]}
+          }
+        }
+      }
+    },
+    "crc_parameters": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["width", "poly", "init", "refin", "refout", "xorout"],
+          "properties": {
+            "width": {"enum": [16, 32]},
+            "poly": {"type": "string", "pattern": "^(?:[0-9A-F]{4}|[0-9A-F]{8})$"},
+            "init": {"type": "string", "pattern": "^(?:[0-9A-F]{4}|[0-9A-F]{8})$"},
+            "refin": {"type": "boolean"},
+            "refout": {"type": "boolean"},
+            "xorout": {"type": "string", "pattern": "^(?:[0-9A-F]{4}|[0-9A-F]{8})$"}
+          }
+      },
+    "bit_container": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "container_offset", "container_width", "bit_numbering", "base_value"],
+      "properties": {
+        "id": {"$ref": "#/$defs/stable_id"},
+        "container_offset": {"type": "integer", "minimum": 0, "maximum": 1048575},
+        "container_width": {"enum": [1, 2, 4, 8]},
+        "byte_order": {"enum": ["big_endian", "little_endian"]},
+        "bit_numbering": {"enum": ["lsb0", "msb0"]},
+        "base_value": {"type": "integer", "minimum": 0, "maximum": 18446744073709551615}
+      },
+      "allOf": [
+        {"if": {"properties": {"container_width": {"enum": [2, 4, 8]}}},
+         "then": {"required": ["byte_order"]},
+         "else": {"not": {"required": ["byte_order"]}}}
+      ]
+    },
+    "matcher": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "all"
+      ],
+      "properties": {
+        "all": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/matcher_clause"
+          }
+        }
+      }
+    },
+    "matcher_clause": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/frame_length_matcher"
+        },
+        {
+          "$ref": "#/$defs/fixed_bytes_matcher"
+        }
+      ]
+    },
+    "frame_length_matcher": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "length_bytes"
+      ],
+      "properties": {
+        "kind": {
+          "const": "frame_length_equals"
+        },
+        "length_bytes": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 1048576
+        }
+      }
+    },
+    "fixed_bytes_matcher": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "byte_offset",
+        "bytes"
+      ],
+      "properties": {
+        "kind": {
+          "const": "fixed_bytes"
+        },
+        "byte_offset": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 1048575
+        },
+        "bytes": {
+          "type": "string",
+          "pattern": "^(?:[0-9A-F]{2})(?: [0-9A-F]{2})*$"
+        }
+      }
+    },
+    "field_v01": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/uint64_field"
+        },
+        {
+          "$ref": "#/$defs/bytes_field"
+        },
+        {
+          "$ref": "#/$defs/enum_field"
+        }
+      ]
+    },
+    "field_v02": {
+      "oneOf": [
+        {"$ref": "#/$defs/uint64_field"},
+        {"$ref": "#/$defs/bytes_field"},
+        {"$ref": "#/$defs/enum_field"},
+        {"$ref": "#/$defs/bit_uint64_field"},
+        {"$ref": "#/$defs/bit_enum_field"},
+        {"$ref": "#/$defs/bit_bool_field"}
+      ]
+    },
+    "field_v04": {
+      "oneOf": [
+        {"$ref": "#/$defs/uint64_field"},
+        {"$ref": "#/$defs/int64_field"},
+        {"$ref": "#/$defs/bytes_field"},
+        {"$ref": "#/$defs/enum_field"},
+        {"$ref": "#/$defs/bit_uint64_field"},
+        {"$ref": "#/$defs/bit_enum_field"},
+        {"$ref": "#/$defs/bit_bool_field"}
+      ]
+    },
+    "field_v05": {
+      "oneOf": [
+        {"$ref": "#/$defs/uint64_field"},
+        {"$ref": "#/$defs/int64_field"},
+        {"$ref": "#/$defs/converted_uint64_field"},
+        {"$ref": "#/$defs/converted_int64_field"},
+        {"$ref": "#/$defs/bytes_field"},
+        {"$ref": "#/$defs/enum_field"},
+        {"$ref": "#/$defs/bit_uint64_field"},
+        {"$ref": "#/$defs/bit_enum_field"},
+        {"$ref": "#/$defs/bit_bool_field"}
+      ]
+    },
+    "field_v07": {
+      "oneOf": [
+        {"$ref": "#/$defs/uint64_field"},
+        {"$ref": "#/$defs/uint64_computed_length_field"},
+        {"$ref": "#/$defs/int64_field"},
+        {"$ref": "#/$defs/converted_uint64_field"},
+        {"$ref": "#/$defs/converted_int64_field"},
+        {"$ref": "#/$defs/bytes_field"},
+        {"$ref": "#/$defs/enum_field"},
+        {"$ref": "#/$defs/bit_uint64_field"},
+        {"$ref": "#/$defs/bit_enum_field"},
+        {"$ref": "#/$defs/bit_bool_field"}
+      ]
+    },
+    "field_v08": {
+      "oneOf": [
+        {"$ref": "#/$defs/uint64_field"},
+        {"$ref": "#/$defs/uint64_computed_length_field_v08"},
+        {"$ref": "#/$defs/int64_field"},
+        {"$ref": "#/$defs/converted_uint64_field"},
+        {"$ref": "#/$defs/converted_int64_field"},
+        {"$ref": "#/$defs/bytes_field"},
+        {"$ref": "#/$defs/bytes_variable_field"},
+        {"$ref": "#/$defs/enum_field"},
+        {"$ref": "#/$defs/bit_uint64_field"},
+        {"$ref": "#/$defs/bit_enum_field"},
+        {"$ref": "#/$defs/bit_bool_field"}
+      ]
+    },
+    "field_common": {
+      "type": "object",
+      "required": [
+        "id",
+        "display_name",
+        "description",
+        "source_ref"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/stable_id"
+        },
+        "display_name": {
+          "$ref": "#/$defs/display_name"
+        },
+        "description": {
+          "$ref": "#/$defs/description"
+        },
+        "source_ref": {
+          "$ref": "#/$defs/source_ref"
+        }
+      }
+    },
+    "uint64_field": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/field_common"
+        },
+        {
+          "type": "object",
+          "required": [
+            "value_type",
+            "wire",
+            "encode"
+          ],
+          "properties": {
+            "value_type": {
+              "const": "UINT64"
+            },
+            "wire": {
+              "$ref": "#/$defs/wire_unsigned_integer"
+            },
+            "encode": {
+              "$ref": "#/$defs/uint64_encode_source"
+            }
+          }
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    "uint64_computed_length_field": {
+      "allOf": [
+        {"$ref": "#/$defs/field_common"},
+        {
+          "type": "object",
+          "required": ["value_type", "wire", "encode", "computed"],
+          "properties": {
+            "value_type": {"const": "UINT64"},
+            "wire": {"$ref": "#/$defs/wire_computed_length"},
+            "encode": {
+              "type": "object", "additionalProperties": false,
+              "required": ["source"], "properties": {"source": {"const": "computed"}}
+            },
+            "computed": {"$ref": "#/$defs/computed_length"}
+          }
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    "uint64_computed_length_field_v08": {
+      "allOf": [
+        {"$ref": "#/$defs/field_common"},
+        {
+          "type": "object",
+          "required": ["value_type", "wire", "encode", "computed"],
+          "properties": {
+            "value_type": {"const": "UINT64"},
+            "wire": {"$ref": "#/$defs/wire_computed_length"},
+            "encode": {
+              "type": "object", "additionalProperties": false,
+              "required": ["source"], "properties": {"source": {"const": "computed"}}
+            },
+            "computed": {"$ref": "#/$defs/computed_length_v08"}
+          }
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    "computed_length": {
+      "oneOf": [
+        {
+          "type": "object", "additionalProperties": false,
+          "required": ["kind", "scope"],
+          "properties": {"kind": {"const": "length"}, "scope": {"const": "frame"}}
+        },
+        {
+          "type": "object", "additionalProperties": false,
+          "required": ["kind", "scope", "range"],
+          "properties": {
+            "kind": {"const": "length"},
+            "scope": {"const": "region"},
+            "range": {
+              "type": "object", "additionalProperties": false,
+              "required": ["byte_offset", "byte_length"],
+              "properties": {
+                "byte_offset": {"type": "integer", "minimum": 0,
+                                "maximum": 18446744073709551615},
+                "byte_length": {"type": "integer", "minimum": 1,
+                                "maximum": 18446744073709551615}
+              }
+            }
+          }
+        }
+      ]
+    },
+    "computed_length_v08": {
+      "type": "object", "additionalProperties": false,
+      "required": ["kind", "scope"],
+      "properties": {
+        "kind": {"const": "length"},
+        "scope": {"enum": ["frame", "payload"]}
+      }
+    },
+    "int64_field": {
+      "allOf": [
+        {"$ref": "#/$defs/field_common"},
+        {
+          "type": "object",
+          "required": ["value_type", "wire", "encode"],
+          "properties": {
+            "value_type": {"const": "INT64"},
+            "wire": {"$ref": "#/$defs/wire_unsigned_integer"},
+            "encode": {"$ref": "#/$defs/int64_encode_source"}
+          }
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    "converted_uint64_field": {
+      "allOf": [
+        {"$ref": "#/$defs/field_common"},
+        {"type": "object", "required": ["value_type", "wire", "encode", "conversion"],
+         "properties": {"value_type": {"const": "UINT64"},
+                        "wire": {"$ref": "#/$defs/wire_unsigned_integer"},
+                        "encode": {"$ref": "#/$defs/input_encode_source"},
+                        "conversion": {"$ref": "#/$defs/linear_conversion"}}}
+      ],
+      "unevaluatedProperties": false
+    },
+    "converted_int64_field": {
+      "allOf": [
+        {"$ref": "#/$defs/field_common"},
+        {"type": "object", "required": ["value_type", "wire", "encode", "conversion"],
+         "properties": {"value_type": {"const": "INT64"},
+                        "wire": {"$ref": "#/$defs/wire_unsigned_integer"},
+                        "encode": {"$ref": "#/$defs/input_encode_source"},
+                        "conversion": {"$ref": "#/$defs/linear_conversion"}}}
+      ],
+      "unevaluatedProperties": false
+    },
+    "linear_conversion": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "output_type", "scale", "bias"],
+      "properties": {
+        "kind": {"const": "linear"},
+        "output_type": {"const": "DECIMAL64"},
+        "scale": {"$ref": "#/$defs/decimal_rational"},
+        "bias": {"$ref": "#/$defs/decimal_rational"}
+      }
+    },
+    "decimal_rational": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["numerator", "denominator"],
+      "properties": {
+        "numerator": {"type": "integer", "minimum": -9223372036854775808,
+                      "maximum": 9223372036854775807},
+        "denominator": {"type": "integer", "minimum": 1,
+                        "maximum": 1000000000000000000}
+      }
+    },
+    "bytes_field": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/field_common"
+        },
+        {
+          "type": "object",
+          "required": [
+            "value_type",
+            "wire",
+            "encode"
+          ],
+          "properties": {
+            "value_type": {
+              "const": "BYTES"
+            },
+            "wire": {
+              "$ref": "#/$defs/wire_bytes"
+            },
+            "encode": {
+              "$ref": "#/$defs/input_encode_source"
+            }
+          }
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    "bytes_variable_field": {
+      "allOf": [
+        {"$ref": "#/$defs/field_common"},
+        {
+          "type": "object",
+          "required": ["value_type", "wire", "encode"],
+          "properties": {
+            "value_type": {"const": "BYTES"},
+            "wire": {"$ref": "#/$defs/wire_bytes_variable"},
+            "encode": {"$ref": "#/$defs/input_encode_source"}
+          }
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    "enum_field": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/field_common"
+        },
+        {
+          "type": "object",
+          "required": [
+            "value_type",
+            "wire",
+            "encode",
+            "unknown_enum_policy",
+            "enum_entries"
+          ],
+          "properties": {
+            "value_type": {
+              "const": "ENUM"
+            },
+            "wire": {
+              "$ref": "#/$defs/wire_unsigned_integer"
+            },
+            "encode": {
+              "$ref": "#/$defs/input_encode_source"
+            },
+            "unknown_enum_policy": {
+              "enum": [
+                "reject",
+                "preserve"
+              ]
+            },
+            "enum_entries": {
+              "type": "array",
+              "minItems": 1,
+              "items": {
+                "$ref": "#/$defs/enum_entry"
+              }
+            }
+          }
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    "bit_uint64_field": {
+      "allOf": [
+        {"$ref": "#/$defs/field_common"},
+        {"type": "object", "required": ["value_type", "wire", "encode"],
+         "properties": {"value_type": {"const": "UINT64"},
+                        "wire": {"$ref": "#/$defs/wire_bitfield"},
+                        "encode": {"$ref": "#/$defs/uint64_encode_source"}}}
+      ],
+      "unevaluatedProperties": false
+    },
+    "bit_bool_field": {
+      "allOf": [
+        {"$ref": "#/$defs/field_common"},
+        {"type": "object", "required": ["value_type", "wire", "encode"],
+         "properties": {"value_type": {"const": "BOOL"},
+                        "wire": {"$ref": "#/$defs/wire_bitfield_bool"},
+                        "encode": {"$ref": "#/$defs/input_encode_source"}}}
+      ],
+      "unevaluatedProperties": false
+    },
+    "bit_enum_field": {
+      "allOf": [
+        {"$ref": "#/$defs/field_common"},
+        {"type": "object",
+         "required": ["value_type", "wire", "encode", "unknown_enum_policy", "enum_entries"],
+         "properties": {"value_type": {"const": "ENUM"},
+                        "wire": {"$ref": "#/$defs/wire_bitfield"},
+                        "encode": {"$ref": "#/$defs/input_encode_source"},
+                        "unknown_enum_policy": {"enum": ["reject", "preserve"]},
+                        "enum_entries": {"type": "array", "minItems": 1,
+                                         "items": {"$ref": "#/$defs/enum_entry"}}}}
+      ],
+      "unevaluatedProperties": false
+    },
+    "wire_bitfield": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["codec", "container_id", "bit_offset", "bit_width"],
+      "properties": {
+        "codec": {"const": "bitfield"},
+        "container_id": {"$ref": "#/$defs/stable_id"},
+        "bit_offset": {"type": "integer", "minimum": 0, "maximum": 63},
+        "bit_width": {"type": "integer", "minimum": 1, "maximum": 64}
+      }
+    },
+    "wire_bitfield_bool": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["codec", "container_id", "bit_offset", "bit_width"],
+      "properties": {
+        "codec": {"const": "bitfield"},
+        "container_id": {"$ref": "#/$defs/stable_id"},
+        "bit_offset": {"type": "integer", "minimum": 0, "maximum": 63},
+        "bit_width": {"const": 1}
+      }
+    },
+    "wire_unsigned_integer": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "codec",
+        "byte_offset",
+        "byte_width"
+      ],
+      "properties": {
+        "codec": {
+          "const": "unsigned_integer"
+        },
+        "byte_offset": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 1048575
+        },
+        "byte_width": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 8
+        },
+        "byte_order": {
+          "enum": [
+            "big_endian",
+            "little_endian"
+          ]
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "required": [
+              "byte_width"
+            ],
+            "properties": {
+              "byte_width": {
+                "minimum": 2
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "byte_order"
+            ]
+          }
+        }
+      ]
+    },
+    "wire_computed_length": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["codec", "byte_offset", "byte_width"],
+      "properties": {
+        "codec": {"const": "unsigned_integer"},
+        "byte_offset": {"type": "integer", "minimum": 0, "maximum": 1048575},
+        "byte_width": {"enum": [1, 2, 4]},
+        "byte_order": {"enum": ["big_endian", "little_endian"]}
+      },
+      "allOf": [
+        {"if": {"properties": {"byte_width": {"const": 1}}},
+         "then": {"not": {"required": ["byte_order"]}},
+         "else": {"required": ["byte_order"]}}
+      ]
+    },
+    "wire_bytes": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "codec",
+        "byte_offset",
+        "byte_length"
+      ],
+      "properties": {
+        "codec": {
+          "const": "bytes"
+        },
+        "byte_offset": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 1048575
+        },
+        "byte_length": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 1048576
+        }
+      }
+    },
+    "wire_bytes_variable": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["codec", "byte_offset"],
+      "properties": {
+        "codec": {"const": "bytes"},
+        "byte_offset": {"type": "integer", "minimum": 0, "maximum": 1048575}
+      }
+    },
+    "input_encode_source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "source"
+      ],
+      "properties": {
+        "source": {
+          "const": "input"
+        }
+      }
+    },
+    "uint64_encode_source": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/input_encode_source"
+        },
+        {
+          "$ref": "#/$defs/uint64_constant_encode_source"
+        }
+      ]
+    },
+    "uint64_constant_encode_source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "source",
+        "value"
+      ],
+      "properties": {
+        "source": {
+          "const": "constant"
+        },
+        "value": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 18446744073709551615
+        }
+      }
+    },
+    "int64_encode_source": {
+      "oneOf": [
+        {"$ref": "#/$defs/input_encode_source"},
+        {"$ref": "#/$defs/int64_constant_encode_source"}
+      ]
+    },
+    "int64_constant_encode_source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["source", "value"],
+      "properties": {
+        "source": {"const": "constant"},
+        "value": {
+          "type": "integer",
+          "minimum": -9223372036854775808,
+          "maximum": 9223372036854775807
+        }
+      }
+    },
+    "enum_entry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "display_name",
+        "raw_value"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/stable_id"
+        },
+        "display_name": {
+          "$ref": "#/$defs/display_name"
+        },
+        "raw_value": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 18446744073709551615
+        }
+      }
+    }
+  }
+}
