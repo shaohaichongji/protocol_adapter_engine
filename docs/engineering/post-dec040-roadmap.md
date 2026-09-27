@@ -1,6 +1,12 @@
 # DEC-040 后续推进路线与当前状态
 
-## 当前推进（2026-09-26）
+## 当前推进（2026-09-27）
+
+[开发者上手体验与接入核查](developer-onboarding-polish-plan-20260926.md) 已限定收尾。
+基线 main@8eb5bb6；文档、宿主核查与示例修复已回收，任务均停止。总控核对关键差异与日志，
+未重跑测试；JSON/YAML 独立 Release 运行及嵌入宿主各 2/2 已有证据。
+当前累计 12 份 Markdown 与 2 份示例 CMake 待提交授权；不改 API 或现用 b12ad80 成品。
+下方保留此前过程，其中旧收尾文档已在 8eb5bb6 提交，不与本轮候选混淆。
 
 最新人工反馈：用户确认归集后的 static Release JSON/YAML 两条正常解析通过，Lab 已关闭。
 本片限定收口，详见 [人工记录](yaml-clean-delivery-validation-20260926.md)。配置错误诊断、

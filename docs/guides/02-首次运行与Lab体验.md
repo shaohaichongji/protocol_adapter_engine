@@ -8,26 +8,43 @@
 
 - Windows x64；
 - 已在仓库根目录打开 PowerShell；
-- 本机已有 `deliverables/lab/b12ad80/static-release/` 完整部署；沿用旧版 JSON 入口时，本机另有 `deliverables/lab/fe1683c-plus-patches/static-release/`。这些都是 Git 忽略的本地产物，仅 clone 仓库不会自动获得。
+- 本机已有 `deliverables/lab/b12ad80/static-release/` 完整部署。产物被 Git 忽略，仅 clone 仓库不会自动获得；旧版入口另见下文附录。
 
 ## 读完能做什么
 
 读完后可以从正确的完整部署目录启动 Lab、选择 JSON 或受限 YAML 合成配置做一次离线观察，并知道哪些结果只是 UI 体验、哪些需要后续 SDK 或真实设备验证。
 
-## 当前同基线初版：一次统一体验建议
+## 1. 启动当前 Lab
 
-本机 `b12ad80` 同基线候选优先使用 standalone **static Release**。它采用同批带可选 `yaml_frontend` 组件的 SDK；shared Release 是同批对照。两者的目录见 [统一交付入口](../../deliverables/README.md)。从仓库根目录启动：
+首次使用选 `b12ad80` 的 **static Release**，同时支持 JSON 与受限 YAML 作者源。它使用同批带可选 `yaml_frontend` 的 SDK；shared Release 是另一部署形态。完整目录见 [统一交付入口](../../deliverables/README.md)。从仓库根目录启动：
 
 ```powershell
 $LabRoot = (Resolve-Path 'deliverables/lab/b12ad80/static-release').Path
 & "$LabRoot\pae_protocol_lab_ui.exe"
 ```
 
-启动后只建议做一次合成配置体验：浏览 `$LabRoot\configs\synthetic_ascii_literal_only.pae.yaml`，加载或重新加载；为 `ascii_pipeline` 的 `ping` 接收动作输入 Hex `50 49 4E 47 0D 0A`，观察完整记录解析结果及来源诊断。该 YAML 文件描述 `PING\r\n` 接收和 `PONG\r\n` 发送，字段列表为空。JSON 作者源仍可照常使用；YAML 按 [Profile V0.1](../../schema/pae_yaml_profile_v0.1.md) 转成严格 JSON 后走同一编译器。无需为了首次体验逐项重跑历史测试。
+保留完整目录的 EXE、Qt DLL、`platforms/` 和 `configs/`，不要只复制 EXE。若 `Resolve-Path` 失败，说明本机没有该部署；按 [06 构建与排错](06-构建测试与问题定位.md) 及 [standalone 构建说明](../../tools/protocol_lab_ui/standalone/README.md) 选择生成路线。
 
-2026-09-26 用户已确认本版 static Release 的 Binary JSON 与上述 YAML 正常解析通过，并已关闭 Lab；具体输入及范围见 [人工记录](../engineering/yaml-clean-delivery-validation-20260926.md)。配置错误诊断等未测项不计通过。本轮从干净固定提交构建的 standalone static/shared Debug/Release 定向测试各 5/5，见 [同基线 Lab 验证](../engineering/yaml-clean-lab-validation-20260926.md)；自动与人工证据分开记录。若候选目录不存在，clone 不会补齐已构建产物，按 [06 构建测试与问题定位](06-构建测试与问题定位.md) 和 [standalone 说明](../../tools/protocol_lab_ui/standalone/README.md) 选择生成路线。
+## 2. 同一版本的两条正常解析
 
-## 1. 既有 JSON 功能体验入口
+在“浏览”中选择配置，必要时点击“加载 / 重新加载”；在“绑定设置”应用对应草稿，再到“操作”输入 Hex 并点击“解析完整记录”。两项都使用 `$LabRoot\configs\` 下的合成文件：
+
+| 作者源 | 配置与绑定 | Hex 输入 | 预期观察 |
+| --- | --- | --- | --- |
+| JSON | `synthetic_binary_ui_stage1.pae.json`；`device / Decode / ui_pipeline` | `80 0D 03 00 01 00 CA FE 05 5A` | `typed_record`，9 字段；`count=1`、`payload=CAFE`、`marker=90` |
+| YAML | `synthetic_ascii_literal_only.pae.yaml`；`device / Decode / ascii_pipeline` | `50 49 4E 47 0D 0A` | `ping`，解析成功，0 字段 |
+
+YAML 样例描述 `PING\r\n` 接收和 `PONG\r\n` 发送；本表只观察接收。JSON 直接进入编译器；YAML 先按 [受限 Profile V0.1](../../schema/pae_yaml_profile_v0.1.md) 转成严格 JSON，再进入同一编译器。`schema_version: "0.10"` 是协议 Schema 版本，不是 YAML 语言版本；两份作者源的完整对应样例见 [04 配置入门](04-协议配置入门.md)。
+
+2026-09-26 用户已确认本版 static Release 的上述 JSON/YAML 正常解析通过，Lab 已关闭；输入与范围见 [人工记录](../engineering/yaml-clean-delivery-validation-20260926.md)。它只覆盖两条正常解析。配置错误诊断、shared 可见 UI、组包与真实协议未由此次人工操作验证。static/shared Debug/Release 的指定定向自动测试各 5/5，见 [Lab 验证](../engineering/yaml-clean-lab-validation-20260926.md)，不替代人工结果。
+
+## 3. 失败时先看哪一层
+
+YAML 文件先过可选前端：语法、受限标量、重复键或资源限制在这里失败时，没有可提交给编译器的 JSON。转换成功后再看 PAE 的 `CompileDiagnostic`：`stage`、`code`、`json_pointer` 和 `detail` 表示生成 JSON 的结构、引用或执行规则问题。显示的 YAML 行列可能是精确位置、最近祖先近似位置或“未提供”；生成 JSON 的 byte offset 不是原 YAML 偏移。JSON 文件直接从编译诊断开始。定位步骤见 [04 配置入门](04-协议配置入门.md)；不要把“加载失败”直接归因于 Codec。
+
+## 附录：既有 JSON 候选与扩展观察
+
+### 既有 JSON 功能体验入口
 
 沿用此前 JSON 功能体验时，使用含结构化编译诊断的 installed-SDK static Release，包含 Binary G1/G2 及 ASCII/legacy 公开路径。SDK 身份为 clean 7b4205e；Lab 为 fe1683c 加诊断和打包修补，并非干净提交重建。此入口身份与上方 YAML 新候选分开，完整证据见 [统一交付入口](../../deliverables/README.md)。
 
@@ -56,7 +73,7 @@ $LabRoot = (Resolve-Path 'deliverables/lab/fe1683c-plus-patches/static-release')
 
 不要通过修改全局 `PATH` 去掩盖缺失模块；目录不完整时应回到原交付目录。
 
-## 2. 既有 JSON 配置选择
+### 既有 JSON 配置选择
 
 建议先用小而明确的公开合成配置：
 
@@ -71,7 +88,7 @@ $LabRoot = (Resolve-Path 'deliverables/lab/fe1683c-plus-patches/static-release')
 
 Binary 分块流示例位于 `$LabRoot\configs\synthetic_stream_framing_slice.pae.json`。该文件已按限定修补补入部署，不需要回读开发仓库。
 
-## 3. 一次有边界的 Lab 体验
+### 既有 Binary 完整记录观察
 
 若选择本节的既有 JSON 路线，第一次建议只做下面这一条 Binary 完整记录，不需要立即执行全部验收清单：
 
@@ -109,7 +126,7 @@ flowchart TD
 
 图中 Framer 只在 Pipeline 配置为流式输入时参与；完整记录路径不需要先过 Framer。
 
-## 4. 先跑 SDK consumer（可选）
+### 既有 SDK consumer（可选）
 
 如果你准备写 C++，下列命令仍可复核既有 `7b4205e` Static Release 包的综合 consumer；当前 `b12ad80` SDK 的包外验证另见 [同基线 SDK 验证](../engineering/yaml-clean-sdk-validation-20260926.md)。必须在 Visual Studio Developer Shell 或已能调用相应 CMake/编译器的终端中执行，并使用新的包外构建目录：
 
@@ -132,7 +149,7 @@ cmake --build $BuildRoot --config Release --target pae_sdk_stage3_consumer
 
 当前综合示例成功输出以 `PAE_SDK_STAGE3_CONSUMER_PASS` 开头。目录已存在时换新路径，不覆盖旧证据。此命令是既有候选的使用方式，本轮文档整理没有重新构建或运行它。
 
-## 5. 不要从体验结果推出什么
+### 不要从体验结果推出什么
 
 - Lab 启动成功不等于 Compile/Decode/Encode 成功；
 - 合成配置成功不等于真实协议资料已正确映射；

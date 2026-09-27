@@ -4,6 +4,11 @@
 
 ## 1. 先按目的选择入口
 
+当前（2026-09-27）：[开发者上手打磨](developer-onboarding-polish-plan-20260926.md) 已限定收尾，
+文档、接入审计及示例修复已回收，两个执行任务停止。JSON/YAML 嵌入宿主 Release 各 2/2 通过；
+累计 14 文件待提交授权。API、旧 SDK 与 Lab 部署未改，不新增人工门槛。
+以下为此前交付过程。
+
 最新：YAML SDK/Lab 累计变更已提交 `b12ad80`，未由总控推送；
 [同基线交付计划](yaml-clean-delivery-plan-20260926.md) 的构建与归集已完成限定复核。
 用户确认 static Release JSON/YAML 正常解析通过、Lab 已关闭，见
