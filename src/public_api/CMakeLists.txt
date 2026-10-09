@@ -16,6 +16,13 @@ target_link_libraries(
         pae::project_options
 )
 target_compile_features(pae_public_api PUBLIC cxx_std_17)
+# Public UTF-8 headers also need the source charset on MSVC consumers. Do not propagate the
+# internal warning policy or change the consumer's execution charset.
+# Consumers already supplying /utf-8 opt out on their compiling target, not on PAE::pae.
+target_compile_options(
+    pae_public_api INTERFACE
+        "$<$<AND:$<COMPILE_LANG_AND_ID:CXX,MSVC>,$<NOT:$<BOOL:$<TARGET_PROPERTY:PAE_MSVC_SOURCE_CHARSET_SUPPLIED>>>>:/source-charset:utf-8>"
+)
 if(BUILD_SHARED_LIBS)
     target_compile_definitions(pae_public_api PRIVATE PAE_BUILDING_LIBRARY=1)
 else()

@@ -555,7 +555,8 @@ if(MSVC)
         INTERFACE
             /W4
             /permissive-
-            /utf-8
+            /source-charset:utf-8
+            /execution-charset:utf-8
             /Zc:__cplusplus
     )
 else()

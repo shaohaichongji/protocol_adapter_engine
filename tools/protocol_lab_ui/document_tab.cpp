@@ -478,6 +478,7 @@ void DocumentTab::LoadPath(const QString& path) {
 }
 
 void DocumentTab::AcceptCompletion(std::unique_ptr<CompileCompletion> completion) {
+  // GUI 接管后台结果，不接管后台线程；关闭/身份不匹配时由局部 owner 释放结果。
 #if defined(PAE_BUILD_PROTOCOL_LAB_ASCII_SMOKE_DIAGNOSTIC)
   ascii_smoke_diagnostic::Trace("document_completion_enter", this);
 #endif
@@ -537,6 +538,7 @@ void DocumentTab::AcceptCompletion(std::unique_ptr<CompileCompletion> completion
 }
 
 bool DocumentTab::CloseDocument(bool require_confirmation) {
+  // closed_ 使析构中的再次关闭安全；窗口须先调用本函数再销毁共享 worker。
 #if defined(PAE_BUILD_PROTOCOL_LAB_ASCII_SMOKE_DIAGNOSTIC)
   ascii_smoke_diagnostic::Trace("document_close_enter", this);
 #endif
@@ -566,6 +568,7 @@ bool DocumentTab::CloseDocument(bool require_confirmation) {
   active_yaml_conversion_.reset();
 #endif
   worker_.CloseDocument(session_.id());
+  // 模型借用 Session 描述：先解除借用，再释放 Session owner，不能反转这一顺序。
   field_model_->Reset(nullptr, {});
   hex_view_->ClearFrame();
   session_.Close();
@@ -988,8 +991,8 @@ bool DocumentTab::VerifyBoundedV08ForSmoke(QString& error) {
   const std::vector<std::uint8_t> empty_expected{0xA5U, 0x03U, 0xA8U};
   if (PreviewFrameForSmoke() != empty_expected || HighlightedCellCountForSmoke() != 0U ||
       !field_model_->data(physical_index).toString().contains(QStringLiteral("length=0")) ||
-      !details_view_->toPlainText().contains(QStringLiteral("实际字节范围：2 + 0")) ||
-      !details_view_->toPlainText().contains(QStringLiteral("完整性校验存储位置：2 + 1"))) {
+      !details_view_->toPlainText().contains(QStringLiteral(u"实际字节范围：2 + 0")) ||
+      !details_view_->toPlainText().contains(QStringLiteral(u"完整性校验存储位置：2 + 1"))) {
     error = QStringLiteral("empty payload frame, zero-length range, or dynamic trailer differs");
     return false;
   }
@@ -1002,8 +1005,8 @@ bool DocumentTab::VerifyBoundedV08ForSmoke(QString& error) {
   const std::vector<std::uint8_t> two_expected{0xA5U, 0x05U, 0x10U, 0x20U, 0xDAU};
   if (PreviewFrameForSmoke() != two_expected || HighlightedCellCountForSmoke() != 2U ||
       HighlightMaskForSmoke(2U) != 0xFFU || HighlightMaskForSmoke(3U) != 0xFFU ||
-      !details_view_->toPlainText().contains(QStringLiteral("实际字节范围：2 + 2")) ||
-      !details_view_->toPlainText().contains(QStringLiteral("完整性校验存储位置：4 + 1"))) {
+      !details_view_->toPlainText().contains(QStringLiteral(u"实际字节范围：2 + 2")) ||
+      !details_view_->toPlainText().contains(QStringLiteral(u"完整性校验存储位置：4 + 1"))) {
     error = QStringLiteral("two-byte actual payload range or dynamic trailer differs");
     return false;
   }
@@ -1017,8 +1020,8 @@ bool DocumentTab::VerifyBoundedV08ForSmoke(QString& error) {
   if (PreviewFrameForSmoke() != three_expected || HighlightedCellCountForSmoke() != 3U ||
       HighlightMaskForSmoke(2U) != 0xFFU || HighlightMaskForSmoke(3U) != 0xFFU ||
       HighlightMaskForSmoke(4U) != 0xFFU ||
-      !details_view_->toPlainText().contains(QStringLiteral("实际字节范围：2 + 3")) ||
-      !details_view_->toPlainText().contains(QStringLiteral("完整性校验存储位置：5 + 1"))) {
+      !details_view_->toPlainText().contains(QStringLiteral(u"实际字节范围：2 + 3")) ||
+      !details_view_->toPlainText().contains(QStringLiteral(u"完整性校验存储位置：5 + 1"))) {
     error = QStringLiteral("three-byte actual payload range or dynamic trailer differs");
     return false;
   }
@@ -1030,7 +1033,7 @@ bool DocumentTab::VerifyBoundedV08ForSmoke(QString& error) {
            .toString()
            .contains(QStringLiteral("current range unavailable")) ||
       !details_view_->toPlainText().contains(QStringLiteral("current range unavailable")) ||
-      details_view_->toPlainText().contains(QStringLiteral("实际字节范围："))) {
+      details_view_->toPlainText().contains(QStringLiteral(u"实际字节范围："))) {
     error = QStringLiteral("lexical BYTES error was not distinct or cleared stale output");
     return false;
   }
@@ -1050,7 +1053,7 @@ bool DocumentTab::VerifyBoundedV08ForSmoke(QString& error) {
   EncodeCurrent();
   if (PreviewFrameForSmoke() != two_expected || HighlightedCellCountForSmoke() != 2U ||
       HighlightMaskForSmoke(2U) != 0xFFU || HighlightMaskForSmoke(3U) != 0xFFU ||
-      !details_view_->toPlainText().contains(QStringLiteral("完整性校验存储位置：4 + 1"))) {
+      !details_view_->toPlainText().contains(QStringLiteral(u"完整性校验存储位置：4 + 1"))) {
     error = QStringLiteral("two-byte actual payload range or dynamic trailer differs");
     return false;
   }
@@ -1097,7 +1100,7 @@ bool DocumentTab::VerifyAsciiStreamForSmoke(QString& error) {
   InspectCurrent();
   const auto half = session_.StreamObservation();
   if (!half.has_value() || half->buffered_bytes != 5U || session_.inspect_result().has_value() ||
-      !result_kind_label_->text().contains(QStringLiteral("本步无候选"))) {
+      !result_kind_label_->text().contains(QStringLiteral(u"本步无候选"))) {
     error = QStringLiteral("half-frame Submit presentation differs");
     return false;
   }
@@ -1240,7 +1243,7 @@ bool DocumentTab::VerifyAsciiForSmoke(QString& error) {
   if (message->fields.empty()) {
     if (!EncodeForSmoke(error) || !session_.preview().has_value() ||
         !session_.preview()->zero_field_success ||
-        !result_kind_label_->text().contains(QStringLiteral("成功，0 个字段")) ||
+        !result_kind_label_->text().contains(QStringLiteral(u"成功，0 个字段")) ||
         timing_label_->property("paeReviewKind").toString() != QStringLiteral("TX_TEMPLATE") ||
         !timing_label_->text().contains(QStringLiteral("TX_TEMPLATE")) ||
         HighlightedCellCountForSmoke() != 0U) {
@@ -1251,7 +1254,7 @@ bool DocumentTab::VerifyAsciiForSmoke(QString& error) {
     representation_combo_->setCurrentIndex(1);
     if (!InspectTextForSmoke(QStringLiteral("PING\\r\\n"), error) ||
         !session_.inspect_result()->zero_field_success ||
-        !result_kind_label_->text().contains(QStringLiteral("成功，0 个字段")) ||
+        !result_kind_label_->text().contains(QStringLiteral(u"成功，0 个字段")) ||
         HighlightedCellCountForSmoke() != 0U) {
       if (error.isEmpty())
         error = QStringLiteral("literal-only Inspect did not show 0-field success");
@@ -1493,23 +1496,23 @@ bool DocumentTab::VerifyAsciiForSmoke(QString& error) {
                      visible(actual));
     return false;
   };
-  if (!expect_inspect_display(rx_source, "rx_code", "SOURCE", QStringLiteral("解析结果")) ||
+  if (!expect_inspect_display(rx_source, "rx_code", "SOURCE", QStringLiteral(u"解析结果")) ||
       !expect_inspect_display(rx_value, "rx_code", "VALUE", QString{}) ||
       !expect_inspect_display(rx_raw, "rx_code", "RAW_RESULT", QStringLiteral("4F4B")) ||
       !expect_inspect_display(rx_logical, "rx_code", "LOGICAL_RESULT", QStringLiteral("OK")) ||
       !expect_inspect_display(rx_physical, "rx_code", "PHYSICAL_LOCATION",
                               QStringLiteral("9 + 2")) ||
-      !expect_inspect_display(tx_source, "tx_tag", "SOURCE", QStringLiteral("未引用")) ||
+      !expect_inspect_display(tx_source, "tx_tag", "SOURCE", QStringLiteral(u"未引用")) ||
       !expect_inspect_display(tx_value, "tx_tag", "VALUE",
-                              QStringLiteral("未被 Decode 动作引用")) ||
+                              QStringLiteral(u"未被 Decode 动作引用")) ||
       !expect_inspect_display(tx_raw, "tx_tag", "RAW_RESULT", QString{}))
     return false;
   field_table_->selectRow(1);
   RefreshFieldDetails(1);
   const QString rx_details = details_view_->toPlainText();
-  if (!rx_details.contains(QStringLiteral("实际字节范围：9 + 2")) ||
+  if (!rx_details.contains(QStringLiteral(u"实际字节范围：9 + 2")) ||
       !rx_details.contains(
-          QStringLiteral("实际物理字节（从 0 起）：[9, 11)，整字节范围")) ||
+          QStringLiteral(u"实际物理字节（从 0 起）：[9, 11)，整字节范围")) ||
       rx_details.contains(QStringLiteral("current range unavailable"))) {
     error = QStringLiteral("ASCII Inspect details contradict the adapter actual byte range");
     return false;
@@ -1987,7 +1990,7 @@ bool DocumentTab::VerifyBinaryHostStage1ForSmoke(QString& error) {
   const int initial_selector_model_count = selector_model_count();
   if (!InspectTextForSmoke(QStringLiteral("80 0D 03 00 01 00 CA FE 05 5A"), error) ||
       InspectFieldCountForSmoke() != 9 ||
-      InspectRawValueForSmoke(0) != QStringLiteral("未单独提供") ||
+      InspectRawValueForSmoke(0) != QStringLiteral(u"未单独提供") ||
       InspectLogicalValueForSmoke(0) != QStringLiteral("true") ||
       InspectRawValueForSmoke(6) != QStringLiteral("CAFE") ||
       InspectRawValueForSmoke(7) != QStringLiteral("5") ||
@@ -2245,14 +2248,14 @@ bool DocumentTab::VerifyBinaryHostStage1ForSmoke(QString& error) {
   if (field_model_->data(temperature_type).toString() != QStringLiteral("DECIMAL64") ||
       !temperature_tooltip.contains(
           QStringLiteral("Logical DECIMAL64 with observed signed raw.")) ||
-      !marker_tooltip.contains(QStringLiteral("只读原因：当前为 Decode 结果")) ||
+      !marker_tooltip.contains(QStringLiteral(u"只读原因：当前为 Decode 结果")) ||
       !marker_tooltip.contains(QStringLiteral("Read-only constant.")) ||
-      !temperature_details.contains(QStringLiteral("字段：Temperature")) ||
+      !temperature_details.contains(QStringLiteral(u"字段：Temperature")) ||
       !temperature_details.contains(
           QStringLiteral("Logical DECIMAL64 with observed signed raw.")) ||
-      !temperature_details.contains(QStringLiteral("转换：逻辑 Decimal64 结果")) ||
+      !temperature_details.contains(QStringLiteral(u"转换：逻辑 Decimal64 结果")) ||
       !temperature_details.contains(
-          QStringLiteral("物理字节 / 位 / 掩码（从 0 起，LSB0）："))) {
+          QStringLiteral(u"物理字节 / 位 / 掩码（从 0 起，LSB0）："))) {
     error = QStringLiteral(
         "Binary readability labels, original descriptions, type, or read-only reason differ");
     return false;
@@ -2532,7 +2535,7 @@ void DocumentTab::ApplyHostDraft() {
       if ((action->currentIndex() != 0 && action->currentIndex() != 1) ||
           pipeline_index >= session_.description()->pipelines.size()) {
         host_status_->setText(
-            QStringLiteral("Binary Host 绑定无效；当前 Session 保持不变。"));
+            QStringLiteral(u"Binary Host 绑定无效；当前 Session 保持不变。"));
         return;
       }
       binary_bindings.push_back({Utf8(endpoint->text()),
@@ -2569,6 +2572,7 @@ void DocumentTab::ApplyHostDraft() {
     host_status_->setText(UiText("至少需要一条绑定。"));
     return;
   }
+  // Host 候选准备不调用 BeginLoad，不提前销毁当前生效 Session；高位请求独立路由。
   host_pending_revision_ = high_bit | ++host_request_sequence_;
 #if defined(PAE_BUILD_PROTOCOL_LAB_BINARY_UI)
   if (binary) {
@@ -2599,6 +2603,7 @@ void DocumentTab::ApplyHostDraft() {
   RefreshState();
 }
 void DocumentTab::AcceptHostCompletion(std::unique_ptr<CompileCompletion> completion) {
+  // Binary 候选先核对完整准备身份，再准备模型与 Session publication，确认后才发布。
   host_pending_revision_.reset();
   std::string error;
 #if defined(PAE_BUILD_PROTOCOL_LAB_BINARY_UI)
@@ -2935,6 +2940,7 @@ void DocumentTab::AcceptHostCompletion(std::unique_ptr<CompileCompletion> comple
 #endif
 }
 void DocumentTab::SelectHostView() {
+  // 只切换草稿/结果展示，不执行 Host。Binary 准备或发布失败时恢复原 selector/editor。
   if (host_binding_combo_->currentIndex() < 0) return;
 #if defined(PAE_BUILD_PROTOCOL_LAB_BINARY_UI)
   if (session_.BinaryHostActive()) {
@@ -3249,14 +3255,14 @@ void DocumentTab::BuildUi() {
   representation_combo_ = new QComboBox(this);
   representation_combo_->setObjectName(QStringLiteral("inputRepresentation"));
   representation_combo_->setToolTip(QStringLiteral(
-      "切换表示会按当前格式解析并转换已有草稿，不会重新解释输入。\n"
-      "转换失败时保留当前格式与草稿；请修正草稿，或先复制/清空，再切换格式并输入。"));
+      u"切换表示会按当前格式解析并转换已有草稿，不会重新解释输入。\n"
+      u"转换失败时保留当前格式与草稿；请修正草稿，或先复制/清空，再切换格式并输入。"));
   representation_combo_->addItem(QStringLiteral("Hex"), static_cast<int>(ByteRepresentation::HEX));
   representation_combo_->addItem(QStringLiteral("ASCII (escaped)"),
                                  static_cast<int>(ByteRepresentation::ASCII_ESCAPED));
-  encode_button_ = new QPushButton(QStringLiteral("生成报文（Encode）"), this);
+  encode_button_ = new QPushButton(QStringLiteral(u"生成报文（Encode）"), this);
   encode_button_->setObjectName(QStringLiteral("encodeAction"));
-  inspect_button_ = new QPushButton(QStringLiteral("解析完整记录（Decode）"), this);
+  inspect_button_ = new QPushButton(QStringLiteral(u"解析完整记录（Decode）"), this);
   inspect_button_->setObjectName(QStringLiteral("primaryAction"));
 #if defined(PAE_BUILD_PROTOCOL_LAB_STREAM_UI)
   continue_button_ = new QPushButton(UiText("继续"), this);
@@ -3478,6 +3484,7 @@ void DocumentTab::BuildUi() {
 }
 
 void DocumentTab::BeginLoadFromPath(bool discard_confirmed) {
+  // 丢弃确认通过后才推进加载 revision；suffix 决定 JSON/YAML，不做内容猜测回退。
   if (closed_) {
     return;
   }
@@ -4172,12 +4179,12 @@ void DocumentTab::RefreshFieldDetails(int row, bool refresh_frame) {
   if (message != nullptr) {
     const auto& message_name = message->display_name.empty() ? message->id : message->display_name;
     details.push_back(
-        QStringLiteral("<b>报文</b>：%1").arg(HtmlPreservingLines(message_name)));
+        QStringLiteral(u"<b>报文</b>：%1").arg(HtmlPreservingLines(message_name)));
     if (!message->description.empty()) {
       details.push_back(HtmlPreservingLines(message->description));
     }
     if (!message->source_ref.empty()) {
-      details.push_back(QStringLiteral("<b>报文来源</b>：%1")
+      details.push_back(QStringLiteral(u"<b>报文来源</b>：%1")
                             .arg(HtmlPreservingLines(message->source_ref)));
     }
     if (message->integrity_storage.has_value()) {
@@ -4186,29 +4193,29 @@ void DocumentTab::RefreshFieldDetails(int row, bool refresh_frame) {
                                       : std::optional<ByteRange>{};
       if (message->integrity_storage_at_payload_end && !actual_storage.has_value()) {
         details.push_back(QStringLiteral(
-            "<b>完整性校验存储位置</b>：位于动态载荷末尾；当前实际范围不可用"));
+            u"<b>完整性校验存储位置</b>：位于动态载荷末尾；当前实际范围不可用"));
       } else {
         const auto& storage =
             actual_storage.has_value() ? *actual_storage : *message->integrity_storage;
-        details.push_back(QStringLiteral("<b>完整性校验存储位置</b>：%1 + %2")
+        details.push_back(QStringLiteral(u"<b>完整性校验存储位置</b>：%1 + %2")
                               .arg(static_cast<qulonglong>(storage.offset))
                               .arg(static_cast<qulonglong>(storage.length)));
       }
       if (message->integrity_range_ends_at_payload) {
         details.push_back(QStringLiteral(
-            "<b>完整性校验覆盖范围</b>：配置范围结束于实际载荷末尾"));
+            u"<b>完整性校验覆盖范围</b>：配置范围结束于实际载荷末尾"));
       }
     }
 #if defined(PAE_ENABLE_SCHEMA_V07_LENGTH_COMPILER)
     if (message->computed_length_storage.has_value()) {
       details.push_back(
-          QStringLiteral("<b>计算长度存储位置</b>：%1 + %2")
+          QStringLiteral(u"<b>计算长度存储位置</b>：%1 + %2")
               .arg(static_cast<qulonglong>(message->computed_length_storage->offset))
               .arg(static_cast<qulonglong>(message->computed_length_storage->length)));
     }
 #endif
   }
-  details.push_back(QStringLiteral("<b>字段</b>：%1")
+  details.push_back(QStringLiteral(u"<b>字段</b>：%1")
                         .arg(HtmlPreservingLines(field->display_name.empty() ? field->id
                                                                            : field->display_name)));
   if (!field->description.empty()) {
@@ -4216,22 +4223,22 @@ void DocumentTab::RefreshFieldDetails(int row, bool refresh_frame) {
   }
   if (!field->source_ref.empty()) {
     details.push_back(
-        QStringLiteral("<b>来源</b>：%1").arg(HtmlPreservingLines(field->source_ref)));
+        QStringLiteral(u"<b>来源</b>：%1").arg(HtmlPreservingLines(field->source_ref)));
   }
   if (field->ascii_text) {
-    details.push_back(QStringLiteral("<b>动作参与情况</b>：Decode %1；Encode %2")
+    details.push_back(QStringLiteral(u"<b>动作参与情况</b>：Decode %1；Encode %2")
                           .arg(field->decode_referenced ? UiText("已引用") : UiText("未引用"),
                                field->encode_referenced ? UiText("已引用") : UiText("未引用")));
   } else if (!field->read_only_annotation.empty()) {
-    details.push_back(QStringLiteral("<b>存储 / 完整性校验 / 转换</b>：%1")
+    details.push_back(QStringLiteral(u"<b>存储 / 完整性校验 / 转换</b>：%1")
                           .arg(HtmlPreservingLines(field->read_only_annotation)));
   }
 #if defined(PAE_ENABLE_SCHEMA_V05_COMPILER)
   if (field->decimal_conversion || field->decode_decimal64) {
     details.push_back(
         field->decode_decimal64
-            ? QStringLiteral("<b>转换</b>：逻辑 Decimal64 结果；Core 执行逻辑值与原始值的可表示性检查")
-            : QStringLiteral("<b>转换</b>：逻辑 Decimal64 输入；Core 执行逻辑值与原始值的可表示性检查"));
+            ? QStringLiteral(u"<b>转换</b>：逻辑 Decimal64 结果；Core 执行逻辑值与原始值的可表示性检查")
+            : QStringLiteral(u"<b>转换</b>：逻辑 Decimal64 输入；Core 执行逻辑值与原始值的可表示性检查"));
   }
 #endif
   std::optional<ByteRange> actual_result_range;
@@ -4253,33 +4260,33 @@ void DocumentTab::RefreshFieldDetails(int row, bool refresh_frame) {
     }
   }
   if (field->byte_length_bounds.has_value()) {
-    details.push_back(QStringLiteral("<b>载荷长度边界</b>：%1..%2 字节")
+    details.push_back(QStringLiteral(u"<b>载荷长度边界</b>：%1..%2 字节")
                           .arg(static_cast<qulonglong>(field->byte_length_bounds->minimum))
                           .arg(static_cast<qulonglong>(field->byte_length_bounds->maximum)));
     if (actual_result_range.has_value()) {
-      details.push_back(QStringLiteral("<b>实际字节范围</b>：%1 + %2")
+      details.push_back(QStringLiteral(u"<b>实际字节范围</b>：%1 + %2")
                             .arg(static_cast<qulonglong>(actual_result_range->offset))
                             .arg(static_cast<qulonglong>(actual_result_range->length)));
     } else if (!session_.IsAsciiDocument() && ActualFrameSize().has_value()) {
       const auto range = ResolveActualFieldRange(*message, *field, *ActualFrameSize());
       if (range.has_value()) {
-        details.push_back(QStringLiteral("<b>实际字节范围</b>：%1 + %2")
+        details.push_back(QStringLiteral(u"<b>实际字节范围</b>：%1 + %2")
                               .arg(static_cast<qulonglong>(range->offset))
                               .arg(static_cast<qulonglong>(range->length)));
       }
     }
   } else if (field->byte_range.has_value()) {
-    details.push_back(QStringLiteral("<b>字节范围</b>：%1 + %2")
+    details.push_back(QStringLiteral(u"<b>字节范围</b>：%1 + %2")
                           .arg(static_cast<qulonglong>(field->byte_range->offset))
                           .arg(static_cast<qulonglong>(field->byte_range->length)));
   }
   if (!field->physical_bits.empty()) {
-    details.push_back(QStringLiteral("<b>物理位单元数</b>：%1")
+    details.push_back(QStringLiteral(u"<b>物理位单元数</b>：%1")
                           .arg(static_cast<qulonglong>(field->physical_bits.size())));
   }
   if (session_.IsAsciiDocument()) {
     if (actual_result_range.has_value()) {
-      details.push_back(QStringLiteral("<b>实际物理字节（从 0 起）</b>：[%1, %2)，整字节范围")
+      details.push_back(QStringLiteral(u"<b>实际物理字节（从 0 起）</b>：[%1, %2)，整字节范围")
                             .arg(static_cast<qulonglong>(actual_result_range->offset))
                             .arg(static_cast<qulonglong>(actual_result_range->offset +
                                                          actual_result_range->length)));
@@ -4298,7 +4305,7 @@ void DocumentTab::RefreshFieldDetails(int row, bool refresh_frame) {
         message == nullptr ? FormatPhysicalLocation(*field)
                            : FormatPhysicalLocation(*message, *field, ActualFrameSize());
     if (!physical.empty()) {
-      details.push_back(QStringLiteral("<b>物理字节 / 位 / 掩码（从 0 起，LSB0）</b>：%1")
+      details.push_back(QStringLiteral(u"<b>物理字节 / 位 / 掩码（从 0 起，LSB0）</b>：%1")
                             .arg(HtmlPreservingLines(physical)));
     }
   }
@@ -4449,6 +4456,8 @@ void DocumentTab::SelectMessage(int combo_index) {
 }
 
 void DocumentTab::EncodeCurrent() {
+  // 先结束编辑并处理已排队的非输入事件，再同步读取 Session 草稿执行 Encode。
+  // processEvents 仍可能重入其他事件；这里既不是后台 Codec，也不是全面的重入屏障。
   timing_ = {};
   QElapsedTimer total;
   QElapsedTimer phase;
@@ -4497,6 +4506,7 @@ void DocumentTab::EncodeCurrent() {
 }
 
 void DocumentTab::InspectCurrent() {
+  // 与 Encode 一样先提交编辑；Inspect/SubmitStream 在 GUI 调用栈内同步执行。
   timing_label_->clear();
   timing_label_->setProperty("paeReviewKind", QString{});
   field_table_->clearFocus();

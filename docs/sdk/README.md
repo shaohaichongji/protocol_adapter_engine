@@ -121,6 +121,32 @@ target_link_libraries(my_pae_consumer PRIVATE PAE::pae)
 
 ## 4. 再运行综合 consumer
 
+### 公共头的源码编码
+
+当前源码及由其新构建/安装的 SDK 公共头使用无 BOM 的 UTF-8。CMake 消费目标链接
+`PAE::pae` 时，仅向 MSVC C++ 编译传递 `/source-charset:utf-8`，覆盖源码读取，不额外设置
+execution charset，也不传播 PAE 内部警告选项。旧体验包未因此自动更新，须按各包来源判断。
+MSVC v142 不允许同时传入 `/utf-8` 与 `/source-charset:utf-8`。宿主已有 `/utf-8` 时，须在
+实际编译的消费目标上关闭 PAE 自动源码选项（源码和新安装 SDK 使用相同机制）：
+
+```cmake
+target_link_libraries(my_pae_consumer PRIVATE PAE::pae)
+target_compile_options(my_pae_consumer PRIVATE "$<$<COMPILE_LANG_AND_ID:CXX,MSVC>:/utf-8>")
+set_property(TARGET my_pae_consumer PROPERTY PAE_MSVC_SOURCE_CHARSET_SUPPLIED ON)
+```
+
+此属性是宿主“已提供 UTF-8 源码读取设置”的明确声明，不会自行添加编码选项。
+应设置在每个实际编译目标，而不是 `PAE::pae` 或中间 INTERFACE 库；未提供等价源码设置就
+关闭自动选项可能再次导致公共头编码错误。PAE 不猜测全局 flags、环境或其他目标中的选项。
+默认消费无需设置该属性，继续只接收 source charset；不会强制宿主窄字符串采用 UTF-8。
+仓库自身的 `pae::project_options` 改用等价的 `/source-charset:utf-8` 与
+`/execution-charset:utf-8` 分列，保持内部源码及窄字符串均为 UTF-8，可与公共默认选项组合。
+该选项作用于消费目标的整个 C++ 编译单元，不仅是 PAE 头；宿主自身源码也需使用 UTF-8，
+不能在同一编译单元中把 GBK 源码与 UTF-8 公共头混作同一源码编码。
+非 CMake 手工接入须在消费公共头的编译单元显式设置 MSVC `/source-charset:utf-8`，或使用
+工具链对应的 UTF-8 源码读取设置；只有宿主自己也需要 UTF-8 窄字符串编码时才选择 `/utf-8`。
+本次仅验证 MSVC v142，不能据此声明 clang-cl、Linux 或跨工具链 ABI 已验证。
+
 `examples/sdk_consumer` 是包的综合可重复验证入口，覆盖 Compiler/metadata、Binary/ASCII Codec、
 StreamFramer、Host 和多 Message Encode；它不是第一个程序的教学替代品。
 

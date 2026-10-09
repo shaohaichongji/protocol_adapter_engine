@@ -9,6 +9,8 @@
 #include "../../tools/protocol_lab_ui/document_session.h"
 #include "test_support.h"
 
+// 合同：加载/输入失效清旧结果，晚到成功与错误都不能覆盖当前加载，诊断按文档隔离。
+// 直接驱动无 Qt 的 Session；不覆盖 GUI 生命周期、真实设备、全部 Flow 或线程安全。
 int main() {
   using namespace pae::protocol_lab_ui;
   const auto compile_failure = [](DocumentId document, Revision revision, std::string pointer,
@@ -70,6 +72,7 @@ int main() {
   assert(!session.preview().has_value());
   assert(session.state() == DocumentState::READY);
 
+  // 新加载已推进 revision；旧成功和下面的旧错误应同样被拒绝。
   const Revision current = session.BeginLoad();
   assert(!session.ApplyCompileCompletion(
       test::CompileFixture(session.id(), current - 1U, "synthetic_ui_v07.pae.json")));
@@ -108,6 +111,7 @@ int main() {
   assert(session.state() == DocumentState::CONFIG_ERROR);
   assert(!session.compile_diagnostic());
 
+  // 当前成功清掉旧编译诊断，关闭再释放执行 owner，不能沿用旧的成功展示。
   const Revision success_revision = session.BeginLoad();
   assert(session.ApplyCompileCompletion(
       test::CompileFixture(session.id(), success_revision, "synthetic_ui_v07.pae.json")));

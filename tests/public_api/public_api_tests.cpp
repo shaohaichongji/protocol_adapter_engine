@@ -107,7 +107,7 @@ void CheckArtifact(Runner& runner, std::string_view case_name, const std::string
   if (require_enum) {
     const auto first_enum = compiled->Enum(0U);
     runner.Check(first_enum.has_value() && first_enum->id == "mode_idle" &&
-                     first_enum->display_name == "空闲模式" && first_enum->raw_value == 1U,
+                     first_enum->display_name == u8"空闲模式" && first_enum->raw_value == 1U,
                  std::string(case_name) + "_enum_semantics",
                  "enum id, display name, or raw value differs from the independent fixture");
   }

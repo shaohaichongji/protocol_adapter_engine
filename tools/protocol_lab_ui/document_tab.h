@@ -27,6 +27,7 @@ class ExactValueDelegate;
 class FieldTableModel;
 class HexView;
 
+// GUI 同步操作的分阶段纳秒观测；不同 adapter 的 review 含义须按路径解释。
 struct EncodeTimingSnapshot {
   qint64 exact_input_ns = 0;
   qint64 main_codec_ns = 0;
@@ -36,6 +37,8 @@ struct EncodeTimingSnapshot {
   qint64 first_repaint_total_ns = 0;
 };
 
+// GUI 文档入口：把编辑/选择交给自有 Session，把转换/编译交给借用的共享 worker。
+// QWidget parent 管理控件；worker 必须在文档业务关闭前存活。
 class DocumentTab final : public QWidget {
  public:
   DocumentTab(DocumentId document_id, CompileWorker& worker, QWidget* parent = nullptr);
@@ -47,10 +50,13 @@ class DocumentTab final : public QWidget {
   QString Title() const;
 
   void LoadPath(const QString& path);
+  // 由 GUI 轮询移交 owner；先分流 Host 准备请求，再由加载身份决定是否发布。
   void AcceptCompletion(std::unique_ptr<CompileCompletion> completion);
+  // 可询问是否丢弃状态；接受后先封闭后台结果入口、解绑展示模型，再释放 Session。
   bool CloseDocument(bool require_confirmation = true);
   bool ConfirmClose();
 
+  // 自动验证钩子复用生产路径，不提供设备通信或真实协议验收保证。
   bool PopulateCanonicalDraftsForSmoke(QString& error);
   bool EncodeForSmoke(QString& error);
   bool InspectTextForSmoke(const QString& text, QString& error);
@@ -118,7 +124,9 @@ class DocumentTab final : public QWidget {
   QComboBox* host_binding_combo_ = nullptr;
   QComboBox* host_flow_combo_ = nullptr;
   QLabel* host_status_ = nullptr;
+  // Host 准备使用实际编译 JSON；YAML 原文路径/定位由转换 owner 另行保留。
   std::string host_config_text_;
+  // 高位区分 Host 准备请求与普通加载 revision；不能据相同文档 ID 直接发布候选。
   std::optional<Revision> host_pending_revision_;
   bool host_draft_dirty_ = true;
   Revision host_request_sequence_ = 0U;
@@ -131,6 +139,7 @@ class DocumentTab final : public QWidget {
 #endif
 #endif
 #if defined(PAE_BUILD_PROTOCOL_LAB_YAML_ENTRY)
+  // 自持生成 JSON 与来源映射，加载/关闭时释放；不借用后台 request 的文本。
   std::unique_ptr<pae::yaml::ConversionResult> active_yaml_conversion_;
 #endif
   void BuildUi();
@@ -163,11 +172,14 @@ class DocumentTab final : public QWidget {
   const MessageDescriptor* CurrentMessage() const noexcept;
   const MessageDescriptor* DisplayedMessage() const noexcept;
 
+  // worker 由窗口拥有，Session 由 Tab 拥有；两个布尔标记只在 GUI 线程维护。
   CompileWorker& worker_;
   DocumentSession session_;
   bool closed_ = false;
+  // 程序性更新控件时抑制本类处理器，不能视为禁止所有 Qt 事件重入。
   bool rebuilding_selectors_ = false;
 
+  // 控件裸指针均为 Qt parent 链所拥有对象的借用，非独立 delete 的所有权。
   QLineEdit* path_edit_ = nullptr;
   QPushButton* browse_button_ = nullptr;
   QPushButton* load_button_ = nullptr;

@@ -91,6 +91,12 @@ else()
     unset(_pae_internal_dir)
 endif()
 
+# Keep installed consumption consistent with the source target without exporting internal options.
+target_compile_options(
+    PAE::pae INTERFACE
+        "$<$<AND:$<COMPILE_LANG_AND_ID:CXX,MSVC>,$<NOT:$<BOOL:$<TARGET_PROPERTY:PAE_MSVC_SOURCE_CHARSET_SUPPLIED>>>>:/source-charset:utf-8>"
+)
+
 if(PAE_yaml_frontend_FOUND)
     add_library(PAE::yaml_frontend STATIC IMPORTED)
     set_target_properties(

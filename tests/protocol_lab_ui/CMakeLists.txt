@@ -11,6 +11,33 @@ if(DEFINED PAE_LAB_STANDALONE_TEST_SOURCE_ROOT)
 endif()
 
 if(MSVC)
+    find_program(pae_lab_literal_powershell NAMES pwsh powershell REQUIRED)
+    set(pae_lab_unicode_fixture "${CMAKE_CURRENT_BINARY_DIR}/unicode_product_literals.inc")
+    add_custom_command(
+        OUTPUT "${pae_lab_unicode_fixture}"
+        COMMAND "${pae_lab_literal_powershell}" -NoProfile -File
+            "${CMAKE_CURRENT_SOURCE_DIR}/generate_unicode_literal_fixture.ps1"
+            -Source "${pae_lab_ui_test_source_root}/tools/protocol_lab_ui/document_tab.cpp"
+            -Output "${pae_lab_unicode_fixture}"
+        DEPENDS
+            "${pae_lab_ui_test_source_root}/tools/protocol_lab_ui/document_tab.cpp"
+            "${CMAKE_CURRENT_SOURCE_DIR}/generate_unicode_literal_fixture.ps1"
+        VERBATIM
+    )
+    add_executable(pae_protocol_lab_ui_unicode_literal_tests
+        unicode_literal_tests.cpp "${pae_lab_unicode_fixture}")
+    target_include_directories(pae_protocol_lab_ui_unicode_literal_tests
+        PRIVATE "${CMAKE_CURRENT_BINARY_DIR}")
+    target_link_libraries(pae_protocol_lab_ui_unicode_literal_tests
+        PRIVATE PAE::Qt5Core pae::project_options)
+    target_compile_options(pae_protocol_lab_ui_unicode_literal_tests PRIVATE /UNDEBUG)
+    add_custom_command(TARGET pae_protocol_lab_ui_unicode_literal_tests POST_BUILD
+        COMMAND "${CMAKE_COMMAND}" -E copy_if_different "$<TARGET_FILE:PAE::Qt5Core>"
+            "$<TARGET_FILE_DIR:pae_protocol_lab_ui_unicode_literal_tests>")
+    add_test(NAME pae.tools.protocol_lab_ui.unicode_literal
+        COMMAND pae_protocol_lab_ui_unicode_literal_tests)
+    set_tests_properties(pae.tools.protocol_lab_ui.unicode_literal
+        PROPERTIES LABELS "tools;protocol_lab_ui;offline;unicode" TIMEOUT 60)
     add_test(
         NAME pae.tools.protocol_lab_ui.ui_smoke_crt_assert_probe
         COMMAND

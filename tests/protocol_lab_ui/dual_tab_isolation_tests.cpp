@@ -5,6 +5,8 @@
 #include "../../tools/protocol_lab_ui/document_session.h"
 #include "test_support.h"
 
+// 合同：两个文档的草稿/预览/Plan 身份独立，一个输入失效不影响另一个已成功结果。
+// 这里实例化的是两个 Session 而非 Qt Tab，不验证窗口销毁、后台路由或并发执行。
 int main() {
   using namespace pae::protocol_lab_ui;
   DocumentSession crc{100U};
@@ -23,6 +25,7 @@ int main() {
                                              {'1', '2', '3', '4', '5', '6', '7', '8', '9',
                                               0x29U, 0xB1U, 0xAAU}));
   const auto length_frame = length.preview()->encoded_frame;
+  // 仅使 CRC 文档失效；保留另一文档 frame，并分别检查 Plan generation。
   crc.InvalidateInput();
   assert(!crc.preview().has_value());
   assert(length.preview().has_value());

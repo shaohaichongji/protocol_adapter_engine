@@ -282,6 +282,7 @@ bool DocumentSession::AsciiBackendReady() const noexcept {
 std::optional<DocumentSession::BinaryPublication> DocumentSession::PrepareBinaryHostPublication(
     std::unique_ptr<BinaryHostAdapter> adapter, Revision expected_request,
     BinaryPreparationHook before_copy) {
+  // 候选必须属于当前文档/加载/配置和下一 Session；先核身份，再准备可失败的副本。
   if (!IsBinaryHostDocument() || !adapter || adapter->Bindings().empty() || !prepared_)
     return std::nullopt;
   if (binary_session_revision_ == (std::numeric_limits<Revision>::max)() ||
@@ -327,6 +328,7 @@ std::optional<DocumentSession::BinaryPublication> DocumentSession::PrepareBinary
 }
 
 void DocumentSession::PublishBinaryHostPublication(BinaryPublication publication) noexcept {
+  // 候选已准备完毕，以不抛异常的移动发布；清除旧 Flow 缓存，推进 Plan/session 身份。
   static_assert(std::is_nothrow_move_assignable_v<DocumentDescription>);
   static_assert(std::is_nothrow_move_assignable_v<SelectionKey>);
   description_ = std::move(publication.description);
@@ -361,6 +363,7 @@ void DocumentSession::PublishBinaryHostPublication(BinaryPublication publication
 
 std::optional<DocumentSession::BinaryFlowPublication> DocumentSession::PrepareBinaryHostFlow(
     std::size_t binding, std::size_t flow, BinaryPreparationHook before_copy) const {
+  // 从目标 Flow 准备自持展示副本，不修改当前选择，也不推进冻结输入或 Host cursor。
   if (!BinaryHostActive() || binding >= prepared_->binary_host_adapter->Bindings().size() ||
       flow >= prepared_->binary_host_adapter->FlowCount(binding))
     return std::nullopt;
@@ -498,6 +501,8 @@ std::optional<DocumentSession::BinaryFlowPublication> DocumentSession::PrepareBi
 
 bool DocumentSession::PublishBinaryHostFlow(BinaryFlowPublication publication,
                                             BinaryPreparationHook before_local_cache_copy) {
+  // 源 Flow 的本地无效草稿/失败诊断也须先复制及核预算，成功后才切换 adapter 与视图。
+  // 此 Binary 准备/发布边界不能直接推广为所有 ASCII 或 GUI 路径的异常安全保证。
   if (!BinaryHostActive() ||
       publication.binding >= prepared_->binary_host_adapter->Bindings().size() ||
       publication.flow >= prepared_->binary_host_adapter->FlowCount(publication.binding))
@@ -710,6 +715,7 @@ void DocumentSession::SaveHostView() {
   saved.diagnostic_detail = diagnostic_detail_;
 }
 bool DocumentSession::SelectHostFlow(std::size_t b, std::size_t s) {
+  // ASCII 视图槽按 binding * 2 + flow 保存/恢复；切换只改展示，不调用 Host 执行。
   if (!HostActive() || b >= prepared_->host_adapter->Bindings().size()) return false;
   const auto& binding = prepared_->host_adapter->Bindings()[b];
   if (s >= (IsAsciiDecodeAction(binding.action) ? 2U : 1U)) return false;
@@ -790,6 +796,7 @@ InspectFailure MakeStructuralInspectFailure(std::string status,
 DocumentSession::~DocumentSession() { Close(); }
 
 Revision DocumentSession::BeginLoad() {
+  // 先失效再等待后台：旧编译可能仍在运行，但它携带的 load revision 已不再匹配。
   if (state_ == DocumentState::CLOSING || state_ == DocumentState::CLOSED) return load_revision_;
   ++load_revision_;
 #if defined(PAE_BUILD_PROTOCOL_LAB_HOST_OBSERVER)
@@ -814,6 +821,7 @@ Revision DocumentSession::BeginLoad() {
 }
 
 bool DocumentSession::ApplyCompileCompletion(std::unique_ptr<CompileCompletion> completion) {
+  // 此守卫同时挡住晚到的成功与错误，避免旧诊断覆盖新加载的状态。
   if (completion == nullptr || state_ != DocumentState::LOADING ||
       completion->document_id != document_id_ || completion->load_revision != load_revision_) {
     return false;
@@ -2792,6 +2800,7 @@ bool DocumentSession::ResetStream() {
 #endif
 
 void DocumentSession::Close() {
+  // 关闭可重复调用；先进入 CLOSING 再清理结果/owner，最终禁止后续结果发布。
   if (state_ == DocumentState::CLOSED) return;
   state_ = DocumentState::CLOSING;
 #if defined(PAE_BUILD_PROTOCOL_LAB_HOST_OBSERVER)
@@ -2888,6 +2897,7 @@ InspectResultKey DocumentSession::MakeInspectResultKey() const {
 }
 
 bool DocumentSession::PreviewKeyStillCurrent(const PreviewKey& key) const noexcept {
+  // 不仅比较文档 ID；同一文档重载、改选择或改输入后，旧结果也已失效。
   return state_ != DocumentState::CLOSING && state_ != DocumentState::CLOSED &&
          selection_.has_value() && key.document_id == document_id_ &&
          key.load_revision == load_revision_ && key.plan_generation == plan_generation_ &&
@@ -2955,6 +2965,7 @@ std::size_t DocumentSession::InspectFrameBudget() const noexcept {
 }
 
 void DocumentSession::RefreshDocumentState() {
+  // PREVIEW_VALID 是当前模式的有效展示结果，不证明网络、所有 Pipeline 或设备可用。
   if (state_ == DocumentState::CLOSING || state_ == DocumentState::CLOSED ||
       state_ == DocumentState::LOADING || state_ == DocumentState::CONFIG_ERROR) {
     return;

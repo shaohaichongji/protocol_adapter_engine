@@ -14,6 +14,8 @@
 #include "../../tools/protocol_lab_ui/compile_worker.h"
 #include "test_support.h"
 
+// 合同：诊断 DTO 不丢失根位置/零偏移，队列替换采用新序号，空闲析构不调用编译器。
+// 通过门闩控制单线程次序；不验证 GUI 事件、任意并发压力或所有构建开关组合。
 int main() {
   using namespace pae::protocol_lab_ui;
 #if defined(PAE_BUILD_PROTOCOL_LAB_BINARY_PUBLIC_H2) ||       \
@@ -164,6 +166,7 @@ int main() {
   }
   assert(idle_compile_calls.load() == 0U);
 
+  // 人工编译门闩使 active 保持运行，确定性观察 pending 的替换与排队顺序。
   struct Control {
     std::mutex mutex;
     std::condition_variable wake;
@@ -189,6 +192,7 @@ int main() {
   assert(test::WaitUntil([&worker] { return worker.HasActiveRequestForTesting(); }));
   assert(worker.Submit(1U, 2U, "old") == SubmitStatus::ACCEPTED);
   assert(worker.Submit(2U, 1U, "other") == SubmitStatus::ACCEPTED);
+  // 新请求替换文档 1 的旧 pending，但不取消其 active；因此文档 2 应先于新 pending。
   assert(worker.Submit(1U, 3U, "latest") == SubmitStatus::ACCEPTED);
   assert(worker.PendingCountForTesting() == 2U);
 

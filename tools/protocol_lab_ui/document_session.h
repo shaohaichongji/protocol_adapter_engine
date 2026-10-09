@@ -40,6 +40,7 @@
 
 namespace pae::protocol_lab_ui {
 
+// 文档本地状态，不是设备连接状态。PREVIEW_VALID 按当前模式表示 Encode 或 Inspect 成功。
 enum class DocumentState {
   EMPTY,
   LOADING,
@@ -73,6 +74,7 @@ struct SelectionKey {
   std::string message_id;
 };
 
+// 结果有效性身份：文档、加载、Plan、选择和输入任一变化，都不能沿用旧 Encode 结果。
 struct PreviewKey {
   DocumentId document_id = 0U;
   Revision load_revision = 0U;
@@ -100,6 +102,7 @@ struct PreviewResult {
   bool tx_template_review = false;
 };
 
+// Inspect 还区分请求 revision；同一 Pipeline/输入上的不同执行请求不能混用结果。
 struct InspectResultKey {
   DocumentId document_id = 0U;
   Revision load_revision = 0U;
@@ -137,6 +140,7 @@ struct InspectFailure {
 InspectFailure MakeStructuralInspectFailure(std::string status,
                                             std::vector<std::uint8_t> input_frame);
 
+// 每文档的执行 owner 集合；描述副本用于展示，不代替冻结的 Plan/adapter 执行。
 struct PreparedDocument {
 #if defined(PAE_BUILD_PROTOCOL_LAB_PUBLIC_LEGACY_COMPLETE)
   std::unique_ptr<PublicLegacyCompleteAdapter> public_legacy_adapter;
@@ -153,6 +157,7 @@ struct PreparedDocument {
 #endif
   // Declaration order is intentional: destruction is reverse, so the bridge (and its workspaces
   // and Plan) dies before the sidecar storage.
+  // 私有路径须保持此声明顺序：逆序析构时先销毁借用 sidecar 的 bridge。
 #if !defined(PAE_PROTOCOL_LAB_STANDALONE_PUBLIC_ONLY)
   config_compiler::ProtocolMetadataStorage description;
   std::unique_ptr<protocol_lab::v06::ExecutionBridge> bridge;
@@ -180,10 +185,13 @@ class InputMaterializationTimer {
   virtual std::int64_t ElapsedNanoseconds() const noexcept = 0;
 };
 
+// 无 Qt 的文档状态与执行协调对象；由调用方（通常 GUI 线程）串行使用，不内部加锁。
+// 草稿、结果和 adapter 都归本 Session；切换展示不等于再次执行协议。
 class DocumentSession final {
  public:
   explicit DocumentSession(DocumentId document_id);
 #if defined(PAE_BUILD_PROTOCOL_LAB_BINARY_UI)
+  // 候选拥有准备结果；Prepare 失败不替换当前 Session，Publish 再移动 owner 和视图。
   struct BinaryPublication {
     std::unique_ptr<BinaryHostAdapter> adapter;
     DocumentDescription description;
@@ -195,6 +203,7 @@ class DocumentSession final {
     std::size_t mapped_view_bytes = 0U;
     Revision session_revision = 0U;
   };
+  // 目标 (binding, flow) 的展示快照；Flow 切换只保存/恢复，不 Push、Decode 或 Continue。
   struct BinaryFlowPublication {
     std::size_t binding = 0U;
     std::size_t flow = 0U;
@@ -258,7 +267,10 @@ class DocumentSession final {
   DocumentSession& operator=(const DocumentSession&) = delete;
   ~DocumentSession();
 
+  // 新加载先使旧执行 owner/结果失效并进入 LOADING，返回本次请求必须携带的 revision。
   Revision BeginLoad();
+  // 接管 completion；只接受 LOADING 且文档 ID/load revision 匹配的结果。
+  // 返回 true 表示准备并发布成功；当前失败可发布诊断，过期结果则被拒绝。
   bool ApplyCompileCompletion(std::unique_ptr<CompileCompletion> completion);
   bool SelectPipeline(std::size_t pipeline_index);
   bool SelectMessage(std::size_t message_index);
@@ -270,15 +282,18 @@ class DocumentSession final {
   bool SetInvalidDraftUtf16(std::size_t field_index, std::u16string text,
                             std::string validation_error);
   bool SetDraft(std::size_t field_index, TypedDraft value);
+  // 同步读取当前类型化草稿并执行；observer/timer 只在本调用借用，不是异步 worker 回调。
   bool Encode(LabExecutionObserver* observer = nullptr,
               InputMaterializationTimer* input_materialization_timer = nullptr,
               std::int64_t* input_materialization_ns = nullptr);
   bool SetInspectDraft(std::string text);
   bool SetInspectDraftUtf16(std::u16string text);
   void RejectInspectCapacity(std::size_t capacity);
+  // 同步检查当前输入并执行对应 adapter；各路径的失败/消费边界由其契约决定。
   bool Inspect(LabExecutionObserver* observer = nullptr);
 #if defined(PAE_BUILD_PROTOCOL_LAB_STREAM_UI)
   bool SubmitStream();
+  // 继续 adapter 已冻结的输入/内部工作，不重新解析当前编辑器草稿。
   bool ContinueStream();
   bool ResetStream();
   bool StreamInspectAvailable() const noexcept;
@@ -310,6 +325,7 @@ class DocumentSession final {
   }
   bool EncodeAvailable() const noexcept;
   bool InspectAvailable() const noexcept;
+  // 下列指针/引用为借用视图；加载、关闭或对应状态修改后，不得继续持有旧视图使用。
   const PreparedDocument* prepared() const noexcept { return prepared_.get(); }
   const DocumentDescription* description() const noexcept {
     return description_.has_value() ? &*description_ : nullptr;
@@ -371,6 +387,7 @@ class DocumentSession final {
     std::string diagnostic_id, diagnostic_detail;
   };
   void SaveHostView();
+  // 每个 binding 的视图槽分别保存 Flow 的草稿和结果，避免切换时串用另一 Flow 状态。
   std::vector<HostView> host_views_;
   std::size_t host_binding_ = 0U;
   std::size_t host_stream_ = 0U;
@@ -397,6 +414,7 @@ class DocumentSession final {
 
   const DocumentId document_id_;
   DocumentState state_ = DocumentState::EMPTY;
+  // 以下 revision 是失效序号，不是时间戳；分别隔离加载、Plan、选择、输入与 Inspect 请求。
   Revision load_revision_ = 0U;
   Revision plan_generation_ = 0U;
   Revision selection_revision_ = 0U;

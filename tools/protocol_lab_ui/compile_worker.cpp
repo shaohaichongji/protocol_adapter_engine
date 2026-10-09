@@ -232,6 +232,7 @@ const char* ResourceProfileToken(Profile profile) noexcept {
 }
 
 std::unique_ptr<CompileCompletion> CompileRequest(CompileWorker::Request request) {
+  // request 自持源文本；转换后的 JSON 由 completion 持有，compile_text 仅在本调用借用。
   auto completion = std::make_unique<CompileCompletion>();
   completion->document_id = request.document_id;
   completion->load_revision = request.load_revision;
@@ -254,6 +255,7 @@ std::unique_ptr<CompileCompletion> CompileRequest(CompileWorker::Request request
     return completion;
 #endif
   }
+  // 内容身份基于真正进入编译器的 JSON，保留 YAML 来源信息不能改变这一身份。
   completion->config_sha256 = protocol_lab::HashBytes(compile_text);
 #if defined(PAE_BUILD_PROTOCOL_LAB_BINARY_PUBLIC_H2) || \
     defined(PAE_BUILD_PROTOCOL_LAB_ASCII_PUBLIC_A2) || \
@@ -295,6 +297,7 @@ std::unique_ptr<CompileCompletion> CompileRequest(CompileWorker::Request request
       || dispatch.status == SchemaDispatchStatus::ASCII_PUBLIC
 #endif
   ) {
+    // 已分类的公开路径只调用一次公开编译器；失败直接返回，不回退私有编译器重试。
     ++completion->compiler_attempt_count;
     auto result = pae::CompileProtocolJson(compile_text);
     if (!result.Succeeded()) {
@@ -435,6 +438,7 @@ std::string FormatCompileDiagnostic(const CompileDiagnosticView& diagnostic) {
 struct CompileWorker::Impl final {
   explicit Impl(CompileFunction function) : compile(std::move(function)) {
     // Start only after every member (including counters and stopping) has completed initialization.
+    // 所有被 Run 读取的成员先初始化完成，再启动线程，避免构造期竞争。
     thread = std::thread([this] { Run(); });
   }
 
@@ -446,6 +450,7 @@ struct CompileWorker::Impl final {
       stored_results.clear();
       ready_tickets.clear();
     }
+    // 唤醒等待中的线程；若编译正在锁外运行，join 等它返回后丢弃结果并退出。
     wake.notify_one();
     if (thread.joinable()) thread.join();
   }
@@ -457,6 +462,7 @@ struct CompileWorker::Impl final {
         std::unique_lock<std::mutex> lock(mutex);
         wake.wait(lock, [this] { return stopping || !pending.empty(); });
         if (stopping) return;
+        // 按提交序号而非 unordered_map 遍历顺序选择；替换 pending 后重新排队。
         auto selected = std::min_element(
             pending.begin(), pending.end(), [](const auto& left, const auto& right) {
               return left.second.enqueue_sequence < right.second.enqueue_sequence;
@@ -466,6 +472,7 @@ struct CompileWorker::Impl final {
         active = std::make_pair(request.document_id, request.load_revision);
       }
 
+      // 离开队列锁再编译：GUI 可以继续提交/关闭；编译函数不得直接触碰 GUI 对象。
       const DocumentId request_document = request.document_id;
       const Revision request_revision = request.load_revision;
       std::unique_ptr<CompileCompletion> completion;
@@ -483,6 +490,7 @@ struct CompileWorker::Impl final {
         std::lock_guard<std::mutex> lock(mutex);
         const DocumentId active_document = active.has_value() ? active->first : 0U;
         active.reset();
+        // 关闭/停止只抑制发布，不撤销已发生的编译；邮箱保存 owner，通知只保存 ticket。
         if (!stopping && completion != nullptr &&
             closed_documents.find(active_document) == closed_documents.end()) {
           const ResultTicket ticket = next_ticket++;
@@ -536,6 +544,7 @@ SubmitStatus CompileWorker::Submit(DocumentId document_id, Revision load_revisio
   if (existing == implementation_->pending.end() && implementation_->pending.size() >= 2U) {
     return SubmitStatus::QUEUE_CAPACITY_EXCEEDED;
   }
+  // 在持锁区域复制并替换 pending，调用返回后不再依赖调用方文本的生命周期。
   Request replacement;
   replacement.document_id = document_id;
   replacement.load_revision = load_revision;

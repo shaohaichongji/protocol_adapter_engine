@@ -7,6 +7,8 @@
 #include "../../tools/protocol_lab_ui/compile_worker.h"
 #include "test_support.h"
 
+// 合同：超大输入不入队，关闭文档后 active 的晚到 owner 不进入邮箱，后续提交被拒绝。
+// 门闩在 worker 析构前释放；本测试不验证 active 阻塞时析构的 join 时序或二次 TakeResult。
 int main() {
   using namespace pae::protocol_lab_ui;
   struct Gate {
@@ -38,6 +40,7 @@ int main() {
       std::lock_guard<std::mutex> lock(gate.mutex);
       return gate.entered;
     }));
+    // 编译已进入门闩，关闭只能抑制结果发布；释放后它仍完成一次调用。
     worker.CloseDocument(6U);
     {
       std::lock_guard<std::mutex> lock(gate.mutex);

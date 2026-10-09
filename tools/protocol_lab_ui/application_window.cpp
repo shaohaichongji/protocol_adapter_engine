@@ -156,6 +156,7 @@ ApplicationWindow::ApplicationWindow(QWidget* parent) : QMainWindow(parent) {
   connect(quit_action, &QAction::triggered, this, &QWidget::close);
   connect(tabs_, &QTabWidget::tabCloseRequested, this, [this](int index) { CloseTab(index); });
 
+  // 15 ms 是 GUI 轮询间隔，不是编译超时；后台线程不直接操作 Tab 或控件。
   result_timer_ = new QTimer(this);
   result_timer_->setInterval(15);
   connect(result_timer_, &QTimer::timeout, this, [this] {
@@ -171,6 +172,7 @@ ApplicationWindow::ApplicationWindow(QWidget* parent) : QMainWindow(parent) {
 }
 
 ApplicationWindow::~ApplicationWindow() {
+  // 在值成员 worker 析构前完成业务关闭；Qt 后续销毁子控件时再次关闭是幂等的。
 #if defined(PAE_BUILD_PROTOCOL_LAB_ASCII_SMOKE_DIAGNOSTIC)
   ascii_smoke_diagnostic::Trace("window_destructor_begin", this);
 #endif
@@ -185,6 +187,7 @@ ApplicationWindow::~ApplicationWindow() {
 }
 
 void ApplicationWindow::closeEvent(QCloseEvent* event) {
+  // 先询问全部文档，任一拒绝就不进入关闭循环；这不是通用异常回滚事务。
   for (int index = 0; index < tabs_->count(); ++index) {
     if (auto* document = dynamic_cast<DocumentTab*>(tabs_->widget(index));
         document != nullptr && !document->ConfirmClose()) {
@@ -205,6 +208,7 @@ DocumentTab* ApplicationWindow::AddDocument(const QString& config_path) {
     statusBar()->showMessage(UiText("最多只能同时打开两个文档"), 4000);
     return nullptr;
   }
+  // ID 单调分配用于结果路由；Tab 借用同一 worker，但各自拥有独立 Session。
   auto* document = new DocumentTab(next_document_id_++, worker_, tabs_);
   const int index = tabs_->addTab(document, UiText("未命名"));
   tabs_->setCurrentIndex(index);
@@ -273,6 +277,7 @@ void ApplicationWindow::CloseTab(int index) {
     return;
   }
   if (!document->CloseDocument()) return;
+  // 先关闭业务状态，再移出路由集合，最后延迟销毁 QWidget。
   tabs_->removeTab(index);
   document->deleteLater();
   new_action_->setEnabled(tabs_->count() < 2);
@@ -280,6 +285,8 @@ void ApplicationWindow::CloseTab(int index) {
 }
 
 void ApplicationWindow::PollCompileResults() {
+  // Drain 只取通知 ticket；TakeResult 才移走唯一 owner。目标已消失时局部 owner 自动释放。
+  // 找到 Tab 后仍须由 Tab/Session 核对 revision，文档 ID 相同不表示结果仍然有效。
   for (const auto ticket : worker_.DrainReadyTickets()) {
     auto completion = worker_.TakeResult(ticket);
     if (completion == nullptr) {

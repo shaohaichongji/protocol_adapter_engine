@@ -1,3 +1,5 @@
+// 两个独立人工配置的公开 Codec 消费示例：Binary 编码后解析、ASCII 独立发送模板编码。
+// 不做传输或切帧，不覆盖生产输入限制、完整错误诊断或真实协议验收。
 #include <pae/codec.h>
 #include <pae/compiler.h>
 
@@ -14,11 +16,13 @@
 
 namespace {
 
+// 简化读取：文件打不开时返回空串，随后表现为编译失败，不单独区分 I/O 错误。
 std::string ReadFile(const char* path) {
   std::ifstream input(path, std::ios::binary);
   return std::string(std::istreambuf_iterator<char>(input), std::istreambuf_iterator<char>());
 }
 
+// 在本 Message 的字段区间按 id 查询；返回描述中的字符串仍借用 compiled。
 std::optional<pae::FieldDescription> FindField(const pae::CompiledProtocol& compiled,
                                                std::size_t message_index,
                                                std::string_view id) noexcept {
@@ -31,6 +35,7 @@ std::optional<pae::FieldDescription> FindField(const pae::CompiledProtocol& comp
   return std::nullopt;
 }
 
+// 枚举条目从该字段的全局区间查询，Encode 使用返回的字段内 entry 索引。
 std::optional<pae::EnumDescription> FindEnum(const pae::CompiledProtocol& compiled,
                                              const pae::FieldDescription& field,
                                              std::string_view id) noexcept {
@@ -41,6 +46,7 @@ std::optional<pae::EnumDescription> FindEnum(const pae::CompiledProtocol& compil
   return std::nullopt;
 }
 
+// 对应 synthetic_lab_exchange_slice；第 0 个 Pipeline/关联及字段 id 均是样例约定。
 bool RunBinary(const char* config_path) {
   auto compiled_result = pae::CompileProtocolJson(ReadFile(config_path));
   if (!compiled_result.Succeeded()) return false;
@@ -64,6 +70,8 @@ bool RunBinary(const char* config_path) {
   auto created = pae::CreateCompleteRecordCodec(compiled);
   if (created.status != pae::CodecStatus::OK || !created.codec) return false;
 
+  // record_length=13 是普通动态值，不是自动回填；operation_code 常量由 Plan 写入，故不传。
+  // Bytes 只借用 payload，其寿命覆盖同步 Encode；数值与枚举选择按值保存在 values 中。
   const std::array<std::uint8_t, 4> payload{0x11U, 0x22U, 0x33U, 0x44U};
   const std::array values{
       pae::EncodeValue::UInt64({*message_index, length->index_in_message}, 13U),
@@ -72,14 +80,17 @@ bool RunBinary(const char* config_path) {
                               {payload.data(), payload.size()}),
       pae::EncodeValue::Enum({*message_index, mode->index_in_message, active->index_in_field}),
   };
+  // 此方向为 EXACT 尺寸。frame 为调用方自有输出，仅成功后按 bytes_written 读取。
   std::vector<std::uint8_t> frame(action->encode_output_size);
   const auto encoded = created.codec->Encode(0U, *message_index, values.data(), values.size(),
                                              {frame.data(), frame.size()});
   if (encoded.status != pae::CodecStatus::OK) return false;
+  // 这里只证明编码结果能解析且有 5 个字段，不宣称独立逐字段期望或全部负例覆盖。
   const auto decoded = created.codec->Decode(0U, {frame.data(), encoded.bytes_written});
   return decoded.status == pae::CodecStatus::OK && decoded.record.FieldCount() == 5U;
 }
 
+// 对应 synthetic_ascii_text_slice；RX 与 TX 模板不同，不能把 TX 输出当作 RX 输入往返。
 bool RunAscii(const char* config_path) {
   auto compiled_result = pae::CompileProtocolJson(ReadFile(config_path));
   if (!compiled_result.Succeeded()) return false;
@@ -99,6 +110,7 @@ bool RunAscii(const char* config_path) {
   auto created = pae::CreateCompleteRecordCodec(compiled);
   if (created.status != pae::CodecStatus::OK || !created.codec) return false;
 
+  // name/tx_tag 是发送方向输入；rx_code 只在接收模板中使用，不应加入本次 Values。
   const std::string name = "ALICE";
   const std::string tag = "Z";
   const std::array values{
@@ -111,6 +123,7 @@ bool RunAscii(const char* config_path) {
   const auto encoded = created.codec->Encode(0U, *message_index, values.data(), values.size(),
                                              {frame.data(), frame.size()});
   if (encoded.status != pae::CodecStatus::OK) return false;
+  // 模板上界用于分配容量，实际长度看 bytes_written；独立期望包含 CRLF，不发送网络。
   const std::string_view expected = "TX ALICE!Z\r\n";
   return std::string_view(reinterpret_cast<const char*>(frame.data()), encoded.bytes_written) ==
          expected;
@@ -118,6 +131,7 @@ bool RunAscii(const char* config_path) {
 
 }  // namespace
 
+// 依次接收 Binary/ASCII 配置路径；PASS 只表示两个样例检查通过，不是通用协议认证。
 int main(int argc, char** argv) {
   if (argc != 3 || !RunBinary(argv[1]) || !RunAscii(argv[2])) {
     std::cerr << "PUBLIC_CODEC_EXAMPLE gate=FAIL\n";
