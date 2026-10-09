@@ -1,5 +1,6 @@
 #pragma once
 
+// 独立可选 YAML 作者源入口；JSON 仍是规范编译输入，此接口不替代 Schema/领域校验。
 #include <cstddef>
 #include <memory>
 #include <optional>
@@ -19,6 +20,7 @@ enum class ConversionStatus {
 };
 
 // Trial resource constraints V0.1. These are rejection boundaries, not an RSS guarantee.
+// 字节数、节点数和层数分开计；固定试用约束不开放调参，也不包含公开 owner 全部开销。
 struct TrialResourceLimits {
   std::size_t input_bytes;
   std::size_t parser_bytes;
@@ -33,6 +35,7 @@ struct TrialResourceLimits {
 
 // Values are copied from the owned source map. ancestor_fallback means this position belongs
 // to the closest recorded ancestor, not the queried JSON Pointer itself.
+// 一基行列定位节点起点，0 为无位置；近似及祖先回退不意味着原文逐字符精确映射。
 struct SourceLocation {
   std::size_t key_line = 0;
   std::size_t key_column = 0;
@@ -43,6 +46,7 @@ struct SourceLocation {
   bool ancestor_fallback = false;
 };
 
+// move-only 结果自持 JSON、来源标签和映射；SourceLocation 返回值不借用内部存储。
 class ConversionResult final {
  public:
   ConversionResult() noexcept;
@@ -56,6 +60,7 @@ class ConversionResult final {
   [[nodiscard]] ConversionStatus Status() const noexcept;
   [[nodiscard]] const char* Reason() const noexcept;
   // Views borrow this owner and become invalid after move, assignment, or destruction.
+  // 保存配置文本时须在借用期内复制；移动后对象可安全查询但不再提供成功 payload。
   [[nodiscard]] std::string_view Json() const noexcept;
   [[nodiscard]] std::string_view SourceIdentity() const noexcept;
   [[nodiscard]] std::optional<SourceLocation> FindSource(
@@ -74,6 +79,7 @@ class ConversionResult final {
 
 // Input is borrowed only during this call. Success owns the generated strict JSON and source map.
 // Failure has no usable JSON or source map. Schema validation still belongs to CompileProtocolJson.
+// source_identity 仅是原文标签，不读取该路径；转换成功后由调用方显式选择是否编译 JSON。
 [[nodiscard]] ConversionResult ConvertToStrictJson(std::string_view yaml_bytes,
                                                    std::string_view source_identity = {}) noexcept;
 

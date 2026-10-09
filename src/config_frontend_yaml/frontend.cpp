@@ -1,6 +1,7 @@
 #define RYML_SINGLE_HDR_DEFINE_NOW
 #include "frontend.h"
 
+// 本翻译单元承载解析器实现和受限 Profile 转换；不使用默认 emitter 推断 PAE 属性类型。
 #include <charconv>
 #include <cstdint>
 #include <cstdlib>
@@ -39,6 +40,7 @@ struct alignas(std::max_align_t) Header {
 };
 
 void* Allocate(std::size_t bytes, void*, void* context) {
+  // 每次转换独立计请求字节及对齐计费头；先拒绝预算/溢出，再 malloc，不统计整个进程。
   auto& budget = *static_cast<ParserBudget*>(context);
   ++budget.calls;
   Require(budget.calls != budget.fail_at, Status::ALLOCATION_FAILED,
@@ -65,6 +67,7 @@ void Free(void* memory, std::size_t, void* context) {
 }
 
 [[noreturn]] void BasicError(ryml::csubstr, const ryml::ErrorDataBasic&, void*) {
+  // 将解析器错误抛回 Convert 的清理边界，不从 noexcept 入口向调用方传播异常。
   throw Failure{Status::INVALID_YAML, "YAML parser error"};
 }
 [[noreturn]] void ParseError(ryml::csubstr, const ryml::ErrorDataParse&, void*) {
@@ -136,6 +139,7 @@ bool EqualsIgnoreCase(std::string_view value, std::string_view expected) {
 }
 
 bool CanonicalInteger(std::string_view value) {
+  // 只用整数解析验证范围，输出仍保留原 Token；不经 double 舍入，也不纠正 -0/前导零。
   if (value.empty()) return false;
   const std::size_t start = value.front() == '-' ? 1 : 0;
   if (start == value.size()) return false;
@@ -154,6 +158,7 @@ bool CanonicalInteger(std::string_view value) {
 }
 
 void CheckDirectives(std::string_view input) {
+  // Parser 前检查前导指令；这不是完整 YAML 词法器，树上的禁用构造仍须后续拒绝。
   for (std::size_t cursor = 0; cursor < input.size();) {
     const auto end = input.find('\n', cursor);
     auto line = input.substr(cursor, end == std::string_view::npos ? end : end - cursor);
@@ -187,6 +192,7 @@ void CheckDirectives(std::string_view input) {
 }
 
 struct Writer {
+  // JSON、Pointer 池和工作 Path 已按容量预分配；递归只保存路径长度，不逐节点扩容。
   Result& result;
   const Limits& limits;
   const ryml::Tree& tree;
@@ -223,6 +229,7 @@ struct Writer {
     result.json_storage[result.json_length++] = ch;
   }
   void String(std::string_view value) {
+    // 转义的是解析器解码后的 UTF-8 字节，控制字符确定性写为 JSON 转义而非 YAML 文本。
     Char('"');
     constexpr char hex[] = "0123456789abcdef";
     for (unsigned char ch : value) {
@@ -245,6 +252,7 @@ struct Writer {
     path[path_length++] = ch;
   }
   void PathSegment(std::string_view segment) {
+    // RFC6901 的 ~ 和 / 转义与 JSON String 转义独立，数组索引也走同一段路径写入。
     PathChar('/');
     for (char ch : segment) {
       if (ch == '~') {
@@ -259,6 +267,7 @@ struct Writer {
     }
   }
   void Record(ryml::id_type id) {
+    // 来源记录不借用树，只复制 Pointer 与位置；有键容器或被重写标量可能仅近似定位。
     Require(result.entry_count < limits.nodes, Status::AUXILIARY_BUDGET,
             "source entry limit exceeded");
     Require(Fits(pointer_used, path_length, pointer_capacity), Status::AUXILIARY_BUDGET,
@@ -298,6 +307,7 @@ struct Writer {
     }
   }
   void Node(ryml::id_type id, std::size_t depth) {
+    // 解析后逐节点准入，先拒绝 Tag/Anchor/Alias 再写业务值，不展开这些构造。
     Require(depth <= limits.depth, Status::PROFILE_REJECTED, "YAML depth limit exceeded");
     Require(++node_count <= limits.nodes, Status::PROFILE_REJECTED, "YAML node limit exceeded");
     const auto type = tree.type(id);
@@ -323,6 +333,7 @@ struct Writer {
                 Status::PROFILE_REJECTED, "non-string or merge YAML key");
         for (auto previous = tree.first_child(id); previous != child;
              previous = tree.next_sibling(previous)) {
+          // 按解码后键的完整字节比较，在写入此键前拒绝重复；不做覆盖或 Unicode 归一化。
           Require(tree.has_key(previous), Status::PROFILE_REJECTED, "non-scalar YAML key");
           Require(View(tree.key(previous)) != key, Status::PROFILE_REJECTED,
                   "decoded duplicate YAML key");
@@ -359,6 +370,7 @@ struct Writer {
               "YAML scalar limit exceeded");
       Require(IsUtf8(value), Status::PROFILE_REJECTED, "invalid decoded YAML value UTF-8");
       if (tree.is_val_quoted(id)) {
+        // 引号强制字符串；Plain 只识别精确小写 null/true/false 及规范整数。
         String(value);
       } else {
         Require(!value.empty(), Status::PROFILE_REJECTED, "implicit empty YAML scalar");
@@ -389,6 +401,7 @@ const SourceEntry* Result::Find(std::string_view pointer) const noexcept {
 }
 
 const SourceEntry* Result::FindNearest(std::string_view pointer) const noexcept {
+  // 无精确命中时只退到已记录祖先；缺失属性不生成虚假的 SourceEntry。
   if (!Succeeded()) return nullptr;
   for (;;) {
     if (const auto* found = Find(pointer)) return found;
@@ -405,6 +418,7 @@ Result Convert(std::string_view input, std::string_view source_identity,
   ParserBudget budget{limits.parser_bytes, 0, 0, 0, limits.fail_parser_allocation};
   std::size_t frontend_allocation_calls = 0;
   try {
+    // 输入/UTF-8/前导指令先于 Parser；容量运算也在前端自有数组分配前完成。
     Require(input.size() <= limits.input_bytes, Status::INPUT_LIMIT, "YAML input limit exceeded");
     Require(input.size() < 3 || input.substr(0, 3) != "\xEF\xBB\xBF", Status::PROFILE_REJECTED,
             "UTF-8 BOM forbidden");
@@ -418,6 +432,7 @@ Result Convert(std::string_view input, std::string_view source_identity,
     Require(entry_bytes <= limits.auxiliary_bytes, Status::AUXILIARY_BUDGET,
             "source entry budget exceeded");
     const auto remaining = limits.auxiliary_bytes - entry_bytes;
+    // 辅助预算扣除 Entry 数组后分给工作 Path 和持久 Pointer 池；identity 占用后者。
     const auto path_capacity = remaining / 2;
     const auto pointer_capacity = remaining - path_capacity;
     Require(path_capacity != 0 && pointer_capacity != 0, Status::AUXILIARY_BUDGET,
@@ -447,6 +462,7 @@ Result Convert(std::string_view input, std::string_view source_identity,
       std::memcpy(result.pointer_storage.get(), source_identity.data(), source_identity.size());
     result.source_identity_length = source_identity.size();
     const auto callbacks = Callbacks(&budget);
+    // Tree/Parser/arena 使用本次预算；parse_in_arena 复制输入，原文不留在返回结果中。
     ryml::EventHandlerTree handler(callbacks);
     ryml::ParserOptions options;
     options.locations(true);
@@ -465,6 +481,7 @@ Result Convert(std::string_view input, std::string_view source_identity,
     Writer writer{result, limits, tree, parser, pointer_capacity, path_capacity, std::move(path)};
     writer.pointer_used = source_identity.size();
     writer.Node(root, 1);
+    // 只有整棵根 Mapping 完成转换才标记成功，不在这里调用 CompileProtocolJson。
     result.status = Status::OK;
     result.reason = "ok";
   } catch (const Failure& failure) {
@@ -482,6 +499,7 @@ Result Convert(std::string_view input, std::string_view source_identity,
   result.parser_retained_bytes = budget.used;
   result.frontend_allocation_calls = frontend_allocation_calls;
   if (!result.Succeeded()) {
+    // 统一撤销部分 JSON/来源；保留失败原因和计费观察，不暴露之前已写出的片段。
     result.json_storage.reset();
     result.pointer_storage.reset();
     result.entries.reset();
