@@ -1,5 +1,6 @@
 #include "host_endpoint.h"
 
+// 内部 Session 直接组合 Core 与 Framing Workspace；公开 Host 使用另一条公开组合链。
 #include <algorithm>
 #include <limits>
 #include <string>
@@ -33,6 +34,7 @@ bool Charge(std::size_t& used, std::size_t count, std::size_t width, std::size_t
   used += count * width;
   return true;
 }
+// busy 是串行调用约定下的普通 bool：阻止回调重入，不是跨线程互斥或原子忙守卫。
 struct Lease {
   bool& busy;
   explicit Lease(bool& flag) : busy(flag) { busy = true; }
@@ -42,6 +44,7 @@ struct Lease {
 
 struct Session::Impl {
   struct Channel {
+    // 各 Channel 独立执行存储；binding 是绑定表索引，generation 仅在 Reset 推进。
     // Explicit size constructors can propagate Debug STL proxy allocation failures.
     // Default vector construction may be noexcept in the validated MSVC library.
     Channel() : fields(0U), values(0U), bytes(0U) {}
@@ -55,6 +58,7 @@ struct Session::Impl {
     std::vector<std::uint8_t> bytes;
   };
   struct Binding {
+    // first/count 是全局 channels 中的连续区间；Find 的 stream 是绑定内局部序号。
     Binding() : endpoint(0U, '\0'), action(Action::DECODE), pipeline(0U), first(0U), count(0U) {}
     Binding(std::string_view name, Action requested_action, std::size_t pipeline_index,
             std::size_t first_channel, std::size_t channel_count)
@@ -79,6 +83,7 @@ struct Session::Impl {
   Impl() : bindings(0U), channels(0U) {}
 
   bool Deliver(Channel& channel, Output output, Sink sink, Result& result) noexcept {
+    // 正常 STOP 仍计交付；异常只标记故障并停止，不能把此前 Codec 成功抹成未执行。
     output.plan = owner.get();
     output.generation = channel.generation;
     try {
@@ -105,6 +110,7 @@ struct Session::Impl {
       ++result.decode_successes;
     }
     bool continue_observing = true;
+    // 一次 Decode 后先观察（含失败），只有成功才调用业务 sink；不重复 Decode。
     if (observer.function) {
       Candidate candidate;
       candidate.generation = channel.generation;
@@ -126,6 +132,7 @@ struct Session::Impl {
       }
     }
     if (decoded.status != core::CodecStatus::OK) return continue_observing;
+    // observer 正常 STOP 仍交付当前成功结果；异常则已提前返回，不进行业务交付。
     Output output;
     output.message_index = decoded.message_index;
     output.fields = channel.fields.data();
@@ -267,6 +274,7 @@ CreateResult Session::Create(plan::PlanOwner owner, const BindingSpec* specs, st
       }
     }
     result.session.reset(new Session(std::move(impl)));
+    // 完整绑定及工作区均准备后才发布；accounted 是逻辑计费而不是 RSS 硬上限。
     result.status = Status::OK;
   } catch (...) {
     result.status = Status::ALLOCATION_FAILED;
@@ -279,6 +287,7 @@ Handle Session::Find(std::string_view endpoint, Action action, std::size_t strea
   if (impl_->busy) return handle;
   for (const auto& binding : impl_->bindings) {
     if (binding.endpoint == endpoint && binding.action == action && stream < binding.count) {
+      // 不将不同绑定的局部流序号直接当作全局 Channel 下标。
       handle.scope_ = impl_->identity;
       handle.channel_ = binding.first + stream;
       break;
@@ -322,6 +331,7 @@ Status Session::Reset(const Handle& handle) noexcept {
           framing::SubmitApiStatus::OK)
     return Status::FRAMING_FAILED;
   ++channel.generation;
+  // 内部 Handle 不携带 generation，Reset 后仍可定位；不可套用公开 stale-handle 规则。
   channel.faulted = false;
   return Status::OK;
 }
@@ -390,6 +400,7 @@ Result Session::Push(const Handle& handle, core::ByteView bytes, Sink sink,
     CandidateObserver observer;
   };
   Context context{impl_.get(), &channel, sink, &result, observer};
+  // 一次 Push 只驱动一次 Framer；借用回调内 Decode，失败候选不触发边界回扫。
   result.status = Status::OK;
   result.framing_attempted = true;
   result.framing = framing::PushStreamChunk(
@@ -442,6 +453,7 @@ Result Session::Encode(const Handle& handle, std::string_view message_id, const 
   }
   Lease lease(impl_->busy);
   for (std::size_t v = 0U; v < count; ++v) {
+    // NamedValue 的空字段引用由本 Plan 解析；枚举引用仍需满足 Core 的同作用域检查。
     const auto& reference = values[v].value.field;
     if (reference.plan_scope || reference.message_index != kInvalid ||
         reference.field_index != kInvalid)

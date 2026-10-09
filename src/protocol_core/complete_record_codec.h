@@ -1,5 +1,7 @@
 #pragma once
 
+// 内部完整记录执行边界：消费冻结描述与显式 Workspace，不读取配置或管理传输。
+// 本头的槽、索引和状态是内部执行表示，不因此成为稳定公开 ABI。
 #include <atomic>
 #include <cstddef>
 #include <cstdint>
@@ -85,6 +87,7 @@ struct MutableByteBuffer {
   std::size_t capacity = 0U;
 };
 
+// Plan 地址与消息内索引共同确定归属；同形状的另一个 Plan 也不是相同作用域。
 struct FieldRef {
   const protocol_plan::PlanBundle* plan_scope = nullptr;
   std::size_t message_index = kInvalidIndex;
@@ -111,6 +114,7 @@ struct DecodedEnumValue {
   EnumValueRef reference;
 };
 
+// 标签选择有效值成员；BYTES 借用输入，数值/Decimal 按值保存，枚举引用借用 Plan。
 struct DecodedFieldSlot {
   FieldRef field;
   LogicalValueKind value_kind = LogicalValueKind::UINT64;
@@ -133,6 +137,8 @@ struct EncodeFieldValue {
   Decimal64 decimal64_value;
 };
 
+// field_count 只在整条记录成功后发布；required_field_count/匹配身份可用于失败诊断。
+// 失败不交付槽内内容，不承诺调用方预填槽或内部临时值完全未被改写。
 struct DecodeResult {
   CodecStatus status = CodecStatus::INVALID_ARGUMENT;
   std::size_t message_index = kInvalidIndex;
@@ -160,6 +166,7 @@ struct StructuralMatchResult {
 
 }  // namespace internal
 
+// bytes_written 是成功交付长度；失败保持 0，但写入后的失败不回滚调用方 Buffer。
 struct EncodeResult {
   CodecStatus status = CodecStatus::INVALID_ARGUMENT;
   std::size_t bytes_written = 0U;
@@ -169,6 +176,7 @@ struct EncodeResult {
   ConversionError conversion_error = ConversionError::NONE;
 };
 
+// 插桩目标的操作访问计数，不是耗时/吞吐指标；生产构建的读取返回零值。
 struct CodecOperationCounts {
   std::size_t input_values_visited = 0U;
   std::size_t field_validation_visits = 0U;
@@ -246,6 +254,7 @@ class ExecutionWorkspace final {
                                            std::size_t, std::size_t, const EncodeFieldValue*,
                                            std::size_t, MutableByteBuffer) noexcept;
 
+  // 存储按冻结布局一次性准备；这些可变槽不属于共享 Plan，也不能跨调用占用复用。
   const protocol_plan::PlanBundle* plan_scope_ = nullptr;
   std::size_t max_values_per_call_ = 0U;
   std::vector<std::size_t> encode_value_indices_;

@@ -1,5 +1,7 @@
 #include "pae/stream_framer.h"
 
+// 公开流式 facade：保留冻结编译状态、拥有独立 Workspace，并映射候选/状态观察。
+// 不冻结调用方 chunk、不缓存其未消费后缀，也不在此执行 Decode 或管理连接。
 #include <atomic>
 #include <limits>
 #include <memory>
@@ -16,6 +18,7 @@ namespace framing = protocol_framing;
 namespace internal = public_api_internal;
 namespace plan = protocol_plan;
 
+// 同线程回调 owner 链识别嵌套回调中的同实例重入；不同线程由实例占用标志拒绝竞争。
 struct CallbackScopeNode {
   const StreamFramer* owner = nullptr;
   const CallbackScopeNode* previous = nullptr;
@@ -144,6 +147,7 @@ bool OptionsWithinHardLimits(const StreamFramerOptions& options) noexcept {
 
 }  // namespace
 
+// state 的保留覆盖内部 Workspace 借用 Plan 的寿命；析构先释放 Workspace，再释放 state。
 struct StreamFramer::Impl final {
   Impl(internal::CompiledStateRef shared_state, std::size_t bound_pipeline,
        std::unique_ptr<framing::StreamFramingWorkspace> bound_workspace,
@@ -164,6 +168,7 @@ StreamFramer::StreamFramer(std::unique_ptr<Impl> impl) noexcept : impl_(std::mov
 
 StreamFramer::StreamFramer(StreamFramer&& other) noexcept : impl_(std::move(other.impl_)) {}
 
+// 仅允许空闲时移动；转移 Impl 保留半帧状态，不赋予回调期间移动/销毁的安全性。
 StreamFramer& StreamFramer::operator=(StreamFramer&& other) noexcept {
   if (this != &other) impl_ = std::move(other.impl_);
   return *this;
@@ -194,6 +199,7 @@ StreamSubmitResult StreamFramer::Push(ByteView input, FrameSink sink) noexcept {
     std::size_t pipeline_index;
   };
   CallbackContext context{this, sink, impl_->pipeline_index};
+  // context 仅活到同步 Push 返回；候选字节借用内部缓存，只在 sink 回调期间有效。
   const framing::SubmitResult submitted = framing::PushStreamChunk(
       *impl_->state->Artifacts().Plan(), *impl_->workspace, impl_->pipeline_index,
       framing::ByteView{input.data, input.size},
@@ -209,6 +215,7 @@ StreamSubmitResult StreamFramer::Push(ByteView input, FrameSink sink) noexcept {
           },
           &context});
 
+  // API 错误、停止原因及消费量分别映射；候选计数不等于 Codec 或设备业务成功数。
   result.status = MapStatus(submitted.api_status);
   result.stop_reason = MapStopReason(submitted.stop_reason);
   result.bytes_consumed = submitted.bytes_consumed;
@@ -221,6 +228,7 @@ StreamSubmitResult StreamFramer::Push(ByteView input, FrameSink sink) noexcept {
 }
 
 StreamSubmitResult StreamFramer::Continue(FrameSink sink) noexcept {
+  // 真实续处理入口是空输入 Push；只推进已有工作，不补半帧也不持有旧输入后缀。
   return Push(ByteView{}, sink);
 }
 
@@ -234,6 +242,7 @@ StreamFramerStatus StreamFramer::Reset() noexcept {
 }
 
 StreamFramerObservation StreamFramer::Observe() const noexcept {
+  // 公开观察也受同实例保护；内部 Observe 只读，不把状态观察当作继续执行。
   StreamFramerObservation result;
   if (impl_ == nullptr) return result;
   if (IsCallbackOwnerActive(this)) {
@@ -270,6 +279,7 @@ StreamFramingCapability QueryStreamFramingCapability(const CompiledProtocol& com
   }
   if (description.status != PipelineFramingQueryStatus::OK || !description.value) return result;
   result.status = StreamFramerStatus::OK;
+  // 这是编译态能力事实；实际创建仍可能因选项、预算或分配失败。
   result.available = description.value->input_kind == PipelineInputKind::STREAM_CHUNK;
   return result;
 }
@@ -372,6 +382,7 @@ StreamFramerCreateResult CreateStreamFramer(const CompiledProtocol& compiled,
     return result;
   }
 
+  // 内部创建检查独立流缓存预算；下面另列 facade 计费，不复制共享 Plan。
   const framing::FramingLimitOverrides overrides{
       options.max_submit_bytes, options.max_frames_per_submit, options.max_work_units,
       options.max_sync_bytes, options.max_session_memory_bytes};

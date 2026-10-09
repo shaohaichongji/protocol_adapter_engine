@@ -1,5 +1,7 @@
 #include "complete_record_codec.h"
 
+// 完整记录热路径：使用冻结索引/掩码执行匹配、准入、写入和复核，不逐帧解释 JSON。
+// Workspace 在调用前准备；本文件不承担流式接收、设备生命周期或业务成功判定。
 #include <atomic>
 #include <cstddef>
 #include <cstdint>
@@ -57,6 +59,7 @@ std::size_t PresenceWordCount(std::size_t bit_count) noexcept {
   return bit_count / kPresenceWordBits + (bit_count % kPresenceWordBits == 0U ? 0U : 1U);
 }
 
+// 计数和故障注入只在插桩目标存在；生产宏不携带计数存储，也不是性能承诺。
 #if defined(PAE_ENABLE_OPERATION_COUNTERS)
 #define PAE_OPERATION_COUNTS_PARAMETER , CodecOperationCounts& counts
 #define PAE_OPERATION_COUNTS_ARGUMENT , counts
@@ -618,6 +621,7 @@ bool IntegrityMatches(const MessageExecutionPlan& message, const std::uint8_t* d
 #endif
 }
 
+// 固定长度分组、有界变长和文本候选汇总为结构匹配；不以完整性或枚举语义消歧。
 MatchOutcome FindPipelineMatch(const PipelineExecutionPlan& pipeline,
                                const protocol_plan::FrozenArray<MessageExecutionPlan>& messages,
                                ByteView input PAE_OPERATION_COUNTS_PARAMETER) noexcept {
@@ -801,6 +805,8 @@ void MarkPresent(std::vector<std::uint64_t>& words, std::size_t ordinal) noexcep
   words[word_index] |= mask;
 }
 
+// 建立 input_ordinal -> values 序号映射和存在位图，先拒绝引用/重复/覆盖/缺失等输入。
+// 转换代际的值检查按字段顺序执行；此阶段尚不写输出，不按输入顺序决定 Wire 布局。
 CodecStatus PrepareEncodeInputs(const PlanBundle& plan, const MessageExecutionPlan& message,
                                 std::size_t message_index, const EncodeFieldValue* values,
                                 std::size_t value_count, std::vector<std::size_t>& value_indices,
@@ -1087,6 +1093,7 @@ bool WriteFields(const MessageExecutionPlan& message, const EncodeFieldValue* va
     return false;
   }
   for (std::size_t index = 0U; index < message.bit_containers.size(); ++index) {
+    // 从显式基础值开始，不读取输出旧内容；成员清位后写入，未覆盖位保留基础值。
     container_values[index] = message.bit_containers[index].base_value;
   }
   for (const FieldExecutionPlan& field : message.fields) {
@@ -1252,6 +1259,7 @@ FieldVerificationStatus VerifyFields(
 }  // namespace
 
 bool internal::SupportsCompleteRecordSchema(std::string_view schema_version) noexcept {
+  // 编译开关同时约束可执行代际；没有启用的描述不能被当作兼容版本静默执行。
   if (schema_version == "0.1" || schema_version == "0.2" || schema_version == "0.3" ||
       schema_version == "0.4") {
     return true;
@@ -1298,6 +1306,7 @@ internal::StructuralMatchResult internal::MatchCompleteRecordStructure(const Pla
 #if defined(PAE_ENABLE_OPERATION_COUNTERS)
   CodecOperationCounts counts;
 #endif
+  // 与 Decode 复用结构 Matcher，不占用 Workspace、不校验完整性、不交付业务字段。
   const MatchOutcome match = FindPipelineMatch(
       pipelines[pipeline_index], plan.MessageExecutionPlans(), input PAE_OPERATION_COUNTS_ARGUMENT);
   if (match.match_count == 0U) {
@@ -1311,6 +1320,7 @@ internal::StructuralMatchResult internal::MatchCompleteRecordStructure(const Pla
   return result;
 }
 
+// RAII 只释放自己取得的占用，忙调用不清除他人的标记；它不保护外部 Buffer 的寿命。
 class ExecutionWorkspaceLease final {
  public:
   explicit ExecutionWorkspaceLease(ExecutionWorkspace& workspace) noexcept
@@ -1333,6 +1343,7 @@ class ExecutionWorkspaceLease final {
   bool acquired_ = false;
 };
 
+// 构造阶段按布局分配工作槽，Plan 仅被借用且必须保持原地址并覆盖 Workspace 寿命。
 ExecutionWorkspace::ExecutionWorkspace(const PlanBundle& plan)
     : plan_scope_(&plan),
       max_values_per_call_(plan.GetExecutionResourceLayout().max_fields_per_message),
@@ -1448,6 +1459,7 @@ DecodeResult DecodeCompleteRecord(const PlanBundle& plan, ExecutionWorkspace& wo
     return result;
   }
 #endif
+  // 先确定所选 Pipeline 内的唯一结构候选；完整性通过不能挽救零候选或消除歧义。
   const MatchOutcome match =
       FindPipelineMatch(pipeline, messages, input PAE_OPERATION_COUNTS_ARGUMENT);
   if (match.match_count == 0U) {
@@ -1463,6 +1475,7 @@ DecodeResult DecodeCompleteRecord(const PlanBundle& plan, ExecutionWorkspace& wo
   const MessageExecutionPlan& message = messages[match.message_index];
 #if defined(PAE_ENABLE_SCHEMA_V10_ASCII_TEXT_CODEC)
   if (message.text_decode.has_value()) {
+    // 文本分支先检查容量/别名/字符，再物化借用切片；不走 Binary 整数字段流程。
     result.required_field_count = message.text_decode_field_count;
     if (message.text_decode_field_count > field_slot_capacity) {
       result.status = CodecStatus::OUTPUT_SLOTS_TOO_SMALL;
@@ -1514,6 +1527,7 @@ DecodeResult DecodeCompleteRecord(const PlanBundle& plan, ExecutionWorkspace& wo
   }
 #endif
   result.required_field_count = message.fields.size();
+  // Binary 唯一候选后先检查完整输出容量和内存别名，再做长度/完整性/字段语义。
   if (message.fields.size() > field_slot_capacity) {
     result.status = CodecStatus::OUTPUT_SLOTS_TOO_SMALL;
     return result;
@@ -1575,6 +1589,7 @@ DecodeResult DecodeCompleteRecord(const PlanBundle& plan, ExecutionWorkspace& wo
   }
 
   bool tainted = false;
+  // 预检转换和未知枚举策略，不发布字段；preserve 保留原值并标记 tainted。
   for (std::size_t field_index = 0U; field_index < message.fields.size(); ++field_index) {
     PAE_INCREMENT_OPERATION_COUNT(field_validation_visits);
     const FieldExecutionPlan& field = message.fields[field_index];
@@ -1653,6 +1668,7 @@ DecodeResult DecodeCompleteRecord(const PlanBundle& plan, ExecutionWorkspace& wo
     }
   }
 
+  // 语义预检成功后物化槽；raw 是 Wire 读取/提取值，转换后的 logical 单独保存。
   for (std::size_t field_index = 0U; field_index < message.fields.size(); ++field_index) {
     PAE_INCREMENT_OPERATION_COUNT(field_write_visits);
     const FieldExecutionPlan& field = message.fields[field_index];
@@ -1719,6 +1735,7 @@ DecodeResult DecodeCompleteRecord(const PlanBundle& plan, ExecutionWorkspace& wo
 
   result.status = CodecStatus::OK;
   result.field_count = message.fields.size();
+  // 到此才发布有效数量及转换 raw 诊断；前面的失败返回保持 field_count 为 0。
   result.failed_field_index = kInvalidIndex;
   result.tainted = tainted;
 #if defined(PAE_ENABLE_SCHEMA_V05_COMPILER)
@@ -1791,6 +1808,7 @@ EncodeResult EncodeCompleteRecord(const PlanBundle& plan, ExecutionWorkspace& wo
     return result;
   }
 #endif
+  // 输入准入先于输出写入；容量、别名以及消息具体的实际长度随后单独检查。
   const CodecStatus value_status =
       PrepareEncodeInputs(plan, message, message_index, values, value_count,
                           workspace.encode_value_indices_, workspace.encode_present_words_,
@@ -1890,6 +1908,7 @@ EncodeResult EncodeCompleteRecord(const PlanBundle& plan, ExecutionWorkspace& wo
       }
     }
     std::size_t cursor = 0U;
+    // 文本输出同样先写后复核；失败不回滚字节，仅拒绝交付有效长度。
     for (const auto& segment : message.text_encode->segments) {
       if (segment.kind == protocol_plan::TextSegmentKind::LITERAL) {
         for (const std::uint8_t byte : segment.literal) output.data[cursor++] = byte;
@@ -2012,6 +2031,7 @@ EncodeResult EncodeCompleteRecord(const PlanBundle& plan, ExecutionWorkspace& wo
   }
 #endif
 
+  // 从这里开始 Buffer 可被改写；任何后续失败都不能把已有字节当作有效报文。
   WriteFixedBytes(message, output.data PAE_OPERATION_COUNTS_ARGUMENT);
   if (!WriteFields(message, values, workspace.encode_value_indices_,
 #if defined(PAE_ENABLE_SCHEMA_V05_COMPILER)
@@ -2051,6 +2071,7 @@ EncodeResult EncodeCompleteRecord(const PlanBundle& plan, ExecutionWorkspace& wo
     return result;
   }
   if (message.integrity.has_value()) {
+    // 字段/容器及计算长度写完后生成校验，再从最终字节复算；不是来源认证。
     const auto& integrity = *message.integrity;
     ResolvedIntegrity resolved;
     if (!ResolveIntegrity(message, actual_frame_size, resolved)) {
@@ -2114,6 +2135,7 @@ EncodeResult EncodeCompleteRecord(const PlanBundle& plan, ExecutionWorkspace& wo
   }
 #endif
 
+  // 最终结构必须唯一且仍是目标消息，字段也须与输入/常量对应；不调用 Decode 绕过复核。
   const ByteView encoded{output.data, actual_frame_size};
   const MatchOutcome final_match =
       FindPipelineMatch(pipeline, messages, encoded PAE_OPERATION_COUNTS_ARGUMENT);
@@ -2138,6 +2160,7 @@ EncodeResult EncodeCompleteRecord(const PlanBundle& plan, ExecutionWorkspace& wo
 
   result.status = CodecStatus::OK;
   result.bytes_written = actual_frame_size;
+  // 唯有此成功路径发布完整长度；required_size 单独表示容量需求，不等于交付。
   result.failed_value_index = kInvalidIndex;
   result.failed_field_index = kInvalidIndex;
   return result;

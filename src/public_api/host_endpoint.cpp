@@ -1,5 +1,7 @@
 #include "pae/host_endpoint.h"
 
+// 公开 Host 组合 CompiledProtocol、CompleteRecordCodec 与 StreamFramer，不调用内部 Session。
+// 绑定和 Channel 是宿主同步接入身份，不是传输注册、后台线程或业务路由框架。
 #include <atomic>
 #include <cstring>
 #include <limits>
@@ -151,6 +153,7 @@ class CallbackScope final {
   CallbackScopeNode node_;
 };
 
+// 实例级原子占用串行化受保护操作；独立 Channel 不意味着同 Host 可同时执行。
 class HostLease final {
  public:
   explicit HostLease(std::atomic_flag& in_use) noexcept
@@ -192,6 +195,8 @@ struct HostEndpoint::Impl final {
     std::size_t encode_capacity = 0U;
   };
 
+  // 保留同一编译状态；每 Channel 拥有 Codec、可选 Framer/Encode Buffer，不共享可变流槽。
+  // 成员逆序析构使 Channel 早于 state 释放，输入/回调 context 仍由调用方拥有。
   internal::CompiledStateRef state;
   std::shared_ptr<const detail::HostScopeToken> scope;
   std::unique_ptr<Binding[]> bindings;
@@ -210,6 +215,7 @@ struct HostEndpoint::Impl final {
                                    std::size_t& index) const noexcept {
     index = kInvalidIndex;
     if (!handle.assigned_) return HostStatus::INVALID_BINDING;
+    // scope 区分实例/过期，generation 区分 Reset 前后；裸下标不足以确认句柄身份。
     const auto locked = handle.scope_.lock();
     if (!locked) return HostStatus::EXPIRED_HANDLE;
     if (locked != scope) return HostStatus::FOREIGN_HANDLE;
@@ -275,6 +281,7 @@ struct HostEndpoint::Impl final {
     ++result.decode_attempts;
     result.codec_attempted = true;
     const Binding& binding = bindings[channel.binding_index];
+    // 候选只执行一次 Decode；frame 借用本次输入或 Framer 缓存，不因复制 view 延长寿命。
     const DecodeResult decoded = channel.codec->Decode(binding.pipeline_index, frame);
     result.codec_status = decoded.status;
     if (decoded.status == CodecStatus::OK) {
@@ -285,6 +292,7 @@ struct HostEndpoint::Impl final {
     }
 
     bool observer_continue = true;
+    // observer 在 Decode 之后通知失败/成功；正常 STOP 不取消当前成功业务交付。
     if (!InvokeObserver(owner, channel, frame, decoded, observer, result, observer_continue)) {
       return false;
     }
@@ -328,6 +336,7 @@ HostFindResult HostEndpoint::Find(std::string_view endpoint_key, HostAction acti
     if (!impl_->EndpointEquals(binding, endpoint_key) || binding.action != action) continue;
     if (decode_stream_index >= binding.channel_count) return result;
     const std::size_t channel_index = binding.first_channel + decode_stream_index;
+    // decode_stream_index 是绑定内序号；句柄保存整个 Host 的全局 Channel 下标。
     const Impl::Channel& channel = impl_->channels[channel_index];
     result.handle.scope_ = impl_->scope;
     result.handle.channel_index_ = channel_index;
@@ -384,6 +393,7 @@ HostStatus HostEndpoint::Reset(const HostChannelHandle& handle) noexcept {
     if (reset != StreamFramerStatus::OK) return HostStatus::FRAMING_FAILED;
   }
   channel.codec->AdvanceViewEpoch();
+  // 只推进目标 Channel 并撤销其旧 Codec 视图；旧 Handle 变 stale，需重新 Find。
   ++channel.generation;
   channel.faulted = false;
   return HostStatus::OK;
@@ -427,6 +437,7 @@ HostOperationResult HostEndpoint::Decode(const HostChannelHandle& handle, ByteVi
   }
   result.status = HostStatus::OK;
   impl_->DecodeCandidate(this, channel, frame, sink, observer, result);
+  // 已尝试的完整记录即消费；失败状态不意味着可自动重放或业务交付成功。
   result.bytes_consumed = frame.size;
   result.reset_required = channel.faulted;
   return result;
@@ -491,6 +502,7 @@ HostOperationResult HostEndpoint::Push(const HostChannelHandle& handle, ByteView
               },
               &context});
   result.bytes_consumed = result.framing.bytes_consumed;
+  // 流消费量来自 Framer，未消费后缀归宿主；多候选可能既有成功也有失败。
   if (result.framing.status != StreamFramerStatus::OK &&
       result.status != HostStatus::CALLBACK_FAILED) {
     result.status = HostStatus::FRAMING_FAILED;
@@ -501,6 +513,7 @@ HostOperationResult HostEndpoint::Push(const HostChannelHandle& handle, ByteView
 
 HostOperationResult HostEndpoint::Continue(const HostChannelHandle& handle, HostOutputSink sink,
                                            HostCandidateObserver observer) noexcept {
+  // 公开续处理是空 Push；不重推旧 chunk，也不把缓存半帧强行补为候选。
   return Push(handle, ByteView{}, sink, observer);
 }
 
@@ -534,6 +547,7 @@ HostOperationResult HostEndpoint::Encode(const HostChannelHandle& handle, std::s
   }
 
   bool message_available = false;
+  // 调用时 Message 是配置全局索引，必须属于绑定的 Encode 可用集合，不固定为首条。
   for (std::size_t ordinal = 0U; ordinal < binding.encode_message_count; ++ordinal) {
     if (binding.encode_message_indices[ordinal] == message_index) {
       message_available = true;
@@ -560,6 +574,7 @@ HostOperationResult HostEndpoint::Encode(const HostChannelHandle& handle, std::s
   }
   result.status = HostStatus::OK;
   result.bytes_produced = encoded.bytes_written;
+  // 这是 Codec 已生成的事实；随后 callback 异常仍可保留它，但不代表业务已完成。
   HostOutputView output;
   output.action = HostAction::ENCODE;
   output.generation = channel.generation;
@@ -682,6 +697,7 @@ HostEndpointCreateResult CreateHostEndpoint(const CompiledProtocol& compiled,
     return result;
   }
   report.host_accounted_total_bytes = report.facade_bytes;
+  // 先计绑定/Channel/身份/输出缓存；创建各 Codec/Framer 后再累加其实际逻辑报告。
   if (!AddChecked(report.scope_payload_bytes, report.host_accounted_total_bytes) ||
       !AddChecked(report.binding_storage_bytes, report.host_accounted_total_bytes) ||
       !AddChecked(report.identity_storage_bytes, report.host_accounted_total_bytes) ||
@@ -786,6 +802,7 @@ HostEndpointCreateResult CreateHostEndpoint(const CompiledProtocol& compiled,
       }
     }
     impl->memory = report;
+    // 所有资源准入后才发布 Host；部分构造失败由自有对象释放，不返回半成品。
     result.host.reset(new HostEndpoint(std::move(impl)));
   } catch (const std::bad_alloc&) {
     result.status = HostStatus::ALLOCATION_FAILED;

@@ -1,5 +1,7 @@
 #include "pae/codec.h"
 
+// 公开完整记录 facade：保留编译状态、准备执行存储、映射类型/诊断并发布借用视图。
+// 协议匹配与编解码交给 Core；这里不拥有输入/输出字节，也不负责传输或设备业务。
 #include <atomic>
 #include <limits>
 #include <memory>
@@ -176,6 +178,7 @@ std::size_t CoreWorkspaceAllocationCount(
   return count;
 }
 
+// 只保护本实例的 Decode/Encode 占用；不使视图读取、移动或销毁可以与调用任意并发。
 class FacadeLease final {
  public:
   explicit FacadeLease(std::atomic_flag& in_use) noexcept
@@ -206,6 +209,8 @@ void InvokeEnteredHook() noexcept {}
 
 }  // namespace
 
+// state 保留冻结产物；成员逆序析构使借用 Plan 的 workspace 先于 state 释放。
+// 结果槽和输入映射在创建时分配，各实例独立，不在逐帧调用中扩容。
 struct CompleteRecordCodec::Impl final {
   Impl(internal::CompiledStateRef shared_state, std::size_t decoded_capacity,
        std::size_t encode_capacity, ExecutionMemoryReport report_value)
@@ -226,6 +231,7 @@ struct CompleteRecordCodec::Impl final {
   }
 
   void BeginGuardedCall() noexcept {
+    // 取得保护后先撤销上一代发布；即使本次随后失败，也不能继续消费旧成功字段。
     ++generation;
     published = false;
     published_message_index = kInvalidIndex;
@@ -314,6 +320,7 @@ CompleteRecordCodec& CompleteRecordCodec::operator=(CompleteRecordCodec&& other)
 CompleteRecordCodec::~CompleteRecordCodec() = default;
 
 void CompleteRecordCodec::AdvanceViewEpoch() noexcept {
+  // 移动使原 owner 上的视图失效；代次检查不延长 owner 寿命，也不能探测已销毁对象。
   ++view_epoch_;
   if (view_epoch_ == 0U) ++view_epoch_;
 }
@@ -332,6 +339,7 @@ DecodeResult CompleteRecordCodec::Decode(std::size_t pipeline_index, ByteView fr
   InvokeEnteredHook();
   impl_->BeginGuardedCall();
 
+  // facade 只借用本次输入；Core 向预留槽写入，失败时不发布可用 record。
   const auto* plan = impl_->state->Artifacts().Plan();
   const core::DecodeResult decoded = core::DecodeCompleteRecord(
       *plan, impl_->workspace, pipeline_index, core::ByteView{frame.data, frame.size},
@@ -341,6 +349,7 @@ DecodeResult CompleteRecordCodec::Decode(std::size_t pipeline_index, ByteView fr
   result.conversion_error = MapConversionError(decoded.conversion_error);
   result.output_tainted = decoded.tainted;
   if (decoded.message_index != core::kInvalidIndex) {
+    // 唯一结构身份可伴随后续失败返回；先核对 Pipeline 关联，不能把身份当作成功。
     const auto& pipelines = plan->Pipelines();
     const auto& pipeline_execution = plan->PipelineExecutionPlans();
     const auto& messages = plan->MessageExecutionPlans();
@@ -372,6 +381,7 @@ DecodeResult CompleteRecordCodec::Decode(std::size_t pipeline_index, ByteView fr
         ResolveFlatFieldIndex(*impl_->state, decoded.message_index, decoded.failed_field_index);
   }
   if (decoded.status == core::CodecStatus::OK) {
+    // 发布条件是整条记录 OK，而非已经匹配或槽内已有局部值。
     impl_->published = true;
     impl_->published_message_index = decoded.message_index;
     impl_->published_field_count = decoded.field_count;
@@ -407,6 +417,7 @@ EncodeResult CompleteRecordCodec::Encode(std::size_t pipeline_index, std::size_t
 
   const auto* plan = impl_->state->Artifacts().Plan();
   for (std::size_t index = 0U; index < value_count; ++index) {
+    // 标签和值一同映射；BYTES 仍借用调用方数据，数值不做有符号/无符号隐式互换。
     const EncodeValue& source = values[index];
     core::EncodeFieldValue& target = impl_->mapped_values[index];
     target = core::EncodeFieldValue{};
@@ -445,6 +456,7 @@ EncodeResult CompleteRecordCodec::Encode(std::size_t pipeline_index, std::size_t
       *plan, impl_->workspace, pipeline_index, message_index, impl_->mapped_values.get(),
       value_count, core::MutableByteBuffer{output.data, output.capacity});
   result.status = MapStatus(encoded.status);
+  // 透传实际交付长度；失败 Buffer 可已改写，required_size 不是可发送长度。
   result.bytes_written = encoded.bytes_written;
   result.required_size = encoded.required_size;
   result.conversion_error = MapConversionError(encoded.conversion_error);
@@ -467,6 +479,7 @@ DecodedRecordView::DecodedRecordView(const CompleteRecordCodec* owner, std::uint
     : owner_(owner), owner_epoch_(owner_epoch), generation_(generation) {}
 
 bool DecodedRecordView::HasValue() const noexcept {
+  // 仅在 owner 仍存活且无并发修改时查询；epoch/generation 用于移动和调用后的失效。
   return owner_ != nullptr && owner_->view_epoch_ == owner_epoch_ && owner_->impl_ != nullptr &&
          owner_->impl_->IsPublished(generation_);
 }
@@ -550,6 +563,7 @@ std::optional<Decimal64> DecodedFieldView::Decimal() const noexcept {
 }
 
 std::optional<RawIntegerKind> DecodedFieldView::ConversionRawKind() const noexcept {
+  // raw 来自当前成功 Decode 的 Workspace 留存，不从显示用的 Decimal 逻辑值反算。
   if (!HasValue()) return std::nullopt;
   const auto& slot = owner_->impl_->decoded_slots[ordinal_];
   core::RawIntegerValue raw;
@@ -603,6 +617,7 @@ CompleteRecordCodecCreateResult CreateCompleteRecordCodec(
     return result;
   }
 
+  // 先检查容量与逻辑执行预算，再分配 facade/槽/Workspace；共享 Plan 不按每实例复制。
   const auto& layout = state->Artifacts().Plan()->GetExecutionResourceLayout();
   const std::size_t decoded_capacity =
       options.decoded_field_capacity == kUsePlanDecodedFieldCapacity

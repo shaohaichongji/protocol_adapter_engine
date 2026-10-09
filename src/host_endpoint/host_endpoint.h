@@ -1,5 +1,7 @@
 #pragma once
 
+// 内部试验接入层：拥有 Plan 和不可变 endpoint/action 绑定，同步组合 Core/Framer。
+// 不安装为公开 API，也不管理 Socket、线程、路由或自动重试。
 #include <memory>
 #include <string_view>
 
@@ -24,6 +26,7 @@ enum class Status {
   RESET_REQUIRED
 };
 
+// 身份是逻辑键而非网络端点；Pipeline 由名字显式绑定，Encode 仍在调用时选择 Message。
 struct BindingSpec {
   std::string_view endpoint;
   Action action = Action::DECODE;
@@ -57,6 +60,7 @@ struct NamedValue {
   protocol_core::EncodeFieldValue value;
 };
 enum class SinkAction { CONTINUE, STOP };
+// 成功业务输出，仅在同步 sink 中借用；generation 是 Reset 代次，不是逐帧编号。
 struct Output {
   Action action = Action::DECODE;
   std::uint64_t generation = 0U;
@@ -73,6 +77,7 @@ struct Sink {
   void* context = nullptr;
 };
 // Diagnostic only; all views expire when the callback returns. Failed candidates have no fields.
+// 这是一次 Decode 之后的观察材料，不是 Decode 前门禁；raw 留存来自成功 Core 调用。
 struct Candidate {
   std::uint64_t generation = 0U;
   const protocol_plan::PlanBundle* plan = nullptr;
@@ -97,6 +102,7 @@ struct CandidateObserver {
   SinkAction (*function)(const Candidate&, void*) = nullptr;
   void* context = nullptr;
 };
+// 单次操作聚合事实；最后一次 codec_status 不代表所有候选都成功，回调数只计正常返回。
 struct Result {
   Status status = Status::INVALID_ARGUMENT;
   std::uint64_t generation = 0U;
@@ -123,6 +129,7 @@ struct CreateResult;
 // No transport, automatic drive loop, hot registration, or implicit direction inference.
 class Session final {
  public:
+  // 移交 owner，使 Plan 覆盖全部独立 Channel 工作区寿命；失败不发布部分 Session。
   static CreateResult Create(protocol_plan::PlanOwner plan, const BindingSpec* specs,
                              std::size_t count, const Limits& limits = {}) noexcept;
   ~Session();
@@ -130,6 +137,7 @@ class Session final {
   Session& operator=(const Session&) = delete;
   Handle Find(std::string_view endpoint, Action action, std::size_t stream = 0U) const noexcept;
   Result Decode(const Handle&, protocol_core::ByteView, Sink, CandidateObserver = {}) noexcept;
+  // 内部没有 Continue 方法；仅有内部工作时才接受空 Push，未消费后缀由宿主重提。
   Result Push(const Handle&, protocol_core::ByteView, Sink, CandidateObserver = {}) noexcept;
   Result Encode(const Handle&, std::string_view message, const NamedValue*, std::size_t,
                 Sink) noexcept;

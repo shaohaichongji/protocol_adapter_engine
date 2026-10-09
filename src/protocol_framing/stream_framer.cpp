@@ -1,5 +1,6 @@
 #include "stream_framer.h"
 
+// 消费 chunk 的有界状态机；只使用冻结切帧描述，不按 Codec 成败重新选择帧界。
 #include <algorithm>
 #include <cstring>
 #include <limits>
@@ -17,6 +18,7 @@ std::size_t SelectLimit(std::size_t requested, std::size_t profile_default, std:
   return selected;
 }
 
+// 仅在原子占用成功后构造，退出释放自己的占用；不保护任意外部对象访问。
 class UseGuard final {
  public:
   explicit UseGuard(std::atomic_flag& flag) noexcept : flag_(flag) {}
@@ -44,6 +46,7 @@ StreamFramingWorkspace::StreamFramingWorkspace(
   ResetCandidate();
 }
 
+// 同步头复制、坏长度回扫/搬移、已齐长度头及待交付均可不依赖新输入推进。
 bool StreamFramingWorkspace::HasInternalWork() const noexcept {
   return state_ == State::COPY_SYNC || state_ == State::RESCAN_INVALID ||
          state_ == State::COMPACT_INVALID || state_ == State::DELIVER_PENDING ||
@@ -64,6 +67,7 @@ bool StreamFramingWorkspace::HasHalfFrame() const noexcept {
 }
 
 void StreamFramingWorkspace::ResetCandidate() noexcept {
+  // 清当前候选/恢复进度，不释放缓存、不改变绑定，也不清累计丢弃/畸形统计。
   buffered_size_ = 0U;
   target_size_ = 0U;
   sync_match_ = 0U;
@@ -162,6 +166,7 @@ WorkspaceCreateResult CreateStreamFramingWorkspace(
   const std::size_t accounted = sizeof(StreamFramingWorkspace) + frame_capacity;
   result.accounted_workspace_bytes = accounted;
   result.effective_session_limit_bytes = max_session;
+  // 存储准入和最小推进预算先于分配；逻辑单流计费不等于进程 RSS。
   const std::size_t minimum_progress_budget =
       (std::max)(std::size_t{4U}, std::size_t{1U} + 2U * framing.sync_bytes.size());
   if (accounted > max_session || max_work < minimum_progress_budget) {
@@ -215,6 +220,7 @@ SubmitResult PushStreamChunk(const protocol_plan::PlanBundle& plan,
     return result;
   }
 
+  // 各状态在提交相应消费/进度前计费；预算不足返回已完成的消费量，不回滚流状态。
   const auto charge = [&result, &workspace](std::size_t amount) noexcept {
     if (amount > workspace.max_work_units_ - result.work_units_used) return false;
     result.work_units_used += amount;
@@ -233,6 +239,7 @@ SubmitResult PushStreamChunk(const protocol_plan::PlanBundle& plan,
     using State = StreamFramingWorkspace::State;
     const auto state = workspace.state_;
     if (state == State::DELIVER_PENDING) {
+      // 即使本次输入已耗尽也可交付缓存候选；回调配额不足则保留 pending。
       if (result.frames_delivered >= workspace.max_frames_per_submit_) return budget_stop();
       StreamFramingWorkspace* previous = g_callback_workspace;
       g_callback_workspace = &workspace;
@@ -240,6 +247,7 @@ SubmitResult PushStreamChunk(const protocol_plan::PlanBundle& plan,
           ByteView{workspace.buffer_.data(), workspace.buffered_size_}, sink.user_data);
       g_callback_workspace = previous;
       ++result.frames_delivered;
+      // 回调返回即确认交付并撤销候选；STOP 后不能在下一次调用重复交付该帧。
       workspace.ResetCandidate();
       if (action == FrameSinkAction::STOP) {
         result.stop_reason = SubmitStopReason::SINK_STOP;
@@ -250,6 +258,7 @@ SubmitResult PushStreamChunk(const protocol_plan::PlanBundle& plan,
 
 #if defined(PAE_ENABLE_SCHEMA_V11_ASCII_STREAM_FRAMING)
     if (state == State::COLLECT_ASCII) {
+      // CRLF 包含在候选内且可跨 chunk；先判终止，再判上限，恰好上限的 CRLF 合法。
       if (input_index == input.size) break;
       if (!charge(2U)) return budget_stop();
       if (workspace.buffered_size_ >= workspace.buffer_.size()) {
@@ -277,6 +286,7 @@ SubmitResult PushStreamChunk(const protocol_plan::PlanBundle& plan,
     }
 
     if (state == State::DISCARD_UNTIL_CRLF) {
+      // 超长记录不再缓存；保留尾 CR 事实，丢弃至首个 CRLF（含结束符）再恢复收集。
       if (input_index == input.size) break;
       if (!charge(2U)) return budget_stop();
       const std::uint8_t byte = input.data[input_index++];
@@ -293,6 +303,7 @@ SubmitResult PushStreamChunk(const protocol_plan::PlanBundle& plan,
 #endif
 
     if (state == State::COPY_SYNC) {
+      // 输入中同步头已消费；按预算将冻结同步字节物化到候选，不再次消费输入。
       while (workspace.copy_sync_index_ < workspace.framing_->sync_bytes.size()) {
         if (!charge(1U)) return budget_stop();
         if (workspace.buffered_size_ >= workspace.buffer_.size()) {
@@ -315,6 +326,7 @@ SubmitResult PushStreamChunk(const protocol_plan::PlanBundle& plan,
     }
 
     if (state == State::RESCAN_INVALID) {
+      // 仅非法声明长度触发缓存内重同步，从坏候选起点下一字节寻找后续同步头。
       const auto& sync = workspace.framing_->sync_bytes;
       const auto& prefix = workspace.framing_->sync_prefix_table;
       while (workspace.rescan_index_ < workspace.buffered_size_) {
@@ -350,6 +362,7 @@ SubmitResult PushStreamChunk(const protocol_plan::PlanBundle& plan,
     }
 
     if (state == State::COMPACT_INVALID) {
+      // 恢复搬移可按工作预算分段；compact_moved_ 保留进度，空提交也可继续。
       const std::size_t remaining = workspace.compact_size_ - workspace.compact_moved_;
       const std::size_t available = workspace.max_work_units_ - result.work_units_used;
       if (remaining != 0U) {
@@ -374,6 +387,7 @@ SubmitResult PushStreamChunk(const protocol_plan::PlanBundle& plan,
     }
 
     if (state == State::READ_LENGTH) {
+      // 此长度直接表示总帧字节数；合法后等待恰好该长度，不扫描 payload 中的同步头。
       const std::size_t header_end = static_cast<std::size_t>(
           workspace.framing_->length_field_offset + workspace.framing_->length_field_width);
       if (workspace.buffered_size_ < header_end) {
@@ -435,6 +449,7 @@ SubmitResult PushStreamChunk(const protocol_plan::PlanBundle& plan,
     }
 
     if (state == State::SEARCH_SYNC) {
+      // 用冻结前缀表保留跨 chunk 的部分同步匹配；计费通过后才消费当前字节。
       if (input_index == input.size) break;
       const auto& sync = workspace.framing_->sync_bytes;
       const auto& prefix = workspace.framing_->sync_prefix_table;
@@ -467,6 +482,7 @@ SubmitResult PushStreamChunk(const protocol_plan::PlanBundle& plan,
     return result;
   }
 
+  // 输入耗尽不一定工作完成；内部工作、需要外部补全、空闲分别报告不同停止原因。
   if (workspace.HasInternalWork()) {
     result.stop_reason = SubmitStopReason::WORK_BUDGET_REACHED;
   } else if (workspace.HasHalfFrame()) {
@@ -488,6 +504,7 @@ SubmitApiStatus ResetStreamFramingWorkspace(const protocol_plan::PlanBundle& pla
     return SubmitApiStatus::WORKSPACE_BUSY;
   }
   UseGuard use_guard{workspace.in_use_};
+  // 不冲刷半帧为候选，不调用 sink；丢弃 pending 和恢复状态，累计统计保留。
   workspace.ResetCandidate();
   return SubmitApiStatus::OK;
 }
