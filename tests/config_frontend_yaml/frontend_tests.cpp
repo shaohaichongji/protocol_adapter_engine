@@ -1,8 +1,10 @@
 #include <array>
 #include <cstdint>
+#include <filesystem>
 #include <fstream>
 #include <iostream>
 #include <iterator>
+#include <stdexcept>
 #include <string>
 #include <string_view>
 #include <thread>
@@ -21,8 +23,28 @@ void Check(bool condition, const char* name) {
 }
 
 std::string Read(const std::string& relative) {
-  std::ifstream input(std::string(PAE_TEST_SOURCE) + "/" + relative, std::ios::binary);
-  return {std::istreambuf_iterator<char>(input), std::istreambuf_iterator<char>()};
+  const auto path = std::filesystem::u8path(PAE_TEST_SOURCE) / std::filesystem::u8path(relative);
+  std::ifstream input(path, std::ios::binary);
+  if (!input) throw std::runtime_error("cannot open YAML test fixture: " + path.u8string());
+  std::string bytes{std::istreambuf_iterator<char>(input), std::istreambuf_iterator<char>()};
+  if (input.bad()) throw std::runtime_error("cannot read YAML test fixture: " + path.u8string());
+  return bytes;
+}
+
+void FixtureReadCases() {
+  const auto root = std::filesystem::u8path(PAE_TEST_SOURCE);
+  std::cout << "fixture_root_utf8=" << root.u8string() << '\n';
+  Check(root.is_absolute(), "fixture_root_is_absolute");
+  const auto fixture = Read("spikes/yaml_frontend/fixtures/synthetic_crc_slice.pae.yaml");
+  Check(fixture.find("schema_version: \"0.6\"") != std::string::npos,
+        "fixture_read_from_absolute_utf8_root");
+  bool rejected = false;
+  try {
+    Read("tests/config_frontend_yaml/fixtures/__missing_read_probe__.yaml");
+  } catch (const std::runtime_error& error) {
+    rejected = std::string_view(error.what()).find("cannot open YAML test fixture: ") == 0;
+  }
+  Check(rejected, "missing_fixture_read_throws_explicit_error");
 }
 
 void BasicCases() {
@@ -395,9 +417,24 @@ void PublicCases() {
 
 }  // namespace
 
-int main() {
-  BasicCases();
-  PublicCases();
+int main(int argc, char** argv) {
+  try {
+    if (argc == 2 && std::string_view(argv[1]) == "--probe-read-failure") {
+      Read("tests/config_frontend_yaml/fixtures/__missing_read_probe__.yaml");
+      std::cerr << "FAIL missing_fixture_probe_did_not_fail\n";
+      return 1;
+    }
+    if (argc != 1) {
+      std::cerr << "FAIL invalid_test_arguments\n";
+      return 2;
+    }
+    FixtureReadCases();
+    BasicCases();
+    PublicCases();
+  } catch (const std::exception& error) {
+    std::cerr << "FAIL fixture_io: " << error.what() << '\n';
+    return 1;
+  }
   std::cout << "failures=" << failures << '\n';
   return failures == 0 ? 0 : 1;
 }

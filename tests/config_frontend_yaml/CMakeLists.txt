@@ -25,3 +25,10 @@ add_executable(pae_yaml_frontend_public_tests public_facade_tests.cpp)
 target_compile_features(pae_yaml_frontend_public_tests PRIVATE cxx_std_17)
 target_link_libraries(pae_yaml_frontend_public_tests PRIVATE PAE::yaml_frontend)
 add_test(NAME pae_yaml_frontend_public_tests COMMAND pae_yaml_frontend_public_tests)
+
+# These standalone consumers contain UTF-8 literals and include UTF-8 headers. Keep the
+# setting local; split options are compatible with PAE::pae's source-charset propagation.
+if(MSVC)
+  target_compile_options(pae_yaml_frontend_tests PRIVATE /source-charset:utf-8 /execution-charset:utf-8)
+  target_compile_options(pae_yaml_frontend_public_tests PRIVATE /source-charset:utf-8 /execution-charset:utf-8)
+endif()
