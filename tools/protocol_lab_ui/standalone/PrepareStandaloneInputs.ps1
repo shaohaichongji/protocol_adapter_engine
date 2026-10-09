@@ -64,6 +64,7 @@ $labFiles = @(
     'tools\protocol_lab_ui\smoke_editor_target.h', 'tools\protocol_lab_ui\ui_field_result.h',
     'tools\protocol_lab_ui\ui_physical_types.h',
     'tests\protocol_lab_ui\CMakeLists.txt', 'tests\protocol_lab_ui\test_support.h',
+    'tests\protocol_lab_ui\generate_unicode_literal_fixture.ps1',
     'tests\protocol_lab_ui\verify_crt_assert_probe.cmake',
     'tests\protocol_lab_binary\CMakeLists.txt', 'tests\protocol_lab_binary\public_binary_decode_tests.cpp',
     'tests\protocol_lab_binary\public_binary_stream_tests.cpp',
