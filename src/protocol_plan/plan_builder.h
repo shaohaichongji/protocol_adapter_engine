@@ -27,6 +27,7 @@ namespace detail {
 struct PlanDraftData;
 }
 
+// 诊断中未定位到相应描述时使用哨兵，不是可访问的数组索引。
 inline constexpr std::size_t kInvalidPlanBuildIndex = (std::numeric_limits<std::size_t>::max)();
 
 enum class PlanBuildError {
@@ -47,6 +48,7 @@ enum class PlanBuildError {
   INTERNAL_ERROR,
 };
 
+// 索引定位 Draft 内的对象，不是原 JSON Pointer；编译器边界再映射为阶段诊断。
 struct PlanBuildDiagnostic {
   PlanBuildError code = PlanBuildError::INTERNAL_ERROR;
   std::size_t framing_index = kInvalidPlanBuildIndex;
@@ -61,6 +63,8 @@ struct PlanBuildDiagnostic {
 
 // A move-only capability minted only after domain validation and resource-budget validation.
 // The raw PlanDraft payload is intentionally hidden from the production PlanBuilder API.
+// 正常生产链路由 PlanDraftAssembler 接管预算凭证后构造；测试友元可注入损坏 Draft。
+// 包装拥有可变草稿，不意味着已经冻结；移动转移唯一所有权，空源不能再次消费。
 class BudgetedPlanDraft final {
  public:
   BudgetedPlanDraft() = delete;
@@ -80,6 +84,8 @@ class BudgetedPlanDraft final {
   std::unique_ptr<detail::PlanDraftData> draft_;
 };
 
+// 成功结果拥有 PlanOwner；Plan() 借用随 owner 存活，Diagnostic() 借用随结果存活。
+// TakePlan 后源 Succeeded() 为 false；Plan 地址不变，已有借用的寿命改由新 owner 保障。
 class PlanBuildResult final {
  public:
   PlanBuildResult() = delete;
@@ -116,6 +122,8 @@ class PlanBuildResult final {
 
 class PlanBuilder final {
  public:
+  // 消费唯一 Draft，复核内部不变量、预计算和布局后才发布完整 owner。
+  // noexcept 边界把 bad_alloc 映射为 ALLOCATION_FAILED，其余异常映射为 INTERNAL_ERROR。
   [[nodiscard]] static PlanBuildResult Freeze(BudgetedPlanDraft draft) noexcept;
 
  private:

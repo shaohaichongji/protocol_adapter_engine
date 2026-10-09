@@ -12,6 +12,9 @@
 
 namespace pae::config_compiler {
 
+// 编译期自有 IR：字符串和数组由各节点拥有，不借用 JSON DOM 或调用方输入。
+// 默认成员值只用于初始化；可接受的配置仍由 Schema 版本、构建开关和校验共同决定。
+// IR 尚不是执行 Plan，运行热路径不解释这里的字符串或可变容器。
 using protocol_plan::BitNumbering;
 using protocol_plan::ByteOrder;
 #if defined(PAE_ENABLE_SCHEMA_V07_LENGTH_COMPILER)
@@ -33,6 +36,7 @@ using protocol_plan::WireCodec;
 using protocol_plan::TextSegmentKind;
 #endif
 
+// 保存配置位置以定位诊断，不保存 yyjson 节点指针；JSON Pointer 与输入字节偏移不同。
 struct ConfigOrigin {
   std::string json_pointer;
 };
@@ -56,6 +60,7 @@ struct FramingProfileIr {
   ConfigOrigin origin;
 };
 
+// 关联仍使用符号 ID；领域校验解析引用及方向，不表示传输端点或业务路由。
 struct PipelineIr {
   std::string id;
   std::string display_name;
@@ -75,6 +80,7 @@ struct MatcherClauseIr {
   ConfigOrigin origin;
 };
 
+// byte_offset/byte_width 以字节计，bit_offset/bit_width 以位计；只解释当前 codec 的成员。
 struct WireIr {
   WireCodec codec = WireCodec::UNSIGNED_INTEGER;
   std::uint64_t byte_offset = 0U;
@@ -83,6 +89,7 @@ struct WireIr {
   std::string container_id;
   std::uint64_t bit_offset = 0U;
   std::uint64_t bit_width = 0U;
+  // 未解析哨兵；成功校验后索引本 Message 的 bit_containers，不是全局容器索引。
   std::size_t bit_container_index = static_cast<std::size_t>(-1);
   ConfigOrigin origin;
 #if defined(PAE_ENABLE_SCHEMA_V10_ASCII_TEXT_CODEC)
@@ -94,6 +101,7 @@ struct WireIr {
 };
 
 #if defined(PAE_ENABLE_SCHEMA_V10_ASCII_TEXT_CODEC)
+// literal 自有字节；FIELD 段的符号引用在领域校验后成为本 Message 的字段索引。
 struct TextSegmentIr {
   TextSegmentKind kind = TextSegmentKind::LITERAL;
   std::vector<std::uint8_t> literal;
@@ -108,6 +116,7 @@ struct TextActionIr {
   std::uint64_t max_record_length = 0U;
 };
 
+// 两个方向各自可选；存在一个方向不隐含另一个方向也能执行。
 struct AsciiTextLayoutIr {
   std::optional<TextActionIr> decode;
   std::optional<TextActionIr> encode;
@@ -115,6 +124,8 @@ struct AsciiTextLayoutIr {
 };
 #endif
 
+// 容器 ID 与字段 ID 是 Message 内不同引用空间。字节序作用于容器，位编号作用于成员。
+// base_value 是 Encode 未覆盖位的基础值，不是 Decode 保留位必须相等的业务约束。
 struct BitContainerIr {
   std::string id;
   std::uint64_t byte_offset = 0U;
@@ -125,6 +136,8 @@ struct BitContainerIr {
   ConfigOrigin origin;
 };
 
+// 静态范围以字节计；启用变长切片时，payload 锚点由对应标志区分，不能当固定偏移。
+// 算法及参数在编译期检查；默认 SUM8 不代表缺省配置自动创建校验规则。
 struct IntegrityIr {
   IntegrityAlgorithm algorithm = IntegrityAlgorithm::SUM8;
   std::uint64_t range_offset = 0U;
@@ -149,6 +162,7 @@ struct IntegrityIr {
 };
 
 #if defined(PAE_ENABLE_SCHEMA_V08_VARIABLE_COMPILER)
+// payload_field_index 引用本 Message 的字段；帧长度上下界由领域校验安全推导。
 struct BoundedPayloadIr {
   std::string payload_field_id;
   std::size_t payload_field_index = static_cast<std::size_t>(-1);
@@ -162,6 +176,7 @@ struct BoundedPayloadIr {
 };
 #endif
 
+// 有符号与无符号常量独立保存；source 决定 Encode 取值，不扩展常量的接收约束。
 struct EncodeIr {
   EncodeSource source = EncodeSource::INPUT;
   std::optional<std::uint64_t> constant_value;
@@ -193,6 +208,7 @@ struct RationalIr {
   ConfigOrigin origin;
 };
 
+// scale/bias 保留精确有理数；derived 是领域校验产生的执行描述，不是逐帧表达式。
 struct LinearConversionIr {
   RationalIr scale;
   RationalIr bias;
@@ -220,6 +236,7 @@ struct FieldIr {
   ConfigOrigin origin;
 };
 
+// 消息拥有布局和字段；Binary 与 ASCII 的准入分支不同，不能任意混合这些描述。
 struct MessageIr {
   std::string id;
   std::string display_name;
@@ -240,6 +257,7 @@ struct MessageIr {
   ConfigOrigin origin;
 };
 
+// 包级自有根节点；resource_profile 默认值不能替代 Loader 对必需配置属性的检查。
 struct SchemaIr {
   std::string schema_version;
   std::string protocol_id;
@@ -253,6 +271,7 @@ struct SchemaIr {
   std::vector<MessageIr> messages;
 };
 
+// 索引分别指向 SchemaIr.framing_profiles/messages，消息顺序保留 Pipeline 声明顺序。
 struct ResolvedPipelineIr {
   std::size_t framing_profile_index = 0U;
   std::vector<std::size_t> message_indices;
@@ -265,6 +284,9 @@ class ProtocolMetadataBuilder;
 
 // Internal capability state: only DomainValidator can create it. This type is deliberately
 // move-only so validation authority cannot be copied or synthesized by setting a public flag.
+// 正常链路由 DomainValidator 在全部领域校验通过后发布；private/friend 限制构造入口。
+// Payload 一起拥有 IR、解析后的引用和资源需求；需求统计尚不表示资源预算获批。
+// 移动转移唯一所有权，moved-from 对象不再是可复用的阶段输入。
 class ValidatedSchemaIr final {
  public:
   ValidatedSchemaIr() = delete;
@@ -301,6 +323,8 @@ class ValidatedSchemaIr final {
 };
 
 // Internal capability state: only ResourceBudgetValidator can promote a validated SchemaIr.
+// 正常链路由预算阶段提升凭证；保留验证产物、不可变 Plan 计费报告和实际批准上限。
+// 预算不是 JSON DOM/临时 IR/进程 RSS 的全链峰值约束，也不表示 Plan 已组装或冻结。
 class BudgetedSchemaIr final {
  public:
   BudgetedSchemaIr() = delete;

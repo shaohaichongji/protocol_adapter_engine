@@ -84,6 +84,7 @@ bool ToSize(std::uint64_t value, std::size_t& output) noexcept {
   return true;
 }
 
+// 先检查起点，再用剩余容量比较，避免用 offset + width 做可能溢出的边界判断。
 bool IsRangeWithin(std::size_t offset, std::size_t width, std::size_t capacity) noexcept {
   return width != 0U && offset <= capacity && width <= capacity - offset;
 }
@@ -316,6 +317,8 @@ bool AddStringLayout(PlanMemoryLayout& layout, std::string_view value) noexcept 
   return value.empty() || layout.AddArray<char>(value.size(), PlanMemoryCategory::STRING, nullptr);
 }
 
+// 按 Prepared 的实际数量、冻结类型和分配顺序复算；与编译器批准报告及最终 Arena 报告核对。
+// Layout 处理 sizeof 乘法/对齐/加法，计费不包含这里的临时 vector/map 或进程 RSS。
 bool EstimatePreparedPlanMemory(
     const detail::PlanDraftData& draft,
     const std::vector<detail::PreparedMessageExecutionPlan>& message_execution_plans,
@@ -467,6 +470,7 @@ bool EstimatePreparedPlanMemory(
   return true;
 }
 
+// 复制显式字节长度，不补终止 NUL；输出描述借用 Arena，不能借用将被释放的 Draft 字符串。
 bool FreezeString(PlanArena& arena, std::string_view source, FrozenString& output) noexcept {
   if (source.empty()) {
     output = FrozenString{};
@@ -481,6 +485,8 @@ bool FreezeString(PlanArena& arena, std::string_view source, FrozenString& outpu
   return true;
 }
 
+// 先取得对齐存储，再逐元素构造；factory 返回失败时逆序析构已完成元素，不回收 Arena 偏移。
+// 成功才 Adopt 整个数组；失败路径的局部嵌套数组和外层 storage 分别承担析构与字节释放。
 template <typename T, typename Factory>
 bool FreezeObjectArray(PlanArena& arena, std::size_t count, PlanMemoryCategory category,
                        Factory&& factory, FrozenArray<T>& output) {
@@ -559,6 +565,8 @@ BudgetedPlanDraft& BudgetedPlanDraft::operator=(BudgetedPlanDraft&& other) noexc
 
 BudgetedPlanDraft::~BudgetedPlanDraft() = default;
 
+// 接管可变材料，先复核内部不变量与资源需求，再准备执行描述，最后构造冻结存储。
+// 正常配置错误应在前级拒绝；这里仍防御内部 Draft 损坏，不把阶段凭证当免检标记。
 PlanBuildResult PlanBuilder::FreezeImpl(detail::PlanDraftData draft) {
   const ResourceProfileLimits* limits = GetResourceProfileLimits(draft.resource_profile);
   if ((draft.schema_version != "0.1" && draft.schema_version != "0.2" &&
@@ -590,6 +598,7 @@ PlanBuildResult PlanBuilder::FreezeImpl(detail::PlanDraftData draft) {
     return Reject(PlanBuildError::INVALID_METADATA);
   }
 
+  // 重算计数和最大尺寸，并与随 Draft 移交的需求比较，防止批准后的材料与统计脱节。
   ResourceRequirements actual_requirements;
   actual_requirements.framing_profile_count = draft.framing_profiles.size();
   actual_requirements.pipeline_count = draft.pipelines.size();
@@ -828,6 +837,7 @@ PlanBuildResult PlanBuilder::FreezeImpl(detail::PlanDraftData draft) {
     return Reject(PlanBuildError::RESOURCE_REQUIREMENTS_MISMATCH);
   }
 
+  // Prepared 数组自有临时数据；只有全部消息和 Pipeline 复核成功才进入冻结 Arena。
   ExecutionResourceLayout execution_resource_layout;
   std::vector<detail::PreparedMessageExecutionPlan> message_execution_plans;
   message_execution_plans.reserve(draft.messages.size());
@@ -1435,6 +1445,7 @@ PlanBuildResult PlanBuilder::FreezeImpl(detail::PlanDraftData draft) {
       }
 #endif
 
+      // 配置索引/类型已复核，转换为热路径尺寸与输入序号；常量/计算字段没有动态输入序号。
       FieldExecutionPlan field_execution;
       field_execution.offset = offset;
       field_execution.width = width;
@@ -1467,6 +1478,7 @@ PlanBuildResult PlanBuilder::FreezeImpl(detail::PlanDraftData draft) {
                                       ? static_cast<std::size_t>(field.bit_offset)
                                       : width * 8U - static_cast<std::size_t>(field.bit_offset) -
                                             static_cast<std::size_t>(field.bit_width);
+        // 满宽单独取全 1，合法满宽布局的 shift 为 0，避免移位 64 位。
         const std::uint64_t low_mask =
             field.bit_width == 64U
                 ? (std::numeric_limits<std::uint64_t>::max)()
@@ -1510,6 +1522,7 @@ PlanBuildResult PlanBuilder::FreezeImpl(detail::PlanDraftData draft) {
         }
         field_execution.enum_values_count = field.enum_entries.size();
         field_execution.enum_lookup_count = field.enum_entries.size();
+        // 排序仅针对本字段的 lookup 区间，保留 entry_index 以映射原枚举声明顺序。
         auto lookup_begin = execution.enum_lookup_entries.begin() +
                             static_cast<std::ptrdiff_t>(field_execution.enum_lookup_begin);
         std::sort(lookup_begin, execution.enum_lookup_entries.end(),
@@ -1735,6 +1748,7 @@ PlanBuildResult PlanBuilder::FreezeImpl(detail::PlanDraftData draft) {
   }
 #endif
 
+  // Workspace 按最大单消息需求复用槽，安全计算字节后对照 session 逻辑预算。
   execution_resource_layout.encode_value_index_count =
       execution_resource_layout.max_input_fields_per_message;
   execution_resource_layout.encode_presence_word_count =
@@ -1794,6 +1808,7 @@ PlanBuildResult PlanBuilder::FreezeImpl(detail::PlanDraftData draft) {
     detail::PreparedPipelineExecutionPlan execution;
     execution.framing_profile_index = pipeline.framing_profile_index;
     execution.allowed_message_words.assign(allowed_word_count, 0U);
+    // map 使固定长度组按长度有序；组内保留引用顺序，allowed 位图仍按全局消息索引。
     std::map<std::size_t, std::vector<std::size_t>> candidate_groups;
     std::unordered_set<std::size_t> seen_message_indices;
 #if defined(PAE_ENABLE_SCHEMA_V11_ASCII_STREAM_FRAMING)
@@ -1922,6 +1937,7 @@ PlanBuildResult PlanBuilder::FreezeImpl(detail::PlanDraftData draft) {
     pipeline_execution_plans.push_back(std::move(execution));
   }
 
+  // 上游批准 → Prepared 复算 → Arena 实用三份报告分别核对，不能只信任一个总量。
   const std::size_t effective_plan_memory_limit =
       draft.plan_memory_limit_bytes == 0U
           ? (std::min)(limits->max_plan_memory_bytes, kV01MaxPlanMemoryHardLimit)
@@ -1944,6 +1960,8 @@ PlanBuildResult PlanBuilder::FreezeImpl(detail::PlanDraftData draft) {
                         draft.approved_plan_memory.accounted_total_bytes, draft.resource_profile);
   }
 
+  // 一次取得冻结存储块；Arena 在块内按相同布局分配，不逐描述向堆申请内存。
+  // storage 早于局部 FrozenArray 构造，失败返回先析构数组再释放其底层字节。
   PlanStorageBlock storage =
       PlanStorageBlock::Allocate(exact_estimate.accounted_total_bytes,
                                  draft.test_fail_at_allocation == 1U, draft.test_memory_probe);
@@ -2193,6 +2211,7 @@ PlanBuildResult PlanBuilder::FreezeImpl(detail::PlanDraftData draft) {
     return Reject(PlanBuildError::ALLOCATION_FAILED);
   }
 
+  // 最后确认实际类别/对齐/分配计数和块尺寸；核对前没有构造或发布 PlanBundle。
   const PlanMemoryReport final_report = arena.Report();
   if (!PlanMemoryReportsEqual(exact_estimate, final_report) ||
       final_report.accounted_total_bytes != storage.Size()) {
@@ -2200,6 +2219,7 @@ PlanBuildResult PlanBuilder::FreezeImpl(detail::PlanDraftData draft) {
                         final_report.accounted_total_bytes, exact_estimate.accounted_total_bytes,
                         draft.resource_profile);
   }
+  // placement 构造不再分配；数组责任移入 Bundle，owner 同时接管块和 Bundle 地址。
   PlanBundle* plan = new (plan_storage) PlanBundle(
       schema_version, protocol_id, protocol_version, draft.resource_profile, actual_requirements,
       std::move(frozen_framings), std::move(frozen_pipelines), std::move(frozen_messages),
@@ -2212,6 +2232,7 @@ PlanBuildResult PlanBuilder::FreezeImpl(detail::PlanDraftData draft) {
 }
 
 PlanBuildResult PlanBuilder::Freeze(BudgetedPlanDraft draft) noexcept {
+  // 空凭证失败关闭；消费一次原始材料，内部构造异常由此统一转换为无部分 Plan 的失败。
   try {
     if (draft.draft_ == nullptr) {
       return Reject(PlanBuildError::INTERNAL_ERROR);

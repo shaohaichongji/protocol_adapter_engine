@@ -7,12 +7,16 @@
 #include "../config_compiler/config_compiler.h"
 #include "compiled_state_internal.h"
 
+// 公开编译 facade 的实现边界：调用内部编译链，映射诊断，再以共享冻结状态发布 owner。
+// metadata 查询只投影已冻结的 Plan/描述，不重新解析 JSON，也不调用 Codec 或网络。
+// 领域校验、资源估算和 Arena 冻结仍在内部模块；本文件不成为第二套编译器。
 namespace pae {
 namespace {
 
 namespace internal = config_compiler;
 namespace plan = protocol_plan;
 
+// 内外枚举逐项映射；未知阶段/错误失败关闭为内部契约问题，不暴露底层枚举整数。
 CompileStage MapStage(internal::CompileStage stage) noexcept {
   switch (stage) {
     case internal::CompileStage::INPUT_PROFILE:
@@ -105,6 +109,7 @@ CompileError MapError(internal::CompileError error) noexcept {
   return CompileError::INTERNAL_CONTRACT_VIOLATION;
 }
 
+// 内部 UI_DESCRIPTION 名称映射为公开 METADATA；描述存储不是 Qt 或 UI 对象。
 ResourceKind MapResourceKind(internal::ResourceKind kind) noexcept {
   switch (kind) {
     case internal::ResourceKind::NONE:
@@ -127,6 +132,8 @@ ResourceProfile MapResourceProfile(plan::ResourceProfile profile) noexcept {
   return ResourceProfile::DESKTOP;
 }
 
+// 复制自有诊断，保留节点定位、可选字节偏移及预算事实；不是借用内部结果的字符串。
+// 枚举映射 noexcept 不代表整条映射无异常：字符串复制仍可能抛分配异常。
 CompileDiagnostic MapDiagnostic(const internal::CompileDiagnostic& source) {
   CompileDiagnostic output;
   output.stage = MapStage(source.stage);
@@ -141,11 +148,13 @@ CompileDiagnostic MapDiagnostic(const internal::CompileDiagnostic& source) {
   return output;
 }
 
+// 返回冻结字符串池的借用视图，不分配新文本；owner 移动/替换后按公开契约重新查询。
 std::string_view Resolve(const internal::ProtocolMetadataStorage& metadata,
                          internal::DescriptionStringSpan span) noexcept {
   return metadata.Resolve(span);
 }
 
+// logical 类型可以与原始 Wire 类型不同：有转换的字段对业务呈现 DECIMAL64。
 std::optional<ValueKind> MapValueKind(const plan::FieldExecutionPlan& field) noexcept {
 #if defined(PAE_ENABLE_SCHEMA_V05_COMPILER)
   if (field.conversion_index != static_cast<std::size_t>(-1)) {
@@ -197,6 +206,7 @@ bool ContainsMessage(const plan::FrozenArray<std::size_t>& indices,
   return false;
 }
 
+// 读取冻结候选集合与允许集合，不对实际 Frame 做候选选择；方向能力不等于执行成功。
 bool IsDecodeCandidate(const plan::PipelineExecutionPlan& pipeline,
                        std::size_t message_index) noexcept {
   for (const auto& group : pipeline.candidate_groups) {
@@ -220,6 +230,7 @@ bool IsAllowedMessage(const plan::PipelineExecutionPlan& pipeline,
   return (pipeline.allowed_message_words[word_index] & mask) != 0U;
 }
 
+// 物理查询的算术边界用减法/检查加法，避免把溢出的范围错误解释为合法布局。
 bool Fits(ByteRange range, std::size_t size) noexcept {
   return range.offset <= size && range.length <= size - range.offset;
 }
@@ -268,6 +279,7 @@ bool ReferencesAsciiField(const plan::TextActionExecutionPlan* action,
   return false;
 }
 
+// 防御性核对冻结 ASCII 模板结构；只读查询不解析业务字段，也不交付 Decode 结果。
 bool ValidAsciiAction(const plan::TextActionExecutionPlan& action,
                       const plan::MessageExecutionPlan& message) noexcept {
   if (action.segments.empty() || action.min_record_length > action.max_record_length ||
@@ -382,6 +394,7 @@ bool IntegrityWidth(const plan::FrozenIntegrityPlan& integrity, std::size_t& wid
   return false;
 }
 
+// 解析校验存储位置，不计算 SUM8/CRC；可变尾部位置以调用方给定的帧长推导。
 bool ResolveIntegrityStorage(const plan::MessageExecutionPlan& message, std::size_t frame_size,
                              std::optional<ByteRange>& output) noexcept {
   output.reset();
@@ -439,6 +452,8 @@ bool ResolveComputedLengthStorage(const plan::MessageExecutionPlan& message, std
 
 }  // namespace
 
+// facade move-only，移动其 Impl owner；执行对象另有强引用，不借用外部 facade 的地址。
+// metadata string_view 仍按外部 owner 契约使用，不能因某执行对象存活就沿用过期视图。
 CompiledProtocol::CompiledProtocol() noexcept = default;
 
 CompiledProtocol::CompiledProtocol(std::unique_ptr<Impl> impl) noexcept : impl_(std::move(impl)) {}
@@ -449,11 +464,13 @@ CompiledProtocol& CompiledProtocol::operator=(CompiledProtocol&& other) noexcept
 
 CompiledProtocol::~CompiledProtocol() = default;
 
+// 同时要求 Plan 与描述存在；空对象或移走 Impl 的对象不提供有效查询。
 bool CompiledProtocol::HasValue() const noexcept {
   return impl_ != nullptr && impl_->state && impl_->state->Artifacts().Plan() != nullptr &&
          !impl_->state->Artifacts().Description().empty();
 }
 
+// 描述里的 id/version 来自 Plan，展示文本来自 metadata；复制结构不复制其字符串内容。
 std::optional<ProtocolDescription> CompiledProtocol::Protocol() const noexcept {
   if (!HasValue()) {
     return std::nullopt;
@@ -493,6 +510,7 @@ std::optional<PipelineDescription> CompiledProtocol::Pipeline(std::size_t index)
                              source.message_indices.size()};
 }
 
+// 关联序号仅是该 Pipeline 的表内位置，需映射到全局 Message 索引后再用于查询/执行。
 std::optional<std::size_t> CompiledProtocol::PipelineMessageIndex(
     std::size_t pipeline_index, std::size_t association_index) const noexcept {
   if (!HasValue()) {
@@ -510,6 +528,7 @@ std::optional<std::size_t> CompiledProtocol::PipelineMessageIndex(
   return message_index;
 }
 
+// 同时核对关联及允许集合，返回方向能力和字节容量；UPPER_BOUND 不是本次 Encode 长度。
 std::optional<MessageExecutionDescription> CompiledProtocol::PipelineMessageExecution(
     std::size_t pipeline_index, std::size_t message_index) const noexcept {
   if (!HasValue()) return std::nullopt;
@@ -596,6 +615,7 @@ std::size_t CompiledProtocol::FieldCount() const noexcept {
   return HasValue() ? impl_->state->Artifacts().Description().Fields().size() : 0U;
 }
 
+// 全局字段索引经 metadata 的消息区间换算成消息内索引，再与 Plan 字段核对。
 std::optional<FieldDescription> CompiledProtocol::Field(std::size_t flat_index) const noexcept {
   if (!HasValue()) {
     return std::nullopt;
@@ -648,6 +668,7 @@ std::optional<FieldDescription> CompiledProtocol::Field(std::size_t flat_index) 
   return std::nullopt;
 }
 
+// ASCII 查询显式区分 owner/索引/表示/方向错误；成功值是模板事实，不是 Frame 匹配证明。
 AsciiActionQueryResult CompiledProtocol::AsciiAction(std::size_t message_index,
                                                      pae::AsciiAction action) const noexcept {
   AsciiActionQueryResult result;
@@ -690,6 +711,7 @@ AsciiActionQueryResult CompiledProtocol::AsciiAction(std::size_t message_index,
   return result;
 }
 
+// literal 借用冻结字节（可含 NUL）；FIELD 则返回局部及全局索引，二者不是同时有效。
 AsciiSegmentQueryResult CompiledProtocol::AsciiSegment(std::size_t message_index,
                                                        pae::AsciiAction action,
                                                        std::size_t ordinal) const noexcept {
@@ -785,6 +807,7 @@ AsciiFieldQueryResult CompiledProtocol::AsciiField(std::size_t flat_field_index)
   return result;
 }
 
+// 表示种类可查询 Binary/ASCII；后续物理布局仅支持 Binary，不读取帧或重复 Decode。
 MessageRepresentationQueryResult CompiledProtocol::MessageRepresentation(
     std::size_t message_index) const noexcept {
   MessageRepresentationQueryResult result;
@@ -853,6 +876,7 @@ MessagePhysicalQueryResult CompiledProtocol::MessagePhysical(
   return result;
 }
 
+// frame_size 只用于校验合法长度与解析位置，不能替代对实际字节的 Matcher/完整性校验。
 ResolvedMessagePhysicalQueryResult CompiledProtocol::ResolveMessagePhysical(
     std::size_t message_index, std::size_t frame_size) const noexcept {
   ResolvedMessagePhysicalQueryResult result;
@@ -894,6 +918,7 @@ ResolvedMessagePhysicalQueryResult CompiledProtocol::ResolveMessagePhysical(
   return result;
 }
 
+// 普通字段返回范围，位成员将数值掩码按容器字节序映射成物理字节掩码，不伪造整字节所有权。
 FieldPhysicalQueryResult CompiledProtocol::FieldPhysical(std::size_t flat_index) const noexcept {
   FieldPhysicalQueryResult result;
   if (!HasValue()) return result;
@@ -1122,6 +1147,7 @@ std::optional<EnumDescription> CompiledProtocol::Enum(std::size_t flat_index) co
   return std::nullopt;
 }
 
+// 计费快照来自 Plan/metadata，另加 facade；不是编译峰值、执行 Workspace 或进程 RSS。
 CompileMemoryReport CompiledProtocol::MemoryReport() const noexcept {
   if (!HasValue()) {
     return {};
@@ -1135,6 +1161,7 @@ CompileMemoryReport CompiledProtocol::MemoryReport() const noexcept {
                              sizeof(Impl) + public_api_internal::CompiledState::FacadeBytes()};
 }
 
+// 公开结果的正常构造为成功 owner 或失败诊断；自定义移动会清除源结果的成功标记与诊断。
 CompileResult::CompileResult(CompiledProtocol compiled) noexcept
     : succeeded_(compiled.HasValue()), compiled_(std::move(compiled)) {}
 
@@ -1174,12 +1201,19 @@ const CompileDiagnostic* CompileResult::Diagnostic() const noexcept {
   return diagnostic_.has_value() ? &*diagnostic_ : nullptr;
 }
 
+// 转移 owner 并使本结果不再成功；与内部 optional 型阶段结果的 Take 行为不可混为一谈。
 CompiledProtocol CompileResult::TakeCompiled() && noexcept {
   succeeded_ = false;
   diagnostic_.reset();
   return std::move(compiled_);
 }
 
+// 同步借用 JSON 输入。实际内部顺序是严格检查/结构 IR → 领域校验 → Plan 预算批准，
+// 随后先构造 metadata → 组装 Budgeted Draft → 冻结 Plan → 核验 Plan/metadata → 完整产物。
+// Plan-only 内部入口省略 metadata 阶段；本公开入口始终走带描述链路。
+// 默认 metadata 上限按 DESKTOP 推导，此处不是按输入配置重新选择该默认值。
+// 内部阶段异常会尝试转换为诊断；下面的诊断复制、facade/共享 state 分配仍可抛异常，
+// 所以此函数与公开声明一样没有 noexcept，不承诺全链永不抛出。
 CompileResult CompileProtocolJson(std::string_view json_bytes, const CompileOptions& options) {
   const std::size_t metadata_limit =
       options.metadata_memory_limit_bytes == kUseDefaultMetadataMemoryLimit
@@ -1196,6 +1230,7 @@ CompileResult CompileProtocolJson(std::string_view json_bytes, const CompileOpti
     }
     return CompileResult{MapDiagnostic(*diagnostic)};
   }
+  // 仅在成功分支一次性提取；由 Impl/CompiledState 接管，不保留内部结果或原 JSON 的借用。
   auto artifacts = std::move(result).TakeArtifacts();
   auto impl = std::make_unique<CompiledProtocol::Impl>(std::move(artifacts));
   return CompileResult{CompiledProtocol{std::move(impl)}};

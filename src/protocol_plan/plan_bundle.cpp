@@ -4,6 +4,8 @@
 
 namespace pae::protocol_plan {
 
+// 接管已构造数组的析构责任；字符描述只复制指针/长度，不在构造时再分配存储。
+// Builder 完成 Arena 报告核对后才调用；底层字节的唯一所有权仍在 PlanOwner。
 PlanBundle::PlanBundle(FrozenString schema_version, FrozenString protocol_id,
                        FrozenString protocol_version, ResourceProfile resource_profile,
                        ResourceRequirements resource_requirements,
@@ -34,6 +36,7 @@ PlanBundle::PlanBundle(FrozenString schema_version, FrozenString protocol_id,
       memory_report_(memory_report) {
 }
 
+// 以下查询只投影冻结事实；返回的 view/引用须在拥有该 Plan 的 owner 存活期间使用。
 std::string_view PlanBundle::SchemaVersion() const noexcept { return schema_version_.View(); }
 
 std::string_view PlanBundle::ProtocolId() const noexcept { return protocol_id_.View(); }

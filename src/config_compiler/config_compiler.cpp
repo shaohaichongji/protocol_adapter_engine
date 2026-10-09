@@ -32,8 +32,10 @@ namespace pae::config_compiler {
 
 namespace {
 
+// 保留数字原始 Token，结构解析再做精确整数检查，避免先转浮点丢失大整数信息。
 constexpr yyjson_read_flag kReadFlags = YYJSON_READ_NUMBER_AS_RAW;
 
+// 输入/DOM 审计硬上限，与后续 resource_profile 的不可变 Plan 预算分别执行。
 struct JsonAuditLimits {
   std::size_t max_input_bytes = 4U * 1024U * 1024U;
   std::size_t max_parser_memory_bytes = 64U * 1024U * 1024U;
@@ -72,6 +74,7 @@ bool SetDiagnostic(CompileDiagnostic& diagnostic, CompileStage stage, CompileErr
   return false;
 }
 
+// RFC 6901 转义用于定位配置属性；源输入 byte_offset 另以字节记录。
 void AppendJsonPointerToken(std::string_view token, std::string& pointer) {
   pointer.push_back('/');
   for (const char character : token) {
@@ -180,6 +183,7 @@ std::uint16_t ParseHexQuad(std::string_view input, std::size_t offset) noexcept 
   return result;
 }
 
+// 先限制输入、UTF-8、嵌套和代理对；这是字符串感知预检，不替代 yyjson 完整语法解析。
 bool RunStrictPrecheck(std::string_view input, const JsonAuditLimits& limits,
                        CompileDiagnostic& diagnostic) {
   if (input.empty()) {
@@ -289,6 +293,8 @@ bool AddStringBudget(std::size_t length, const JsonAuditLimits& limits, JsonAudi
   return true;
 }
 
+// 遍历已解析 DOM 检查深度、节点及字符串预算；对象键也计入解码字符串总量。
+// 重复键按解码后的键名拒绝，不能依赖后续属性查询的覆盖或首项行为。
 bool AuditJsonValue(yyjson_val* value, std::size_t depth, std::string& pointer,
                     const JsonAuditLimits& limits, JsonAuditStats& stats,
                     CompileDiagnostic& diagnostic) {
@@ -384,6 +390,7 @@ bool IsAllowedProperty(std::string_view property,
   return std::find(allowed.begin(), allowed.end(), property) != allowed.end();
 }
 
+// 属性白名单属于结构门禁；多个未知属性取字典序最小者，不依赖对象成员书写顺序。
 bool ValidateObjectProperties(yyjson_val* object, std::string_view pointer,
                               std::initializer_list<std::string_view> allowed,
                               CompileDiagnostic& diagnostic) {
@@ -415,6 +422,7 @@ yyjson_val* RequiredProperty(yyjson_val* object, std::string_view key, std::stri
   return value;
 }
 
+// DOM 字符串只在此借用；按 Unicode 标量限制长度后复制到自有 IR，保留显式字节长度。
 bool ReadString(yyjson_val* value, std::string_view pointer, std::size_t min_length,
                 std::size_t max_length, std::string& output, CompileDiagnostic& diagnostic) {
   if (!yyjson_is_str(value)) {
@@ -460,6 +468,7 @@ bool ReadStableId(yyjson_val* value, std::string_view pointer, std::string& outp
   return true;
 }
 
+// 只接受精确非负整数 Token，连 unsigned -0 也拒绝；逐位累加前检查溢出。
 bool ReadExactUint64(yyjson_val* value, std::string_view pointer, std::uint64_t& output,
                      CompileDiagnostic& diagnostic) {
   if (!yyjson_is_raw(value)) {
@@ -497,6 +506,7 @@ bool ReadExactUint64(yyjson_val* value, std::string_view pointer, std::uint64_t&
   return true;
 }
 
+// 先以无符号幅值解析，单独处理 INT64_MIN；signed -0 归一为 0，不做越界有符号取反。
 bool ReadExactInt64(yyjson_val* value, std::string_view pointer, std::int64_t& output,
                     CompileDiagnostic& diagnostic) {
   if (!yyjson_is_raw(value)) {
@@ -1126,6 +1136,7 @@ bool ParseBitfieldWire(yyjson_val* value, std::string_view pointer, WireIr& outp
   return true;
 }
 
+// 单字节必须省略 byte_order，以 NOT_APPLICABLE 表示；多字节必须显式声明有效字节序。
 bool ParseBitContainer(yyjson_val* value, std::string_view pointer, BitContainerIr& output,
                        CompileDiagnostic& diagnostic) {
   if (!yyjson_is_obj(value)) {
@@ -2237,6 +2248,8 @@ bool ParseObjectArray(yyjson_val* value, std::string_view pointer, std::vector<I
   return true;
 }
 
+// 先检查形状、必需属性及版本，再分派允许能力；版本与编译开关共同控制准入。
+// ASCII 使用独立消息解析分支，不把较新版本机械解释成所有 Binary 能力的并集。
 bool BuildSchemaIr(yyjson_val* root, SchemaIr& output, CompileDiagnostic& diagnostic) {
   if (!yyjson_is_obj(root)) {
     return SetDiagnostic(diagnostic, CompileStage::STRUCTURAL, CompileError::ROOT_MUST_BE_OBJECT,
@@ -2595,6 +2608,7 @@ bool AddUint64Checked(std::uint64_t value, std::uint64_t& total) noexcept {
   return true;
 }
 
+// 解析本消息字段引用并推导记录长度；变长字段的后继 literal 用于明确文本边界。
 bool ValidateTextAction(TextActionIr& action,
                         const std::unordered_map<std::string, std::size_t>& ids,
                         const std::vector<FieldIr>& fields, std::vector<bool>& referenced,
@@ -2759,6 +2773,7 @@ bool AdvanceCrLfByte(std::uint8_t& states, std::uint8_t byte) noexcept {
   return true;
 }
 
+// 根据 literal 和字段允许字符集合证明首次 CRLF 只在记录末尾；不执行运行时 Decode。
 bool ProveAsciiCrLfBoundary(const TextActionIr& action, const std::vector<FieldIr>& fields) {
   if (action.segments.empty()) return false;
   const TextSegmentIr& final_segment = action.segments.back();
@@ -2801,6 +2816,8 @@ bool ProveAsciiCrLfBoundary(const TextActionIr& action, const std::vector<FieldI
 #endif
 #endif
 
+// 结构解析成功不等于布局可执行：这里解析局部引用、检查范围/所有权及确定字节冲突，
+// 同时累计资源需求；完整通过后才允许包级引用解析与验证凭证发布。
 bool ValidateMessageDomain(MessageIr& message, ResourceRequirements& requirements,
                            CompileDiagnostic& diagnostic) {
 #if defined(PAE_ENABLE_SCHEMA_V10_ASCII_TEXT_CODEC)
@@ -3410,6 +3427,8 @@ bool ValidateMessageDomain(MessageIr& message, ResourceRequirements& requirement
     }
   }
 
+  // 只按 Encode 确定的位检查 Matcher：常量成员及 base_value 保留位确定，动态成员不确定。
+  // 这是生成侧冲突检查，不把 base_value 引入 Decode 的业务约束。
   std::vector<std::uint64_t> determined_masks(message.bit_containers.size(), 0U);
   std::vector<std::uint64_t> determined_values(message.bit_containers.size(), 0U);
   std::vector<std::uint64_t> constant_masks(message.bit_containers.size(), 0U);
@@ -3485,6 +3504,8 @@ bool ValidateMessageDomain(MessageIr& message, ResourceRequirements& requirement
     }
   }
 
+  // 所有字段/容器、固定 Matcher 与校验存储共同覆盖 Frame；变长布局在此检查固定头部。
+  // 覆盖不等于允许所有权冲突，重叠写入和校验存储冲突已经在前面分别拒绝。
   struct CoverageSpan {
     std::uint64_t begin = 0U;
     std::uint64_t end = 0U;
@@ -3546,6 +3567,8 @@ bool ValidateMessageDomain(MessageIr& message, ResourceRequirements& requirement
 
 }  // namespace
 
+// 按值接管自有 IR；先校验各消息，再按符号 ID 解析包级引用与 Pipeline 方向/候选关系。
+// 只有全部成功才移动发布 ValidatedSchemaIr，失败不发布部分验证产物。
 DomainValidationResult DomainValidator::Validate(SchemaIr schema) {
   CompileDiagnostic diagnostic;
   std::unordered_map<std::string, std::size_t> framing_index;
@@ -3644,6 +3667,7 @@ DomainValidationResult DomainValidator::Validate(SchemaIr schema) {
                       "pipeline and referenced message direction_id values differ");
         return DomainValidationResult::Failure(std::move(diagnostic));
       }
+      // 此处检查同 Pipeline 内结构 Matcher 的交集，不以完整性或业务字段成功消除歧义。
       for (const std::size_t earlier_message_index : resolved.message_indices) {
         if (FixedMatchersCanIntersect(schema.messages[earlier_message_index],
                                       schema.messages[message->second])) {
@@ -3757,6 +3781,8 @@ bool AddStringLayout(protocol_plan::PlanMemoryLayout& layout, std::string_view v
          layout.AddArray<char>(value.size(), protocol_plan::PlanMemoryCategory::STRING);
 }
 
+// 根据已验证 IR 和引用，按冻结布局的类别/数量/sizeof/对齐估算不可变 Plan。
+// PlanMemoryLayout 检查乘法、加法与对齐；这里的临时 map/set 不属于冻结 Arena 计费。
 bool EstimateSchemaPlanMemory(const SchemaIr& schema,
                               const std::vector<ResolvedPipelineIr>& resolved_pipelines,
                               std::size_t limit_bytes, protocol_plan::PlanMemoryReport& output) {
@@ -3906,6 +3932,7 @@ bool EstimateSchemaPlanMemory(const SchemaIr& schema,
                                               PlanMemoryCategory::EXECUTION_DESCRIPTOR)) {
     return false;
   }
+  // Pipeline 允许集合按全包消息数分配位图；固定长度候选按长度分组，其他分支单独计索引。
   const std::size_t allowed_word_count =
       schema.messages.size() / 64U + (schema.messages.size() % 64U == 0U ? 0U : 1U);
   for (const ResolvedPipelineIr& pipeline : resolved_pipelines) {
@@ -3975,6 +4002,8 @@ ResourceBudgetResult ResourceBudgetValidator::ValidateForTest(ValidatedSchemaIr 
   return ValidateImpl(std::move(validated), plan_memory_limit_bytes);
 }
 
+// 验证凭证不能由公开标记伪造；移动后再用先拒绝，再检查 profile 的计数及尺寸限制。
+// 本阶段批准逻辑 Plan 预算，不承诺临时编译分配、Workspace 或进程 RSS 的总上限。
 ResourceBudgetResult ResourceBudgetValidator::ValidateImpl(
     ValidatedSchemaIr validated, std::optional<std::size_t> test_plan_memory_limit_bytes) {
   CompileDiagnostic diagnostic;
@@ -4101,6 +4130,7 @@ ResourceBudgetResult ResourceBudgetValidator::ValidateImpl(
     }
 #endif
   }
+  // 测试可替换 profile 预算，但仍受硬上限约束；先算所需总量，便于失败时报告需求与上限。
   const std::size_t plan_memory_limit =
       (std::min)(test_plan_memory_limit_bytes.value_or(budget->max_plan_memory_bytes),
                  protocol_plan::kV01MaxPlanMemoryHardLimit);
@@ -4121,6 +4151,7 @@ ResourceBudgetResult ResourceBudgetValidator::ValidateImpl(
 }
 
 PlanDraftAssemblyResult PlanDraftAssembler::Assemble(BudgetedSchemaIr budgeted) {
+  // 消费预算凭证中的自有 IR 和解析引用；这里只组装可变 Draft，不发布执行 Plan。
   if (budgeted.validated_ == nullptr || budgeted.validated_->payload_ == nullptr) {
     return PlanDraftAssemblyResult::Failure(
         CompileDiagnostic{CompileStage::INTERNAL, CompileError::INTERNAL_CONTRACT_VIOLATION, "",
@@ -4137,6 +4168,7 @@ PlanDraftAssemblyResult PlanDraftAssembler::Assemble(BudgetedSchemaIr budgeted) 
     plan.strategy = framing.strategy;
     plan.frame_length_bytes = framing.frame_length_bytes;
     plan.sync_bytes = framing.sync_bytes;
+    // 编译期构造同步字节的前缀表，Builder 还会复核内容，运行时不再解释配置字符串。
     plan.sync_prefix_table.resize(plan.sync_bytes.size(), 0U);
     for (std::size_t index = 1U, prefix = 0U; index < plan.sync_bytes.size(); ++index) {
       while (prefix != 0U && plan.sync_bytes[index] != plan.sync_bytes[prefix]) {
@@ -4192,6 +4224,7 @@ PlanDraftAssemblyResult PlanDraftAssembler::Assemble(BudgetedSchemaIr budgeted) 
           output.kind = segment.kind;
           output.literal = std::move(segment.literal);
           output.field_index = segment.field_index;
+          // literal 字节移交到 Draft 后生成前缀表；缺省方向仍保持 nullopt。
           output.prefix_table.resize(output.literal.size(), 0U);
           for (std::size_t index = 1U, prefix = 0U; index < output.literal.size(); ++index) {
             while (prefix != 0U && output.literal[index] != output.literal[prefix]) {
@@ -4313,6 +4346,7 @@ PlanDraftAssemblyResult PlanDraftAssembler::Assemble(BudgetedSchemaIr budgeted) 
     message_plans.push_back(std::move(message_plan));
   }
 
+  // 拷贝/移动后的材料与需求、批准报告一起封装；BudgetedSchemaIr 在此消费后不可重复使用。
   auto draft = std::make_unique<protocol_plan::detail::PlanDraftData>();
   draft->schema_version = std::move(schema.schema_version);
   draft->protocol_id = std::move(schema.protocol_id);
@@ -4331,6 +4365,8 @@ PlanDraftAssemblyResult PlanDraftAssembler::Assemble(BudgetedSchemaIr budgeted) 
 }
 
 CompileResult FreezeBudgetedPlanDraft(protocol_plan::BudgetedPlanDraft draft) {
+  // 成功移交完整 owner；Builder 防御诊断在编译边界映射，不再冒充原配置的领域错误。
+  // 分配失败、Plan 预算超限和估算不一致各自保留现有映射，其余是内部构造契约违规。
   protocol_plan::PlanBuildResult frozen = protocol_plan::PlanBuilder::Freeze(std::move(draft));
   if (frozen.Succeeded()) {
     return CompileResult::Success(std::move(frozen).TakePlan());
@@ -4362,12 +4398,15 @@ CompileResult FreezeBudgetedPlanDraft(protocol_plan::BudgetedPlanDraft draft) {
 
 static ResourceBudgetResult CompileJsonToBudgetedSchema(
     std::string_view json_bytes, std::optional<std::size_t> plan_memory_limit) {
+  // 编排顺序：输入预检 → 有界 DOM/审计 → 自有 IR → 领域凭证 → 预算凭证。
   const JsonAuditLimits limits;
   CompileDiagnostic diagnostic;
   if (!RunStrictPrecheck(json_bytes, limits, diagnostic)) {
     return ResourceBudgetResult::Failure(std::move(diagnostic));
   }
 
+  // parser_pool 先构造、document 后构造，作用域退出先释放 DOM 再释放其解析池。
+  // BuildSchemaIr 已复制字符串/数组，作用域外的领域和预算阶段不借用输入或 DOM。
   SchemaIr schema;
   {
     const std::size_t parser_memory_bytes =

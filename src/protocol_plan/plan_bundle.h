@@ -16,6 +16,8 @@ namespace pae::protocol_plan {
 class PlanBuilder;
 
 // Mutable compiler/test transfer objects. Frozen PlanBundle storage uses the Frozen* types below.
+// 三层表示：可变传递对象 → 冻结的配置事实 → 热路径执行描述。
+// 后两层在同一 Plan 存储中，但用途不同；默认初始化值不代表配置已通过准入。
 
 struct FramingPlan {
   std::string id;
@@ -45,6 +47,7 @@ struct EnumEntryPlan {
   std::uint64_t raw_value = 0U;
 };
 
+// byte_* 以字节计，bit_* 以位计；容器索引属于本 Message，conversion 索引属于包级数组。
 struct FieldPlan {
   std::string id;
   ValueType value_type = ValueType::UINT64;
@@ -164,6 +167,7 @@ struct MessagePlan {
 #endif
 };
 
+// 引用已解析为包级索引，不再查找配置字符串；这不是传输注册或运行时业务路由。
 struct PipelinePlan {
   std::string id;
   std::string direction_id;
@@ -171,6 +175,7 @@ struct PipelinePlan {
   std::vector<std::size_t> message_indices;
 };
 
+// 冻结的配置事实用于查询和关联；字符串借用 Arena，数组接管元素析构而非内存释放。
 struct FrozenFramingPlan {
   FrozenString id;
   InputKind input_kind = InputKind::COMPLETE_RECORD;
@@ -278,6 +283,7 @@ struct FrozenMessagePlan {
   FrozenArray<FrozenFieldPlan> fields;
 };
 
+// 执行描述保存已核验的机器尺寸和基础值；位成员的掩码/移位在 FieldExecutionPlan。
 struct BitContainerExecutionPlan {
   std::size_t offset = 0U;
   std::size_t width = 0U;
@@ -302,6 +308,9 @@ struct EnumLookupExecutionPlan {
   std::size_t entry_index = 0U;
 };
 
+// 热路径读取预计算布局，不解释配置 JSON。普通字段 offset/width 是 Frame 字节范围，
+// 位成员指向容器并使用 bit_mask/bit_shift；input_ordinal 只为动态输入分配。
+// 枚举 begin/count 索引本 Message 的执行表，不能当全包字段索引。
 struct FieldExecutionPlan {
   std::size_t offset = 0U;
   std::size_t width = 0U;
@@ -349,6 +358,7 @@ struct TextActionExecutionPlan {
 };
 #endif
 
+// 描述是冻结的执行材料，不保存单帧业务值；可选文本方向与 Binary 描述按已准入分支使用。
 struct MessageExecutionPlan {
   std::size_t frame_size = 0U;
   std::size_t required_input_count = 0U;
@@ -371,11 +381,13 @@ struct MessageExecutionPlan {
 #endif
 };
 
+// 固定长度结构候选组，不表示完整性或字段语义通过，也不能据此合并 Pipeline 身份。
 struct CandidateGroupExecutionPlan {
   std::size_t frame_size = 0U;
   FrozenArray<std::size_t> message_indices;
 };
 
+// allowed 位图以全包消息索引置位；文本和变长候选另存索引，分组仅用于结构筛选。
 struct PipelineExecutionPlan {
   std::size_t framing_profile_index = 0U;
   FrozenArray<std::uint64_t> allowed_message_words;
@@ -388,6 +400,7 @@ struct PipelineExecutionPlan {
 #endif
 };
 
+// 按各消息最大需求决定 Workspace 槽容量；estimated_workspace_bytes 是逻辑计费，非 RSS。
 struct ExecutionResourceLayout {
   std::size_t max_fields_per_message = 0U;
   std::size_t max_input_fields_per_message = 0U;
@@ -400,6 +413,10 @@ struct ExecutionResourceLayout {
   std::size_t estimated_workspace_bytes = 0U;
 };
 
+// 对象置于 PlanOwner 的存储块内，自身不可复制/移动；转移 owner 不搬动这个对象。
+// 成员数组负责析构，存储块由 owner 释放。
+// 查询的视图/引用为借用，不增加引用或延长寿命；枚举值返回为独立值。
+// Frozen/const 访问不承诺任意共享操作线程安全、稳定 ABI 或进程内存上限。
 class PlanBundle final {
  public:
   PlanBundle(const PlanBundle&) = delete;
