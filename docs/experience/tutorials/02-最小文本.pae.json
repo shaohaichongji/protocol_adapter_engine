@@ -1,0 +1,39 @@
+{
+  "schema_version": "0.10",
+  "protocol_id": "tutorial_ascii",
+  "protocol_version": "1.0",
+  "display_name": "02 最小文本：独立收发模板",
+  "description": "从零设计的ASCII完整记录示例。解析接受PING加CRLF，组包生成PONG加CRLF。两种动作独立，不是自动应答服务。",
+  "source_ref": "SYNTHETIC_FROM_SCRATCH:tutorial_ascii",
+  "resource_profile": "desktop",
+  "framing_profiles": [{
+    "id": "record",
+    "display_name": "完整文本记录",
+    "description": "宿主提交完整记录；模板中的CRLF是记录内容，不代表本例已启用流式切帧。",
+    "source_ref": "SYNTHETIC_FROM_SCRATCH:tutorial_ascii#record",
+    "input_kind": "complete_record"
+  }],
+  "pipelines": [{
+    "id": "text_pipeline",
+    "display_name": "文本处理管线",
+    "description": "管线通过ID连接record输入规则和ping消息。direction_id是方向标识，不会自行创建网络接收或发送。",
+    "source_ref": "SYNTHETIC_FROM_SCRATCH:tutorial_ascii#pipeline",
+    "direction_id": "sample",
+    "input_framing_profile_id": "record",
+    "message_ids": ["ping"]
+  }],
+  "messages": [{
+    "id": "ping",
+    "display_name": "PING解析与PONG组包",
+    "description": "layout定义文本布局；segments按顺序组成模板，literal是固定文本。本例没有动态字段，所以fields为空。JSON里的转义序列由解析器转换成实际CR和LF字节。",
+    "source_ref": "SYNTHETIC_FROM_SCRATCH:tutorial_ascii#message",
+    "direction_id": "sample",
+    "layout": {
+      "kind": "text",
+      "encoding": "ascii",
+      "decode": {"segments": [{"kind": "literal", "text": "PING\r\n"}]},
+      "encode": {"segments": [{"kind": "literal", "text": "PONG\r\n"}]}
+    },
+    "fields": []
+  }]
+}

@@ -6,6 +6,8 @@
 
 ## 按顺序体验
 
+第一次阅读协议配置，优先进入 [中文配置教程](tutorials/README.md)：提供带中文说明的完整 JSON、结构关系图、逐字节解释及预期结果。原有 synthetic 配置主要保留作专项验证输入。
+
 1. [01 启动 Lab](01-Lab体验.md)：先用公开合成 JSON 和 YAML 各解析一次完整记录。
 2. [02 接入 SDK](02-SDK接入.md)：需要编写 C++ 宿主时，从 Static Release 的两个最小 consumer 开始。
 3. [03 配置、Schema 与边界](03-配置与边界.md)：再对照同协议 JSON/YAML、检查版本和诊断分层。

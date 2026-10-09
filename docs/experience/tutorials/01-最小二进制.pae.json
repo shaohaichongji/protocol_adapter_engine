@@ -1,0 +1,43 @@
+{
+  "schema_version": "0.9",
+  "protocol_id": "tutorial_binary",
+  "protocol_version": "1.0",
+  "display_name": "01 最小二进制：两字节大端数值",
+  "description": "从零设计的教学协议：一条记录共3字节，AA是固定标识，后两字节是无符号大端数值。例如AA 01 02解析为258。不是实际设备协议。",
+  "source_ref": "SYNTHETIC_FROM_SCRATCH:tutorial_binary",
+  "resource_profile": "desktop",
+  "framing_profiles": [{
+    "id": "record",
+    "display_name": "完整记录输入",
+    "description": "由宿主提供完整的3字节记录；本例不处理粘包、拆包，不负责从通信流寻找边界。",
+    "source_ref": "SYNTHETIC_FROM_SCRATCH:tutorial_binary#record",
+    "input_kind": "complete_record"
+  }],
+  "pipelines": [{
+    "id": "value_pipeline",
+    "display_name": "数值处理管线",
+    "description": "input_framing_profile_id引用上面的record；message_ids引用下面的value_record。ID是引用键，显示名称不参与引用。",
+    "source_ref": "SYNTHETIC_FROM_SCRATCH:tutorial_binary#pipeline",
+    "direction_id": "sample",
+    "input_framing_profile_id": "record",
+    "message_ids": ["value_record"]
+  }],
+  "messages": [{
+    "id": "value_record",
+    "display_name": "固定标识加数值",
+    "description": "frame_length_bytes是总字节数；matcher在偏移0处要求AA。direction_id与所属管线一致。解析时识别消息，组包时固定字节由规则写入。",
+    "source_ref": "SYNTHETIC_FROM_SCRATCH:tutorial_binary#message",
+    "direction_id": "sample",
+    "frame_length_bytes": 3,
+    "matcher": {"all": [{"kind": "fixed_bytes", "byte_offset": 0, "bytes": "AA"}]},
+    "fields": [{
+      "id": "value",
+      "display_name": "数值",
+      "description": "偏移从0开始，读取偏移1、2两个字节。big_endian表示高位字节在前：01 02得到1×256+2=258。UINT64是逻辑类型，线上的2字节只能表示0到65535。组包时调用方提供value，不提供AA。",
+      "source_ref": "SYNTHETIC_FROM_SCRATCH:tutorial_binary#value",
+      "value_type": "UINT64",
+      "wire": {"codec": "unsigned_integer", "byte_offset": 1, "byte_width": 2, "byte_order": "big_endian"},
+      "encode": {"source": "input"}
+    }]
+  }]
+}

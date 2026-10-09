@@ -24,7 +24,7 @@
 
 ## 当前交付身份
 
-首次上手以 [完整体验包入口](../deliverables/README.md) 为准：当前首选为 `deliverables/sdk/adeae30-experience/PAE-Lab-Windows-x64-adeae30.zip`，内含五个 SDK、配套 Lab、说明和示例。产品源码固定为 `adeae30`，SDK 文档为独立投影身份；详见 [体验包验证](engineering/experience-bundle-validation-20260927.md)。以下 b12ad80 为上一批对照，不能替代当前首次体验入口。
+首次上手以 [完整体验包入口](../deliverables/README.md) 为准：当前首选为 `deliverables/sdk/adeae30-tutorial-v2/PAE-Lab-Windows-x64-adeae30.zip`，内含五个 SDK、配套 Lab、说明和示例。先读[中文配置教程](experience/tutorials/README.md)。产品源码固定为 `adeae30`，SDK 文档与教学资料为独立增补身份；基础包见 [体验包验证](engineering/experience-bundle-validation-20260927.md)，教学增补见[验证记录](engineering/config-tutorial-validation-20261002.md)。以下 b12ad80 为上一批对照，不能替代当前首次体验入口。
 
 本机统一入口为 [`deliverables/README.md`](../deliverables/README.md)。上一批本地初版候选来自固定干净提交 `b12ad809bdbc35589e8e5755f0e4ad04f386fa10`：七个 SDK 包在 `deliverables/sdk/b12ad80/`，消费同批 SDK 的 standalone Lab 在 `deliverables/lab/b12ad80/`，该批对照优先 static Release。包含可选受限 YAML 入口，JSON 仍为 canonical 编译输入。构建及包外消费证据、归集校验见 [同基线归集记录](engineering/yaml-clean-delivery-validation-20260926.md)。用户已确认 static Release JSON/YAML 正常解析通过，Lab 已关闭；配置错误诊断等未测项保持边界。本地产物被 Git 忽略，仅 clone 仓库不会自动取得。
 

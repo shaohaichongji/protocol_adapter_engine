@@ -47,6 +47,7 @@ New-Item -ItemType Directory -Path $labTarget -Force | Out-Null
 Copy-Item -Path (Join-Path $labInput '*') -Destination $labTarget -Recurse -Force
 
 $rootDocs = @('README.md', '01-Lab体验.md', '02-SDK接入.md', '03-配置与边界.md')
+Copy-Item -LiteralPath (Join-Path $repo 'docs/experience/tutorials') -Destination (Join-Path $bundleRoot 'tutorials') -Recurse
 foreach ($name in $rootDocs) {
     Copy-Item -LiteralPath (Join-Path $repo "docs/experience/$name") -Destination (Join-Path $bundleRoot $name)
 }

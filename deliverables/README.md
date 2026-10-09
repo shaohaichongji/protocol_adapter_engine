@@ -2,7 +2,16 @@
 
 此目录集中本机可用的 PAE SDK 和配套 Lab，不是正式对外发布目录。导航纳入版本控制，`sdk/`、`lab/`、`evidence/` 中本地产物被 Git 忽略；仅 clone 仓库不会自动获得这些产物。
 
-## 当前首选：adeae30 Windows x64 本地体验包
+## 当前首选：adeae30 中文配置教学增补包
+
+入口：`sdk/adeae30-tutorial-v2/PAE-Lab-Windows-x64-adeae30/README.md`，完整ZIP位于同级目录。
+先读包内 `tutorials/README.md`：两份完整中文JSON配置、对象关系图、字节布局、Lab操作和预期结果。
+SDK/Lab仍是下面的adeae30产品，290个SDK/Lab文件与原包哈希一致；仅增补教学资料与导航，
+不是重新构建或新功能版本。教学身份为 `chinese-config-tutorial/2`，原包和v1保留。
+v2补充构建命令、字段速查和从协议表到SDK的练习，包含两个可执行配置错误案例。
+四个教学测试通过；未新增人工UI验收。见[增补验证](../docs/engineering/config-tutorial-validation-20261002.md)。
+
+## 基础包：adeae30 Windows x64 本地体验包
 
 完整包位于 `sdk/adeae30-experience/PAE-Lab-Windows-x64-adeae30.zip`，旁边的 `ZIP.sha256` 可核对压缩包；同目录保留解压前的完整包目录。解压后从包根 `README.md` 开始，默认直接运行 `lab/pae_protocol_lab_ui.exe`。五个 SDK 与一个 Lab static Release 部署使用固定产品源码 `adeae30d942ba42cc518c244c220730b7e462d2c`；SDK 文档另经 `experience-sdk-docs/1` 投影，二者不是同一身份。归集和解压后验证见[体验包验证](../docs/engineering/experience-bundle-validation-20260927.md)。
 
