@@ -1,5 +1,6 @@
 #include "public_ascii_host_adapter.h"
 
+// A2/public stream 组合：执行交给 HostEndpoint，同步回调内有界复制为上游可保存的 owned DTO。
 #include <algorithm>
 #include <limits>
 #include <new>
@@ -48,6 +49,7 @@ bool Range(ByteView frame, ByteView field, ByteRange& output) noexcept {
   return true;
 }
 
+// 候选只借用到回调返回；先核验身份、字段范围和逻辑预算，再复制 RX 或失败诊断输入。
 OperationResult CopyDecode(const Adapter& owner, const HostCandidateView& view) {
   OperationResult result;
   result.codec_called = true;
@@ -120,6 +122,7 @@ OperationResult CopyDecode(const Adapter& owner, const HostCandidateView& view) 
   return result;
 }
 
+// 成功 TX 回调使用 Encode 描述和本次输入投影，不额外 Decode，也不借用前次输出。
 OperationResult CopyEncode(const Adapter& owner, std::size_t message_index,
                            const std::vector<InputField>& inputs, ByteView bytes) {
   OperationResult result;
@@ -210,6 +213,7 @@ void AllocationCheckpoint(bool* fail_next_allocation) {
   }
 }
 
+// 本地复制抛异常只清除发布内容，保留已经发生的 Codec 结果；不能把它改写成前置未执行。
 void PreserveDecodeFacts(OperationResult& result, const HostCandidateView& view,
                          LocalStatus local_status) noexcept {
   result = {};
@@ -225,6 +229,8 @@ void PreserveDecodeFacts(OperationResult& result, const HostCandidateView& view,
 HostCallbackAction ObserveCandidate(const HostCandidateView& view, void* opaque) {
   auto& context = *static_cast<DecodeContext*>(opaque);
   ++context.observer_calls;
+  // 每个候选都有 observer；成功由业务 sink 复制，失败在这里复制，避免重复物化成功输出。
+  // stream 的 STOP 让本步至多一个候选；它不撤销候选消费，也不阻止该成功候选的业务回调。
   if (view.decode_status == CodecStatus::OK) {
     return context.stop_after_candidate ? HostCallbackAction::STOP : HostCallbackAction::CONTINUE;
   }
@@ -332,6 +338,7 @@ HostPrepareResult HostAdapter::Create(CompiledProtocol compiled, std::vector<Hos
           (binding.action != HostAction::DECODE && binding.action != HostAction::ENCODE)) {
         return result;
       }
+      // framing 决定完整记录/stream 接口；这里只接纳公开 ASCII_CRLF stream，而非任意切帧策略。
       if (binding.action == HostAction::DECODE) {
         const auto queried = QueryPipelineFramingDescription(compiled, binding.pipeline_index);
         if (queried.status != PipelineFramingQueryStatus::OK || !queried.value) return result;
@@ -368,6 +375,7 @@ HostPrepareResult HostAdapter::Create(CompiledProtocol compiled, std::vector<Hos
       result.host_status = HostStatus::RESOURCE_LIMIT_EXCEEDED;
       return result;
     }
+    // A1 保留 metadata 并复制描述；Host 新建自己的 channel 执行状态，不调用 A1 的 Decode/Encode。
     auto prepared = Adapter::AdoptCompiled(std::move(compiled), limits, previous_instance_bytes);
     result.status = prepared.status;
     if (!prepared.adapter) return result;
@@ -424,6 +432,7 @@ HostPrepareResult HostAdapter::Create(CompiledProtocol compiled, std::vector<Hos
         channels[binding].push_back(std::move(channel));
       }
     }
+    // 先按请求容量 admission，reserve 后再按实际 capacity 复算；两次门禁均通过才发布新 Host。
     auto local_accounted =
         Add(sizeof(HostAdapter), Multiply(bindings.capacity(), sizeof(HostBinding)));
     for (const auto& binding : bindings) {
@@ -587,6 +596,7 @@ StreamStepResult HostAdapter::SubmitStreamChunk(std::size_t binding, std::size_t
   }
   result.before = *before;
   result.after = *before;
+  // 拒绝发生在 Host 调用之前，before/after 不推进；新 chunk 不能覆盖上一 chunk 的未消费后缀。
   if (before->reset_required || before->frozen_cursor < before->frozen_input_bytes ||
       before->has_internal_work || chunk.empty() ||
       chunk.size() > StreamChunkCapacity(binding, flow)) {
@@ -644,6 +654,7 @@ StreamStepResult HostAdapter::RunStreamStep(std::size_t binding, std::size_t flo
 #if defined(PAE_PROTOCOL_LAB_ASCII_PUBLIC_A1_TEST_HOOKS)
   context.fail_next_allocation = &fail_next_callback_allocation_;
 #endif
+  // 有冻结后缀则 Push 该后缀；否则 Continue 内部工作。调用方修改原 chunk 不影响这份输入。
   result.host_called = true;
   result.host =
       has_suffix
@@ -665,6 +676,7 @@ StreamStepResult HostAdapter::RunStreamStep(std::size_t binding, std::size_t flo
       context.business_calls == result.host.business_callbacks_returned &&
       context.called == (result.host.candidates == 1U);
 
+  // 只按核验后的真实消费推进 cursor，即使后续候选复制失败，也不能回滚并重喂已消费字节。
   if (consumed_valid) {
     channel.cursor += result.host.bytes_consumed;
     if (channel.cursor == channel.frozen_input.size()) {
@@ -716,11 +728,14 @@ StreamStepResult HostAdapter::RunStreamStep(std::size_t binding, std::size_t flo
   } else if (channel.no_progress_steps != (std::numeric_limits<std::size_t>::max)()) {
     ++channel.no_progress_steps;
   }
+  // 工作预算耗尽/内部待办不是假死；无合法待办且连续两步无进展才标记本 Flow 故障。
   const bool no_progress_fault = channel.no_progress_steps >= 2U;
   if (!consumed_valid || !callbacks_valid || !counters_valid || !materialized || !accepted_host ||
       result.host.reset_required || no_progress_fault) {
     channel.faulted = true;
   }
+  // Codec/Host 已经执行后的复制失败保留 candidate 的失败事实并要求 Reset，不冒充“未消费”。
+  // 普通 Codec 失败候选本身不要求 Reset；上层查看 candidate 状态，不能只看本步 status==OK。
   if (!materialized && result.candidate) {
     result.status = result.candidate->local_status;
     result.diagnostic = StreamDiagnostic::CANDIDATE_COPY_FAILED_RESET_REQUIRED;
@@ -781,6 +796,7 @@ bool HostAdapter::Reset(std::size_t binding, std::size_t flow) noexcept {
   if (binding >= channels_.size() || flow >= channels_[binding].size()) return false;
   const auto reset = host_->Reset(channels_[binding][flow].handle);
   if (reset != HostStatus::OK) return false;
+  // Reset 推进 generation，使旧 handle 失效；先 Find/观察新 handle，再替换并清空该 Flow 本地态。
   auto found = host_->Find(bindings_[binding].endpoint, bindings_[binding].action, flow);
   if (found.status != HostStatus::OK) return false;
   auto& channel = channels_[binding][flow];

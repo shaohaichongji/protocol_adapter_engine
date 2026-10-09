@@ -8,6 +8,7 @@
 
 namespace pae::protocol_lab_ui {
 namespace {
+// 展示 DTO 没有独立 Decimal 枚举；借用 INT64 类型槽，另保留 Decimal 标志。
 FieldValueType UiType(pae::ValueKind kind) {
   switch (kind) {
     case pae::ValueKind::UINT64:
@@ -70,6 +71,7 @@ bool BuildPublicBinaryDescription(const pae::CompiledProtocol& compiled,
       error = "public Binary description requires compiled Schema 0.9";
       return false;
     }
+    // 局部完整构造后才发布，公开查询失败不向调用方留下半份描述。
     DocumentDescription built;
     built.layout = DocumentLayout::BINARY;
     built.schema_version = protocol->schema_version;
@@ -99,6 +101,7 @@ bool BuildPublicBinaryDescription(const pae::CompiledProtocol& compiled,
       message.source_ref = meta->source_ref;
       message.decode_available = false;
       message.encode_available = false;
+      // 冻结描述的最大记录尺寸；变长记录的实际范围由执行结果提供。
       message.frame_size = physical.value->record_length.maximum;
       built.max_frame_bytes = (std::max)(built.max_frame_bytes, message.frame_size);
       if (physical.value->maximum_integrity_storage)
@@ -128,6 +131,7 @@ bool BuildPublicBinaryDescription(const pae::CompiledProtocol& compiled,
         field.description = field_meta->description;
         field.source_ref = field_meta->source_ref;
         field.value_type = UiType(field_meta->value_kind);
+        // 不把 Decimal64 误作普通整数或浮点；显示层仍需区分 raw 与 coefficient@scale。
         field.decode_decimal64 = field_meta->value_kind == pae::ValueKind::DECIMAL64;
         field.decimal_conversion = field_meta->value_kind == pae::ValueKind::DECIMAL64;
         field.encode_source = UiSource(field_meta->encode_value_source);
@@ -137,6 +141,7 @@ bool BuildPublicBinaryDescription(const pae::CompiledProtocol& compiled,
         if (field_meta->encode_value_source != pae::EncodeValueSource::CALLER_INPUT &&
             field_meta->encode_value_source != pae::EncodeValueSource::NOT_REFERENCED)
           field.read_only_annotation = "constant/computed; read-only";
+        // 最大字节范围、变长上下界和物理 bit mask 均来自公开查询，不按 UI 猜测布局。
         if (field_physical.value->maximum_byte_range) {
           const auto& range = *field_physical.value->maximum_byte_range;
           field.byte_range = ByteRange{range.offset, range.length};
@@ -199,6 +204,7 @@ bool BuildPublicBinaryDescription(const pae::CompiledProtocol& compiled,
         error = "public Binary Pipeline framing facts are incompatible";
         return false;
       }
+      // Pipeline 方向列表按本关联的执行能力构造；Message 级可用性汇总所有 Pipeline。
       for (std::size_t a = 0U; a < meta->message_count; ++a) {
         const auto index = compiled.PipelineMessageIndex(p, a);
         const auto execution = index ? compiled.PipelineMessageExecution(p, *index) : std::nullopt;

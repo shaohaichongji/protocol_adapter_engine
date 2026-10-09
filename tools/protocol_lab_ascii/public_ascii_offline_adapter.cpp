@@ -1,5 +1,6 @@
 #include "public_ascii_offline_adapter.h"
 
+// 将公开描述/Codec 借用视图物化为 A1 自有 DTO；不依赖 private Plan，也不参与 UI 表示转换。
 #include <algorithm>
 #include <cstdint>
 #include <limits>
@@ -11,6 +12,7 @@ namespace {
 
 constexpr std::size_t kMax = (std::numeric_limits<std::size_t>::max)();
 
+// 饱和计费：溢出按最大需求处理，避免 wrap-around 绕过后续逻辑预算门禁。
 std::size_t Add(std::size_t left, std::size_t right) noexcept {
   return left > kMax - right ? kMax : left + right;
 }
@@ -81,6 +83,7 @@ bool PreflightAction(const CompiledProtocol& compiled, std::size_t message_index
   return true;
 }
 
+// 在复制前验证 ASCII/BYTES 描述并计费；方向关联只为实际可执行的 Message 计算槽位。
 bool PreflightDescription(const CompiledProtocol& compiled, const Limits& limits,
                           std::size_t& total) noexcept {
   const auto protocol = compiled.Protocol();
@@ -176,6 +179,7 @@ bool CopyDescription(const CompiledProtocol& compiled, OwnedDescription& output)
     pipeline.display_name.assign(source->display_name);
     pipeline.description.assign(source->description);
     pipeline.source_ref.assign(source->source_ref);
+    // 与预检方向计数一致，单向 Pipeline 不为不可用方向预留无用槽位。
     std::size_t decode_message_count = 0U;
     std::size_t encode_message_count = 0U;
     for (std::size_t association = 0U; association < source->message_count; ++association) {
@@ -246,6 +250,7 @@ bool CopyDescription(const CompiledProtocol& compiled, OwnedDescription& output)
   return true;
 }
 
+// 核验字段确在本次 frame 地址区间内，再计算真实 offset；不靠内容搜索，保留零长范围。
 bool CheckedRange(ByteView frame, ByteView field, ByteRange& range) noexcept {
   if (frame.data == nullptr || field.data == nullptr) return false;
   const auto begin = reinterpret_cast<std::uintptr_t>(frame.data);
@@ -311,6 +316,7 @@ std::optional<Adapter::PipelineCapacityObservation> Adapter::PipelineCapacitiesF
 
 PrepareResult Adapter::AdoptCompiled(CompiledProtocol compiled, const Limits& limits,
                                      std::size_t previous_instance_bytes) noexcept {
+  // 完成描述预检、Codec 创建及新旧实例重叠门禁后才发布 owner；失败不替换调用方旧实例。
   PrepareResult result;
   try {
     std::size_t description_bytes = 0U;
@@ -371,6 +377,7 @@ OperationResult Adapter::Decode(std::size_t pipeline_index, ByteView frame) noex
                                                                : LocalStatus::INVALID_INPUT;
     return result;
   }
+  // 前置输入门禁尚未执行 Codec；通过后恰好 Decode 一次，立即记录不可抹掉的执行事实。
   const auto decoded = codec_->Decode(pipeline_index, frame);
   result.codec_called = true;
   result.codec_status = decoded.status;
@@ -433,6 +440,7 @@ OperationResult Adapter::Decode(std::size_t pipeline_index, ByteView frame) noex
       return result;
     }
     AllocationCheckpoint();
+    // 在借用 view 失效前复制；临时 published 完成所有字段后才返回，异常不泄漏半份成功 DTO。
     OperationResult published = result;
     published.local_status = LocalStatus::OK;
     published.message_index = message->index;
@@ -467,6 +475,7 @@ OperationResult Adapter::Decode(std::size_t pipeline_index, ByteView frame) noex
 
 OperationResult Adapter::Encode(std::size_t pipeline_index, std::size_t message_index,
                                 const std::vector<InputField>& inputs) noexcept {
+  // 输入已经是原始字段字节；EncodeValue 只在本次同步调用借用它们，不重新解释 UI 文本。
   OperationResult result;
   if (inputs.size() > limits_.max_fields) {
     result.local_status = LocalStatus::RESOURCE_LIMIT;
@@ -510,6 +519,8 @@ OperationResult Adapter::Encode(std::size_t pipeline_index, std::size_t message_
       result.local_status = LocalStatus::MATERIALIZATION_FAILED;
       return result;
     }
+    // TX 按冻结 Encode segment 顺序与本次输入逐段核对，重复内容也不会误定位到前缀。
+    // 不使用 RX Decode 反推 TX 字段；Codec OK 后投影/预算失败仍保留 Codec OK、不给成功 frame。
     std::size_t cursor = 0U;
     std::size_t field_count = 0U;
     std::size_t needed = Add(sizeof(OperationResult), encoded.bytes_written);

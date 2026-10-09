@@ -1,5 +1,6 @@
 #include "public_binary_decode.h"
 
+// H1 公开执行与有界物化：Host 只执行一次，回调内复制数据并向上游提供非 Qt 的自有 DTO。
 #include <algorithm>
 #include <limits>
 #include <stdexcept>
@@ -7,6 +8,7 @@
 
 namespace pae::protocol_lab_binary::public_decode {
 namespace {
+// 计费溢出抛异常交由当前路径处理，不能绕过限额；按 capacity 复核不等于 RSS 计量。
 std::size_t Add(std::size_t a, std::size_t b) {
   if (b > std::numeric_limits<std::size_t>::max() - a) throw std::length_error("budget overflow");
   return a + b;
@@ -61,6 +63,8 @@ struct EncodeCallback {
 };
 HostCallbackAction Observe(const HostCandidateView& view, void* context) {
   auto& call = *static_cast<Callback*>(context);
+  // observer 每个候选都会收到；成功留给业务 sink 复制，失败在这里记录，不重复 Decode。
+  // STOP 只结束本步推进，不撤销该候选消费，成功候选仍会进入业务 sink。
   if (view.decode_status == CodecStatus::OK) return HostCallbackAction::STOP;
   Candidate candidate;
   candidate.codec_status = view.decode_status;
@@ -69,12 +73,14 @@ HostCallbackAction Observe(const HostCandidateView& view, void* context) {
   Require(Add(sizeof(Candidate), view.frame.size) <= call.limits.max_result_bytes);
   CopyFrame(candidate.frame, view.frame, call.limits);
   // A failed-field index does not prove the selected Message identity.
+  // 不用失败字段 flat index 猜 Message；失败 DTO 不发布已验证的身份、字段或物理存储范围。
   candidate.accounted_bytes = Account(candidate);
   Require(candidate.accounted_bytes <= call.limits.max_result_bytes);
   call.pending = std::move(candidate);
   return HostCallbackAction::STOP;
 }
 HostCallbackAction Output(const HostOutputView& view, void* context) {
+  // 所有 record/field/frame view 仅在同步回调内有效；复制前核对身份和最小需求，复制后复核容量。
   auto& call = *static_cast<Callback*>(context);
   Require(view.action == HostAction::DECODE && view.record.HasValue() &&
           view.message_index == view.record.MessageIndex() &&
@@ -136,6 +142,7 @@ HostCallbackAction Output(const HostOutputView& view, void* context) {
     field.flat_index = flat;
     field.id = named->field_ids[i];
     field.kind = field_view->Kind();
+    // 同时保留真实 raw 与逻辑值；kind 决定逻辑成员，raw optional 决定原始整数是否可展示。
     field.conversion_raw_kind = field_view->ConversionRawKind();
     field.conversion_raw_uint64 = field_view->ConversionRawUInt64();
     field.conversion_raw_int64 = field_view->ConversionRawInt64();
@@ -177,6 +184,7 @@ HostCallbackAction Output(const HostOutputView& view, void* context) {
         field.decimal = *field_view->Decimal();
         break;
     }
+    // 用本次实际帧长度解析物理布局；位字段不能伪装成连续字节范围，零长 BYTES 保留真实 offset。
     if (layout.value->physical_kind == FieldPhysicalKind::BYTE_RANGE) {
       Require(layout.value->byte_range.has_value());
       field.byte_range = layout.value->byte_range;
@@ -201,6 +209,7 @@ HostCallbackAction Output(const HostOutputView& view, void* context) {
   return HostCallbackAction::STOP;
 }
 HostCallbackAction EncodeOutput(const HostOutputView& view, void* context) {
+  // TX 只复制当前成功输出/输入副本并解析物理投影；没有额外 RX Decode 或 logical->raw 反算。
   auto& call = *static_cast<EncodeCallback*>(context);
   Require(view.action == HostAction::ENCODE && view.message_index == call.message_index &&
           (view.bytes.data || view.bytes.size == 0U) &&
@@ -247,6 +256,7 @@ HostCallbackAction EncodeOutput(const HostOutputView& view, void* context) {
     }
     encoded.fields.push_back(std::move(field));
   }
+  // 完整 DTO 计费通过后才设置 pending；抛异常由 Host 标记 CALLBACK_FAILED，不发布半份结果。
   encoded.accounted_bytes = Account(encoded);
   Require(encoded.accounted_bytes <= call.limits.max_result_bytes);
   call.pending = std::move(encoded);
@@ -290,6 +300,7 @@ Preparation Adapter::Create(std::string_view json, std::string_view endpoint,
     return result;
   }
   try {
+    // 一次编译后移入 AdoptCompiled；执行热路径不再解析 JSON。
     auto compiled = CompileProtocolJson(json);
     if (!compiled.Succeeded()) {
       if (compiled.Diagnostic()) result.diagnostic = *compiled.Diagnostic();
@@ -354,6 +365,7 @@ Preparation Adapter::AdoptCompiled(CompiledProtocol compiled, std::vector<Bindin
           result.status = LocalStatus::INVALID_BINDING;
           return result;
         }
+        // 只检查该绑定方向可执行的 Message，不能用同名 Pipeline 的另一方向推断支持。
         const bool available = binding.action == HostAction::DECODE
                                    ? execution->decode_available
                                    : execution->encode_available;
@@ -402,6 +414,7 @@ Preparation Adapter::AdoptCompiled(CompiledProtocol compiled, std::vector<Bindin
           result.status = LocalStatus::PREPARATION_FAILED;
           return result;
         }
+        // framing 契约决定入口，Binary stream 仅接纳下面三种策略，不泛化为 ASCII/任意切帧。
         if (framing.value->input_kind == PipelineInputKind::STREAM_CHUNK) {
           const bool binary_strategy =
               framing.value->strategy == PipelineFramingStrategy::FIXED_LENGTH ||
@@ -469,6 +482,8 @@ Preparation Adapter::AdoptCompiled(CompiledProtocol compiled, std::vector<Bindin
     }
     for (auto& flow : out->flows_)
       if (flow.stream.available) flow.stream.frozen_input.reserve(flow.stream.capacity);
+    // admission 包含冻结计划、Host、描述、Flow 结果/草稿峰值预留和实际 chunk capacity。
+    // 计费门禁通过才发布新 Adapter；replacement 另计旧实例重叠，不改调用方旧 owner。
     const auto memory = out->compiled_.MemoryReport();
     auto total = Add(sizeof(Adapter), memory.plan_accounted_bytes);
     total = Add(total, memory.metadata_accounted_bytes);
@@ -497,6 +512,7 @@ Preparation Adapter::AdoptCompiled(CompiledProtocol compiled, std::vector<Bindin
 }
 
 const Operation& Adapter::Decode(std::size_t flow, ByteView frame) {
+  // 前置拒绝返回独立拒绝槽，不替换原 Flow 成功；Host 真正执行后则以本次状态替换。
   rejected_ = {};
   if (flow >= flows_.size() || (frame.data == nullptr && frame.size != 0U) ||
       frame.size > limits_.max_frame_bytes) {
@@ -522,6 +538,7 @@ const Operation& Adapter::Decode(std::size_t flow, ByteView frame) {
     next.local_status = LocalStatus::MATERIALIZATION_FAILED;
   }
   // A Host action or attempted Decode replaces the old success, including callback/copy failure.
+  // 复制/回调失败也属于本次执行事实；清除旧成功，不能把上次字段当本次结果继续发布。
   if (next.host.codec_attempted || next.host.status == HostStatus::CALLBACK_FAILED)
     state.current = std::move(next);
   else
@@ -540,6 +557,7 @@ const Operation& Adapter::Encode(std::size_t binding, std::size_t message_index,
   }
   auto& state = flows_[flow_begin_[binding]];
   const auto reject = [&](LocalStatus status) -> const Operation& {
+    // 已定位 Encode Flow 后的本地输入拒绝清当前 TX，区别于非法 binding 的公共拒绝槽。
     state.current = {};
     state.current.local_status = status;
     return state.current;
@@ -601,6 +619,7 @@ const Operation& Adapter::Encode(std::size_t binding, std::size_t message_index,
   } catch (const std::exception&) {
     return reject(LocalStatus::RESOURCE_LIMIT);
   }
+  // EncodeValue 的 BYTES 同步借用 inputs；本次 Host Encode 返回前输入须保持有效且不变。
   EncodeCallback call{compiled_, messages_, limits_, message_index, inputs, {}};
   Operation next;
   next.host = host_->Encode(state.handle, message_index,
@@ -668,6 +687,7 @@ const StreamStep& Adapter::SubmitStreamChunk(std::size_t binding, std::size_t fl
     rejected_stream_.diagnostic = StreamDiagnostic::RESET_REQUIRED;
     return rejected_stream_;
   }
+  // 新 chunk 不覆盖未消费后缀/内部待办；这些前置拒绝不调用 Host，也不推进 Flow 状态。
   if (before->frozen_cursor < before->frozen_input_bytes || before->has_internal_work) {
     rejected_stream_.diagnostic = StreamDiagnostic::CONTINUE_REQUIRED;
     return rejected_stream_;
@@ -680,6 +700,7 @@ const StreamStep& Adapter::SubmitStreamChunk(std::size_t binding, std::size_t fl
     return rejected_stream_;
   }
   try {
+    // 冻结为 Flow 自有字节，外部 chunk 后续修改不会影响 Continue 的输入。
     stream.frozen_input.assign(chunk.begin(), chunk.end());
     stream.cursor = 0U;
   } catch (...) {
@@ -730,12 +751,14 @@ const StreamStep& Adapter::RunStreamStep(std::size_t binding, std::size_t flow) 
   const std::size_t submitted = has_suffix ? stream.frozen_input.size() - stream.cursor : 0U;
   Callback call{compiled_, messages_, limits_, {}};
   result.host_called = true;
+  // 有冻结后缀时 Push 它；否则 Continue 内部工作。候选 observer/sink 的 STOP 限定一步一候选。
   result.host = has_suffix ? host_->Push(state.handle,
                                          {stream.frozen_input.data() + stream.cursor, submitted},
                                          {Output, &call}, {Observe, &call})
                            : host_->Continue(state.handle, {Output, &call}, {Observe, &call});
   const bool consumed_valid = result.host.bytes_consumed <= submitted &&
                               result.host.bytes_consumed == result.host.framing.bytes_consumed;
+  // 先记录确认的消费；随后回调复制失败仍不得回滚 cursor 并再次提交已消费前缀。
   if (consumed_valid) {
     stream.cursor += result.host.bytes_consumed;
     if (stream.cursor == stream.frozen_input.size()) {
@@ -784,6 +807,7 @@ const StreamStep& Adapter::RunStreamStep(std::size_t binding, std::size_t flow) 
       result.host.reset_required) {
     stream.faulted = true;
   }
+  // 物化失败清 candidate，但保留 Host/消费事实并只故障当前 Flow；要求 Reset，不自动重试。
   if (result.host.status == HostStatus::CALLBACK_FAILED) {
     result.local_status = LocalStatus::MATERIALIZATION_FAILED;
     result.diagnostic = StreamDiagnostic::COPY_FAILED_RESET_REQUIRED;
@@ -812,6 +836,7 @@ HostStatus Adapter::Reset(std::size_t flow) noexcept {
   if (status == HostStatus::OK) {
     std::size_t binding = 0U;
     while (binding + 1U < flow_begin_.size() && flow_begin_[binding + 1U] <= flow) ++binding;
+    // Reset 已推进代次，旧 handle 不再可用；重新 Find 目标绑定内 Flow 后才替换本地 handle。
     auto found = host_->Find(bindings_[binding].endpoint, bindings_[binding].action,
                              flow - flow_begin_[binding]);
     if (found.status != HostStatus::OK) {
@@ -827,6 +852,7 @@ HostStatus Adapter::Reset(std::size_t flow) noexcept {
         flows_[flow].stream.faulted = true;
         return observed.status;
       }
+      // 清逻辑内容/游标/计数与当前结果，但复用已计费的冻结 Buffer capacity，不动其他 Flow。
       const auto available = flows_[flow].stream.available;
       const auto strategy = flows_[flow].stream.strategy;
       const auto maximum = flows_[flow].stream.maximum_candidate_frame_bytes;

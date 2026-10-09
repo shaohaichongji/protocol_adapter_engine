@@ -29,6 +29,7 @@ void Require(bool value, const char* detail) {
 void ChargeString(const std::string& value, std::size_t& total) {
   total = Add(total, value.capacity() + 1U);
 }
+// 按自有容器 capacity 计描述占用；加乘溢出即拒绝，不将逻辑预算宣称为 RSS。
 std::size_t AccountDescription(const DocumentDescription& description) {
   auto total = sizeof(DocumentDescription);
   ChargeString(description.schema_version, total);
@@ -236,6 +237,7 @@ std::unique_ptr<BinaryHostAdapter> BinaryHostAdapter::CreatePublic(
     Require(identity.document && identity.load && identity.session && identity.request &&
                 !identity.config_sha256.empty(),
             "public Binary identity is incomplete");
+    // 替换须同文档/加载/配置，session 恰为下一代；request 只检查非零，不比较递增。
     if (previous)
       Require(previous->identity_.document == identity.document &&
                   previous->identity_.load == identity.load &&
@@ -285,6 +287,7 @@ std::unique_ptr<BinaryHostAdapter> BinaryHostAdapter::CreatePublic(
     Require(adapter->description_copy_upper_bound_bytes_ <=
                 adapter->copy_controls_.description_copy_limit,
             "public Binary description copy preflight exceeded");
+    // 发布副本复制前检查描述上界、外部共存、旧实例和展示/草稿预留的准备峰值。
     auto before_copy = Add(mapped_description_bytes, adapter->description_copy_upper_bound_bytes_);
     before_copy = Add(before_copy, externally_retained_bytes);
     before_copy = Add(before_copy, preparation_coexisting_bytes);
@@ -296,6 +299,7 @@ std::unique_ptr<BinaryHostAdapter> BinaryHostAdapter::CreatePublic(
             "public Binary UI pre-description preparation budget exceeded");
     if (adapter->copy_controls_.before_description_copy)
       adapter->copy_controls_.before_description_copy(adapter->copy_controls_.context);
+    // 两份独立自有描述：一份供内部映射，一份供 DocumentSession 一次性接收。
     adapter->publication_description_ =
         std::make_unique<DocumentDescription>(*adapter->description_);
     adapter->ui_description_bytes_ = Add(AccountDescription(*adapter->description_),
@@ -354,6 +358,7 @@ std::unique_ptr<BinaryHostAdapter> BinaryHostAdapter::CreatePublic(
 
 const DocumentDescription& BinaryHostAdapter::Description() const noexcept { return *description_; }
 DocumentDescription BinaryHostAdapter::TakeDescription() {
+  // 移交发布副本而非内部描述；创建时的保守描述计费不会在移交后扣减。
   Require(publication_description_ != nullptr, "public Binary description already published");
   auto moved = std::move(*publication_description_);
   publication_description_.reset();
@@ -429,6 +434,7 @@ std::size_t BinaryHostAdapter::DraftLimit(std::size_t binding, std::size_t flow)
 }
 void BinaryHostAdapter::SaveAndSelect(std::u16string_view draft, std::size_t binding,
                                       std::size_t flow) {
+  // source 是离开的当前 Flow，target 是将进入的 Flow；这里只保存文本，不解析 Hex。
   const auto target = owner_->FlowIndex(binding, flow);
   const auto source = owner_->FlowIndex(selected_binding_, selected_flow_);
   Require(target < drafts_.size() && source < drafts_.size(),
@@ -475,6 +481,7 @@ bool BinaryHostAdapter::SaveDraftsAndSelect(
     auto pending_typed = typed_drafts;
 
     // All Lab-owned copies and budget checks complete before changing H1 or selection state.
+    // 草稿和 Message 选择先发布到源 Flow，最后才切换 binding/flow，避免错存到目标。
     if (!IsStreamDecode(selected_binding_, selected_flow_) && !owner_->SetDraft(source, ascii))
       return false;
     drafts_[source] = std::move(pending_inspect);
@@ -532,6 +539,7 @@ bool BinaryHostAdapter::SelectEncodeMessage(std::size_t binding, std::size_t flo
   const auto flat = owner_->FlowIndex(binding, flow);
   if (flat >= message_selections_.size()) return false;
   if (message_selections_[flat] != message_index) {
+    // 新 Message 有自己的字段索引空间，旧类型化输入和旧 TX 不能继续冒用。
     message_selections_[flat] = message_index;
     typed_drafts_[flat].clear();
     owner_->ClearCurrent(flat);
@@ -632,6 +640,7 @@ BinaryUiDecodeView BinaryHostAdapter::MapCandidate(
     std::size_t active_view_bytes, std::size_t input_peak_bytes) const {
   const auto upper = ResultCopyUpperBound(host, candidate);
   const auto budget = UiViewReserveBytes() / 2U;
+  // Decode 复制前合计上层保留、当前视图与输入峰值，再校验目标字符串/字段复制上界。
   auto occupied = Add(presentation_retained_bytes_, active_view_bytes);
   occupied = Add(occupied, input_peak_bytes);
   Require(
@@ -690,6 +699,7 @@ BinaryUiDecodeView BinaryHostAdapter::MapCandidate(
           break;
         }
         case pae::ValueKind::DECIMAL64:
+          // raw 使用 H1 实际转换输入，logical 保留精确 coefficient@scale，不反算 raw。
           Require(source_field.conversion_raw_kind.has_value(),
                   "public Binary Decimal64 result has no raw integer");
           field.raw_value = *source_field.conversion_raw_kind == pae::RawIntegerKind::UINT64
@@ -708,12 +718,14 @@ BinaryUiDecodeView BinaryHostAdapter::MapCandidate(
     return view;
   }
   auto& failure = view.failure.emplace();
+  // 新失败 DTO 不带旧成功字段；只有候选已确认的 Message 身份可以用于诊断。
   failure.host_status = host.status;
   failure.codec_status = host.codec_status;
   if (candidate) {
     failure.diagnostic_frame = candidate->frame;
     failure.message_index = candidate->message_index;
     // A failed flat Field index alone does not establish a Message identity.
+    // 全局失败字段索引本身不能确定 Message，也不能直接当作 Message 内字段索引。
   }
   failure.accounted_bytes = sizeof(BinaryUiDecodeFailure) + failure.diagnostic_frame.capacity();
   Require(failure.accounted_bytes <= upper && failure.accounted_bytes <= budget - occupied,
@@ -736,6 +748,7 @@ BinaryUiStreamView BinaryHostAdapter::MapStreamStep(
     return view;
   }
   if (!step.candidate && step.host.status == pae::HostStatus::OK) {
+    // 本步没有候选，不复用上一候选的成功结果或诊断帧。
     view.status = BinaryStreamPresentationStatus::NO_CANDIDATE;
     return view;
   }
@@ -756,6 +769,7 @@ BinaryUiStreamView BinaryHostAdapter::MapStreamStep(
 
 BinaryUiStreamView BinaryHostAdapter::ProjectStreamMappingFailure(
     const protocol_lab_binary::public_decode::StreamStep& step) const noexcept {
+  // 保留真实 Host 状态、消费与计数；仅报告 H2 物化失败，不回滚已发生的执行。
   BinaryUiStreamView view;
   view.status = BinaryStreamPresentationStatus::MATERIALIZATION_FAILURE;
   view.local_status = protocol_lab_binary::public_decode::LocalStatus::MATERIALIZATION_FAILED;
@@ -790,6 +804,7 @@ BinaryUiDecodeView BinaryHostAdapter::DecodeComplete(std::size_t binding, std::s
     view.failure.emplace().host_status = view.public_host.status;
     return view;
   }
+  // 完整记录的实际 Decode 入口；以下映射只复制本次 H1 结果。
   const auto& operation = owner_->Decode(owner_->FlowIndex(binding, flow),
                                          {frame.empty() ? nullptr : frame.data(), frame.size()});
   return MapOperation(operation, active_view_bytes);
@@ -848,6 +863,7 @@ BinaryUiStreamView BinaryHostAdapter::SubmitStream(std::size_t binding, std::siz
     rejected.diagnostic = protocol_lab_binary::public_decode::StreamDiagnostic::INVALID_CHUNK;
     return rejected;
   }
+  // H1 引用仅用于本次映射；返回值持有自己的展示数据，复制失败须 Reset 此 Flow。
   const auto& step = owner_->SubmitStreamChunk(binding, flow, chunk);
   try {
     return MapStreamStep(step, active_view_bytes, chunk.capacity());
@@ -888,6 +904,7 @@ BinaryUiStreamView BinaryHostAdapter::MapCurrentStream(std::size_t binding, std:
     if (observed) empty.before = empty.after = *observed;
     return empty;
   }
+  // 重显不推进 stream；已故障时只投影故障，首次复制失败才设置 H2 的故障标记。
   if (stream_mapping_faulted_[flat])
     return ProjectStreamMappingFailure(state->stream.current);
   try {
@@ -938,10 +955,12 @@ BinaryUiEncodeView BinaryHostAdapter::MapEncodeOperation(
       UiFieldResult field;
       field.field_index = index;
       field.id = described.id;
+      // TX 没有观测 RX raw：显示调用方 logical 或生成来源，绝不补做 Decode 反推 raw。
       field.raw_value = "未观察";
       field.logical_value = described.encode_source == FieldEncodeSource::NOT_REFERENCED
                                 ? "未参与本次 Encode"
                                 : "由 PAE 生成";
+      // 高亮使用 H1 本次 Encode 返回的实际物理范围，不拿描述最大范围替代。
       if (layout.byte_range)
         field.actual_range = ByteRange{layout.byte_range->offset, layout.byte_range->length};
       const auto input =
