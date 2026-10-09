@@ -17,6 +17,7 @@ QString UiText(const char* text) { return QCoreApplication::translate("PaeLabUi"
 
 }  // namespace
 
+// 终端显示模型自有帧和掩码快照，Qt parent 管理生命周期；不解析或验证报文。
 class HexView::Model final : public QAbstractTableModel {
  public:
   explicit Model(QObject* parent) : QAbstractTableModel(parent) {}
@@ -59,6 +60,7 @@ class HexView::Model final : public QAbstractTableModel {
       return Qt::AlignCenter;
     }
     const auto mask = highlight_masks_[byte_index];
+    // 背景标记整个 byte 单元格，不是逐 bit 绘图；tooltip 仍保留精确的位掩码。
     if (role == Qt::BackgroundRole && mask != 0U) {
       return QColor(255, 224, 128);
     }
@@ -92,6 +94,7 @@ class HexView::Model final : public QAbstractTableModel {
 
   void SetFrame(const std::vector<std::uint8_t>& frame,
                 const std::vector<PhysicalBitMask>& highlights) {
+    // 复制当前帧并从零重建掩码；同字节取 OR，越界高亮忽略，不继承上一帧标记。
     beginResetModel();
     frame_.assign(frame.begin(), frame.end());
     highlight_masks_.assign(frame_.size(), 0U);
@@ -105,6 +108,7 @@ class HexView::Model final : public QAbstractTableModel {
   }
 
   void ClearFrame() {
+    // 清内容但保留容器 capacity，清帧不表示释放全部展示占用。
     static const std::vector<std::uint8_t> empty_frame;
     static const std::vector<PhysicalBitMask> empty_highlights;
     SetFrame(empty_frame, empty_highlights);
@@ -113,6 +117,7 @@ class HexView::Model final : public QAbstractTableModel {
   std::size_t FrameSize() const noexcept { return frame_.size(); }
 
   std::size_t AccountedCapacityBytes() const noexcept {
+    // 两个自有 byte 容器的容量计费，不包括整个 Qt 对象，更不是进程 RSS。
     return frame_.capacity() + highlight_masks_.capacity();
   }
 

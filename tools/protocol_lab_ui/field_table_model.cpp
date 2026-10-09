@@ -105,6 +105,7 @@ QVariant FieldTableModel::data(const QModelIndex& index, int role) const {
   }
   const auto& row = rows_[static_cast<std::size_t>(index.row())];
   const UiFieldResult* result = nullptr;
+  // 描述行与执行字段按 index + 稳定 id 双重匹配，不能只拿结果向量的同一行位置。
   if (results_ != nullptr) {
     const auto found = std::find_if(results_->begin(), results_->end(), [&](const auto& value) {
       return value.field_index == field->field_index && value.id == field->id;
@@ -230,6 +231,7 @@ QVariant FieldTableModel::data(const QModelIndex& index, int role) const {
                                                           : UiText("解析结果");
       }
       return SourceName(field->encode_source);
+    // VALUE 是编辑草稿/只读说明；RAW_RESULT、LOGICAL_RESULT 只展示上层已有结果。
     case VALUE:
       if (field->ascii_text && !ReferencedByPresentedAction(*field, action_)) {
         return UiText("未被 %1 动作引用").arg(PresentedActionName(action_));
@@ -259,6 +261,7 @@ QVariant FieldTableModel::data(const QModelIndex& index, int role) const {
                  : QVariant(QString::fromUtf8(result->logical_value.data(),
                                               static_cast<int>(result->logical_value.size())));
     case PHYSICAL_LOCATION: {
+      // 当前结果范围优先；ASCII 无实际范围不猜位置，Binary 再用描述和可用帧长格式化。
       if (result != nullptr && result->actual_range.has_value()) {
         return QStringLiteral("%1 + %2")
             .arg(static_cast<qulonglong>(result->actual_range->offset))
@@ -311,6 +314,7 @@ Qt::ItemFlags FieldTableModel::flags(const QModelIndex& index) const {
 }
 
 bool FieldTableModel::setData(const QModelIndex& index, const QVariant& value, int role) {
+  // 解析及上层草稿提交通过后才发布合法行值；拒绝时保留可恢复的输入文本和校验错误。
   if (!editable_ || !index.isValid() || index.column() != VALUE) {
     return false;
   }
@@ -376,6 +380,7 @@ bool FieldTableModel::setData(const QModelIndex& index, const QVariant& value, i
 void FieldTableModel::Reset(const MessageDescriptor* message, DraftChanged draft_changed,
                             DraftInvalidated draft_invalidated, bool editable,
                             ByteRepresentation representation, FieldPresentationAction action) {
+  // Qt reset 通知包围借用切换；rows_ 重建，旧结果指针和实际范围状态不沿用。
   beginResetModel();
   message_ = message;
   results_ = nullptr;
@@ -444,12 +449,14 @@ void FieldTableModel::ApplyInvalidDrafts(
 }
 
 void FieldTableModel::ClearResults() {
+  // 仅解除结果借用并通知结果列刷新，不清合法/非法编辑草稿。
   results_ = nullptr;
   if (rows_.empty()) return;
   emit dataChanged(index(0, RAW_RESULT), index(rowCount() - 1, PHYSICAL_LOCATION));
 }
 
 void FieldTableModel::ApplyResults(const std::vector<UiFieldResult>& results) {
+  // 结果已由 Session/adapter 产生；这里不拷贝、不再次 Decode，也不由 logical 反算 raw。
   results_ = &results;
   if (!rows_.empty()) {
     emit dataChanged(index(0, RAW_RESULT), index(rowCount() - 1, PHYSICAL_LOCATION));

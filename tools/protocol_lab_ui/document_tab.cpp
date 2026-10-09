@@ -193,6 +193,7 @@ QString StreamPhaseName(StreamRuntimePhase value) {
 void FillFieldHighlights(const MessageDescriptor* message, const FieldDescriptor* field,
                          std::optional<std::size_t> actual_frame_size,
                          std::vector<PhysicalBitMask>& output) {
+  // 描述路径优先精确 bit mask；动态载荷没有可解析的实际范围时，不高亮最大占位。
   output.clear();
   if (message == nullptr || field == nullptr) {
     return;
@@ -225,6 +226,7 @@ std::vector<PhysicalBitMask> FieldHighlights(const MessageDescriptor* message,
 
 std::vector<PhysicalBitMask> ActualFieldHighlights(const std::vector<UiFieldResult>& results,
                                                    const FieldDescriptor* field) {
+  // token/公开动态字段用本次结果的实际范围，按 index + id 匹配；空范围不产生高亮。
   if (field == nullptr) return {};
   const auto found = std::find_if(results.begin(), results.end(), [&](const auto& result) {
     return result.field_index == field->field_index && result.id == field->id;
@@ -4042,6 +4044,7 @@ void DocumentTab::RefreshModePresentation() {
 }
 
 void DocumentTab::RefreshInspect() {
+  // 先重建只读表格；成功借用本次字段结果，失败仅展示诊断帧，未匹配不借当前选择。
   const auto* message = DisplayedMessage();
   field_model_->Reset(message, {}, {}, false, session_.representation(),
                       FieldPresentationAction::INSPECT);
@@ -4125,6 +4128,7 @@ void DocumentTab::RefreshInspect() {
 }
 
 void DocumentTab::RefreshPreview() {
+  // Encode 仅展示现有有效 preview；没有 preview 时清结果/实际长度/字节，仍保留草稿。
   field_model_->SetFailedField(std::nullopt);
   const int current_row = field_table_->currentIndex().row();
   if (!session_.preview().has_value()) {
@@ -4160,6 +4164,8 @@ void DocumentTab::RefreshPreview() {
 }
 
 void DocumentTab::RefreshFieldDetails(int row, bool refresh_frame) {
+  // 详情取 DisplayedMessage 和当前字段；只投影元数据/结果，不触发协议执行。
+  // RefreshPreview 回调本函数时传 false，避免详情刷新再递归更新预览帧。
   const auto* field = field_model_->FieldAt(row);
   const auto* message = DisplayedMessage();
   if (field == nullptr) {
@@ -4242,6 +4248,7 @@ void DocumentTab::RefreshFieldDetails(int row, bool refresh_frame) {
   }
 #endif
   std::optional<ByteRange> actual_result_range;
+  // ASCII/公开 Binary 优先采用匹配结果的 actual_range，描述长度边界不是执行偏移。
   if (session_.IsAsciiDocument()
 #if defined(PAE_BUILD_PROTOCOL_LAB_BINARY_PUBLIC_H2)
       || session_.BinaryHostActive()
@@ -4611,6 +4618,7 @@ void DocumentTab::InvalidateEditedDraft(std::size_t field_index) {
 
 void DocumentTab::FillInspectFailureHighlights(const MessageDescriptor* message,
                                                std::vector<PhysicalBitMask>& highlights) const {
+  // 失败标记只用于定位；ASCII 不推测 token 位置，未知 Message 不借其他描述高亮。
   highlights.clear();
   if (message == nullptr || !session_.inspect_failure().has_value()) return;
   if (session_.IsAsciiDocument()) return;
@@ -4631,6 +4639,7 @@ void DocumentTab::FillInspectFailureHighlights(const MessageDescriptor* message,
 }
 
 std::optional<std::size_t> DocumentTab::ActualFrameSize() const noexcept {
+  // 实际布局只取成功 Encode/Inspect 帧长；失败诊断帧的长度不当作有效布局依据。
   if (session_.mode() == OperationMode::ENCODE && session_.preview().has_value()) {
     return session_.preview()->encoded_frame.size();
   }
@@ -4654,6 +4663,7 @@ const MessageDescriptor* DocumentTab::CurrentMessage() const noexcept {
 }
 
 const MessageDescriptor* DocumentTab::DisplayedMessage() const noexcept {
+  // Encode 用当前选择；Inspect 用成功或失败已确认的 Message，没有确认身份则返回空。
   if (session_.mode() == OperationMode::ENCODE) return CurrentMessage();
   const auto* description = session_.description();
   if (description == nullptr) return nullptr;

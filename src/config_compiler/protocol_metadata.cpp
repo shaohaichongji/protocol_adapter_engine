@@ -10,6 +10,8 @@
 namespace pae::config_compiler {
 namespace {
 
+// 单块存储以此 header 开始，后接各自对齐的描述数组和文本区；offset 都相对于块起点。
+// metadata 只保留展示文本及索引，执行身份和规则仍由配对的冻结 Plan 持有。
 struct DescriptionHeader {
   std::size_t protocol_offset = 0U;
   std::size_t pipeline_offset = 0U;
@@ -30,6 +32,7 @@ struct DescriptionLayout {
 };
 
 static_assert(std::is_trivially_destructible_v<DescriptionHeader>);
+// 数组元素平凡析构，释放单块内存时不需逐元素析构；构造仍使用 placement new。
 static_assert(std::is_trivially_destructible_v<ProtocolMetadata>);
 static_assert(std::is_trivially_destructible_v<PipelineMetadata>);
 static_assert(std::is_trivially_destructible_v<MessageMetadata>);
@@ -66,6 +69,7 @@ bool AlignUp(std::size_t value, std::size_t alignment, std::size_t& result) noex
 template <typename T>
 bool AddArrayRegion(std::size_t count, std::size_t& cursor, std::size_t& object_bytes,
                     std::size_t& alignment_bytes, std::size_t& offset) noexcept {
+  // 用检查过的乘加推进游标，分别计入对象和对齐填充；不是先分配再检查预算。
   std::size_t aligned = 0U;
   if (!AlignUp(cursor, alignof(T), aligned) ||
       !CheckedAdd(alignment_bytes, aligned - cursor, alignment_bytes)) {
@@ -82,6 +86,7 @@ bool AddArrayRegion(std::size_t count, std::size_t& cursor, std::size_t& object_
 
 bool CalculateLayout(const ProtocolMetadataLayoutTestInput& input,
                      DescriptionLayout& layout) noexcept {
+  // Build 和 Audit 共用布局算法，按实际 sizeof/alignof 计算，不写死某平台字节数。
   layout = {};
   std::size_t cursor = 0U;
   if (!AddArrayRegion<DescriptionHeader>(1U, cursor, layout.report.object_bytes,
@@ -112,6 +117,7 @@ bool CalculateLayout(const ProtocolMetadataLayoutTestInput& input,
   layout.header.string_offset = cursor;
   layout.header.string_size = input.string_bytes;
   layout.report.string_bytes = input.string_bytes;
+  // field/enum 的 begin/count 已是描述对象成员，没有另建需要重复计费的索引数组。
   layout.report.index_bytes = 0U;
   layout.report.allocation_count = 1U;
   if (!CheckedAdd(cursor, input.string_bytes, layout.report.accounted_total_bytes)) {
@@ -192,6 +198,7 @@ const T* At(const std::byte* storage, std::size_t offset) noexcept {
 
 DescriptionStringSpan CopyString(std::string_view value, std::byte* storage,
                                  std::size_t& cursor) noexcept {
+  // 空文本也保留当前有效游标；只复制 payload 字节，不借用输入或补 NUL 终止符。
   DescriptionStringSpan span{cursor, value.size()};
   if (!value.empty()) {
     std::memcpy(storage + cursor, value.data(), value.size());
@@ -248,6 +255,7 @@ void ProtocolMetadataStorage::StorageDeleter::operator()(std::byte* storage) con
 }
 
 const ProtocolMetadata& ProtocolMetadataStorage::Protocol() const noexcept {
+  // 此组内部访问器依赖非空合法 owner；不像公开 CompiledProtocol 查询那样返回 optional。
   const DescriptionHeader* header = reinterpret_cast<const DescriptionHeader*>(storage_.get());
   return *At<ProtocolMetadata>(storage_.get(), header->protocol_offset);
 }
@@ -273,6 +281,7 @@ DescriptionArrayView<EnumMetadata> ProtocolMetadataStorage::Enums() const noexce
 }
 
 std::string_view ProtocolMetadataStorage::Resolve(DescriptionStringSpan span) const noexcept {
+  // 返回借用文本，无逐次复制；这里只核对整块范围，不能代替 Audit 的字符串区检查。
   std::size_t end = 0U;
   if (storage_ == nullptr || !CheckedAdd(span.offset, span.size, end) || end > storage_size_) {
     return {};
@@ -281,6 +290,7 @@ std::string_view ProtocolMetadataStorage::Resolve(DescriptionStringSpan span) co
 }
 
 std::size_t DerivedProtocolMetadataMemoryLimit(ResourceProfile resource_profile) noexcept {
+  // 上限用同一布局算法和 profile 最大数量推导，未知 profile/不可表示布局返回 0。
   const protocol_plan::ResourceProfileLimits* limits =
       protocol_plan::GetResourceProfileLimits(resource_profile);
   if (limits == nullptr) {
@@ -327,6 +337,7 @@ bool ProtocolMetadataPlanFreezeAllowedForTest(CompileDiagnostic& diagnostic) {
 
 bool ProtocolMetadataBuilder::Build(const BudgetedSchemaIr& budgeted, std::size_t memory_limit_bytes,
                                  ProtocolMetadataStorage& metadata, CompileDiagnostic& diagnostic) {
+  // 入口先释放旧 owner；失败时不保留旧 metadata，此前借用视图也不能继续使用。
   metadata = {};
   if (!TouchProbe(&ProtocolMetadataTestProbe::layout_count)) {
     diagnostic = InternalDiagnostic("test probe rejected protocol metadata layout");
@@ -344,6 +355,7 @@ bool ProtocolMetadataBuilder::Build(const BudgetedSchemaIr& budgeted, std::size_
     return false;
   }
   const std::size_t derived_limit = DerivedProtocolMetadataMemoryLimit(schema.resource_profile);
+  // 采用调用方限制与 profile 推导上限中的较小值，通过预算后才申请单块存储。
   const std::size_t effective_limit = (std::min)(memory_limit_bytes, derived_limit);
   if (derived_limit == 0U || layout.report.accounted_total_bytes > effective_limit) {
     diagnostic = CompileDiagnostic{CompileStage::RESOURCE_BUDGET,
@@ -375,6 +387,7 @@ bool ProtocolMetadataBuilder::Build(const BudgetedSchemaIr& budgeted, std::size_
     ++lifetime_probe->live_storage_count;
     lifetime_probe->live_accounted_bytes += layout.report.accounted_total_bytes;
   }
+  // 临时 RAII owner 覆盖构造、复制及末尾核验；中途失败由 deleter 回收，不发布半份描述。
   ProtocolMetadataStorage::StorageOwner storage{
       raw_storage,
       ProtocolMetadataStorage::StorageDeleter{lifetime_probe, layout.report.accounted_total_bytes}};
@@ -413,6 +426,7 @@ bool ProtocolMetadataBuilder::Build(const BudgetedSchemaIr& budgeted, std::size_
   }
   std::size_t field_cursor = 0U;
   std::size_t enum_cursor = 0U;
+  // 按 IR 的 Message/Field/Enum 顺序展平，供冻结后与 Plan 的局部索引和数量一一核对。
   for (std::size_t message_index = 0U; message_index < schema.messages.size(); ++message_index) {
     const MessageIr& source_message = schema.messages[message_index];
     MessageMetadata& target_message = messages[message_index];
@@ -442,6 +456,7 @@ bool ProtocolMetadataBuilder::Build(const BudgetedSchemaIr& budgeted, std::size_
     diagnostic = InternalDiagnostic("protocol metadata estimate and final write differ");
     return false;
   }
+  // 全部游标与估算一致后才转移 owner；Plan 冻结完成后还须通过独立 Audit 才组合发布。
   metadata =
       ProtocolMetadataStorage{std::move(storage), layout.report.accounted_total_bytes, layout.report};
   return true;
@@ -450,6 +465,8 @@ bool ProtocolMetadataBuilder::Build(const BudgetedSchemaIr& budgeted, std::size_
 bool ProtocolMetadataBuilder::Audit(const protocol_plan::PlanBundle& plan,
                                  const ProtocolMetadataStorage& metadata,
                                  CompileDiagnostic& diagnostic) {
+  // 发布前核对存储布局、计费、文本 span 及 Plan/metadata 连续索引关系。
+  // 不运行 Matcher/Codec，不验证业务执行成功或 source_ref 的来源真实性。
   if (!TouchProbe(&ProtocolMetadataTestProbe::index_audit_count)) {
     diagnostic = InternalDiagnostic("test probe rejected protocol metadata index audit");
     return false;
@@ -494,6 +511,7 @@ bool ProtocolMetadataBuilder::Audit(const protocol_plan::PlanBundle& plan,
   }
   std::size_t expected_field_begin = 0U;
   std::size_t expected_enum_begin = 0U;
+  // 各区间必须按配置顺序连续且覆盖完整表，不能仅靠总数量相等接受错误关联。
   for (std::size_t message_index = 0U; message_index < metadata.Messages().size(); ++message_index) {
     const MessageMetadata& message = metadata.Messages()[message_index];
     if (!CommonSpansWithin(string_begin, storage_size, message) ||

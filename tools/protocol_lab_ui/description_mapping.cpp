@@ -96,6 +96,7 @@ bool BuildPhysicalMapping(const protocol_plan::FrozenFieldPlan& field,
                           const protocol_plan::FieldExecutionPlan& execution,
                           const protocol_plan::MessageExecutionPlan& message_execution,
                           FieldDescriptor& output, std::string& error) {
+  // 兼容 Plan 路径：将容器数值位按执行字节序投影到物理字节，不能直接当作帧内位号。
   output.byte_offset = execution.offset;
   output.byte_width = execution.width;
   if (execution.bit_container_index == kInvalidIndex) {
@@ -132,6 +133,7 @@ bool BuildPhysicalMapping(const protocol_plan::FrozenFieldPlan& field,
       error = "field physical bit mapping exceeds frame size";
       return false;
     }
+    // 同一物理字节的掩码合并；显示中的局部位号统一为该字节的 LSB0。
     MergeBit(output.physical_bits, physical_byte,
              static_cast<std::uint8_t>(1U << (numeric_bit % 8U)));
   }
@@ -149,6 +151,8 @@ bool BuildPhysicalMapping(const protocol_plan::FrozenFieldPlan& field,
 bool BuildDocumentDescription(const protocol_plan::PlanBundle& plan,
                               const config_compiler::ProtocolMetadataStorage& sidecar,
                               DocumentDescription& output, std::string& error) {
+  // 索引关联 Plan 的执行事实与 sidecar 文案；字符串复制后不再借用 sidecar 的存储。
+  // 局部 built 完成才移交 output，不向展示层发布半份描述。
   error.clear();
   DocumentDescription built;
   const auto pipeline_metadata = sidecar.Pipelines();
@@ -345,6 +349,7 @@ bool BuildDocumentDescription(const protocol_plan::PlanBundle& plan,
     defined(PAE_PROTOCOL_LAB_STANDALONE_PUBLIC_ONLY)
 bool BuildDocumentDescription(const protocol_lab::ascii::DocumentDescription& source,
                               DocumentDescription& output, std::string& error) {
+  // legacy ASCII 描述只复制方向参与和长度边界，token 位置要等实际执行结果提供。
   DocumentDescription built;
   built.layout = DocumentLayout::ASCII_TEXT;
   built.schema_version = source.schema_version;
@@ -444,6 +449,7 @@ bool BuildDocumentDescription(const protocol_lab::ascii::DocumentDescription& so
 #if defined(PAE_BUILD_PROTOCOL_LAB_ASCII_PUBLIC_A2)
 bool BuildDocumentDescription(const protocol_lab_ascii::public_offline::OwnedDescription& source,
                               DocumentDescription& output, std::string& error) {
+  // 公开 ASCII 使用自有描述入口；没有当前结果时，不由长度上界猜测 token 的实际偏移。
   DocumentDescription built;
   built.layout = DocumentLayout::ASCII_TEXT;
   built.schema_version = source.schema_version;
@@ -537,6 +543,7 @@ bool BuildDocumentDescription(const protocol_lab_ascii::public_offline::OwnedDes
 #endif
 
 std::string FormatPhysicalLocation(const FieldDescriptor& field) {
+  // bit mask 优先；只有整字节范围时展开为 0xFF，global_bits = byte * 8 + 局部 LSB0 位。
   std::vector<PhysicalBitMask> masks = field.physical_bits;
   if (masks.empty() && field.byte_range.has_value()) {
     masks.reserve(field.byte_range->length);
@@ -566,6 +573,7 @@ std::optional<ByteRange> ResolveActualFieldRange(const MessageDescriptor& messag
     return field.byte_range;
   }
   const auto& bounded = *message.bounded_payload;
+  // 实际帧长减去固定头尾得到载荷长度，先校验边界；合法空载荷返回 length=0。
   if (actual_frame_size < bounded.min_frame_length ||
       actual_frame_size > bounded.max_frame_length ||
       actual_frame_size < bounded.header_length + bounded.trailer_length) {
@@ -581,6 +589,7 @@ std::optional<ByteRange> ResolveActualFieldRange(const MessageDescriptor& messag
 
 std::optional<ByteRange> ResolveActualIntegrityStorage(const MessageDescriptor& message,
                                                        std::size_t actual_frame_size) noexcept {
+  // 固定存储直接用描述；动态存储须有合法 bounded 帧长且校验宽度能容纳于 trailer。
   if (!message.integrity_storage.has_value()) return std::nullopt;
   if (!message.integrity_storage_at_payload_end) return message.integrity_storage;
   if (!message.bounded_payload.has_value()) return std::nullopt;
@@ -601,6 +610,7 @@ std::optional<ByteRange> ResolveActualIntegrityStorage(const MessageDescriptor& 
 
 std::string FormatPhysicalLocation(const MessageDescriptor& message, const FieldDescriptor& field,
                                    std::optional<std::size_t> actual_frame_size) {
+  // 无当前帧长只显示动态边界；解析后的空范围有独立文案，不高亮最大载荷占位。
   if (field.byte_length_bounds.has_value()) {
     if (!actual_frame_size.has_value()) {
       std::ostringstream output;

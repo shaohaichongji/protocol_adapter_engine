@@ -16,6 +16,7 @@ enum class FieldPresentationAction {
   INSPECT,
 };
 
+// Qt 字段展示与草稿编辑模型，不执行协议；行内编辑状态自有，描述及结果由上层保活。
 class FieldTableModel final : public QAbstractTableModel {
  public:
   enum Column {
@@ -62,15 +63,18 @@ class FieldTableModel final : public QAbstractTableModel {
   Qt::ItemFlags flags(const QModelIndex& index) const override;
   bool setData(const QModelIndex& index, const QVariant& value, int role = Qt::EditRole) override;
 
+  // 借用 message 并清旧结果/失败/实际长度；上层释放或替换 owner 前必须解除相应借用。
   void Reset(const MessageDescriptor* message, DraftChanged draft_changed,
              DraftInvalidated draft_invalidated = {}, bool editable = true,
              ByteRepresentation representation = ByteRepresentation::HEX,
              FieldPresentationAction action = FieldPresentationAction::ENCODE);
   bool PrepareCapacity(std::size_t row_capacity) noexcept;
   std::size_t AccountedRowCapacityBytes() const noexcept;
+  // 合法类型化草稿与非法原文本分别恢复；都不是本次 Codec 的 raw/logical 结果。
   void ApplyDrafts(const std::unordered_map<std::size_t, TypedDraft>& drafts);
   void ApplyInvalidDrafts(const std::unordered_map<std::size_t, InvalidDraftState>& invalid_drafts);
   void ClearResults();
+  // 保存容器指针而非复制快照；调用方须在借用期间保持该容器及其 owner 有效。
   void ApplyResults(const std::vector<UiFieldResult>& results);
   void SetActualFrameSize(std::optional<std::size_t> frame_size);
   void SetFailedField(std::optional<std::size_t> field_index);
@@ -90,6 +94,7 @@ class FieldTableModel final : public QAbstractTableModel {
                   QString& error) const;
   void EmitValueChanged(int row);
 
+  // FieldAt 返回同一描述内的借用字段，后续 Reset 或 owner 变更可能使旧引用失效。
   const MessageDescriptor* message_ = nullptr;
   const std::vector<UiFieldResult>* results_ = nullptr;
   std::vector<RowState> rows_;
