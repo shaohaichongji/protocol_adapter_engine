@@ -1,6 +1,6 @@
 # PAE Windows SDK 中文首次运行指南
 
-> 文档交付版投影：以固定产品提交 `513f6cc9bd46b64b3b6d1d4283f13c806039eebf` 的源码和示例为事实，
+> 文档交付版投影：以固定产品提交 `9680cf90512f053962949cb55467d6af35959088` 的源码和示例为事实，
 > 本文件为后续文档整理，包含公共头 UTF-8 接入说明，不是该提交的原始字节。
 > 派生 identity/hash 由包内 provenance 的 `documentation_overlay` 独立记录。
 ## 1. 定位和边界
@@ -10,7 +10,7 @@ Socket、串口、设备线程、重试、路由或业务状态。包内示例�
 协议、设备、现场或生产验收。
 
 本 SDK 是本地评审产物。Source、Static/Shared Debug/Release 的实际可用组合以所选包清单为准；
-同基线体验目录计划包含五包，产品源码固定为 `513f6cc9bd46b64b3b6d1d4283f13c806039eebf`。
+同基线体验目录计划包含五包，产品源码固定为 `9680cf90512f053962949cb55467d6af35959088`。
 文档准备不表示这五包及 Lab 已归集或验证。先读包根 `PROVENANCE.json`，确认 package kind、
 Debug/Release、x64、MSVC toolset、CRT、来源提交及 dirty 状态；再读 `PAE-SDK-README.md` 的许可和
 ABI 边界。不要混用 Debug consumer 与 Release 二进制包，也不要把同工具链验证扩大为稳定 ABI。

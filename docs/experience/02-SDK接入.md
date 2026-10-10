@@ -13,16 +13,25 @@ $BuildRoot = Join-Path (Split-Path $BundleRoot -Parent) 'pae-experience-static-r
 if (Test-Path -LiteralPath $BuildRoot) { throw 'Choose a fresh BuildRoot' }
 cmake -S (Join-Path $PackageRoot 'examples/getting_started') -B $BuildRoot `
   -G 'Visual Studio 18 2026' -A x64 -T 'v142,version=14.29.30133' `
-  "-DCMAKE_PREFIX_PATH=$PackageRoot"
+  "-DPAE_DIR:PATH=$PackageRoot/lib/cmake/PAE" "-DCMAKE_PREFIX_PATH=$PackageRoot"
 if ($LASTEXITCODE -ne 0) { throw 'JSON Configure failed' }
 cmake --build $BuildRoot --config Release --target pae_getting_started -- /m:1
 if ($LASTEXITCODE -ne 0) { throw 'JSON Build failed' }
-& (Join-Path $BuildRoot 'Release/pae_getting_started.exe') `
-  (Join-Path $PackageRoot 'share/pae/examples/config/synthetic_stream_framing_slice.pae.json')
-if ($LASTEXITCODE -ne 0) { throw 'JSON consumer failed' }
+Push-Location -LiteralPath $PackageRoot
+try {
+  & (Join-Path $BuildRoot 'Release/pae_getting_started.exe') `
+    'share/pae/examples/config/synthetic_stream_framing_slice.pae.json'
+  if ($LASTEXITCODE -ne 0) { throw 'JSON consumer failed' }
+} finally { Pop-Location }
 ```
 
 预期最后输出 `GETTING_STARTED_BINARY_PASS`。示例使用手写 `AA 00 07`，Decode 得到数值 7，再 Encode 回同一字节；这是公开合成协议，不是设备回环。
+
+五 SDK 的该示例源码另带 `getting-started-windows-path/1` 补丁，不是 9680cf9 原始字节。
+Windows 使用宽字符参数、filesystem 路径和扩展路径前缀读取配置，不修改系统长路径策略。
+从 SDK 包根传上述 ASCII 相对路径，或传实际配置绝对路径；用 API 启动子进程时必须明确
+设置 WorkingDirectory。最终包限定验证仅覆盖一个 Static Release 示例的实际长绝对/相对
+路径，不扩大为全部 Unicode、UNC、网络、权限、其他 SDK 组合或 Linux 路径验收。
 
 ## 2. 用另一个 BuildRoot 运行 YAML 示例
 
@@ -49,8 +58,8 @@ if ($LASTEXITCODE -ne 0) { throw 'YAML consumer failed' }
 - Source 包使用 `sdk/pae-sdk-source/`，配置其包内示例时以 `PAE_SOURCE_DIR` 指向包根；其 YAML 组件需显式启用。已有自身 CTest 的宿主应受控 `add_subdirectory` Source 包根，不把示例 CMake 当宿主子目录；宿主管理 `BUILD_TESTING`。
 - Static/Shared 包使用 `find_package(PAE CONFIG REQUIRED)` 和 `PAE::pae`；YAML 另请求 `COMPONENTS yaml_frontend` 并链接 `PAE::yaml_frontend`。当前 Static target 还有传递依赖，不要假设手工链接单个 `pae.lib` 足够。
 - Shared 选 `pae-sdk-shared-debug` 或 `pae-sdk-shared-release`，示例会把同包 `pae.dll` 放在 EXE 旁；自己的宿主也必须保证同包 DLL 可加载。切 Debug/Release 或 Source/Static/Shared 时均新建 BuildRoot。`CMAKE_PREFIX_PATH` 改动不会自动清除旧 cache 的 `PAE_DIR`。
-- 运行前先检查每包 `PROVENANCE.json` 的来源提交、配置、CRT 和 dirty 状态。五包的产品源码为 `513f6cc`，SDK 文档投影另记为 `aligned-sdk-docs/20261009`；每包 `MANIFEST.txt` / `SHA256SUMS.txt` 和总包清单是不同层次。
+- 运行前先检查每包 `PROVENANCE.json` 的来源提交、配置、CRT 和 dirty 状态。五包的产品源码为 `9680cf9`，SDK 文档投影另记为 `aligned-sdk-docs/20261010`；每包 `MANIFEST.txt` / `SHA256SUMS.txt` 和总包清单是不同层次。
 
 Codec 用于完整记录，Framer 从分块输入形成候选，Host 只在需要端点/方向绑定及回调时使用。先判状态再消费结果：失败 Decode 没有可交付 record，失败 Encode 的 Buffer 不可发送；回调借用数据跨调用需复制，Host 成功 Reset 后重新 `Find` handle。它们都不替宿主管理通信设备和业务线程。更多输入格式见[配置与边界](03-配置与边界.md)。
 
-本页给出后续解压验收应执行的 Static Release JSON/YAML 两个最小 consumer，文档准备阶段未执行它们；不代表所有组合、真实宿主或 ABI 验证。
+本页提供 Static Release JSON/YAML 两个最小 consumer 的使用命令。交付验证记录分别说明实际执行范围，不能把单个示例通过扩大为所有组合、真实宿主或 ABI 验证。

@@ -20,4 +20,4 @@ $BundleRoot = (Resolve-Path .).Path
 
 YAML 的 Hex 是 `PING\r\n`。两项均是合成完整记录的 Decode，不验证 Encode、分块流、错误配置诊断或真实设备。若配置不能加载，先看转换/编译诊断；若加载成功但解析失败，检查所选绑定、输入字节和执行状态，见[配置与边界](03-配置与边界.md)。
 
-后续隐藏 `--ui-smoke` 应使用 `synthetic_ascii_literal_only.pae.json` 与同名 YAML 验证启动和配置入口；这里的 Binary 界面步骤另行核验。本轮仅准备文档，界面中的绑定应用、Hex 输入和字段展示仍须由使用者按本页步骤观察，不能用自动 smoke 代替人工体验。
+隐藏 `--ui-smoke` 使用 `synthetic_ascii_literal_only.pae.json` 与同名 YAML 验证启动和配置入口；这里的 Binary 界面步骤另行核验。界面中的绑定应用、Hex 输入和字段展示仍须由使用者按本页步骤观察，不能用自动 smoke 代替人工体验。

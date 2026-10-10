@@ -1,6 +1,6 @@
 # PAE ProtocolPlan Execution Semantics V0.1 — Draft Slice
 
-> 交付版投影：据固定 `513f6cc9bd46b64b3b6d1d4283f13c806039eebf` 的
+> 交付版投影：据固定 `9680cf90512f053962949cb55467d6af35959088` 的
 > `schema/protocol_plan_execution_semantics_v0.1.md` 制作；本文件不是该提交的
 > 原始字节。规则、草案状态及限制正文未改。正文中的 `docs/engineering/` 和
 > `examples/config/` 均为**固定源码仓库相对路径的历史参考，未随体验包附带**，
@@ -8,7 +8,7 @@
 
 > 正文描述各阶段落盘时的能力与限制，包括早期 Lab 拒绝高版本的历史状态；它不是当前 Lab 能力表。
 > 离线首次使用按整包中文指南、公开头和实际配置验证进行，无须打开这些历史报告。
-> 如需追溯，可访问[固定源码在线参考](https://github.com/shaohaichongji/protocol_adapter_engine/tree/513f6cc9bd46b64b3b6d1d4283f13c806039eebf)。
+> 如需追溯，可访问[固定源码在线参考](https://github.com/shaohaichongji/protocol_adapter_engine/tree/9680cf90512f053962949cb55467d6af35959088)。
 
 ## 1. 文档状态
 

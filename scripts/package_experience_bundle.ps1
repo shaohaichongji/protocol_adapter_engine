@@ -136,6 +136,7 @@ if ($SdkPackageDirectories.Count -ne 5) { throw 'Exactly five SDK inputs are req
 $sdkIdentity = @()
 $sdkProvenances = @{}
 $sdkPayloadHashes = @{}
+$exampleOverlays = @()
 foreach ($name in $packages) {
     if (-not $SdkPackageDirectories.ContainsKey($name)) { throw "SDK mapping missing: $name" }
     $relative = [string]$SdkPackageDirectories[$name]
@@ -149,10 +150,25 @@ foreach ($name in $packages) {
         $provenance.documentation_overlay.version -cne $SdkOverlayIdentity -or -not $provenance.derived_package) { throw "Unexpected SDK identity: $name" }
     & $verifyScript -PackageRoot $inputRoot -Kind $kind -HasYaml:($kind -ne 'source')
     if (-not $?) { throw "SDK verification failed: $name" }
+    if ($provenance.PSObject.Properties.Name -contains 'example_overlay') {
+        $example = $provenance.example_overlay
+        if ($example.path -cne 'examples/getting_started/main.cpp' -or
+            $example.product_source_head -cne $ExpectedSourceHead -or
+            $example.version -cnotmatch '^[A-Za-z0-9._/-]+$') { throw "Unexpected example projection: $name" }
+        Assert-EvidenceHash (Join-Path $fixedSource $example.path) $example.original_sha256
+        Assert-EvidenceHash (Join-Path $inputRoot $example.path) $example.source_sha256
+        $exampleOverlays += $example
+    }
     $sdkProvenances[$name] = $provenance
     $sdkPayloadHashes[$name] = Get-PayloadHashes $inputRoot
     $sdkIdentity += [ordered]@{ name = $name; derived_package_id = $provenance.derived_package_id
         provenance_sha256 = (Get-FileHash -LiteralPath (Join-Path $inputRoot 'PROVENANCE.json')).Hash.ToLowerInvariant() }
+}
+if ($exampleOverlays.Count -ne 0 -and $exampleOverlays.Count -ne 5) { throw 'Example projection must be present in all five SDKs or none' }
+foreach ($example in $exampleOverlays) {
+    if ($example.version -cne $exampleOverlays[0].version -or
+        $example.source_sha256 -cne $exampleOverlays[0].source_sha256 -or
+        $example.original_sha256 -cne $exampleOverlays[0].original_sha256) { throw 'SDK example projections differ' }
 }
 # Use the Lab task's actual preparation provenance and deployed-file hashes, not a directory name as source proof.
 $labProvenance = Get-Content -LiteralPath $LabProvenancePath -Raw -Encoding UTF8 | ConvertFrom-Json
@@ -246,6 +262,7 @@ $identity = [ordered]@{
     qt_snapshot_version = '5.13.0'
     qt_redistribution_review = 'not_closed'
 }
+if ($exampleOverlays.Count) { $identity.example_overlay = $exampleOverlays[0] }
 [IO.File]::WriteAllText((Join-Path $bundleRoot 'BUNDLE-IDENTITY.json'), ($identity | ConvertTo-Json -Depth 12), $encoding)
 # Scan all package Markdown (inline links and reference definitions); local paths cannot escape the bundle.
 foreach ($file in Get-ChildItem -LiteralPath $bundleRoot -Recurse -File -Filter '*.md') {

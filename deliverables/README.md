@@ -2,7 +2,24 @@
 
 此目录集中本机可用的 PAE SDK 和配套 Lab，不是正式对外发布目录。导航纳入版本控制，`sdk/`、`lab/`、`evidence/` 中本地产物被 Git 忽略；仅 clone 仓库不会自动获得这些产物。
 
-## 当前首选：adeae30 中文配置教学增补包
+## 当前首选：9680cf9 派生 Windows x64 体验包
+
+入口：`sdk/9680cf9-experience-final/PAE-Lab-Windows-x64-9680cf9/README.md`，
+完整 ZIP 为同级 `PAE-Lab-Windows-x64-9680cf9.zip`，包外 `ZIP.sha256` 可核对。
+从包根中文教程开始；五 SDK 库与 static Release Lab 的固定产品源码为
+`9680cf90512f053962949cb55467d6af35959088`。五 SDK 的入门示例源码单独带
+`getting-started-windows-path/1` 补丁，不是 9680cf9 原始字节，不表示库/Lab 重建。
+SDK 文档身份为 `aligned-sdk-docs/20261010`，顶层导航为 `aligned-experience-docs/20261010`。
+各 SDK provenance 和根 `BUNDLE-IDENTITY.json` 分别记录原产品、示例补丁、文档及实际 hash。
+
+解包 314 文件、312 payload 清单/hash 一致，72 本地链接缺失 0；一个解包 Static Release
+入门示例新构建后绝对/相对配置路径均通过。Lab 19 文件与已通过 JSON/YAML smoke 的前候选
+完全一致，本轮沿用该证据、不重复 smoke；不是新人工 UI 验收或全组合回归。
+见[本轮归集验证第 10 节](../docs/engineering/aligned-experience-9680cf9-validation-20261010.md#10-修复示例的独立派生与最终限定交付)。
+原 `9680cf9-experience` 候选及失败日志保留，不与本最终派生包混用。
+仅限本地试用；Qt 再分发审查、稳定 ABI、Linux、真实设备和生产验收未闭合。
+
+## 上一批：adeae30 中文配置教学增补包
 
 入口：`sdk/adeae30-tutorial-v2/PAE-Lab-Windows-x64-adeae30/README.md`，完整ZIP位于同级目录。
 先读包内 `tutorials/README.md`：两份完整中文JSON配置、对象关系图、字节布局、Lab操作和预期结果。
@@ -19,7 +36,7 @@ v2补充构建命令、字段速查和从协议表到SDK的练习，包含两个
 
 ## 前一批 YAML 初版同基线候选（b12ad80）
 
-需要上一批回退对照时选择 `sdk/b12ad80/pae-sdk-static-release/` 和 `lab/b12ad80/static-release/`；首次试用使用上方 adeae30 体验包。下表路径相对于本 `deliverables/` 目录；七个 SDK 包与两个完整 Lab Release 部署均由干净的 `b12ad809bdbc35589e8e5755f0e4ad04f386fa10` 固定提交构建，当时按原字节归集。包内 `PROVENANCE.json`、清单和哈希未改，归集记录见[同基线验证](../docs/engineering/yaml-clean-delivery-validation-20260926.md)。
+需要上一批回退对照时选择 `sdk/b12ad80/pae-sdk-static-release/` 和 `lab/b12ad80/static-release/`；首次试用使用上方 9680cf9 最终派生体验包。下表路径相对于本 `deliverables/` 目录；七个 SDK 包与两个完整 Lab Release 部署均由干净的 `b12ad809bdbc35589e8e5755f0e4ad04f386fa10` 固定提交构建，当时按原字节归集。包内 `PROVENANCE.json`、清单和哈希未改，归集记录见[同基线验证](../docs/engineering/yaml-clean-delivery-validation-20260926.md)。
 
 | 用途 | 本目录下路径 |
 | --- | --- |
@@ -41,7 +58,7 @@ SDK 本轮七包从固定提交重新构建、安装、打包并完成包外消�
 
 ## 较早 YAML dirty 候选：构建目录已退役
 
-2026-09-26 较早 dirty 候选的 SDK 打包与 Lab 迁移构建目录已纳入 2026-09-27 五根清理，不再提供旧启动命令。首次试用使用上方 adeae30 完整体验包，回退对照使用 b12ad80。
+2026-09-26 较早 dirty 候选的 SDK 打包与 Lab 迁移构建目录已纳入 2026-09-27 五根清理，不再提供旧启动命令。首次试用使用上方 9680cf9 最终派生体验包，回退对照使用 b12ad80。
 
 历史身份仍为 `source_head=4da54b9`、`source_worktree_dirty=true`，不因清理或后续提交改变。必要日志、配置及来源清单归集在 `evidence/cleanup-five-20260927/`；不是旧二进制完整备份。历史验证报告中的原路径仅表示当时位置。
 

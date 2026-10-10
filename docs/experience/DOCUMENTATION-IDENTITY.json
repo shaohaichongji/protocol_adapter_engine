@@ -1,15 +1,15 @@
 {
-  "version": "aligned-experience-docs/20261009",
-  "product_source_head": "513f6cc9bd46b64b3b6d1d4283f13c806039eebf",
-  "note": "Preparation identity only. Teaching configs/code equal fixed product; Markdown is derived. SDK/Lab/ZIP validation pending.",
+  "version": "aligned-experience-docs/20261010",
+  "product_source_head": "9680cf90512f053962949cb55467d6af35959088",
+  "note": "Derived documentation identity. Teaching configs/code equal fixed product; getting_started example_overlay is independently recorded in SDK and BUNDLE provenance. Validation scope is recorded separately.",
   "files": [
     {
       "path": "01-Lab体验.md",
-      "sha256": "754d5f32cb4561ec0a696cf4b27b67c7cdc87099da1c93383380e160c6878cf9"
+      "sha256": "14613ce1caa3acc2c4b04fedadea623d8c062f4b797fb1f99098a46d36821581"
     },
     {
       "path": "02-SDK接入.md",
-      "sha256": "eec4ad0d87a5a5d27cce7203a7f2e204cda118ef7001426491fd796312020595"
+      "sha256": "bfc6ec549ea97b19b5c5a13c4eaeeb4107b2c880a892d1c1970084786ce7044a"
     },
     {
       "path": "03-配置与边界.md",
@@ -17,15 +17,15 @@
     },
     {
       "path": "README.md",
-      "sha256": "5962b0b95d70eb854fbc087fc5d5e8ef3f00fb97730d39cb6f4f9a6576a68293"
+      "sha256": "d1353b24dd693a74c8b3172008d5fa2c1c2d6336d5c2a648bfce132d2ba2bbe0"
     },
     {
       "path": "sdk-docs/docs/engineering/json_loader_diagnostic_contract_v0.1.md",
-      "sha256": "4bc0a5a9078105994f25dc5423853f49fe903a9ba99390cad40689856f8288d5"
+      "sha256": "97da38787bd6d82199e2792febd51ea191090137415bc6b62118c1743dec84b4"
     },
     {
       "path": "sdk-docs/schema/pae_yaml_profile_v0.1.md",
-      "sha256": "d8a87f64fc686dec01bbc07b05617db7450100646503ab482ebdacc21992169e"
+      "sha256": "fee441c70ec0758c39ca1183df50fe9c1f9d3eb98172e917c95b8d5c36d26c56"
     },
     {
       "path": "sdk-docs/schema/pae.schema.json",
@@ -33,15 +33,15 @@
     },
     {
       "path": "sdk-docs/schema/protocol_plan_execution_semantics_v0.1.md",
-      "sha256": "e9deff8c9e335f4c42a3597d19c6d72c37966af1aad3fd30060e64f6a031ed59"
+      "sha256": "70639323f6543e106ff61d38487495976776165e5b5dc88f74e1a5791c658011"
     },
     {
       "path": "sdk-docs/schema/README.md",
-      "sha256": "e9f8794b8c59236f95515e481b6a0ebd1c1c4eee94221141aa7aedba5828b26c"
+      "sha256": "2049c94c85f43d243bc1c3a39f35f0cda1016549e0d9e06ba82b830d56060f90"
     },
     {
       "path": "sdk-docs/schema/strict_json_profile_v0.1.md",
-      "sha256": "33574ec88936dad8827c7ecd7fa83eb8b7fe0b42c9baaa5d85c48d8b128e8e6d"
+      "sha256": "13d03a5a339de6e6b9cf73104a847e131a00b373158aec62d3dc692c7cb175d4"
     },
     {
       "path": "tutorials/01-配置结构与二进制.md",
@@ -77,7 +77,7 @@
     },
     {
       "path": "tutorials/README.md",
-      "sha256": "ff8ebf8a7f48c1fdddcd602156db4df15208e715031fd6b02f53e484418d758e"
+      "sha256": "07098259abf4e1e77645082212cd8179ff4829774f61dca0d5943bfa10d9f764"
     },
     {
       "path": "tutorials/verify.cpp",

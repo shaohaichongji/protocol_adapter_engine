@@ -2,9 +2,14 @@
 
 从本文件开始。整包解压后，以本文件所在目录作为体验包根；无需 clone 开发仓库，也不需要查找原机器的 `out/` 或 `deliverables/`。不要只取出 EXE 或某个 SDK 库文件。
 
-本套导航是本轮待归集的文档准备，对应固定产品源码 `513f6cc9bd46b64b3b6d1d4283f13c806039eebf` 。同基线 SDK/Lab 正在串行重建和复核；本导航不表示完整包已生成或验证。五个 SDK 归集时将记录 `aligned-sdk-docs/20261009` 派生包；包级中文导航也属于后续归集材料，不冒充该提交中的原文件。使用前核对根目录 `BUNDLE-IDENTITY.json`、`MANIFEST.txt`、`SHA256SUMS.txt` 和包外 `ZIP.sha256`，再核对所选 SDK 包的 `PROVENANCE.json`、`MANIFEST.txt`、`SHA256SUMS.txt`。产品源码身份与交付文档身份应分别记录。
+本套导航对应固定产品源码 `9680cf90512f053962949cb55467d6af35959088`，包含五个 SDK、配套 static Release Lab 与中文教程。SDK 文档投影身份为 `aligned-sdk-docs/20261010`，顶层导航另记 `aligned-experience-docs/20261010`，不冒充该提交中的原文件。使用前核对根目录 `BUNDLE-IDENTITY.json`、`MANIFEST.txt`、`SHA256SUMS.txt` 和包外 `ZIP.sha256`，再核对所选 SDK 包的 `PROVENANCE.json`、`MANIFEST.txt`、`SHA256SUMS.txt`。验证范围以交回记录为准，产品源码身份与交付文档身份分别记录。
 
 ## 按顺序体验
+
+本派生包另外包含 `getting-started-windows-path/1` 示例补丁：五 SDK 的
+`examples/getting_started/main.cpp` 使用 Windows 宽字符入口及扩展路径读取，
+与固定 9680cf9 的原示例不同；原/新 hash 在各 SDK provenance 和根身份中记录。
+库、DLL、Lab 和配置保持原产品字节，不把该示例补丁当作库的新构建。
 
 第一次阅读协议配置，优先进入 [中文配置教程](tutorials/README.md)：提供带中文说明的完整 JSON、结构关系图、逐字节解释及预期结果。原有 synthetic 配置主要保留作专项验证输入。
 

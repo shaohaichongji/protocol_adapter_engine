@@ -1,6 +1,6 @@
 # Public HostEndpoint example
 
-> 交付版投影：据固定 `513f6cc9bd46b64b3b6d1d4283f13c806039eebf` 的
+> 交付版投影：据固定 `9680cf90512f053962949cb55467d6af35959088` 的
 > `examples/public_api_host/README.md` 制作；仅将未随 SDK 附带的工程验证链接
 > 标为固定源码仓库历史参考，本文件不是该提交的原始字节。
 
@@ -35,7 +35,7 @@ $BuildRoot = Join-Path ([IO.Path]::GetTempPath()) 'pae-source-host'
 if (Test-Path -LiteralPath $BuildRoot) { throw 'Choose a fresh BuildRoot' }
 ```
 
-以下命令对应固定 `513f6cc` 源码仓库的历史参考
+以下命令对应固定 `9680cf9` 源码仓库的历史参考
 `docs/engineering/pae-public-host-stage2b-validation.md`（未随 PAE SDK 附带）；
 `<CONFIG>` 依次替换为 `Debug`、`Release`：
 

@@ -5,6 +5,7 @@
 
 #include <array>
 #include <cstdint>
+#include <filesystem>
 #include <fstream>
 #include <iomanip>
 #include <iostream>
@@ -18,8 +19,21 @@
 namespace {
 
 // 以原始字节读取配置，失败交给 Run 处理；示例不实现生产级文件大小限制或异常恢复。
-std::optional<std::string> ReadFile(const char* path) {
-  std::ifstream input(path, std::ios::binary);
+std::optional<std::string> ReadFile(const std::filesystem::path& path) {
+  auto file_path = path;
+#ifdef _WIN32
+  // Resolve relative paths before adding the extended prefix; do not depend on long-path policy.
+  std::error_code error;
+  file_path = std::filesystem::absolute(path, error);
+  if (error) return std::nullopt;
+  auto native = file_path.lexically_normal().make_preferred().native();
+  if (native.compare(0U, 4U, L"\\\\?\\") != 0) {
+    native = native.compare(0U, 2U, L"\\\\") == 0 ? L"\\\\?\\UNC\\" + native.substr(2U)
+                                                  : L"\\\\?\\" + native;
+  }
+  file_path = native;
+#endif
+  std::ifstream input(file_path, std::ios::binary);
   if (!input) return std::nullopt;
   return std::string(std::istreambuf_iterator<char>(input), std::istreambuf_iterator<char>());
 }
@@ -36,10 +50,14 @@ std::string Hex(const std::array<std::uint8_t, Size>& bytes) {
 }
 
 // 参数必须指向 synthetic_stream_framing_slice 的公开人工配置，而不是任意协议配置。
-bool Run(const char* config_path) {
+bool Run(const std::filesystem::path& config_path) {
   const auto config = ReadFile(config_path);
   if (!config.has_value()) {
-    std::cerr << "cannot read config: " << config_path << '\n';
+#ifdef _WIN32
+    std::wcerr << L"cannot read config: " << config_path.native() << L'\n';
+#else
+    std::cerr << "cannot read config: " << config_path.native() << '\n';
+#endif
     return false;
   }
 
@@ -116,7 +134,11 @@ bool Run(const char* config_path) {
 }  // namespace
 
 // 退出 2 表示参数不符，1 表示样例检查失败，0 仅表示此人工向量通过。
+#ifdef _WIN32
+int wmain(int argc, wchar_t** argv) {
+#else
 int main(int argc, char** argv) {
+#endif
   if (argc != 2) {
     std::cerr << "usage: pae_getting_started <synthetic_stream_framing_slice.pae.json>\n";
     return 2;

@@ -1,6 +1,6 @@
 # 最小公开 API 程序（Source 包）
 
-本文件是以固定产品 `513f6cc9bd46b64b3b6d1d4283f13c806039eebf` 为事实的文档投影，
+本文件是以固定产品 `9680cf90512f053962949cb55467d6af35959088` 为事实的文档投影，
 不是该提交原件。程序和 CMake 保持固定来源字节，只有说明路径经整理。
 
 本例读取[完整合成配置](../config/synthetic_stream_framing_slice.pae.json)，对 `fixed_rx`

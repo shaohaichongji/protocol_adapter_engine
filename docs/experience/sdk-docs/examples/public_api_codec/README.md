@@ -1,6 +1,6 @@
 # Public COMPLETE_RECORD Codec example
 
-> 交付版投影：据固定 `513f6cc9bd46b64b3b6d1d4283f13c806039eebf` 的
+> 交付版投影：据固定 `9680cf90512f053962949cb55467d6af35959088` 的
 > `examples/public_api_codec/README.md` 制作；仅将未随 SDK 附带的工程验证链接
 > 标为固定源码仓库历史参考，本文件不是该提交的原始字节。
 
@@ -36,7 +36,7 @@ cmake --build $BuildRoot --config Release --target pae_public_codec_example -- /
 成功输出为 `PUBLIC_CODEC_EXAMPLE gate=PASS`，失败退出码为 1。
 
 阶段 1B 的既有验证报告记录该 metadata 驱动示例在 Windows x64 Debug/Release 均通过。
-固定 `513f6cc` 源码仓库历史参考（未随 PAE SDK 附带）：
+固定 `9680cf9` 源码仓库历史参考（未随 PAE SDK 附带）：
 `docs/engineering/pae-public-codec-slice-validation.md`、
 `docs/engineering/pae-public-consumer-metadata-validation.md`。
 这是限定工具链和合成配置范围内的结果，不代表独立 SDK/安装包、Lab 迁移、Linux、真实协议、硬件、

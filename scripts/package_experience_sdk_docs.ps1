@@ -7,7 +7,11 @@ param(
     [Parameter(Mandatory = $true)][ValidateSet("source", "static", "shared")][string]$Kind,
     [Parameter(Mandatory = $true)][bool]$HasYaml,
     [Parameter(Mandatory = $true)][ValidatePattern('^[0-9a-f]{40}$')][string]$ExpectedSourceHead,
-    [Parameter(Mandatory = $true)][ValidatePattern('^[A-Za-z0-9._/-]+$')][string]$OverlayIdentity
+    [Parameter(Mandatory = $true)][ValidatePattern('^[A-Za-z0-9._/-]+$')][string]$OverlayIdentity,
+    [string]$ExampleOverlayPath,
+    [ValidatePattern('^[A-Za-z0-9._/-]+$')][string]$ExampleOverlayIdentity,
+    [ValidatePattern('^[0-9a-fA-F]{64}$')][string]$ExpectedBaseExampleSha256,
+    [ValidatePattern('^[0-9a-fA-F]{64}$')][string]$ExpectedExampleSha256
 )
 
 $ErrorActionPreference = "Stop"
@@ -130,8 +134,34 @@ if ($originalProvenance.package_kind -cne $Kind -or
 $baseManifestHash = (Get-FileHash -LiteralPath (Join-Path $sourceRoot "MANIFEST.txt") -Algorithm SHA256).Hash.ToLowerInvariant()
 $baseHashListHash = (Get-FileHash -LiteralPath (Join-Path $sourceRoot "SHA256SUMS.txt") -Algorithm SHA256).Hash.ToLowerInvariant()
 $baseProvenanceHash = (Get-FileHash -LiteralPath (Join-Path $sourceRoot "PROVENANCE.json") -Algorithm SHA256).Hash.ToLowerInvariant()
+$exampleOverlay = $null
+$exampleParameters = @('ExampleOverlayPath', 'ExampleOverlayIdentity', 'ExpectedBaseExampleSha256', 'ExpectedExampleSha256')
+$specifiedExampleParameters = @($exampleParameters | Where-Object { $PSBoundParameters.ContainsKey($_) })
+if ($specifiedExampleParameters.Count -ne 0) {
+    if ($specifiedExampleParameters.Count -ne $exampleParameters.Count -or
+        [string]::IsNullOrWhiteSpace($ExampleOverlayPath) -or [string]::IsNullOrWhiteSpace($ExampleOverlayIdentity)) {
+        throw 'Example projection requires all four explicit parameters'
+    }
+    $exampleRelative = 'examples/getting_started/main.cpp'
+    $baseExampleHash = (Get-FileHash -LiteralPath (Join-Path $sourceRoot $exampleRelative)).Hash.ToLowerInvariant()
+    $exampleHash = (Get-FileHash -LiteralPath $ExampleOverlayPath).Hash.ToLowerInvariant()
+    if ($baseExampleHash -cne $ExpectedBaseExampleSha256.ToLowerInvariant() -or
+        $exampleHash -cne $ExpectedExampleSha256.ToLowerInvariant()) {
+        throw 'Example projection base or replacement hash mismatch'
+    }
+    $exampleOverlay = [ordered]@{
+        version = $ExampleOverlayIdentity
+        product_source_head = $ExpectedSourceHead
+        path = $exampleRelative
+        original_sha256 = $baseExampleHash
+        source_sha256 = $exampleHash
+    }
+}
 $identityText = @($ExpectedSourceHead, $baseManifestHash, $baseHashListHash, $OverlayIdentity) +
     @($overlayEntries | Sort-Object destination | ForEach-Object { "$($_.destination):$($_.source_sha256)" })
+if ($null -ne $exampleOverlay) {
+    $identityText += @($ExampleOverlayIdentity, "$($exampleOverlay.path):$($exampleOverlay.original_sha256):$($exampleOverlay.source_sha256)")
+}
 $identityBytes = [System.Text.Encoding]::UTF8.GetBytes(($identityText -join "`n"))
 $derivedId = [Convert]::ToHexString([System.Security.Cryptography.SHA256]::HashData($identityBytes)).ToLowerInvariant()
 
@@ -150,6 +180,13 @@ foreach ($item in $mapping) {
         New-Item -ItemType Directory -Path $targetParent -Force | Out-Null
     }
     Copy-Item -LiteralPath (Join-Path $overlayRootPath $item.source) -Destination $target -Force
+}
+
+if ($null -ne $exampleOverlay) {
+    Copy-Item -LiteralPath $ExampleOverlayPath -Destination (Join-Path $destination $exampleOverlay.path)
+    if ((Get-FileHash -LiteralPath (Join-Path $destination $exampleOverlay.path)).Hash.ToLowerInvariant() -cne $exampleOverlay.source_sha256) {
+        throw 'Copied example projection hash mismatch'
+    }
 }
 
 $derivedProvenance = [ordered]@{
@@ -178,6 +215,10 @@ $derivedProvenance = [ordered]@{
     }
     generated_utc = [DateTime]::UtcNow.ToString("yyyy-MM-ddTHH:mm:ssZ")
 }
+if ($null -ne $exampleOverlay) {
+    $derivedProvenance.example_overlay = $exampleOverlay
+    $derivedProvenance.source_snapshot_note += ' The explicitly identified getting_started source patch is separate from the base product build; no library or runtime rebuild is implied.'
+}
 $derivedProvenance | ConvertTo-Json -Depth 8 |
     Set-Content -LiteralPath (Join-Path $destination "PROVENANCE.json") -Encoding UTF8
 
@@ -201,6 +242,7 @@ $hashEntries | Set-Content -LiteralPath $hashPath -Encoding ascii
 # Source files outside the exact documentation whitelist and metadata must remain byte-identical.
 $allowed = @{}
 foreach ($item in $mapping) { $allowed[$item.destination] = $true }
+if ($null -ne $exampleOverlay) { $allowed[$exampleOverlay.path] = $true }
 foreach ($file in Get-ChildItem -LiteralPath $sourceRoot -Recurse -File) {
     $relative = $file.FullName.Substring($sourceRoot.Length + 1).Replace('\', '/')
     if ($relative -in $baseMetadataNames -or $allowed.ContainsKey($relative)) { continue }

@@ -1,6 +1,6 @@
 # Third-party Source Policy
 
-> 交付版投影：据固定 `513f6cc9bd46b64b3b6d1d4283f13c806039eebf` 的
+> 交付版投影：据固定 `9680cf90512f053962949cb55467d6af35959088` 的
 > `third_party/README.md` 制作；仅将未随 PAE SDK 附带的 Qt 说明链接改为
 > 固定源码仓库历史参考，本文件不是该提交的原始字节。
 
