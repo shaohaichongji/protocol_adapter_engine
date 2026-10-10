@@ -1,20 +1,19 @@
 # PAE Windows SDK 中文首次运行指南
 
-> 交付版投影：据固定 `adeae30d942ba42cc518c244c220730b7e462d2c` 的
-> `docs/sdk/README.md` 制作；本文件不是该提交的原始字节。仅整理包身份、
-> 旧示例叙述和历史证据入口，公开接口规则仍以本包头文件为准。
-
+> 文档交付版投影：以固定产品提交 `513f6cc9bd46b64b3b6d1d4283f13c806039eebf` 的源码和示例为事实，
+> 本文件为后续文档整理，包含公共头 UTF-8 接入说明，不是该提交的原始字节。
+> 派生 identity/hash 由包内 provenance 的 `documentation_overlay` 独立记录。
 ## 1. 定位和边界
 
 PAE 把协议规则编译为冻结 Plan，再由公开 Codec、StreamFramer 或 Host 接口消费。它不默认管理
 Socket、串口、设备线程、重试、路由或业务状态。包内示例使用从零设计的公开合成配置，不代表真实
 协议、设备、现场或生产验收。
 
-本 SDK 是本地评审产物，不是正式发布。先读**当前所选包根**的 `PROVENANCE.json`，
-确认 package kind、Debug/Release、x64、MSVC toolset、CRT、来源提交及 dirty 状态；
-再读同包 `PAE-SDK-README.md` 的许可和 ABI 边界。不要用旧批次说明或总包导航代替
-包自身 provenance，不要混用 Debug consumer 与 Release 二进制包，也不要把同工具链验证
-扩大为稳定 ABI。
+本 SDK 是本地评审产物。Source、Static/Shared Debug/Release 的实际可用组合以所选包清单为准；
+同基线体验目录计划包含五包，产品源码固定为 `513f6cc9bd46b64b3b6d1d4283f13c806039eebf`。
+文档准备不表示这五包及 Lab 已归集或验证。先读包根 `PROVENANCE.json`，确认 package kind、
+Debug/Release、x64、MSVC toolset、CRT、来源提交及 dirty 状态；再读 `PAE-SDK-README.md` 的许可和
+ABI 边界。不要混用 Debug consumer 与 Release 二进制包，也不要把同工具链验证扩大为稳定 ABI。
 
 ## 2. 选择 source、static 或 shared
 
@@ -24,10 +23,9 @@ Socket、串口、设备线程、重试、路由或业务状态。包内示例�
 | static | 希望链接安装包中的静态库 | `CMAKE_PREFIX_PATH=$PackageRoot` | consumer 相邻目录没有 `pae.dll` |
 | shared | 希望链接安装包中的 DLL | `CMAKE_PREFIX_PATH=$PackageRoot` | 示例规则复制包内 `pae.dll` 到程序旁 |
 
-下文命令示范 `Visual Studio 18 2026 / x64 / v142 14.29.30133`；实际工具链与 CRT
-以所选包 provenance 和该批验证为准。装有 YAML 前端的二进制包额外提供静态
-`PAE::yaml_frontend`；JSON-only 包不提供该组件。shared、Debug 和 Source 的实际验证
-范围不能仅由包名推断。
+下文示范 `Visual Studio 18 2026 / x64 / v142 14.29.30133`；实际工具链版本须结合包
+provenance 和同批构建记录核对，通用 `MSVC x64` 字段不包含完整 toolset 证明。带 YAML 的二进制包额外提供静态 `PAE::yaml_frontend`；JSON-only 包不提供该组件。
+shared 和 Debug 是否在某一批包中实际验证，以该批独立验证记录为准，不能由包名推断。
 
 ## 3. 先运行最小程序
 
@@ -37,7 +35,7 @@ Socket、串口、设备线程、重试、路由或业务状态。包内示例�
 $PackageRoot = (Resolve-Path .).Path
 $Configuration = 'Release'
 $PackageName = Split-Path $PackageRoot -Leaf
-$BuildParent = [IO.Path]::GetTempPath()  # 包外目录，不污染体验包清单
+$BuildParent = [IO.Path]::GetTempPath()  # 包外目录
 $BuildRoot = Join-Path $BuildParent "pae-getting-started-$PackageName-$Configuration"
 if (Test-Path -LiteralPath $BuildRoot) { throw 'Choose a fresh BuildRoot' }
 $Config = if (Test-Path -LiteralPath "$PackageRoot\share\pae\examples\config\synthetic_stream_framing_slice.pae.json") {
@@ -111,7 +109,7 @@ if ($LASTEXITCODE -ne 0) { throw 'PAE YAML SDK consumer failed' }
 成功标志为 `PAE_YAML_SDK_CONSUMER_PASS`：YAML 转成严格 JSON 后仍走公开 Compiler/Codec。
 JSON-only 包请求 YAML 组件会在 Configure 阶段拒绝；不要把这项预期拒绝当作运行失败。
 
-已有自身 CTest 的宿主接入 Source 包时，直接受控加入包根，而不是把示例 CMake 当成宿主子目录。以下是受控宿主形状；本批包内示例的实际 CMake 行为仍以其源文件和专项验证为准：
+已有自身 CTest 的宿主接入 Source 包时，直接受控加入包根；不要把包内示例 CMake 当成自己的宿主入口。示例的目录作用域选项服务于独立演示，宿主仍管理自身 BUILD_TESTING。以下是最小接入形状：
 
 ```cmake
 include(CTest)  # 宿主管理自己的 BUILD_TESTING
@@ -123,10 +121,35 @@ add_executable(my_pae_consumer main.cpp)
 target_link_libraries(my_pae_consumer PRIVATE PAE::pae)
 ```
 
-目标源码 `main.cpp` 由宿主提供，确需 YAML 时还须按所选包能力配置并链接可选组件。
-该片段不是此批包的独立构建/CTest 结果；应检查宿主 `BUILD_TESTING`、CTest 注册和实际执行。
+目标源码 `main.cpp` 由宿主提供；需要 YAML 时按所选包能力开启前端并链接 `PAE::yaml_frontend`。这个片段不表示本轮对宿主 CTest 做了验证；应另查 Cache、测试注册及实际运行。
 
 ## 4. 再运行综合 consumer
+
+### 公共头的源码编码
+
+当前源码及由其新构建/安装的 SDK 公共头使用无 BOM 的 UTF-8。CMake 消费目标链接
+`PAE::pae` 时，仅向 MSVC C++ 编译传递 `/source-charset:utf-8`，覆盖源码读取，不额外设置
+execution charset，也不传播 PAE 内部警告选项。旧体验包未因此自动更新，须按各包来源判断。
+MSVC v142 不允许同时传入 `/utf-8` 与 `/source-charset:utf-8`。宿主已有 `/utf-8` 时，须在
+实际编译的消费目标上关闭 PAE 自动源码选项（源码和新安装 SDK 使用相同机制）：
+
+```cmake
+target_link_libraries(my_pae_consumer PRIVATE PAE::pae)
+target_compile_options(my_pae_consumer PRIVATE "$<$<COMPILE_LANG_AND_ID:CXX,MSVC>:/utf-8>")
+set_property(TARGET my_pae_consumer PROPERTY PAE_MSVC_SOURCE_CHARSET_SUPPLIED ON)
+```
+
+此属性是宿主“已提供 UTF-8 源码读取设置”的明确声明，不会自行添加编码选项。
+应设置在每个实际编译目标，而不是 `PAE::pae` 或中间 INTERFACE 库；未提供等价源码设置就
+关闭自动选项可能再次导致公共头编码错误。PAE 不猜测全局 flags、环境或其他目标中的选项。
+默认消费无需设置该属性，继续只接收 source charset；不会强制宿主窄字符串采用 UTF-8。
+仓库自身的 `pae::project_options` 改用等价的 `/source-charset:utf-8` 与
+`/execution-charset:utf-8` 分列，保持内部源码及窄字符串均为 UTF-8，可与公共默认选项组合。
+该选项作用于消费目标的整个 C++ 编译单元，不仅是 PAE 头；宿主自身源码也需使用 UTF-8，
+不能在同一编译单元中把 GBK 源码与 UTF-8 公共头混作同一源码编码。
+非 CMake 手工接入须在消费公共头的编译单元显式设置 MSVC `/source-charset:utf-8`，或使用
+工具链对应的 UTF-8 源码读取设置；只有宿主自己也需要 UTF-8 窄字符串编码时才选择 `/utf-8`。
+本次仅验证 MSVC v142，不能据此声明 clang-cl、Linux 或跨工具链 ABI 已验证。
 
 `examples/sdk_consumer` 是包的综合可重复验证入口，覆盖 Compiler/metadata、Binary/ASCII Codec、
 StreamFramer、Host 和多 Message Encode；它不是第一个程序的教学替代品。
@@ -170,20 +193,18 @@ source 包的配置位于 `examples/config/`，配置时使用 `PAE_SOURCE_DIR=$
 
 开启 `PAE_BUILD_YAML_FRONTEND` 的本地安装树可另外提供 `PAE::yaml_frontend` 静态
 附加目标及 `<pae/yaml_frontend.h>`；默认 OFF/JSON-only 安装树不携带该头、目标、示例
-和 rapidyaml 许可目录。源码仓库的打包规则曾将可选 YAML 源码、公开头、CMake、
-固定 rapidyaml 原件与通知、Profile 和独立合成 consumer 纳入 source 包白名单；
-source 包中该组件仍默认 OFF，不要求 JSON-only 消费者编译它。binary
+和 rapidyaml 许可目录。`scripts/package_sdk_stage3.ps1` 的 source 包白名单现包含
+可选 YAML 源码、公开头、CMake、固定 rapidyaml 原件与通知、Profile 和独立合成
+consumer；source 包中该组件仍默认 OFF，不要求 JSON-only 消费者编译它。binary
 包从已安装树识别 ON/OFF，ON 时必须具有附加库、头、Profile、许可和示例，缺文件或
 混合状态拒绝；OFF 包仍可独立消费 JSON，显式请求 YAML 组件则在 `find_package`
 阶段失败。shared PAE 包是 `pae.dll` 加静态 YAML 库，没有 YAML DLL。
 
-本地打包候选的 `MANIFEST.txt`、`SHA256SUMS.txt` 与 `PROVENANCE.json` 应按
-实际包内容复核；固定源码仓库的 `scripts/verify_yaml_sdk_package.ps1` 不随 SDK
-包附带。复制既有安装树制包时，
+本地打包候选的 `MANIFEST.txt`、`SHA256SUMS.txt` 与 `PROVENANCE.json` 可以由
+`scripts/verify_yaml_sdk_package.ps1` 按实际包内容复核。复制既有安装树制包时，
 元数据记录当前 HEAD/dirty 和既有安装树字节这一事实；当前 Git 状态本身不能证明
-此前二进制是由当前脏树重建。固定 `adeae30` 源码仓库的历史参考
-`docs/engineering/yaml-sdk-packaging-validation-20260926.md` 未随体验包附带；
-它记录旧阶段，不是所选 SDK 的当前验证结果。
+既有二进制由该提交构建。固定源码、构建/安装库的字节对照和同批验证记录共同建立来源链；
+本指南不把历史工程报告当成当前包的新验证证据。
 这些仍是本地试用候选，
 不是正式发布、对外分发许可或稳定 ABI 承诺。
 

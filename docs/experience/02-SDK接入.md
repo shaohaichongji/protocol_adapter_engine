@@ -49,8 +49,8 @@ if ($LASTEXITCODE -ne 0) { throw 'YAML consumer failed' }
 - Source 包使用 `sdk/pae-sdk-source/`，配置其包内示例时以 `PAE_SOURCE_DIR` 指向包根；其 YAML 组件需显式启用。已有自身 CTest 的宿主应受控 `add_subdirectory` Source 包根，不把示例 CMake 当宿主子目录；宿主管理 `BUILD_TESTING`。
 - Static/Shared 包使用 `find_package(PAE CONFIG REQUIRED)` 和 `PAE::pae`；YAML 另请求 `COMPONENTS yaml_frontend` 并链接 `PAE::yaml_frontend`。当前 Static target 还有传递依赖，不要假设手工链接单个 `pae.lib` 足够。
 - Shared 选 `pae-sdk-shared-debug` 或 `pae-sdk-shared-release`，示例会把同包 `pae.dll` 放在 EXE 旁；自己的宿主也必须保证同包 DLL 可加载。切 Debug/Release 或 Source/Static/Shared 时均新建 BuildRoot。`CMAKE_PREFIX_PATH` 改动不会自动清除旧 cache 的 `PAE_DIR`。
-- 运行前先检查每包 `PROVENANCE.json` 的来源提交、配置、CRT 和 dirty 状态。五包的产品源码为 `adeae30`，SDK 文档投影另记为 `experience-sdk-docs/1`；每包 `MANIFEST.txt` / `SHA256SUMS.txt` 和总包清单是不同层次。
+- 运行前先检查每包 `PROVENANCE.json` 的来源提交、配置、CRT 和 dirty 状态。五包的产品源码为 `513f6cc`，SDK 文档投影另记为 `aligned-sdk-docs/20261009`；每包 `MANIFEST.txt` / `SHA256SUMS.txt` 和总包清单是不同层次。
 
 Codec 用于完整记录，Framer 从分块输入形成候选，Host 只在需要端点/方向绑定及回调时使用。先判状态再消费结果：失败 Decode 没有可交付 record，失败 Encode 的 Buffer 不可发送；回调借用数据跨调用需复制，Host 成功 Reset 后重新 `Find` handle。它们都不替宿主管理通信设备和业务线程。更多输入格式见[配置与边界](03-配置与边界.md)。
 
-本页命令的验收范围是解压后的 Static Release JSON/YAML 两个最小 consumer；不代表所有组合、真实宿主或 ABI 验证。
+本页给出后续解压验收应执行的 Static Release JSON/YAML 两个最小 consumer，文档准备阶段未执行它们；不代表所有组合、真实宿主或 ABI 验证。

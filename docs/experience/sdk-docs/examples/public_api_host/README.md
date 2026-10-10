@@ -1,6 +1,6 @@
 # Public HostEndpoint example
 
-> 交付版投影：据固定 `adeae30d942ba42cc518c244c220730b7e462d2c` 的
+> 交付版投影：据固定 `513f6cc9bd46b64b3b6d1d4283f13c806039eebf` 的
 > `examples/public_api_host/README.md` 制作；仅将未随 SDK 附带的工程验证链接
 > 标为固定源码仓库历史参考，本文件不是该提交的原始字节。
 
@@ -25,28 +25,30 @@ callback 抛出异常时，Host 捕获异常并保留真实 `bytes_consumed` 与
 `RESET_REQUIRED`；调用方副作用不会回滚。Encode callback 收到字节只表示本次同步输出交付，示例没有
 Transport，因此不等于数据已通过网络或串口发送。
 
-## 已验证的 standalone 命令
+## Source 包独立运行命令（本轮未执行）
 
 工作目录为当前源码包或仓库根目录，并先记录该可搬移根目录：
 
 ```powershell
 $PaeSourceRoot = (Resolve-Path .).Path
+$BuildRoot = Join-Path ([IO.Path]::GetTempPath()) 'pae-source-host'
+if (Test-Path -LiteralPath $BuildRoot) { throw 'Choose a fresh BuildRoot' }
 ```
 
-以下命令对应固定 `adeae30` 源码仓库的历史参考
+以下命令对应固定 `513f6cc` 源码仓库的历史参考
 `docs/engineering/pae-public-host-stage2b-validation.md`（未随 PAE SDK 附带）；
 `<CONFIG>` 依次替换为 `Debug`、`Release`：
 
 ```powershell
 cmake -S examples/public_api_host/standalone `
-  -B out/build/windows-msvc-public-host-stage2b-consumer `
+  -B $BuildRoot `
   -G "Visual Studio 18 2026" -A x64 -T "v142,version=14.29.30133" `
   "-DPAE_SOURCE_DIR=$PaeSourceRoot"
 
-cmake --build out/build/windows-msvc-public-host-stage2b-consumer `
+cmake --build $BuildRoot `
   --config <CONFIG> --parallel 4 --target pae_public_host_external_consumer
 
-& .\out\build\windows-msvc-public-host-stage2b-consumer\<CONFIG>\pae_public_host_external_consumer.exe `
+& "$BuildRoot\<CONFIG>\pae_public_host_external_consumer.exe" `
   .\examples\config\synthetic_ascii_stream_slice.pae.json
 ```
 

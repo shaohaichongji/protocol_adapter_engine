@@ -138,7 +138,7 @@ endif()
 add_library(pae_lab_project_options INTERFACE)
 add_library(pae::project_options ALIAS pae_lab_project_options)
 if(MSVC)
-  target_compile_options(pae_lab_project_options INTERFACE /W4 /permissive- /Zc:__cplusplus /utf-8)
+  target_compile_options(pae_lab_project_options INTERFACE /W4 /permissive- /Zc:__cplusplus /source-charset:utf-8 /execution-charset:utf-8)
   target_compile_definitions(pae_lab_project_options INTERFACE _CRT_SECURE_NO_WARNINGS)
 endif()
 

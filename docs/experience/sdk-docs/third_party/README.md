@@ -1,14 +1,11 @@
 # Third-party Source Policy
 
-> 交付版投影：据固定 `adeae30d942ba42cc518c244c220730b7e462d2c` 的
+> 交付版投影：据固定 `513f6cc9bd46b64b3b6d1d4283f13c806039eebf` 的
 > `third_party/README.md` 制作；仅将未随 PAE SDK 附带的 Qt 说明链接改为
 > 固定源码仓库历史参考，本文件不是该提交的原始字节。
 
-Qt 5.13.0 按用户决定完整复制现有 DEI 包，作为可选 Lab UI 的长期本地依赖。
-范围、来源和验证边界见固定 `adeae30` 源码仓库历史参考 `third_party/qt-package.md`，
-逐文件快照见同仓 `third_party/qt-files.json`；二者未随 PAE SDK 附带，Qt 仅供可选 Lab 使用，
-不进入本 SDK 的 PAE Core 依赖。这次明确采用全包保留策略，不按当前 Lab 模块裁剪；
-不代表每个模块均已通过 Lab 验证。
+本 SDK 的非 Qt 依赖是 yyjson 和可选 rapidyaml；Qt 仅用于独立 Lab，SDK 不携带 Qt。
+若需要 Lab 的版本、来源和许可状态，请从整包入口读取随包 notice；仅取得 SDK 时不依赖该材料。
 
 最终依赖必须固定版本或 Commit、上游地址、License、源文件范围、SHA-256、本地修改和更新方式。
 

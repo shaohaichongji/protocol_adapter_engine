@@ -1,6 +1,6 @@
 # Public StreamFramer example
 
-> 交付版投影：据固定 `adeae30d942ba42cc518c244c220730b7e462d2c` 的
+> 交付版投影：据固定 `513f6cc9bd46b64b3b6d1d4283f13c806039eebf` 的
 > `examples/public_api_framer/README.md` 制作；仅将未随 SDK 附带的工程验证链接
 > 标为固定源码仓库历史参考，本文件不是该提交的原始字节。
 
@@ -22,28 +22,30 @@ Testing，构建 target `pae_public_framer_external_consumer`；它不使用 `sr
 已经交付，但不预读后缀，也不重放当前候选。空 `Push` 与 `Continue` 等价，每次只推进一次内部工作，
 不会刷新、提交或丢弃半帧；需要清空流状态时显式调用 `Reset()`。
 
-## 已验证的 standalone 命令
+## Source 包独立运行命令（本轮未执行）
 
 工作目录为当前源码包或仓库根目录，并先记录该可搬移根目录：
 
 ```powershell
 $PaeSourceRoot = (Resolve-Path .).Path
+$BuildRoot = Join-Path ([IO.Path]::GetTempPath()) 'pae-source-framer'
+if (Test-Path -LiteralPath $BuildRoot) { throw 'Choose a fresh BuildRoot' }
 ```
 
-以下命令对应固定 `adeae30` 源码仓库的历史参考
+以下命令对应固定 `513f6cc` 源码仓库的历史参考
 `docs/engineering/pae-public-framer-stage2a-validation.md`（未随 PAE SDK 附带）中的
 独立 public-only consumer；`<CONFIG>` 依次替换为 `Debug`、`Release`：
 
 ```powershell
 cmake -S examples/public_api_framer/standalone `
-  -B out/build/windows-msvc-public-framer-stage2a-consumer `
+  -B $BuildRoot `
   -G "Visual Studio 18 2026" -A x64 -T "v142,version=14.29.30133" `
   "-DPAE_SOURCE_DIR=$PaeSourceRoot"
 
-cmake --build out/build/windows-msvc-public-framer-stage2a-consumer `
+cmake --build $BuildRoot `
   --config <CONFIG> --target pae_public_framer_external_consumer --parallel 4
 
-& .\out\build\windows-msvc-public-framer-stage2a-consumer\<CONFIG>\pae_public_framer_external_consumer.exe `
+& "$BuildRoot\<CONFIG>\pae_public_framer_external_consumer.exe" `
   .\examples\config\synthetic_stream_framing_slice.pae.json
 ```
 

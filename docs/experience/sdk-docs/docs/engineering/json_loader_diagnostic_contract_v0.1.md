@@ -1,6 +1,6 @@
 # JSON Loader 诊断定位契约 V0.1（Spike Draft）
 
-> 交付版投影：据固定 `adeae30d942ba42cc518c244c220730b7e462d2c` 的
+> 交付版投影：据固定 `513f6cc9bd46b64b3b6d1d4283f13c806039eebf` 的
 > `docs/engineering/json_loader_diagnostic_contract_v0.1.md` 全文制作；
 > 本文件不是该提交的原始字节。诊断规则与状态边界未改，用于闭合
 > `strict_json_profile_v0.1.md` 的必要引用。

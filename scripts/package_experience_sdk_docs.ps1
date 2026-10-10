@@ -5,17 +5,30 @@ param(
     [Parameter(Mandatory = $true)][string]$DestinationRoot,
     [Parameter(Mandatory = $true)][string]$EvidenceRoot,
     [Parameter(Mandatory = $true)][ValidateSet("source", "static", "shared")][string]$Kind,
-    [Parameter(Mandatory = $true)][bool]$HasYaml
+    [Parameter(Mandatory = $true)][bool]$HasYaml,
+    [Parameter(Mandatory = $true)][ValidatePattern('^[0-9a-f]{40}$')][string]$ExpectedSourceHead,
+    [Parameter(Mandatory = $true)][ValidatePattern('^[A-Za-z0-9._/-]+$')][string]$OverlayIdentity
 )
 
 $ErrorActionPreference = "Stop"
 Set-StrictMode -Version Latest
 
-$sourceRoot = [System.IO.Path]::GetFullPath($SourcePackageRoot)
-$overlayRootPath = [System.IO.Path]::GetFullPath($OverlayRoot)
-$destination = [System.IO.Path]::GetFullPath($DestinationRoot)
-$evidence = [System.IO.Path]::GetFullPath($EvidenceRoot)
+$sourceRoot = [System.IO.Path]::TrimEndingDirectorySeparator([System.IO.Path]::GetFullPath($SourcePackageRoot))
+$overlayRootPath = [System.IO.Path]::TrimEndingDirectorySeparator([System.IO.Path]::GetFullPath($OverlayRoot))
+$destination = [System.IO.Path]::TrimEndingDirectorySeparator([System.IO.Path]::GetFullPath($DestinationRoot))
+$evidence = [System.IO.Path]::TrimEndingDirectorySeparator([System.IO.Path]::GetFullPath($EvidenceRoot))
 $verifyScript = Join-Path $PSScriptRoot "verify_yaml_sdk_package.ps1"
+
+$projectionIdentity = Get-Content -LiteralPath (Join-Path $overlayRootPath 'PROJECTION-IDENTITY.json') -Raw -Encoding UTF8 | ConvertFrom-Json
+if ($projectionIdentity.product_source_head -cne $ExpectedSourceHead -or $projectionIdentity.version -cne $OverlayIdentity) {
+    throw 'Documentation projection identity does not match the requested product'
+}
+foreach ($entry in $projectionIdentity.files) {
+    if ($entry.path -match '(^/|^[A-Za-z]:|\\|(^|/)\.\.(/|$))' -or
+        (Get-FileHash -LiteralPath (Join-Path $overlayRootPath $entry.path)).Hash.ToLowerInvariant() -cne $entry.sha256) {
+        throw "Documentation projection hash mismatch: $($entry.path)"
+    }
+}
 
 if (-not (Test-Path -LiteralPath $sourceRoot -PathType Container) -or
     -not (Test-Path -LiteralPath $overlayRootPath -PathType Container)) {
@@ -51,6 +64,7 @@ $diagnosticDestination = if ($Kind -eq "source") {
 }
 $mapping = @(
     @{ source = "docs/sdk/README.md"; destination = "docs/sdk/README.md" },
+    @{ source = $(if ($Kind -eq 'source') { 'examples/getting_started/README.md' } else { 'examples/getting_started/README.binary.md' }); destination = 'examples/getting_started/README.md' },
     @{ source = "schema/README.md"; destination = "$schemaBase/README.md" },
     @{ source = "schema/strict_json_profile_v0.1.md"; destination = "$schemaBase/strict_json_profile_v0.1.md" },
     @{ source = "schema/protocol_plan_execution_semantics_v0.1.md"; destination = "$schemaBase/protocol_plan_execution_semantics_v0.1.md" },
@@ -82,6 +96,9 @@ foreach ($item in $mapping) {
     if (-not (Test-Path -LiteralPath $overlayFile -PathType Leaf)) {
         throw "Required documentation projection is missing: $($item.source)"
     }
+    if (@($projectionIdentity.files | Where-Object { $_.path -ceq $item.source }).Count -ne 1) {
+        throw "Projection identity does not list a unique required input: $($item.source)"
+    }
     $overlayHash = (Get-FileHash -LiteralPath $overlayFile -Algorithm SHA256).Hash.ToLowerInvariant()
     $oldHash = if (Test-Path -LiteralPath $oldFile -PathType Leaf) {
         (Get-FileHash -LiteralPath $oldFile -Algorithm SHA256).Hash.ToLowerInvariant()
@@ -106,14 +123,14 @@ $originalProvenance = Get-Content -Raw -LiteralPath (Join-Path $sourceRoot "PROV
 if ($originalProvenance.package_kind -cne $Kind -or
     [bool]$originalProvenance.yaml_frontend_installed -ne $HasYaml -or
     [bool]$originalProvenance.source_worktree_dirty -or
-    $originalProvenance.source_head -cne "adeae30d942ba42cc518c244c220730b7e462d2c") {
+    $originalProvenance.source_head -cne $ExpectedSourceHead) {
     throw "Original package identity does not match the fixed clean source"
 }
 
 $baseManifestHash = (Get-FileHash -LiteralPath (Join-Path $sourceRoot "MANIFEST.txt") -Algorithm SHA256).Hash.ToLowerInvariant()
 $baseHashListHash = (Get-FileHash -LiteralPath (Join-Path $sourceRoot "SHA256SUMS.txt") -Algorithm SHA256).Hash.ToLowerInvariant()
 $baseProvenanceHash = (Get-FileHash -LiteralPath (Join-Path $sourceRoot "PROVENANCE.json") -Algorithm SHA256).Hash.ToLowerInvariant()
-$identityText = @($baseManifestHash, $baseHashListHash, "experience-sdk-docs/1") +
+$identityText = @($ExpectedSourceHead, $baseManifestHash, $baseHashListHash, $OverlayIdentity) +
     @($overlayEntries | Sort-Object destination | ForEach-Object { "$($_.destination):$($_.source_sha256)" })
 $identityBytes = [System.Text.Encoding]::UTF8.GetBytes(($identityText -join "`n"))
 $derivedId = [Convert]::ToHexString([System.Security.Cryptography.SHA256]::HashData($identityBytes)).ToLowerInvariant()
@@ -155,7 +172,8 @@ $derivedProvenance = [ordered]@{
     base_package_sha256s_sha256 = $baseHashListHash
     base_package_provenance_sha256 = $baseProvenanceHash
     documentation_overlay = [ordered]@{
-        version = "experience-sdk-docs/1"
+        version = $OverlayIdentity
+        product_source_head = $ExpectedSourceHead
         files = $overlayEntries
     }
     generated_utc = [DateTime]::UtcNow.ToString("yyyy-MM-ddTHH:mm:ssZ")
@@ -194,6 +212,19 @@ foreach ($file in Get-ChildItem -LiteralPath $sourceRoot -Recurse -File) {
     }
 }
 
+foreach ($file in Get-ChildItem -LiteralPath $destination -Recurse -File -Filter '*.md') {
+    $body = Get-Content -LiteralPath $file.FullName -Raw -Encoding UTF8
+    $links = @([regex]::Matches($body, '\[[^\]]+\]\(([^)]+)\)') | ForEach-Object { $_.Groups[1].Value }) +
+        @([regex]::Matches($body, '(?m)^\[[^\]]+\]:\s*(\S+)') | ForEach-Object { $_.Groups[1].Value })
+    foreach ($link in $links) {
+        $link = $link.Trim('<', '>', '"', ' ')
+        if ($link -match '^(https?://|mailto:|#)' -or -not $link) { continue }
+        $relative = [uri]::UnescapeDataString(($link -split '[#?]', 2)[0])
+        $path = [IO.Path]::GetFullPath((Join-Path $file.DirectoryName $relative))
+        if (-not $path.StartsWith($destination + [IO.Path]::DirectorySeparatorChar, [StringComparison]::OrdinalIgnoreCase) -or
+            -not (Test-Path -LiteralPath $path)) { throw "Missing or external local document link: $link in $($file.Name)" }
+    }
+}
 & $verifyScript -PackageRoot $destination -Kind $Kind -HasYaml:$HasYaml
 if (-not $?) { throw "Derived SDK package verification failed" }
 Write-Output "PAE_EXPERIENCE_SDK_DOCS_READY kind=$Kind configuration=$($originalProvenance.configuration) derived_id=$derivedId files=$($hashEntries.Count + 1) root=$destination"

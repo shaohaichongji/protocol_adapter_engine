@@ -88,7 +88,14 @@ int main(int argc, char** argv) {
   }
   assert(tab.state() == DocumentState::CONFIG_ERROR);
   assert(!tab.YamlGeneratedJsonMatchesForSmoke());
-  assert(tab.DiagnosticTextForSmoke().contains(QStringLiteral("未提供")));
+  const auto missing_location = QStringLiteral(u"未提供");
+  const ushort missing_location_units[] = {0x672AU, 0x63D0U, 0x4F9BU};
+  assert(missing_location.size() == 3);
+  for (int index = 0; index < 3; ++index) {
+    assert(missing_location.at(index).unicode() == missing_location_units[index]);
+  }
+  assert(missing_location == QString::fromUtf16(missing_location_units, 3));
+  assert(tab.DiagnosticTextForSmoke().contains(missing_location));
 
   QTemporaryFile oversized(QDir::tempPath() + QStringLiteral("/pae-large-XXXXXX.yaml"));
   assert(oversized.open());

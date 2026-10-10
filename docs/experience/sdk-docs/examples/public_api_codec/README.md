@@ -1,6 +1,6 @@
 # Public COMPLETE_RECORD Codec example
 
-> 交付版投影：据固定 `adeae30d942ba42cc518c244c220730b7e462d2c` 的
+> 交付版投影：据固定 `513f6cc9bd46b64b3b6d1d4283f13c806039eebf` 的
 > `examples/public_api_codec/README.md` 制作；仅将未随 SDK 附带的工程验证链接
 > 标为固定源码仓库历史参考，本文件不是该提交的原始字节。
 
@@ -16,25 +16,27 @@ Binary 路径先从公开 metadata 取得 Pipeline/Message 关联，核对 Decod
 `CALLER_INPUT` 来源和 `EXACT` 输出长度，再构造 typed values，执行 Encode 后 Decode。ASCII 路径同样
 根据公开 metadata 准备 caller input 和输出 Buffer，不从 direction 字符串或私有 Plan 推断行为。
 
-## Windows Debug 运行
+## Source 包独立运行（本轮未执行）
 
-工作目录必须是当前源码包或仓库根目录；以下命令均使用该目录下的相对路径。
+从 Source 包根执行，BuildRoot 放在包外并使用新目录；此例需要包根 CMake，SDK 不携带开发仓库 preset：
 
 ```powershell
-cmake --preset windows-msvc-public-api-stage1
-cmake --build --preset windows-msvc-public-api-stage1-debug `
-  --target pae_public_codec_example -- /m:1
-& .\out\build\windows-msvc-public-api-stage1\Debug\pae_public_codec_example.exe `
-  .\examples\config\synthetic_lab_exchange_slice.pae.json `
-  .\examples\config\synthetic_ascii_text_slice.pae.json
+$PackageRoot = (Resolve-Path .).Path
+$BuildRoot = Join-Path ([IO.Path]::GetTempPath()) 'pae-source-codec-release'
+if (Test-Path -LiteralPath $BuildRoot) { throw 'Choose a fresh BuildRoot' }
+cmake -S $PackageRoot -B $BuildRoot -G 'Visual Studio 18 2026' -A x64 -T 'v142,version=14.29.30133' `
+  -DPAE_BUILD_PUBLIC_API_STAGE1=ON -DPAE_BUILD_TESTING=OFF -DBUILD_TESTING=OFF `
+  -DPAE_BUILD_PROTOCOL_LAB=OFF -DPAE_BUILD_PROTOCOL_LAB_UI=OFF
+cmake --build $BuildRoot --config Release --target pae_public_codec_example -- /m:1
+& (Join-Path $BuildRoot 'Release/pae_public_codec_example.exe') `
+  (Join-Path $PackageRoot 'examples/config/synthetic_lab_exchange_slice.pae.json') `
+  (Join-Path $PackageRoot 'examples/config/synthetic_ascii_text_slice.pae.json')
 ```
 
-Release 使用现有 `windows-msvc-public-api-stage1-release` build preset，并运行
-`out\build\windows-msvc-public-api-stage1\Release\pae_public_codec_example.exe`，输入参数和顺序不变。
 成功输出为 `PUBLIC_CODEC_EXAMPLE gate=PASS`，失败退出码为 1。
 
 阶段 1B 的既有验证报告记录该 metadata 驱动示例在 Windows x64 Debug/Release 均通过。
-固定 `adeae30` 源码仓库历史参考（未随 PAE SDK 附带）：
+固定 `513f6cc` 源码仓库历史参考（未随 PAE SDK 附带）：
 `docs/engineering/pae-public-codec-slice-validation.md`、
 `docs/engineering/pae-public-consumer-metadata-validation.md`。
 这是限定工具链和合成配置范围内的结果，不代表独立 SDK/安装包、Lab 迁移、Linux、真实协议、硬件、

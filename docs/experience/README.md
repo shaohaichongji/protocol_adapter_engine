@@ -2,7 +2,7 @@
 
 从本文件开始。整包解压后，以本文件所在目录作为体验包根；无需 clone 开发仓库，也不需要查找原机器的 `out/` 或 `deliverables/`。不要只取出 EXE 或某个 SDK 库文件。
 
-本套导航对应固定产品源码 `adeae30d942ba42cc518c244c220730b7e462d2c` 的 Windows x64 本地体验候选，不是正式发布。五个 SDK 是以该源码为基础、另行投影文档的 `experience-sdk-docs/1` 派生包；包级中文导航也属于后续归集材料，不冒充该提交中的原文件。使用前核对根目录 `BUNDLE-IDENTITY.json`、`MANIFEST.txt`、`SHA256SUMS.txt` 和包外 `ZIP.sha256`，再核对所选 SDK 包的 `PROVENANCE.json`、`MANIFEST.txt`、`SHA256SUMS.txt`。产品源码身份与交付文档身份应分别记录。
+本套导航是本轮待归集的文档准备，对应固定产品源码 `513f6cc9bd46b64b3b6d1d4283f13c806039eebf` 。同基线 SDK/Lab 正在串行重建和复核；本导航不表示完整包已生成或验证。五个 SDK 归集时将记录 `aligned-sdk-docs/20261009` 派生包；包级中文导航也属于后续归集材料，不冒充该提交中的原文件。使用前核对根目录 `BUNDLE-IDENTITY.json`、`MANIFEST.txt`、`SHA256SUMS.txt` 和包外 `ZIP.sha256`，再核对所选 SDK 包的 `PROVENANCE.json`、`MANIFEST.txt`、`SHA256SUMS.txt`。产品源码身份与交付文档身份应分别记录。
 
 ## 按顺序体验
 
@@ -29,7 +29,10 @@
     pae-sdk-static-release/
     pae-sdk-shared-debug/
     pae-sdk-shared-release/
+  tutorials/                   六份中文说明与四份固定提交教学代码/配置
   schema/
+    README.md
+    protocol_plan_execution_semantics_v0.1.md
     pae.schema.json
     pae_yaml_profile_v0.1.md
     strict_json_profile_v0.1.md
@@ -38,9 +41,9 @@
   notices/qt-package.md        仓库固定 Qt 快照说明的原文副本，并非许可文本
 ```
 
-五个 SDK 包均应包含本轮约定的受限 YAML 作者源能力；不再把 JSON-only 对照包放进主体验包。Lab 的 `configs/` 至少包含 `synthetic_binary_ui_stage1.pae.json`、`synthetic_ascii_literal_only.pae.json` 与 `synthetic_ascii_literal_only.pae.yaml`。这些都是从零设计的合成输入，不对应真实设备。
+同基线归集必须包含五个 SDK 的受限 YAML 作者源能力；不再把 JSON-only 对照包放进主体验包。Lab 的 `configs/` 至少包含 `synthetic_binary_ui_stage1.pae.json`、`synthetic_ascii_literal_only.pae.json` 与 `synthetic_ascii_literal_only.pae.yaml`。这些都是从零设计的合成输入，不对应真实设备。
 
-顶层只归集首次编写配置所需的 Schema、YAML Profile 和严格 JSON 规则；严格 JSON 文档中的诊断契约链接由上方单份 `docs/engineering/` 文件闭合。完整历史验证报告不纳入总入口。SDK 包内更多规范采用明确标注的交付版投影：规则和限制保留，历史工程报告改为固定源码仓库参考文字，不伪装成包内链接。顶层 Schema 与诊断文档也取自该交付版投影。
+顶层归集 Schema 索引、结构 Schema、执行语义、YAML Profile 和严格 JSON 规则；严格 JSON 文档中的诊断契约链接由上方单份 `docs/engineering/` 文件闭合。完整历史验证报告不纳入总入口。SDK 包内更多规范采用明确标注的交付版投影：规则和限制保留，历史工程报告改为固定源码仓库参考文字，不伪装成包内链接。顶层 Schema 与诊断文档也取自该交付版投影。
 
 ## 使用前提与边界
 

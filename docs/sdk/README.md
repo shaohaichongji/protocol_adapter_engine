@@ -6,9 +6,9 @@ PAE 把协议规则编译为冻结 Plan，再由公开 Codec、StreamFramer 或 
 Socket、串口、设备线程、重试、路由或业务状态。包内示例使用从零设计的公开合成配置，不代表真实
 协议、设备、现场或生产验收。
 
-本 SDK 是本地评审产物，不是正式发布。当前 `b12ad80` 同基线本地产物有 Source、带 YAML
-组件的 Static/Shared Debug/Release 和 JSON-only Static/Shared Release 七包；选择一个包根使用。
-先读包根 `PROVENANCE.json`，确认 package kind、
+本 SDK 是本地评审产物。Source、Static/Shared Debug/Release 的实际可用组合以所选包清单为准；
+同基线体验目录计划包含五包，产品源码固定为 `513f6cc9bd46b64b3b6d1d4283f13c806039eebf`。
+文档准备不表示这五包及 Lab 已归集或验证。先读包根 `PROVENANCE.json`，确认 package kind、
 Debug/Release、x64、MSVC toolset、CRT、来源提交及 dirty 状态；再读 `PAE-SDK-README.md` 的许可和
 ABI 边界。不要混用 Debug consumer 与 Release 二进制包，也不要把同工具链验证扩大为稳定 ABI。
 
@@ -20,8 +20,8 @@ ABI 边界。不要混用 Debug consumer 与 Release 二进制包，也不要把
 | static | 希望链接安装包中的静态库 | `CMAKE_PREFIX_PATH=$PackageRoot` | consumer 相邻目录没有 `pae.dll` |
 | shared | 希望链接安装包中的 DLL | `CMAKE_PREFIX_PATH=$PackageRoot` | 示例规则复制包内 `pae.dll` 到程序旁 |
 
-本指南的命令以包 provenance 所列 `Visual Studio 18 2026 / x64 / v142 14.29.30133` 为当前工具链
-边界。带 YAML 的二进制包额外提供静态 `PAE::yaml_frontend`；JSON-only 包不提供该组件。
+下文示范 `Visual Studio 18 2026 / x64 / v142 14.29.30133`；实际工具链版本须结合包
+provenance 和同批构建记录核对，通用 `MSVC x64` 字段不包含完整 toolset 证明。带 YAML 的二进制包额外提供静态 `PAE::yaml_frontend`；JSON-only 包不提供该组件。
 shared 和 Debug 是否在某一批包中实际验证，以该批独立验证记录为准，不能由包名推断。
 
 ## 3. 先运行最小程序
@@ -32,7 +32,8 @@ shared 和 Debug 是否在某一批包中实际验证，以该批独立验证记
 $PackageRoot = (Resolve-Path .).Path
 $Configuration = 'Release'
 $PackageName = Split-Path $PackageRoot -Leaf
-$BuildRoot = Join-Path (Split-Path $PackageRoot -Parent) "pae-getting-started-$PackageName-$Configuration"
+$BuildParent = [IO.Path]::GetTempPath()  # 包外目录
+$BuildRoot = Join-Path $BuildParent "pae-getting-started-$PackageName-$Configuration"
 if (Test-Path -LiteralPath $BuildRoot) { throw 'Choose a fresh BuildRoot' }
 $Config = if (Test-Path -LiteralPath "$PackageRoot\share\pae\examples\config\synthetic_stream_framing_slice.pae.json") {
   "$PackageRoot\share\pae\examples\config\synthetic_stream_framing_slice.pae.json"
@@ -57,7 +58,7 @@ cmake -S "$PackageRoot\examples\getting_started" -B $BuildRoot `
   "-DCMAKE_PREFIX_PATH=$PackageRoot"
 ```
 
-二选一配置后，使用与包匹配的 Configuration；以上取 Release 包。这里是**独立运行包内旧示例**，不是把示例 CMake 作为已有宿主子目录：
+二选一配置后，使用与包匹配的 Configuration；以上取 Release 包。这里是**独立运行包内示例**，不是把示例 CMake 作为已有宿主子目录：
 
 ```powershell
 cmake --build $BuildRoot --config $Configuration --target pae_getting_started -- /m:1
@@ -73,7 +74,7 @@ if ($LASTEXITCODE -ne 0) { throw 'PAE getting_started failed' }
 `examples/yaml_sdk_consumer`，不要复用上方 JSON 的 CMake cache：
 
 ```powershell
-$YamlBuildRoot = Join-Path (Split-Path $PackageRoot -Parent) "pae-yaml-$PackageName-$Configuration"
+$YamlBuildRoot = Join-Path $BuildParent "pae-yaml-$PackageName-$Configuration"
 if (Test-Path -LiteralPath $YamlBuildRoot) { throw 'Choose a fresh BuildRoot' }
 $YamlConfig = "$PackageRoot\examples\yaml_sdk_consumer\synthetic_fixed_message.pae.yaml"
 ```
@@ -105,7 +106,7 @@ if ($LASTEXITCODE -ne 0) { throw 'PAE YAML SDK consumer failed' }
 成功标志为 `PAE_YAML_SDK_CONSUMER_PASS`：YAML 转成严格 JSON 后仍走公开 Compiler/Codec。
 JSON-only 包请求 YAML 组件会在 Configure 阶段拒绝；不要把这项预期拒绝当作运行失败。
 
-已有自身 CTest 的宿主接入 Source 包时，直接受控加入包根，不嵌入旧示例 CMake。后者在 source 路线用 `FORCE` 改写全局 `BUILD_TESTING`，隔离实验曾让宿主测试从 ON 变 OFF、`ctest -N` 变成 0 项。已验证的最小宿主形状是：
+已有自身 CTest 的宿主接入 Source 包时，直接受控加入包根；不要把包内示例 CMake 当成自己的宿主入口。示例的目录作用域选项服务于独立演示，宿主仍管理自身 BUILD_TESTING。以下是最小接入形状：
 
 ```cmake
 include(CTest)  # 宿主管理自己的 BUILD_TESTING
@@ -117,7 +118,7 @@ add_executable(my_pae_consumer main.cpp)
 target_link_libraries(my_pae_consumer PRIVATE PAE::pae)
 ```
 
-该受控方式在独立宿主保留自有测试 1/1；不表示此处的 `b12ad80` 包内旧示例已修复。目标源码 `main.cpp` 由宿主提供，确需 YAML 时还须按所选包能力配置并链接可选组件。
+目标源码 `main.cpp` 由宿主提供；需要 YAML 时按所选包能力开启前端并链接 `PAE::yaml_frontend`。这个片段不表示本轮对宿主 CTest 做了验证；应另查 Cache、测试注册及实际运行。
 
 ## 4. 再运行综合 consumer
 
@@ -199,8 +200,8 @@ consumer；source 包中该组件仍默认 OFF，不要求 JSON-only 消费者�
 本地打包候选的 `MANIFEST.txt`、`SHA256SUMS.txt` 与 `PROVENANCE.json` 可以由
 `scripts/verify_yaml_sdk_package.ps1` 按实际包内容复核。复制既有安装树制包时，
 元数据记录当前 HEAD/dirty 和既有安装树字节这一事实；当前 Git 状态本身不能证明
-此前二进制是由当前脏树重建。仓库侧 2026-09-26 的实际打包与消费记录见
-`docs/engineering/yaml-sdk-packaging-validation-20260926.md`（不随 SDK 包安装）。
+既有二进制由该提交构建。固定源码、构建/安装库的字节对照和同批验证记录共同建立来源链；
+本指南不把历史工程报告当成当前包的新验证证据。
 这些仍是本地试用候选，
 不是正式发布、对外分发许可或稳定 ABI 承诺。
 

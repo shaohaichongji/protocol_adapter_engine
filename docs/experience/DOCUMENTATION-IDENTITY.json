@@ -1,0 +1,87 @@
+{
+  "version": "aligned-experience-docs/20261009",
+  "product_source_head": "513f6cc9bd46b64b3b6d1d4283f13c806039eebf",
+  "note": "Preparation identity only. Teaching configs/code equal fixed product; Markdown is derived. SDK/Lab/ZIP validation pending.",
+  "files": [
+    {
+      "path": "01-Lab体验.md",
+      "sha256": "754d5f32cb4561ec0a696cf4b27b67c7cdc87099da1c93383380e160c6878cf9"
+    },
+    {
+      "path": "02-SDK接入.md",
+      "sha256": "eec4ad0d87a5a5d27cce7203a7f2e204cda118ef7001426491fd796312020595"
+    },
+    {
+      "path": "03-配置与边界.md",
+      "sha256": "525d6e0685a4042e9d7d5b2aa6622ddb0d052531247df7867541def2898299d2"
+    },
+    {
+      "path": "README.md",
+      "sha256": "5962b0b95d70eb854fbc087fc5d5e8ef3f00fb97730d39cb6f4f9a6576a68293"
+    },
+    {
+      "path": "sdk-docs/docs/engineering/json_loader_diagnostic_contract_v0.1.md",
+      "sha256": "4bc0a5a9078105994f25dc5423853f49fe903a9ba99390cad40689856f8288d5"
+    },
+    {
+      "path": "sdk-docs/schema/pae_yaml_profile_v0.1.md",
+      "sha256": "d8a87f64fc686dec01bbc07b05617db7450100646503ab482ebdacc21992169e"
+    },
+    {
+      "path": "sdk-docs/schema/pae.schema.json",
+      "sha256": "64d10cbdf658e0e2e04de59d7784435e02cd9681928971f2f22710dbe801f251"
+    },
+    {
+      "path": "sdk-docs/schema/protocol_plan_execution_semantics_v0.1.md",
+      "sha256": "e9deff8c9e335f4c42a3597d19c6d72c37966af1aad3fd30060e64f6a031ed59"
+    },
+    {
+      "path": "sdk-docs/schema/README.md",
+      "sha256": "e9f8794b8c59236f95515e481b6a0ebd1c1c4eee94221141aa7aedba5828b26c"
+    },
+    {
+      "path": "sdk-docs/schema/strict_json_profile_v0.1.md",
+      "sha256": "33574ec88936dad8827c7ecd7fa83eb8b7fe0b42c9baaa5d85c48d8b128e8e6d"
+    },
+    {
+      "path": "tutorials/01-配置结构与二进制.md",
+      "sha256": "30b52c2baad286dd1da6e404c93a88665ab23e731d32bcb7cb29ca87aab986eb"
+    },
+    {
+      "path": "tutorials/01-最小二进制.pae.json",
+      "sha256": "8705df45b528b34aedd25b6cbd46892fe55f7cf05d5dbc96748f76641e91a353"
+    },
+    {
+      "path": "tutorials/02-文本与流式.md",
+      "sha256": "13c559cb0d503078bd0d31958b4ec4fe9bbff936ae9cc06498d60ad1a00a59fb"
+    },
+    {
+      "path": "tutorials/02-最小文本.pae.json",
+      "sha256": "756d1d170e342e941c97b6d1002fdd0b58a3a567dc483777c55e294980c000da"
+    },
+    {
+      "path": "tutorials/03-构建运行教学程序.md",
+      "sha256": "aa536d467f0f16f38d7d3c5b068b681dd77460309d6f7786b1faaa48043a7bcd"
+    },
+    {
+      "path": "tutorials/04-常用配置字段速查.md",
+      "sha256": "75b0f8b556476075edc3722b7ff32e7ed4080d8eab86e43afc984293ce98c39d"
+    },
+    {
+      "path": "tutorials/05-从协议表到SDK练习.md",
+      "sha256": "52aaa8537be2bd0a171049c5a9b4f33666a0bff37f31d9c4dc5ef02cf0f86f44"
+    },
+    {
+      "path": "tutorials/CMakeLists.txt",
+      "sha256": "c87012dff286af3367b60e1d61be9a2c77ef55e90a123104613f8f42c3084d68"
+    },
+    {
+      "path": "tutorials/README.md",
+      "sha256": "ff8ebf8a7f48c1fdddcd602156db4df15208e715031fd6b02f53e484418d758e"
+    },
+    {
+      "path": "tutorials/verify.cpp",
+      "sha256": "5833cb6dd71e71cb845eb0c0a1d31e6e9f8999e55102f50e3162aa61dc66d497"
+    }
+  ]
+}

@@ -1,0 +1,59 @@
+{
+  "version": "aligned-sdk-docs/20261009",
+  "product_source_head": "513f6cc9bd46b64b3b6d1d4283f13c806039eebf",
+  "note": "Derived documentation; product payload unchanged. Hashes identify preparation inputs, not a verified SDK package.",
+  "files": [
+    {
+      "path": "docs/engineering/json_loader_diagnostic_contract_v0.1.md",
+      "sha256": "4bc0a5a9078105994f25dc5423853f49fe903a9ba99390cad40689856f8288d5"
+    },
+    {
+      "path": "docs/sdk/README.md",
+      "sha256": "3fa78524850303ea62db8285daf28ceff502208e137b77f7c2a0cd8eda8685e6"
+    },
+    {
+      "path": "examples/getting_started/README.binary.md",
+      "sha256": "b72202351649541a2d9923fdb7f807c260658b59ebeb1657dc90bab7c0b61943"
+    },
+    {
+      "path": "examples/getting_started/README.md",
+      "sha256": "32c1b95b776c9bd57a5de543a938b4cb2c37204e065c2fdbeaf52f582c35bfba"
+    },
+    {
+      "path": "examples/public_api_codec/README.md",
+      "sha256": "b69c0da527c76d967f75601283023813e5f2c31a1691b2519218d8c6e1cc49a1"
+    },
+    {
+      "path": "examples/public_api_framer/README.md",
+      "sha256": "86c6a4baa672591b1095a356720066b7581241ae368c6ae2035dabcc8553e38d"
+    },
+    {
+      "path": "examples/public_api_host/README.md",
+      "sha256": "152cae3f15fb5a5c38853973820feee00e390b9ddde3c0e1a307c30f0ab26dd1"
+    },
+    {
+      "path": "schema/pae_yaml_profile_v0.1.md",
+      "sha256": "d8a87f64fc686dec01bbc07b05617db7450100646503ab482ebdacc21992169e"
+    },
+    {
+      "path": "schema/pae.schema.json",
+      "sha256": "64d10cbdf658e0e2e04de59d7784435e02cd9681928971f2f22710dbe801f251"
+    },
+    {
+      "path": "schema/protocol_plan_execution_semantics_v0.1.md",
+      "sha256": "e9deff8c9e335f4c42a3597d19c6d72c37966af1aad3fd30060e64f6a031ed59"
+    },
+    {
+      "path": "schema/README.md",
+      "sha256": "e9f8794b8c59236f95515e481b6a0ebd1c1c4eee94221141aa7aedba5828b26c"
+    },
+    {
+      "path": "schema/strict_json_profile_v0.1.md",
+      "sha256": "33574ec88936dad8827c7ecd7fa83eb8b7fe0b42c9baaa5d85c48d8b128e8e6d"
+    },
+    {
+      "path": "third_party/README.md",
+      "sha256": "e359dabe4e29d474d764c77c65bf4b672ed6263fac981c10055ea6deb85320a2"
+    }
+  ]
+}
